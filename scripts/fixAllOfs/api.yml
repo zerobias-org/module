@@ -1,0 +1,14 @@
+openapi: 3.0.3
+info:
+  title: False API
+  version: 1.0.0
+paths:
+  /foo:
+    get:
+      responses:
+        '200':
+          description: Successful response
+components:
+  schemas:
+    ConnectionProfile:
+      $ref: ./connectionProfile.yml

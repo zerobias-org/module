@@ -1,43 +1,75 @@
-import { ConnectionMetadata, OAuthConnectionDetails, OperationSupportStatusDef } from '@auditmation/hub-core';
-import { AxiosInstance } from 'axios';
-import { AssetApi, Avatar2dApi, Avatar3dApi, AvatarApi, ReadyPlayerMeConnector, UserApi } from '../generated/api';
+import {
+  ConnectionMetadata,
+  OperationSupportStatusDef
+} from '@auditmation/hub-core';
+import {
+  ApplicationApi,
+  AssetApi,
+  Avatar2dApi,
+  Avatar3dApi,
+  AvatarApi,
+  ReadyPlayerMeConnector,
+  UserApi,
+  wrapApplicationProducer,
+  wrapAssetProducer,
+  wrapAvatar2dProducer,
+  wrapAvatar3dProducer,
+  wrapAvatarProducer,
+  wrapUserProducer
+} from '../generated/api';
 import { ConnectionProfile } from '../generated/model';
+import { ApplicationProducerImpl } from './ApplicationProducerImpl';
+import { AssetProducerImpl } from './AssetProducerImpl';
+import { Avatar2dProducerImpl } from './Avatar2dProducerImpl';
+import { Avatar3dProducerImpl } from './Avatar3dProducerImpl';
+import { AvatarProducerImpl } from './AvatarProducerImpl';
+import { ReadyPlayerMeClient } from './ReadyPlayerMeClient';
+import { UserProducerImpl } from './UserProducerImpl';
 
 export class ReadyPlayerMeImpl implements ReadyPlayerMeConnector {
-  connect(connectionProfile: ConnectionProfile, oauthConnectionDetails?: OAuthConnectionDetails): Promise<void> {
-    throw new Error('Method not implemented.');
+  private client = new ReadyPlayerMeClient();
+
+  async connect(connectionProfile: ConnectionProfile): Promise<void> {
+    return this.client.connect(connectionProfile);
   }
-  isConnected(): Promise<boolean> {
-    throw new Error('Method not implemented.');
+
+  async isConnected(): Promise<boolean> {
+    return this.client.isConnected();
   }
-  disconnect(): Promise<void> {
-    throw new Error('Method not implemented.');
+
+  async disconnect(): Promise<void> {
+    return this.client.disconnect();
   }
-  refresh?(connectionProfile: ConnectionProfile, connectionState: void, oauthConnectionDetails?: OAuthConnectionDetails): Promise<void> {
-    throw new Error('Method not implemented.');
+
+  async metadata(): Promise<ConnectionMetadata> {
+    return this.client.metadata();
   }
-  metadata(): Promise<ConnectionMetadata> {
-    throw new Error('Method not implemented.');
+
+  async isSupported(operationId: string): Promise<OperationSupportStatusDef> {
+    return this.client.isSupported(operationId);
   }
-  isSupported(operationId: string): Promise<OperationSupportStatusDef> {
-    throw new Error('Method not implemented.');
-  }
-  httpClient?(): AxiosInstance | undefined {
-    throw new Error('Method not implemented.');
-  }
+
   getAssetApi(): AssetApi {
-    throw new Error('Method not implemented.');
+    return wrapAssetProducer(new AssetProducerImpl(this.client))
   }
+
   getAvatarApi(): AvatarApi {
-    throw new Error('Method not implemented.');
+    return wrapAvatarProducer(new AvatarProducerImpl(this.client))
   }
+
   getAvatar2dApi(): Avatar2dApi {
-    throw new Error('Method not implemented.');
+    return wrapAvatar2dProducer(new Avatar2dProducerImpl(this.client))
   }
+
   getAvatar3dApi(): Avatar3dApi {
-    throw new Error('Method not implemented.');
+    return wrapAvatar3dProducer(new Avatar3dProducerImpl(this.client))
   }
+
   getUserApi(): UserApi {
-    throw new Error('Method not implemented.');
+    return wrapUserProducer(new UserProducerImpl(this.client))
+  }
+
+  getApplicationApi(): ApplicationApi {
+    return wrapApplicationProducer(new ApplicationProducerImpl(this.client))
   }
 }

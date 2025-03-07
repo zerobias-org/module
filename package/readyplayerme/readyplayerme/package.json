@@ -60,7 +60,8 @@
   "dependencies": {
     "@auditlogic/product-readyplayerme-readyplayerme": "^1.0.0",
     "@auditmation/hub-core": "^4.4.31",
-    "@auditmation/util-logger": "^4.0.9"
+    "@auditmation/util-logger": "^4.0.9",
+    "axios": "^0.27.2"
   },
   "peerDependencies": {
     "@auditmation/types-core": "^4.8.0",

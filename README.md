@@ -4,7 +4,8 @@ Monorepo of modules.
 <!-- For module development, see [the SDK documentation]( link to hub docs). -->
 
 ## NPM Packages authentication
-** ZB_TOKEN **
+**ZB_TOKEN**
+
 Set `ZB_TOKEN` in your environment variables to authenticate with npm registry.
 `ZB_TOKEN` needs to be an API key from [ZeroBias](https://app.zerobias.com).
 

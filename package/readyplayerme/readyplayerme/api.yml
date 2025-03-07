@@ -1,0 +1,767 @@
+openapi: 3.0.3
+info:
+  x-product-infos:
+    - $ref: './node_modules/@auditlogic/product-readyplayerme-readyplayerme/catalog.yml#/Product'
+  version: '0.0.0'
+  title: '@zerobias-org/module-readyplayerme-readyplayerme'
+  x-impl-name: ReadyPlayerMe
+  description: 'Ready Player Me'
+paths:
+  /avatars/3d/{avatarId}:
+    get:
+      summary: Get a 3D avatar GLB file
+      description: Get a 3D avatar GLB model with desired performance and configuration settings
+      operationId: get3DAvatarModel
+      x-method-name: get3DModel
+      tags:
+        - avatar3d
+      parameters:
+        - $ref: '#/components/parameters/avatar3DId'
+        - $ref: '#/components/parameters/avatar3DQuality'
+        - $ref: '#/components/parameters/avatar3DTextureSizeLimit'
+        - $ref: '#/components/parameters/avatar3DTextureQuality'
+        - $ref: '#/components/parameters/avatar3DTextureAtlas'
+        - $ref: '#/components/parameters/avatar3DTextureChannels'
+        - $ref: '#/components/parameters/avatar3DMorphTargets'
+        - $ref: '#/components/parameters/avatar3DUseDracoMeshCompression'
+        - $ref: '#/components/parameters/avatar3DUseQuantizeMeshOptCompression'
+        - $ref: '#/components/parameters/avatar3DPose'
+        - $ref: '#/components/parameters/avatar3DUseHands'
+        - $ref: '#/components/parameters/avatar3DTextureFormat'
+        - $ref: '#/components/parameters/avatar3DLod'
+      responses:
+        '200':
+          description: OK
+          content:
+            model/gltf-binary:
+              schema:
+                type: string
+                format: binary
+                example: '[Binary GLB file containing the 3D avatar model]'
+  /avatars/2d/{avatarId}:
+    get:
+      summary: Get 2D Render of an Avatar
+      description: Get a 2D render of an avatar for stickers or profile pictures
+      operationId: get2DAvatarRender
+      x-method-name: get2DRender
+      tags:
+        - avatar2d
+      parameters:
+        - $ref: '#/components/parameters/avatar2DId'
+        - $ref: '#/components/parameters/avatar2DFormat'
+        - $ref: '#/components/parameters/avatar2DExpression'
+        - $ref: '#/components/parameters/avatar2DPose'
+        - $ref: '#/components/parameters/avatar2DBlendShapes'
+        - $ref: '#/components/parameters/avatar2DCamera'
+        - $ref: '#/components/parameters/avatar2DBackground'
+        - $ref: '#/components/parameters/avatar2DQuality'
+        - $ref: '#/components/parameters/avatar2DSize'
+        - $ref: '#/components/parameters/avatar2DUat'
+        - $ref: '#/components/parameters/avatar2DCacheControl'
+      responses:
+        '200':
+          description: 2D Render of the avatar
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+  /avatars/{avatarId}:
+    get:
+      summary: Get Metadata
+      description: Get the metadata of an avatar in JSON format
+      operationId: getAvatarMetadata
+      x-method-name: getMetadata
+      tags:
+        - avatar
+      parameters:
+        - $ref: '#/components/parameters/avatarMetadataId'
+      responses:
+        '200':
+          description: Metadata of the avatar
+          content:
+            application/json:
+              schema:
+                type: object
+  /avatars/{avatarId}/equip:
+    put:
+      summary: Equip an asset
+      description: Use this endpoint to equip an asset to a user's avatar
+      operationId: equipAssetToAvatar
+      x-method-name: equip
+      tags:
+        - avatar
+      parameters:
+        - $ref: '#/components/parameters/avatarId'
+      requestBody:
+        $ref: '#/components/requestBodies/EquipAssetRequest'
+      responses:
+        '204':
+          description: If the asset were successfully equipped to the avatar, it would return status 204. No response body.
+  /avatars/{avatarId}/unequip:
+    put:
+      summary: Unequip an asset
+      description: Use this endpoint to unequip an asset from a user's avatar
+      operationId: unequipAssetFromAvatar
+      x-method-name: unequip
+      tags:
+        - avatar
+      parameters:
+        - $ref: '#/components/parameters/avatarId'
+      requestBody:
+        $ref: '#/components/requestBodies/UnequipAssetRequest'
+      responses:
+        '204':
+          description: If the asset were successfully unequipped from the avatar, it would return status 204. No response body.
+  /users:
+    post:
+      summary: Create a Ready Player Me Guest User
+      description: Create a guest user account for your user.
+      operationId: createUser
+      x-method-name: create
+      tags:
+        - user
+      requestBody:
+        $ref: '#/components/requestBodies/CreateUserRequest'
+      responses:
+        '200':
+          description: Successfully created the user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+  /assets/{assetId}/application:
+    post:
+      summary: Add Asset to Application
+      description: Use this endpoint to add an asset to an application
+      operationId: addAssetToApplication
+      x-method-name: addToApplication
+      tags:
+        - asset
+      parameters:
+        - $ref: '#/components/parameters/assetId'
+      requestBody:
+        $ref: '#/components/requestBodies/AddAssetToApplicationRequest'
+      responses:
+        '201':
+          description: A typical successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetResponse'
+    delete:
+      summary: Remove Asset from Application
+      description: Use this endpoint to remove an asset from an application
+      operationId: removeAssetFromApplication
+      x-method-name: removeFromApplication
+      tags:
+        - asset
+      parameters:
+        - $ref: '#/components/parameters/assetId'
+      requestBody:
+        $ref: '#/components/requestBodies/RemoveAssetFromApplicationRequest'
+      responses:
+        '201':
+          description: A typical successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetResponse'
+  /assets/{assetId}/lock:
+    put:
+      summary: Lock asset for a user
+      description: Use this endpoint for locking an unlocked asset for a user
+      operationId: lockAssetForUser
+      x-method-name: lock
+      tags:
+        - asset
+      parameters:
+        - $ref: '#/components/parameters/assetId'
+      requestBody:
+        $ref: '#/components/requestBodies/LockAssetRequest'
+      responses:
+        '204':
+          description: If the asset was successfully locked for the user, it would return status 204. No response body.
+  /assets/{assetId}/unlock:
+    put:
+      summary: Unlock asset for a user
+      description: Use this endpoint for unlocking an asset for a user
+      operationId: unlockAssetForUser
+      x-method-name: unlock
+      tags:
+        - asset
+      parameters:
+        - $ref: '#/components/parameters/assetId'
+      requestBody:
+        $ref: '#/components/requestBodies/UnlockAssetRequest'
+      responses:
+        '204':
+          description: If the asset was successfully unlocked for the user, it would return status 204. No response body.
+components:
+  parameters:
+    avatar3DId:
+      name: avatarId
+      in: path
+      required: true
+      description: ID of an avatar
+      schema:
+        type: string
+        example: 65a8dba831b23abb4f401bae.glb
+    avatar3DQuality:
+      name: quality
+      in: query
+      required: false
+      description: Use quality presets to combine performance related parameters
+      schema:
+        type: string
+        enum:
+          - low
+          - medium
+          - high
+        example: high
+        x-enum-descriptions:
+          - 'Low quality preset (meshLod=2, textureSizeLimit=256, textureAtlas=256, morphTargets=none)'
+          - 'Medium quality preset (meshLod=1, textureSizeLimit=512, textureAtlas=512, morphTargets=none)'
+          - 'High quality preset (meshLod=0, textureSizeLimit=1024, textureAtlas=1024, morphTargets=none)'
+    avatar3DTextureSizeLimit:
+      name: textureSizeLimit
+      in: query
+      required: false
+      description: Sets the upper limit for texture resolution in pixels of any texture in the avatar
+      schema:
+        type: integer
+        minimum: 256
+        maximum: 1024
+        default: 1024
+        example: 512
+    avatar3DTextureQuality:
+      name: textureQuality
+      in: query
+      required: false
+      description: Set the quality for textures on the Avatar by choosing from one of the presets
+      schema:
+        type: string
+        enum:
+          - low
+          - medium
+          - high
+        example: medium
+        default: medium
+        x-enum-descriptions:
+          - 'Overall lower quality textures on the avatar and equipped assets'
+          - 'Higher quality head and upper body assets (default)'
+          - 'Overall high quality textures on the whole avatar and assets'
+    avatar3DTextureAtlas:
+      name: textureAtlas
+      in: query
+      required: false
+      description: Generates a texture atlas of the desired resolution. The operation merges all meshes and splits opaque objects from transparent ones resulting in a maximum of 2 draw calls
+      schema:
+        type: string
+        enum:
+          - none
+          - '256'
+          - '512'
+          - '1024'
+        default: none
+        example: '512'
+        x-enum-descriptions:
+          - 'Do not create a texture atlas (default)'
+          - 'Create a texture atlas of 256x256px'
+          - 'Create a texture atlas of 512x512px'
+          - 'Create a texture atlas of 1024x1024px'
+    avatar3DTextureChannels:
+      name: textureChannels
+      in: query
+      required: false
+      description: Define which textureChannels should be included in the .glb. It can be a comma-separated combination of values
+      schema:
+        type: string
+        default: 'baseColor,normal,metallicRoughness,emissive,occlusion'
+        example: 'baseColor,normal'
+    avatar3DMorphTargets:
+      name: morphTargets
+      in: query
+      required: false
+      description: Comma-separated list of individual morph targets or morph target standard groups to include on the avatar
+      schema:
+        type: string
+        default: 'Default'
+        example: 'mouthSmile,ARKit'
+    avatar3DUseDracoMeshCompression:
+      name: useDracoMeshCompression
+      in: query
+      required: false
+      description: Reduces file size by compressing output avatars with Draco mesh compression. More effective on complex meshes
+      schema:
+        type: boolean
+        default: false
+        example: true
+    avatar3DUseQuantizeMeshOptCompression:
+      name: useQuantizeMeshOptCompression
+      in: query
+      required: false
+      description: Reduces file size by quantizing vertex attributes and compressing output avatars with Mesh Optimization compression. More effective on meshes with morph targets
+      schema:
+        type: boolean
+        default: false
+        example: true
+    avatar3DPose:
+      name: pose
+      in: query
+      required: false
+      description: Defines the pose for a full-body avatar
+      schema:
+        type: string
+        enum:
+          - A
+          - T
+        default: A
+        example: T
+        x-enum-descriptions:
+          - 'A-pose (default)'
+          - 'T-pose'
+    avatar3DUseHands:
+      name: useHands
+      in: query
+      required: false
+      description: |-
+        Toggles hands for half-body VR avatars
+        - 'Include hands with half-body VR avatars (default)'
+        - 'Do not include hands with half-body VR avatars'
+      schema:
+        type: boolean
+        default: true
+        example: true
+    avatar3DTextureFormat:
+      name: textureFormat
+      in: query
+      required: false
+      description: Reduce avatar file size by formatting all textures into the specified format
+      schema:
+        type: string
+        enum:
+          - webp
+          - jpeg
+          - png
+        example: webp
+        x-enum-descriptions:
+          - 'WebP format (smaller file size, up to 40% reduction)'
+          - 'JPEG format'
+          - 'PNG format'
+    avatar3DLod:
+      name: lod
+      in: query
+      required: false
+      description: |- 
+        Control the triangle count of the entire avatar
+        - 'No triangle count reduction (default)'
+        - 'Retain 50% of the original triangle count'
+        - 'Retain 25% of the original triangle count'
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 2
+        default: 0
+        example: 2
+    avatar2DId:
+      name: avatarId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: 64e3055495439dfcf3f0b665.png
+      description: ID of an avatar
+    avatar2DFormat:
+      name: format
+      in: path
+      required: true
+      schema:
+        type: string
+        enum:
+          - png
+          - jpg
+      description: Image format
+    avatar2DExpression:
+      name: expression
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - happy
+          - lol
+          - sad
+          - scared
+          - rage
+      description: Avatar facial expression
+    avatar2DPose:
+      name: pose
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - power-stance
+          - relaxed
+          - standing
+          - thumbs-up
+      description: Avatar pose
+    avatar2DBlendShapes:
+      name: blendShapes
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Map of 3D meshes to their blend shapes
+      example: 'blendShapes[mouthSmile]=0.2'
+    avatar2DCamera:
+      name: camera
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - portrait
+          - fullbody
+          - fit
+        default: portrait
+      description: Camera preset
+    avatar2DBackground:
+      name: background
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Background color value in RGB format
+      example: '255,255,255'
+    avatar2DQuality:
+      name: quality
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 100
+      description: Image compression quality for lossy formats like jpg
+    avatar2DSize:
+      name: size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1024
+      description: Image width and height in pixels
+    avatar2DUat:
+      name: uat
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: User Avatar Timestamp
+      example: '2023-07-05T10:39:48.911Z'
+    avatar2DCacheControl:
+      name: cacheControl
+      in: query
+      required: false
+      schema:
+        type: boolean
+      description: Uses custom Cache-Control header
+    avatarMetadataId:
+      name: avatarId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: ID of an avatar with .json ending
+      example: '6185a4acfb622cf1cdc49348.json'
+    avatarId:
+      name: avatarId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The id of the avatar
+    assetId:
+      name: assetId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The id of the asset
+  schemas:
+    CreateUserRequest:
+      type: object
+      properties:
+        data:
+          type: object
+          required:
+            - applicationId
+          properties:
+            applicationId:
+              type: string
+              description: User will be authorized for this application
+              example: '638ef6e05c3df04745922bbb'
+    CreateUserResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            partners:
+              type: array
+              items:
+                type: string
+              example:
+                - 'readyplayermedemo'
+              description: Your subdomain
+            applicationIds:
+              type: array
+              items:
+                type: string
+              example:
+                - '638ef6e05c3df04745922bbb'
+              description: Your app-id
+            createdAt:
+              type: string
+              format: date-time
+              example: '2023-06-22T08:06:21.948Z'
+            updatedAt:
+              type: string
+              format: date-time
+              example: '2023-06-22T08:06:21.948Z'
+            id:
+              type: string
+              example: '649400fd25db60bb949ee280'
+              description: User-id you want to store
+    LockAssetRequest:
+      type: object
+      properties:
+        data:
+          type: object
+          required:
+            - userId
+          properties:
+            userId:
+              type: string
+              description: The id of the user you want to lock the asset for
+              example: '64943d471dc01e086ac887ee'
+    UnlockAssetRequest:
+      type: object
+      properties:
+        data:
+          type: object
+          required:
+            - userId
+          properties:
+            userId:
+              type: string
+              description: The id of the user you want to unlock the asset for
+              example: '64943d471dc01e086ac887ee'
+    Asset:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Automatically generated numeric Identifier of an asset
+          example: '145064511'
+        name:
+          type: string
+          description: The name of an asset
+          example: 'jacket-occassionwear-02'
+        organizationId:
+          type: string
+          description: The Id of the asset owner organization
+          example: '6453d11c462434a35b4abe17'
+        locked:
+          type: boolean
+          description: A boolean value which when set to true requires the asset to be unlocked for specific user before it is usable by them
+          example: false
+        type:
+          type: string
+          enum:
+            - beard
+            - bottom
+            - eye
+            - eyebrows
+            - eyeshape
+            - facemask
+            - faceshape
+            - facewear
+            - footwear
+            - glasses
+            - hair
+            - headwear
+            - lipshape
+            - noseshape
+            - outfit
+            - shirt
+            - top
+            - costume
+          description: Defines which body part of the avatar this asset belongs to
+          example: 'top'
+        gender:
+          type: string
+          enum:
+            - male
+            - female
+            - neutral
+          description: Defines which avatar genders are supported for this asset
+          example: 'neutral'
+        modelUrl:
+          type: string
+          description: The URL where you can find the GLB model for the asset
+          example: 'https://example.org/jacket-occassionwear-02.glb'
+        iconUrl:
+          type: string
+          description: The URL where you can find the icon for the asset
+          example: 'https://example.org/jacket-occassionwear-02.png'
+        applications:
+          type: array
+          description: Array of application-asset relations
+          items:
+            $ref: '#/components/schemas/ApplicationAssetRelation'
+        hasApps:
+          type: boolean
+          description: A boolean value indicating if this asset is available in any applications or not
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Datetime when this asset was created
+          example: '2023-02-02T14:39:01.026Z'
+        updatedAt:
+          type: string
+          format: date-time
+          description: Datetime when this asset was last updated
+          example: '2023-02-02T14:39:08.656Z'
+    ApplicationAssetRelation:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Id of the application
+          example: '6479be53386e0a8665161420'
+        organizationId:
+          type: string
+          description: Application owner organization ID
+          example: '6453d11c462434a35b4abe17'
+        isVisibleInEditor:
+          type: boolean
+          description: Boolean which defines if the asset is visible in provided applications avatar editor
+          example: true
+        masculineOrder:
+          type: integer
+          description: For male/neutral assets, defines the asset order in avatar editor for specified application
+          example: 1
+        feminineOrder:
+          type: integer
+          description: For female/neutral assets, defines the asset order in avatar editor for specified application
+          example: 2
+    RemoveAssetFromApplicationRequest:
+      type: object
+      properties:
+        data:
+          type: object
+          required:
+            - applicationId
+          properties:
+            applicationId:
+              type: string
+              description: The id of the application you wish to remove from the asset
+              example: '66568e46df136d3df8ce0d74'
+    AssetResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Asset'
+    AddAssetToApplicationRequest:
+      type: object
+      properties:
+        data:
+          type: object
+          required:
+            - applicationId
+            - isVisibleInEditor
+          properties:
+            applicationId:
+              type: string
+              description: The id of the application you wish to add the asset to
+              example: '66568e46df136d3df8ce0d74'
+            isVisibleInEditor:
+              type: boolean
+              description: Defines if asset is visible in this application's avatar editor
+              example: true
+    EquipAssetRequest:
+      type: object
+      properties:
+        data:
+          type: object
+          required:
+            - assetId
+          properties:
+            assetId:
+              type: string
+              description: The id of the asset you want to equip
+              example: '743a7c421b5a830535675049'
+    UnequipAssetRequest:
+      type: object
+      properties:
+        data:
+          type: object
+          required:
+            - assetId
+          properties:
+            assetId:
+              type: string
+              description: The id of the asset you want to unequip
+              example: '743a7c421b5a830535675049'
+  requestBodies:
+    CreateUserRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateUserRequest'
+    LockAssetRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LockAssetRequest'
+    UnlockAssetRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UnlockAssetRequest'
+    RemoveAssetFromApplicationRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RemoveAssetFromApplicationRequest'
+    AddAssetToApplicationRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AddAssetToApplicationRequest'
+    EquipAssetRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EquipAssetRequest'
+    UnequipAssetRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UnequipAssetRequest'

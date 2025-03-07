@@ -134,6 +134,73 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateUserResponse'
+  /applications/{appId}/assets:
+    get:
+      summary: List Application Assets
+      operationId: listApplicationAssets
+      x-method-name: listAssets
+      tags:
+        - application
+      parameters:
+        - $ref: '#/components/parameters/appId'
+        - $ref: '#/components/parameters/sortBy'
+        - $ref: '#/components/parameters/sortDir'
+        - $ref: '#/components/parameters/pageNumber'
+        - $ref: '#/components/parameters/pageSize'
+        - $ref: '#/components/parameters/name'
+        - $ref: '#/components/parameters/organizationId'
+        - $ref: '#/components/parameters/type'
+        - $ref: '#/components/parameters/gender'
+        - $ref: '#/components/parameters/ids'
+        - $ref: '#/components/parameters/applicationIds'
+      responses:
+        '200':
+          description: A typical success response
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLink'
+          content:
+            application/json:
+              schema:
+                type: array
+                items: 
+                  $ref: '#/components/schemas/AssetInfo'
+  /assets:                  
+    post:
+      summary: Create Asset
+      description: Use this endpoint to create a new asset
+      operationId: createAsset
+      x-method-name: create
+      tags:
+        - asset
+      requestBody:
+        $ref: '#/components/requestBodies/CreateAssetRequest'
+      responses:
+        '201':
+          description: A typical successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetInfoResponse'
+  /assets/{assetId}:
+    patch:
+      summary: Update Asset
+      description: Use this endpoint to update an asset
+      operationId: updateAsset
+      x-method-name: update
+      tags:
+        - asset
+      parameters:
+        - $ref: '#/components/parameters/assetId'
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateAssetRequest'
+      responses:
+        '201':
+          description: A typical successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetInfoResponse'
   /assets/{assetId}/application:
     post:
       summary: Add Asset to Application
@@ -201,8 +268,20 @@ paths:
       responses:
         '204':
           description: If the asset was successfully unlocked for the user, it would return status 204. No response body.
+
 components:
+  headers:
+    pagedLink:
+      $ref: './node_modules/@auditmation/types-core/schema/pagedLinkHeader.yml'
   parameters:
+    pageNumber:
+      $ref: './node_modules/@auditmation/types-core/schema/pageNumberParam.yml'
+    pageSize:
+      $ref: './node_modules/@auditmation/types-core/schema/pageSizeParam.yml'
+    sortDir:
+      $ref: './node_modules/@auditmation/types-core/schema/sortDirParam.yml'
+    sortBy:
+      $ref: './node_modules/@auditmation/types-core/schema/sortByParam.yml'
     avatar3DId:
       name: avatarId
       in: path
@@ -488,6 +567,13 @@ components:
       schema:
         type: string
       description: The id of the avatar
+    appId:
+      name: appId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The id of the application
     assetId:
       name: assetId
       in: path
@@ -495,6 +581,70 @@ components:
       schema:
         type: string
       description: The id of the asset
+    name:
+      name: name
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Filter to find assets by their name. Looks for partial matches
+    organizationId:
+      name: organizationId
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Filter to find assets by organizationId
+    type:
+      name: type
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [outfit, top, shirt, bottom, beard, eye, eyebrows, eyeshape, facemask, faceshape, facewear, footwear, glasses, hair, headwear, lipshape, noseshape, costume]
+      style: form
+      explode: true
+      description: Filter to find assets by their type. Supports multiple values
+      example: ["outfit", "top"]
+    gender:
+      name: gender
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [male, female, neutral]
+      style: form
+      explode: true
+      description: Filter to find assets by their gender. Supports multiple values
+      example: ["male", "neutral"]
+    ids:
+      name: ids
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+      description: Filter to find assets by Ids
+      example: ["12345", "54321"]
+    applicationIds:
+      name: applicationIds
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+      style: form
+      explode: true
+      description: Filter to find assets that are available in specific applications
+      example: ["12345", "54321"]
   schemas:
     CreateUserRequest:
       type: object
@@ -564,7 +714,7 @@ components:
               type: string
               description: The id of the user you want to unlock the asset for
               example: '64943d471dc01e086ac887ee'
-    Asset:
+    AssetBase:
       type: object
       properties:
         id:
@@ -622,11 +772,6 @@ components:
           type: string
           description: The URL where you can find the icon for the asset
           example: 'https://example.org/jacket-occassionwear-02.png'
-        applications:
-          type: array
-          description: Array of application-asset relations
-          items:
-            $ref: '#/components/schemas/ApplicationAssetRelation'
         hasApps:
           type: boolean
           description: A boolean value indicating if this asset is available in any applications or not
@@ -641,6 +786,27 @@ components:
           format: date-time
           description: Datetime when this asset was last updated
           example: '2023-02-02T14:39:08.656Z'
+    Asset:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/AssetBase'
+        - type: object
+          properties:
+            applicationIds:
+              type: array
+              items:
+                type: string
+    AssetInfo:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/AssetBase'
+        - type: object
+          properties:
+            applications:
+              type: array
+              description: Array of application-asset relations
+              items:
+                $ref: '#/components/schemas/ApplicationAssetRelation'
     ApplicationAssetRelation:
       type: object
       properties:
@@ -681,6 +847,11 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/Asset'
+    AssetInfoResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/AssetInfo'
     AddAssetToApplicationRequest:
       type: object
       properties:
@@ -722,6 +893,110 @@ components:
               type: string
               description: The id of the asset you want to unequip
               example: '743a7c421b5a830535675049'
+    CreateAssetRequest:
+      type: object
+      properties:
+        data:
+          type: object
+          required:
+            - name
+            - type
+            - gender
+            - modelUrl
+            - iconUrl
+            - organizationId
+          properties:
+            name:
+              type: string
+              description: Minimum length of 1 character
+              example: "New Asset"
+            type:
+              type: string
+              enum: [outfit]
+              description: Type of asset
+              example: "outfit"
+            gender:
+              type: string
+              enum: [male, female, neutral]
+              description: Gender compatibility of the asset
+              example: "male"
+            modelUrl:
+              type: string
+              format: uri
+              description: Must be a valid url pointing to a GLB file
+              example: "https://example.org/model.glb"
+            iconUrl:
+              type: string
+              format: uri
+              description: Must be a valid url pointing to a PNG or JPG file
+              example: "https://example.org/icon.png"
+            organizationId:
+              type: string
+              description: The id of the organization you wish to create the asset under
+              example: "62a58eb4df136d4df8ce0d74"
+            applications:
+              type: array
+              description: List of applications-asset relations that defines to which applications this asset should be linked to. If empty, this asset is not added to any applications
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: ID of the application
+                    example: "6479be53386e0a8665161420"
+                  organizationId:
+                    type: string
+                    description: Organization ID that owns the application
+                    example: "62a58eb4df136d4df8ce0d74"
+                  isVisibleInEditor:
+                    type: boolean
+                    description: Whether the asset is visible in the editor
+                    example: true
+            locked:
+              type: boolean
+              description: Whether the asset is locked
+              default: false
+              example: false              
+    UpdateAssetRequest:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            name:
+              type: string
+              description: The name of the asset
+              minLength: 1
+              example: "jacket-occassionwear-02"
+            type:
+              type: string
+              enum: [outfit]
+              description: The type of the asset
+              example: "outfit"
+            gender:
+              type: string
+              enum: [male, female, neutral]
+              description: The gender supported by the asset
+              example: "neutral"
+            modelUrl:
+              type: string
+              format: url
+              description: Must be a valid url pointing to a GLB file
+              example: "https://example.org/jacket-occassionwear-02.glb"
+            iconUrl:
+              type: string
+              format: url
+              description: Must be a valid url pointing to a PNG or JPG file
+              example: "https://example.org/jacket-occassionwear-02.png"
+            locked:
+              type: boolean
+              description: Whether the asset is locked
+              example: false
+            applications:
+              type: array
+              description: List of application-asset relations this asset should be available in
+              items:
+                $ref: '#/components/schemas/ApplicationAssetRelation'
   requestBodies:
     CreateUserRequest:
       required: true
@@ -765,3 +1040,15 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/UnequipAssetRequest'
+    CreateAssetRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateAssetRequest'
+    UpdateAssetRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateAssetRequest'

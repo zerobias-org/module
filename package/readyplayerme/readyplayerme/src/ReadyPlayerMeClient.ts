@@ -1,27 +1,27 @@
-import { ConnectionMetadata, ConnectionStatus, OperationSupportStatus, OperationSupportStatusDef } from '@auditmation/hub-core';
+import {
+  ConnectionMetadata,
+  ConnectionStatus,
+  OperationSupportStatus,
+  OperationSupportStatusDef
+} from '@auditmation/hub-core';
 import { InvalidCredentialsError, NotConnectedError } from '@auditmation/types-core-js';
 import { Axios } from 'axios';
 import { ConnectionProfile } from '../generated/model/ConnectionProfile';
 
 export class ReadyPlayerMeClient {
+  private _apiClient?: Axios;
 
-  private _apiClient = new Axios({
-    baseURL: 'https://api.readyplayer.me/v1',
-  });
-
-  private _modelClient = new Axios({
-    baseURL: 'https://models.readyplayer.me',
-  });
+  private _modelClient?: Axios;
 
   public get apiClient(): Axios {
-    if (!this._apiKey) {
+    if (!this._apiKey || !this._apiClient) {
       throw new NotConnectedError();
     }
     return this._apiClient;
   }
 
   public get modelClient(): Axios {
-    if (!this._apiKey) {
+    if (!this._apiKey || !this._modelClient) {
       throw new NotConnectedError();
     }
     return this._modelClient;
@@ -46,8 +46,15 @@ export class ReadyPlayerMeClient {
     }
     this.apiKey = connectionProfile.apiToken;
 
-    this._apiClient.defaults.headers.common['x-api-key'] = this.apiKey;
-    this._modelClient.defaults.headers.common['x-api-key'] = this.apiKey;
+    this._apiClient = new Axios({
+      baseURL: 'https://api.readyplayer.me/v1',
+      headers: { 'x-api-key': this.apiKey },
+    });
+
+    this._modelClient = new Axios({
+      baseURL: 'https://model.readyplayer.me',
+      headers: { 'x-api-key': this.apiKey },
+    });
   }
 
   async isConnected(): Promise<boolean> {
@@ -56,9 +63,8 @@ export class ReadyPlayerMeClient {
 
   async disconnect(): Promise<void> {
     this._apiKey = undefined;
-
-    this._apiClient.defaults.headers.common['x-api-key'] = '';
-    this._modelClient.defaults.headers.common['x-api-key'] = '';
+    this._apiClient = undefined;
+    this._modelClient = undefined;
   }
 
   async metadata(): Promise<ConnectionMetadata> {

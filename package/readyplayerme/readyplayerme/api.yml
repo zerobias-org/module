@@ -48,7 +48,6 @@ paths:
         - avatar2d
       parameters:
         - $ref: '#/components/parameters/avatar2DId'
-        - $ref: '#/components/parameters/avatar2DFormat'
         - $ref: '#/components/parameters/avatar2DExpression'
         - $ref: '#/components/parameters/avatar2DPose'
         - $ref: '#/components/parameters/avatar2DBlendShapes'
@@ -86,7 +85,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/AvatarMetadata'
   /avatars/{avatarId}/equip:
     put:
       summary: Equip an asset
@@ -134,6 +133,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateUserResponse'
+  /users/{userId}/token:
+    get:
+      summary: Request a token for iFrame session restoration
+      operationId: getUserToken
+      x-method-name: getToken
+      tags:
+        - user
+      parameters:
+        - $ref: '#/components/parameters/userId'
+        - $ref: '#/components/parameters/partner'
+      responses:
+        '200':
+          description: Successfully created a Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
   /applications/{appId}/assets:
     get:
       summary: List Application Assets
@@ -268,7 +284,6 @@ paths:
       responses:
         '204':
           description: If the asset was successfully unlocked for the user, it would return status 204. No response body.
-
 components:
   headers:
     pagedLink:
@@ -455,16 +470,6 @@ components:
         type: string
         example: 64e3055495439dfcf3f0b665.png
       description: ID of an avatar
-    avatar2DFormat:
-      name: format
-      in: path
-      required: true
-      schema:
-        type: string
-        enum:
-          - png
-          - jpg
-      description: Image format
     avatar2DExpression:
       name: expression
       in: query
@@ -567,6 +572,21 @@ components:
       schema:
         type: string
       description: The id of the avatar
+    userId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: |-
+        User ID you want to get the access token for. Note, that this user needs to authorize your app first.
+    partner:
+      name: partner
+      in: query
+      required: true
+      schema:
+        type: string
+      description: Your partner name / subdomain.
     appId:
       name: appId
       in: path
@@ -603,7 +623,25 @@ components:
         type: array
         items:
           type: string
-          enum: [outfit, top, shirt, bottom, beard, eye, eyebrows, eyeshape, facemask, faceshape, facewear, footwear, glasses, hair, headwear, lipshape, noseshape, costume]
+          enum: 
+            - outfit
+            - top
+            - shirt
+            - bottom
+            - beard
+            - eye
+            - eyebrows
+            - eyeshape
+            - facemask
+            - faceshape
+            - facewear
+            - footwear
+            - glasses
+            - hair
+            - headwear
+            - lipshape
+            - noseshape
+            - costume
       style: form
       explode: true
       description: Filter to find assets by their type. Supports multiple values
@@ -616,7 +654,10 @@ components:
         type: array
         items:
           type: string
-          enum: [male, female, neutral]
+          enum: 
+            - male
+            - female
+            - neutral
       style: form
       explode: true
       description: Filter to find assets by their gender. Supports multiple values
@@ -912,12 +953,16 @@ components:
               example: "New Asset"
             type:
               type: string
-              enum: [outfit]
+              enum: 
+                - outfit
               description: Type of asset
               example: "outfit"
             gender:
               type: string
-              enum: [male, female, neutral]
+              enum: 
+                - male
+                - female
+                - neutral
               description: Gender compatibility of the asset
               example: "male"
             modelUrl:
@@ -970,12 +1015,16 @@ components:
               example: "jacket-occassionwear-02"
             type:
               type: string
-              enum: [outfit]
+              enum: 
+                - outfit
               description: The type of the asset
               example: "outfit"
             gender:
               type: string
-              enum: [male, female, neutral]
+              enum: 
+                - male
+                - female
+                - neutral
               description: The gender supported by the asset
               example: "neutral"
             modelUrl:
@@ -997,6 +1046,40 @@ components:
               description: List of application-asset relations this asset should be available in
               items:
                 $ref: '#/components/schemas/ApplicationAssetRelation'
+    TokenResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            token:
+              type: string
+              description: The token that can be used to restore the session. The token only lives for 15 seconds. Needs to be created right after the web-view/iFrame call.
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY0OTQzZDQ3MWRjMDFlMDg2YWM4ODdlZSIsInBhcnRuZXIiOiJyZWFkeXBsYXllcm1lZGVtbyIsImlhdCI6MTY4NzQzNjYzOCwiZXhwIjoxNjg3NDM2NjUzfQ.B_fvlug6r-1p3RPqnbG0cQH6kaZ8ic7X_f_CeKLqAT8'
+    AvatarMetadata:
+      type: object
+      properties:
+        bodyType:
+          type: string
+          description: The type of the avatar
+          example: "fullbody"
+        outfitGender:
+          type: string
+          example: "masculine"
+        outfitVersion:
+          type: integer
+          example: 2
+        skinTone:
+          type: string
+          example: "#ffe5ce"
+        createdAt:
+          type: string
+          format: date-time
+          example: "2021-11-05T21:39:56.684Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2021-11-05T21:39:56.684Z"
   requestBodies:
     CreateUserRequest:
       required: true

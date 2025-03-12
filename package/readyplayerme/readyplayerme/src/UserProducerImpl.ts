@@ -1,11 +1,39 @@
 import { UserProducerApi } from '../generated/api';
-import { CreateUserRequest, CreateUserResponse } from '../generated/model';
+import { CreateUserRequest, CreateUserResponse, TokenResponse } from '../generated/model';
+import { toCreateUserResponse, toTokenResponse } from './mappers';
 import { ReadyPlayerMeClient } from './ReadyPlayerMeClient';
+import { handleAxiosError } from './util';
 
 export class UserProducerImpl implements UserProducerApi {
   constructor(private client: ReadyPlayerMeClient) { }
 
+  async getToken(userId: string, partner: string): Promise<TokenResponse> {
+    const { apiClient } = this.client;
+
+    const { data } = await apiClient
+      .request({
+        url: `/auth/token`,
+        method: 'get',
+        params: {
+          userId,
+          partner
+        }
+      })
+      .catch(handleAxiosError);
+
+    return toTokenResponse(data);
+  }
+
   async create(createUserRequest: CreateUserRequest): Promise<CreateUserResponse> {
-    throw new Error('Method not implemented.');
+    const { apiClient } = this.client;
+
+    const { data } = await apiClient.request(
+      {
+        url: '/users',
+        method: 'post',
+        data: createUserRequest
+      }).catch(handleAxiosError);
+
+    return toCreateUserResponse(data);
   }
 }

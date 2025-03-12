@@ -50,26 +50,26 @@ export class ReadyPlayerMeImpl implements ReadyPlayerMeConnector {
   }
 
   getAssetApi(): AssetApi {
-    return wrapAssetProducer(new AssetProducerImpl(this.client))
+    return wrapAssetProducer(new AssetProducerImpl(this.client));
   }
 
   getAvatarApi(): AvatarApi {
-    return wrapAvatarProducer(new AvatarProducerImpl(this.client))
+    return wrapAvatarProducer(new AvatarProducerImpl(this.client));
   }
 
   getAvatar2dApi(): Avatar2dApi {
-    return wrapAvatar2dProducer(new Avatar2dProducerImpl(this.client))
+    return wrapAvatar2dProducer(new Avatar2dProducerImpl(this.client));
   }
 
   getAvatar3dApi(): Avatar3dApi {
-    return wrapAvatar3dProducer(new Avatar3dProducerImpl(this.client))
+    return wrapAvatar3dProducer(new Avatar3dProducerImpl(this.client));
   }
 
   getUserApi(): UserApi {
-    return wrapUserProducer(new UserProducerImpl(this.client))
+    return wrapUserProducer(new UserProducerImpl(this.client));
   }
 
   getApplicationApi(): ApplicationApi {
-    return wrapApplicationProducer(new ApplicationProducerImpl(this.client))
+    return wrapApplicationProducer(new ApplicationProducerImpl(this.client));
   }
 }

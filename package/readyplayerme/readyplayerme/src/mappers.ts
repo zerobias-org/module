@@ -9,27 +9,27 @@ import {
 } from '../generated/model';
 
 export function toCreateUserResponse(data: any): CreateUserResponse {
-  return CreateUserResponse.newInstance(data);
+  return CreateUserResponse.newInstance(typeof data === 'string' ? JSON.parse(data) : data);
 }
 
 export function toTokenResponse(data: any): TokenResponse {
-  return TokenResponse.newInstance(data);
+  return TokenResponse.newInstance(typeof data === 'string' ? JSON.parse(data) : data);
 }
 
 export function toAssetResponse(data: any): AssetResponse {
-  return AssetResponse.newInstance(data);
+  return AssetResponse.newInstance(typeof data === 'string' ? JSON.parse(data) : data);
 }
 
 export function toAssetInfoResponse(data: any): AssetInfoResponse {
-  return AssetInfoResponse.newInstance(data);
+  return AssetInfoResponse.newInstance(typeof data === 'string' ? JSON.parse(data) : data);
 }
 
 export function toAssetInfo(data: any): AssetInfo {
-  return AssetInfo.newInstance(data);
+  return AssetInfo.newInstance(typeof data === 'string' ? JSON.parse(data) : data);
 }
 
 export function toAvatarMetadata(data: any): AvatarMetadata {
-  return AvatarMetadata.newInstance(data);
+  return AvatarMetadata.newInstance(typeof data === 'string' ? JSON.parse(data) : data);
 }
 
 export function toRequestFile(data: any, filename: string): RequestDetailedFile {

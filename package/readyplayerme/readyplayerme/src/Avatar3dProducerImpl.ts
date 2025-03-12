@@ -40,8 +40,8 @@ export class Avatar3dProducerImpl implements Avatar3dProducerApi {
           pose: pose && pose.toString(),
           useHands,
           textureFormat: textureFormat && textureFormat.toString(),
-          lod
-        }
+          lod,
+        },
       })
       .catch(handleAxiosError);
 

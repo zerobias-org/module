@@ -49,11 +49,13 @@ export class ReadyPlayerMeClient {
     this._apiClient = new Axios({
       baseURL: 'https://api.readyplayer.me/v1',
       headers: { 'x-api-key': this.apiKey },
+      validateStatus: (status) => status >= 200 && status < 300,
     });
 
     this._modelClient = new Axios({
       baseURL: 'https://model.readyplayer.me',
       headers: { 'x-api-key': this.apiKey },
+      validateStatus: (status) => status >= 200 && status < 300,
     });
   }
 
@@ -67,10 +69,12 @@ export class ReadyPlayerMeClient {
     this._modelClient = undefined;
   }
 
+  // eslint-disable-next-line class-methods-use-this
   async metadata(): Promise<ConnectionMetadata> {
     return new ConnectionMetadata(ConnectionStatus.Down);
   }
 
+  // eslint-disable-next-line class-methods-use-this
   async isSupported(_operationId: string): Promise<OperationSupportStatusDef> {
     return OperationSupportStatus.Maybe;
   }

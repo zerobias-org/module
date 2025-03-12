@@ -27,7 +27,7 @@ export class AvatarProducerImpl implements AvatarProducerApi {
       .request({
         url: `/avatars/${avatarId}/equip`,
         method: 'put',
-        data: equipAssetRequest
+        data: JSON.stringify(equipAssetRequest),
       })
       .catch(handleAxiosError);
   }
@@ -39,7 +39,7 @@ export class AvatarProducerImpl implements AvatarProducerApi {
       .request({
         url: `/avatars/${avatarId}/unequip`,
         method: 'put',
-        data: unequipAssetRequest
+        data: JSON.stringify(unequipAssetRequest),
       })
       .catch(handleAxiosError);
   }

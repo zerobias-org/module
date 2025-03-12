@@ -34,8 +34,8 @@ export class Avatar2dProducerImpl implements Avatar2dProducerApi {
           camera: camera && camera.toString(),
           background,
           expression: expression && expression.toString(),
-          pose: pose && pose.toString()
-        }
+          pose: pose && pose.toString(),
+        },
       })
       .catch(handleAxiosError);
 

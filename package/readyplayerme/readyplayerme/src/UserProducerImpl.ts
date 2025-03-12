@@ -12,12 +12,12 @@ export class UserProducerImpl implements UserProducerApi {
 
     const { data } = await apiClient
       .request({
-        url: `/auth/token`,
+        url: '/auth/token',
         method: 'get',
         params: {
           userId,
-          partner
-        }
+          partner,
+        },
       })
       .catch(handleAxiosError);
 
@@ -31,8 +31,10 @@ export class UserProducerImpl implements UserProducerApi {
       {
         url: '/users',
         method: 'post',
-        data: createUserRequest
-      }).catch(handleAxiosError);
+        headers: { 'Content-Type': 'application/json' },
+        data: JSON.stringify(createUserRequest),
+      }
+    ).catch(handleAxiosError);
 
     return toCreateUserResponse(data);
   }

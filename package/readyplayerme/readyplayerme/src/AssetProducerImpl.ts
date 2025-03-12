@@ -26,7 +26,7 @@ export class AssetProducerImpl implements AssetProducerApi {
       .request({
         url: `/assets/${assetId}/application`,
         method: 'post',
-        data: addAssetToApplicationRequest
+        data: JSON.stringify(addAssetToApplicationRequest),
       })
       .catch(handleAxiosError);
 
@@ -38,9 +38,9 @@ export class AssetProducerImpl implements AssetProducerApi {
 
     const { data } = await apiClient
       .request({
-        url: `/assets`,
+        url: '/assets',
         method: 'post',
-        data: createAssetRequest
+        data: JSON.stringify(createAssetRequest),
       })
       .catch(handleAxiosError);
 
@@ -54,7 +54,7 @@ export class AssetProducerImpl implements AssetProducerApi {
       .request({
         url: `/assets/${assetId}/lock`,
         method: 'put',
-        data: lockAssetRequest
+        data: JSON.stringify(lockAssetRequest),
       })
       .catch(handleAxiosError);
   }
@@ -69,7 +69,7 @@ export class AssetProducerImpl implements AssetProducerApi {
       .request({
         url: `/assets/${assetId}/application`,
         method: 'delete',
-        data: removeAssetFromApplicationRequest
+        data: JSON.stringify(removeAssetFromApplicationRequest),
       })
       .catch(handleAxiosError);
 
@@ -83,7 +83,7 @@ export class AssetProducerImpl implements AssetProducerApi {
       .request({
         url: `/assets/${assetId}/unlock`,
         method: 'put',
-        data: unlockAssetRequest
+        data: JSON.stringify(unlockAssetRequest),
       })
       .catch(handleAxiosError);
   }
@@ -98,7 +98,7 @@ export class AssetProducerImpl implements AssetProducerApi {
       .request({
         url: `/assets/${assetId}`,
         method: 'post',
-        data: updateAssetRequest
+        data: JSON.stringify(updateAssetRequest),
       })
       .catch(handleAxiosError);
 

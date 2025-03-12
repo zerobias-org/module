@@ -25,11 +25,9 @@ export class ApplicationProducerImpl implements ApplicationProducerApi {
 
     const { data } = await apiClient
       .request({
-        url: `/assets`,
+        url: '/assets',
         method: 'get',
-        headers: {
-          'X-APP-ID': appId
-        },
+        headers: { 'X-APP-ID': appId },
         params: {
           order: results.sortBy
             && `${SortDirection.Desc.eq(results.sortDir) ? '-' : ''}${results.sortBy}`,
@@ -40,8 +38,8 @@ export class ApplicationProducerImpl implements ApplicationProducerApi {
           type: type && type.map((t) => t.toString()),
           gender: gender && gender.map((g) => g.toString()),
           ids,
-          applicationIds
-        }
+          applicationIds,
+        },
       })
       .catch(handleAxiosError);
 

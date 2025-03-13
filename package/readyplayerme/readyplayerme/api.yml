@@ -731,6 +731,41 @@ components:
               type: string
               example: '649400fd25db60bb949ee280'
               description: User-id you want to store
+            name: 
+              type: string
+              description: User name
+            email:
+              type: string
+              description: User email
+            unverifiedEmail:
+              type: string
+              description: Unverified email
+            externalId:
+              type: string
+              description: External id
+            isAnonymous:
+              type: boolean
+              description: Whether the user is anonymous
+            isGuest:
+              type: boolean
+              description: Whether the user is a guest
+            wallets:
+              type: array
+              items: {}
+              description: Wallets
+            settings: {}
+            visitedAt:
+              type: string
+              format: date-time
+              description: Last visited date time
+            verifiedAt:
+              type: string
+              format: date-time
+              description: Verified date time
+            deleteAt:
+              type: string
+              format: date-time
+              description: Deleted date time
     LockAssetRequest:
       type: object
       properties:

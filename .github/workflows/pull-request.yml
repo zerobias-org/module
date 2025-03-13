@@ -1,0 +1,22 @@
+name: Pull Request
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - labeled
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+  pull-requests: write
+
+jobs:
+  pull-request:
+    uses: auditlogic/content-workflows/.github/workflows/pull-request-reusable.yml@self-hosted-publish
+    secrets: inherit
+    with:
+      run-integration-tests: 'true'

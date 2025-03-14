@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   pull-request:
-    uses: auditlogic/content-workflows/.github/workflows/pull-request-reusable.yml@self-hosted-publish
+    uses: zerobias-org/devops/.github/workflows/pull-request-reusable.yml@main
     secrets: inherit
     with:
       run-integration-tests: 'true'

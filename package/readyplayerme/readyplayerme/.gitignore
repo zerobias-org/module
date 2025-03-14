@@ -1,0 +1,10 @@
+wwwroot/*.js
+node_modules/
+typings
+dist/
+generated/
+docs/
+full.yml
+module-readyplayerme-readyplayerme.yml
+redoc-static.html
+test-results.json

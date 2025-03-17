@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   x-product-infos:
     - $ref: './node_modules/@auditlogic/product-readyplayerme-readyplayerme/catalog.yml#/Product'
-  version: '0.0.0'
+  version: '0.1.0-rc.0'
   title: '@zerobias-org/module-readyplayerme-readyplayerme'
   x-impl-name: ReadyPlayerMe
   description: 'Ready Player Me'
@@ -179,9 +179,9 @@ paths:
             application/json:
               schema:
                 type: array
-                items: 
+                items:
                   $ref: '#/components/schemas/AssetInfo'
-  /assets:                  
+  /assets:
     post:
       summary: Create Asset
       description: Use this endpoint to create a new asset
@@ -451,7 +451,7 @@ components:
       name: lod
       in: query
       required: false
-      description: |- 
+      description: |-
         Control the triangle count of the entire avatar
         - 'No triangle count reduction (default)'
         - 'Retain 50% of the original triangle count'
@@ -623,7 +623,7 @@ components:
         type: array
         items:
           type: string
-          enum: 
+          enum:
             - outfit
             - top
             - shirt
@@ -654,7 +654,7 @@ components:
         type: array
         items:
           type: string
-          enum: 
+          enum:
             - male
             - female
             - neutral
@@ -731,7 +731,7 @@ components:
               type: string
               example: '649400fd25db60bb949ee280'
               description: User-id you want to store
-            name: 
+            name:
               type: string
               description: User name
             email:
@@ -988,13 +988,13 @@ components:
               example: "New Asset"
             type:
               type: string
-              enum: 
+              enum:
                 - outfit
               description: Type of asset
               example: "outfit"
             gender:
               type: string
-              enum: 
+              enum:
                 - male
                 - female
                 - neutral
@@ -1036,7 +1036,7 @@ components:
               type: boolean
               description: Whether the asset is locked
               default: false
-              example: false              
+              example: false
     UpdateAssetRequest:
       type: object
       properties:
@@ -1050,13 +1050,13 @@ components:
               example: "jacket-occassionwear-02"
             type:
               type: string
-              enum: 
+              enum:
                 - outfit
               description: The type of the asset
               example: "outfit"
             gender:
               type: string
-              enum: 
+              enum:
                 - male
                 - female
                 - neutral

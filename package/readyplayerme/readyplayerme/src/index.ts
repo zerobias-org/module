@@ -1,5 +1,5 @@
 import { ReadyPlayerMeConnector } from '../generated/api';
-import { ReadyPlayerMeImpl } from './ReadyplayermeImpl';
+import { ReadyPlayerMeImpl } from './ReadyPlayerMeImpl';
 
 export * from '../generated/api';
 export * from '../generated/model';

@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   pull-request:
+    if: github.repository == 'zerobias-org/module'
     uses: zerobias-org/devops/.github/workflows/pull-request-reusable.yml@main
     secrets: inherit
     with:

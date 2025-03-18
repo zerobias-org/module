@@ -15,9 +15,40 @@ permissions:
   pull-requests: write
 
 jobs:
+  setup-env:
+    if: github.repository != 'zerobias-org/module'
+    runs-on: ubuntu-latest
+    outputs:
+      env_file: ${{ steps.create-env.outputs.env_file }}
+    steps:
+      - id: create-env
+        run: |
+          # Combine vars and secrets into environment file
+          echo "Creating environment file..."
+          
+          # Convert vars to env format
+          VARS_JSON='${{ toJSON(vars) }}'
+          echo "$VARS_JSON" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' > vars.env
+          
+          # Convert secrets to env format
+          SECRETS_JSON='${{ toJSON(secrets) }}'
+          echo "$SECRETS_JSON" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' >> vars.env
+          
+          # Add hardcoded values
+          echo "CUSTOM_VALUE1=hardcoded-value" >> vars.env
+          echo "CUSTOM_VALUE2=another-value" >> vars.env
+          
+          # Store env file content as output
+          echo "env_file<<EOF" >> $GITHUB_OUTPUT
+          cat vars.env >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
   test:
+    needs: setup-env
     if: github.repository != 'zerobias-org/module'
     uses: zerobias-org/devops/.github/workflows/forked-pull-request-reusable.yml@main
+    with:
+      env_file: ${{ needs.setup-env.outputs.env_file }}
     secrets: inherit
 
   pull-request:

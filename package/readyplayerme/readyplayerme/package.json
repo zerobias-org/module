@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-readyplayerme-readyplayerme",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "moduleId": "b15c91d4-f3af-4b7a-ab56-a81875f2d984",
   "description": "Ready Player Me",
   "main": "dist/src/index.js",
@@ -81,5 +81,6 @@
     "redoc-cli": "^0.10.0",
     "ts-node": "^8.10.2",
     "typescript": "^4.4.4"
-  }
+  },
+  "gitHead": "c1815328124e23f149ab81c43a29312de5ad82b6"
 }

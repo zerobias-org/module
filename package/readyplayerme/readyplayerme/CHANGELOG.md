@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.8](https://github.com/auditlogic/module/compare/@zerobias-org/module-readyplayerme-readyplayerme@0.1.7...@zerobias-org/module-readyplayerme-readyplayerme@0.1.8) (2025-03-19)
+
+**Note:** Version bump only for package @zerobias-org/module-readyplayerme-readyplayerme
+
+
+
+
+
 ## [0.1.7](https://github.com/auditlogic/module/compare/@zerobias-org/module-readyplayerme-readyplayerme@0.1.6...@zerobias-org/module-readyplayerme-readyplayerme@0.1.7) (2025-03-19)
 
 **Note:** Version bump only for package @zerobias-org/module-readyplayerme-readyplayerme

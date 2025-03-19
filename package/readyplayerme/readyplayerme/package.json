@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-readyplayerme-readyplayerme",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "moduleId": "b15c91d4-f3af-4b7a-ab56-a81875f2d984",
   "description": "Ready Player Me",
   "main": "dist/src/index.js",

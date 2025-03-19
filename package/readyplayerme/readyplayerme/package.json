@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-readyplayerme-readyplayerme",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "moduleId": "b15c91d4-f3af-4b7a-ab56-a81875f2d984",
   "description": "Ready Player Me",
   "main": "dist/src/index.js",
@@ -82,5 +82,5 @@
     "ts-node": "^8.10.2",
     "typescript": "^4.4.4"
   },
-  "gitHead": "31c03ab5ce5a147773728983730bc31fb6bc1e17"
+  "gitHead": "66d1d5fb538813081a191d3c7e07e73c9bcf325a"
 }

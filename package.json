@@ -1,19 +1,31 @@
 {
   "name": "@zerobias-org/module",
+  "version": "1.0.0",
+  "description": "Zerobias module artifacts",
+  "main": "main.js",
   "scripts": {
-    "build": "lerna run build",
-    "clean": "lerna run clean && nx reset",
-    "clean:full": "lerna run clean && npx lerna clean --yes && nx reset",
-    "lerna:version": "lerna version --conventional-commits",
-    "lerna:publish-from-package": "lerna publish from-package --no-verify-access",
-    "lerna:publish": "lerna publish --conventional-commits --no-verify-access --conventional-graduate",
     "lerna:dry-run": "lerna version --no-git-tag-version --no-push --conventional-commits",
-    "lerna:premajor": "lerna version premajor",
-    "lint": "lerna run lint",
+    "lerna:publish": "lerna publish --conventional-commits --no-verify-access",
+    "lerna:test": "lerna run test",
+    "lerna:version": "lerna version --no-git-tag-version --no-push --conventional-commits --yes",
+    "nx:publish": "lerna run nx:publish --since && ./scripts/commit.sh",
     "postinstall": "husky install",
-    "reset": "npm run clean:full && npx i && npm run build",
-    "test": "lerna run test",
-    "test:integration": "lerna run test:integration"
+    "build": "npx lerna run transpile && npx lerna exec \"npm shrinkwrap\" --concurrency=10",
+    "clean": "npx nx reset && lerna run clean",
+    "clean:full": "npx lerna exec \"rm -f npm-shrinkwrap.json package-lock.json\" --concurrency=10 && npx lerna run clean && npx lerna clean --yes && nx reset",
+	  "reset": "npm run clean:full && npx lerna bootstrap --concurrency=10 --include-dependencies && npm run build"
+  },
+  "publishConfig": {
+    "registry": "https://pkg.zerobias.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zerobias-org/module.git"
+  },
+  "author": "dsolis@neverfail.com",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/zerobias-org/module/issues"
   },
   "homepage": "https://github.com/zerobias-org/module#readme",
   "devDependencies": {
@@ -23,8 +35,5 @@
     "husky": "^5.1.3",
     "lerna": "5.6.2",
     "nx": "^15.4.5"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com/"
   }
 }

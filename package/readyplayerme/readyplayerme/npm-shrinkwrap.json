@@ -1,12 +1,12 @@
 {
   "name": "@zerobias-org/module-readyplayerme-readyplayerme",
-  "version": "0.1.23",
+  "version": "0.1.25",
   "lockfileVersion": 2,
   "requires": true,
   "packages": {
     "": {
       "name": "@zerobias-org/module-readyplayerme-readyplayerme",
-      "version": "0.1.23",
+      "version": "0.1.25",
       "license": "UNLICENSED",
       "dependencies": {
         "@auditlogic/product-readyplayerme-readyplayerme": "^1.0.0",

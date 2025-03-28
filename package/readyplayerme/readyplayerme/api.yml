@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   x-product-infos:
     - $ref: './node_modules/@auditlogic/product-readyplayerme-readyplayerme/catalog.yml#/Product'
-  version: '0.1.22'
+  version: '0.1.24'
   title: '@zerobias-org/module-readyplayerme-readyplayerme'
   x-impl-name: ReadyPlayerMe
   description: 'Ready Player Me'

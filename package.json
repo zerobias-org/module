@@ -10,7 +10,7 @@
     "lerna:version": "lerna version --no-git-tag-version --no-push --conventional-commits --yes",
     "nx:publish": "lerna run nx:publish --since && ./scripts/commit.sh",
     "postinstall": "husky install",
-    "build": "npx lerna run transpile && npx lerna exec \"npm shrinkwrap\" --concurrency=10",
+    "build": "npx lerna run build && npx lerna exec \"npm shrinkwrap\" --concurrency=10",
     "clean": "npx nx reset && lerna run clean",
     "clean:full": "npx lerna exec \"rm -f npm-shrinkwrap.json package-lock.json\" --concurrency=10 && npx lerna run clean && npx lerna clean --yes && nx reset",
 	  "reset": "npm run clean:full && npx lerna bootstrap --concurrency=10 --include-dependencies && npm run build"

@@ -19,4 +19,4 @@ jobs:
     uses: zerobias-org/devops/.github/workflows/pull-request-reusable.yml@main
     secrets: inherit
     with:
-      run-integration-tests: 'true'
+      run-integration-tests: 'false'

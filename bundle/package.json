@@ -1,0 +1,23 @@
+{
+  "name": "@zerobias-org/module-bundle",
+  "version": "0.0.1",
+  "description": "All installable modules",
+  "author": "team@auditmation.io",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:zerobias-org/module.git",
+    "directory": "bundle/"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "auditmation": {
+    "package": "bundle.all-modules",
+    "import-artifact": "bundle",
+    "dataloader-version": "0.5.4"
+  },
+  "dependencies": {
+    "@zerobias-org/module-readyplayerme-readyplayerme": "0.1.25"
+  }
+}

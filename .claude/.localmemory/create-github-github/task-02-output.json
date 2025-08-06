@@ -1,0 +1,97 @@
+{
+  "productPackage": "@auditlogic/product-github-github",
+  "modulePackage": "@zerobias-org/module-github-github",
+  "packageVersion": "0.0.0",
+  "description": "GitHub",
+  "repository": "https://github.com/zerobias-org/module",
+  "author": "team@zerobias.org",
+  "apiDocumentationUrl": "https://docs.github.com/rest",
+  "authenticationMethod": "API Key",
+  "baseUrl": "https://api.github.com",
+  "serviceName": "GitHub",
+  "httpClientLibrary": "octokit",
+  "availableClientLibraries": [
+    {
+      "name": "octokit",
+      "type": "official",
+      "npmPackage": "octokit",
+      "version": "5.0.3",
+      "features": ["rest", "graphql", "webhooks", "oauth", "apps"],
+      "maintenance": "active",
+      "recommendation": "high",
+      "notes": "Official GitHub SDK with full REST and GraphQL API support, TypeScript declarations, and comprehensive GitHub platform coverage"
+    },
+    {
+      "name": "@octokit/rest",
+      "type": "official",
+      "npmPackage": "@octokit/rest",
+      "version": "21.0.2",
+      "features": ["rest"],
+      "maintenance": "active",
+      "recommendation": "high",
+      "notes": "Dedicated REST API client, part of Octokit ecosystem"
+    },
+    {
+      "name": "axios",
+      "type": "community",
+      "npmPackage": "axios",
+      "version": "1.7.4",
+      "features": ["rest"],
+      "maintenance": "active",
+      "recommendation": "medium",
+      "notes": "General-purpose HTTP client, requires manual endpoint construction for GitHub API"
+    }
+  ],
+  "operations": {
+    "listEnterprises": {
+      "docUrl": "https://docs.github.com/graphql/reference/queries#enterprise",
+      "method": "GraphQL",
+      "body": "query { enterprises(first: 100) { nodes { id name slug description } } }",
+      "notes": "Lists enterprises - only available via GraphQL API, requires enterprise access"
+    },
+    "getEnterprise": {
+      "docUrl": "https://docs.github.com/graphql/reference/objects#enterprise", 
+      "method": "GraphQL",
+      "body": "query($slug: String!) { enterprise(slug: $slug) { id name slug description organizationsTotalCount } }",
+      "notes": "Gets single enterprise by slug - GraphQL API only"
+    },
+    "listOrganizations": {
+      "docUrl": "https://docs.github.com/rest/orgs/orgs#list-organizations",
+      "method": "GET",
+      "path": "/organizations",
+      "notes": "Lists all public organizations, supports pagination with since parameter"
+    },
+    "getOrganization": {
+      "docUrl": "https://docs.github.com/rest/orgs/orgs#get-an-organization",
+      "method": "GET", 
+      "path": "/orgs/{org}",
+      "notes": "Gets single organization by name/login"
+    },
+    "listEnterpriseOrganizations": {
+      "docUrl": "https://docs.github.com/graphql/reference/objects#enterprise",
+      "method": "GraphQL",
+      "body": "query($slug: String!, $first: Int!) { enterprise(slug: $slug) { organizations(first: $first) { nodes { id login name description } } } }",
+      "notes": "Lists organizations within an enterprise - GraphQL API only, requires enterprise access"
+    },
+    "listOrganizationMembers": {
+      "docUrl": "https://docs.github.com/rest/orgs/members#list-organization-members",
+      "method": "GET",
+      "path": "/orgs/{org}/members",
+      "notes": "Lists public organization members, private members require organization membership"
+    },
+    "getUser": {
+      "docUrl": "https://docs.github.com/rest/users/users#get-a-user",
+      "method": "GET",
+      "path": "/users/{username}",
+      "notes": "Gets public user information by username"
+    }
+  },
+  "keyNotes": [
+    "Enterprise operations require GraphQL API - REST API doesn't support enterprise organization listing",
+    "Enterprise access requires personal access token (classic) with appropriate enterprise permissions",
+    "Organization member visibility depends on organization privacy settings and user permissions",
+    "Rate limiting applies: 5000 requests/hour for authenticated requests, 60/hour for unauthenticated",
+    "Octokit library recommended for full GitHub API support including both REST and GraphQL",
+    "Some operations may require specific scopes or permissions (admin:org, read:org, etc.)"
+  ]
+}

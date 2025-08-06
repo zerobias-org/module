@@ -1,0 +1,63 @@
+{
+  "scaffolding": {
+    "status": "completed",
+    "timestamp": "2025-08-05T21:54:00.000Z",
+    "modulePath": "package/github/github",
+    "components": {
+      "vendor": "github",
+      "suite": null,
+      "service": "github"
+    },
+    "generatedFiles": {
+      "packageJson": {
+        "path": "package/github/github/package.json",
+        "status": "created",
+        "validation": "moduleId_present"
+      },
+      "apiSpec": {
+        "path": "package/github/github/api.yml",
+        "status": "created",
+        "validation": "product_reference_present"
+      },
+      "sourceFiles": {
+        "mainEntry": "package/github/github/src/index.ts",
+        "implementation": "package/github/github/src/GithubImpl.ts",
+        "status": "created"
+      },
+      "testFiles": {
+        "unitTests": "test files created by generator",
+        "status": "created"
+      }
+    },
+    "metadataSync": {
+      "status": "completed",
+      "apiSpecValidation": "title_version_present"
+    },
+    "validations": [
+      {
+        "check": "Module directory structure exists",
+        "command": "ls -la package/github/github",
+        "expected": "package.json.*api.yml.*src",
+        "status": "passed"
+      },
+      {
+        "check": "package.json has correct metadata",
+        "command": "cat package/github/github/package.json | jq '.name, .moduleId, .author'",
+        "expected": "@zerobias-org/module-github-github",
+        "status": "passed"
+      },
+      {
+        "check": "api.yml has product reference",
+        "command": "grep -q 'x-product-infos' package/github/github/api.yml",
+        "expected_exit_code": 0,
+        "status": "passed"
+      },
+      {
+        "check": "api.yml has title and version fields",
+        "command": "grep -E 'title:|version:' package/github/github/api.yml",
+        "expected": "2 fields found",
+        "status": "passed"
+      }
+    ],
+  }
+}

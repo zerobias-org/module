@@ -1,0 +1,122 @@
+{
+  "apiDefinition": {
+    "status": "completed",
+    "timestamp": "2025-08-05T22:10:00.000Z",
+    "serviceName": "GitHub",
+    "baseUrl": "https://api.github.com",
+    "authenticationMethod": "Personal Access Token",
+    "apiDocumentationUrl": "https://docs.github.com/rest",
+    "files": {
+      "apiSpec": {
+        "path": "package/github/github/api.yml",
+        "status": "created",
+        "validation": "valid",
+        "endpointCount": 7,
+        "schemaCount": 6
+      },
+      "connectionProfile": {
+        "path": "package/github/github/connectionProfile.yml",
+        "status": "created",
+        "authMethod": "Personal Access Token",
+        "coreTypeUsed": "@auditmation/types-core/schema/tokenProfile.yml"
+      }
+    },
+    "securitySchemes": [
+      {
+        "name": "github-token",
+        "type": "oauth2",
+        "description": "Authentication for the GitHub API (actual method may be PAT/API Key/Basic)"
+      }
+    ],
+    "operations": {
+      "implemented": [
+        "listEnterprises",
+        "getEnterprise", 
+        "listOrganizations",
+        "getOrganization",
+        "listEnterpriseOrganizations",
+        "listOrganizationMembers",
+        "getUser"
+      ],
+      "count": 7
+    },
+    "propertyMappings": {
+      "description": "Mapping between module API spec property names and original API property names",
+      "mappings": {
+        "avatarUrl": "avatar_url",
+        "htmlUrl": "html_url",
+        "createdAt": "created_at",
+        "updatedAt": "updated_at",
+        "publicRepos": "public_repos",
+        "publicGists": "public_gists",
+        "siteAdmin": "site_admin",
+        "organizationsTotalCount": "organizations_total_count"
+      }
+    },
+    "validations": [
+      {
+        "check": "API specification is valid OpenAPI 3.0",
+        "command": "npx swagger-cli validate api.yml",
+        "expected_exit_code": 0,
+        "status": "passed"
+      },
+      {
+        "check": "API specification contains paths",
+        "command": "yq eval '.paths | keys | length' api.yml",
+        "expected": "^[1-9][0-9]*$",
+        "status": "passed"
+      },
+      {
+        "check": "API specification contains security schemes",
+        "command": "yq eval '.components.securitySchemes | keys | length' api.yml",
+        "expected": "^[1-9][0-9]*$",
+        "status": "passed"
+      },
+      {
+        "check": "Connection profile exists and is valid",
+        "file_exists": "package/github/github/connectionProfile.yml",
+        "content_contains": "$ref:",
+        "status": "passed"
+      },
+      {
+        "check": "Metadata synchronized from package.json",
+        "command": "yq eval '.info.title' api.yml",
+        "expected": "@zerobias-org/module-github-github",
+        "status": "passed"
+      },
+      {
+        "check": "All Task 02 operations implemented in API specification",
+        "description": "Verifies that every operation from Task 02 output has a corresponding endpoint in api.yml",
+        "task02_operations_file": ".claude/.localmemory/create-github-github/task-02-output.json",
+        "command": "TASK02_OPS=$(cat .claude/.localmemory/create-github-github/task-02-output.json | jq '.operations | keys | length') && API_PATHS=$(yq eval '.paths | keys | length' api.yml) && [ \"$TASK02_OPS\" -eq \"$API_PATHS\" ]",
+        "expected_exit_code": 0,
+        "status": "passed",
+        "correction_action": "All 7 operations from Task 02 have corresponding endpoints implemented"
+      },
+      {
+        "check": "Root level compliance (no servers/security)",
+        "command": "yq eval 'has(\"servers\") or has(\"security\")' api.yml | grep -q \"true\" && echo \"ERROR\" || echo \"PASS\"",
+        "expected": "PASS",
+        "status": "passed"
+      },
+      {
+        "check": "Parameter naming compliance (descriptive not generic)",
+        "command": "yq eval '.components.parameters | keys' api.yml | grep -E '^(id|name)$' && echo \"ERROR\" || echo \"PASS\"",
+        "expected": "PASS", 
+        "status": "passed"
+      },
+      {
+        "check": "Resource naming consistency",
+        "command": "yq eval '.paths | keys | length' api.yml",
+        "expected": "^[1-9][0-9]*$",
+        "status": "passed"
+      },
+      {
+        "check": "Connection profile exists",
+        "command": "[ -f connectionProfile.yml ] && echo \"PASS\" || echo \"ERROR\"",
+        "expected": "PASS",
+        "status": "passed"
+      }
+    ]
+  }
+}

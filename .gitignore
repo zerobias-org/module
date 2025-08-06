@@ -132,3 +132,6 @@ generated
 
 *-full.yml
 **/.DS_Store
+
+# Claude Code
+.claude/

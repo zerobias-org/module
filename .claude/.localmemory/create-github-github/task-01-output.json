@@ -1,0 +1,9 @@
+{
+  "productPackage": "@auditlogic/product-github-github",
+  "modulePackage": "@zerobias-org/module-github-github",
+  "serviceName": "GitHub",
+  "description": "GitHub ...Build and ship software on a single, collaborative platform ..",
+  "baseUrl": "https://api.github.com",
+  "mainDocumentationUrl": "https://docs.github.com/rest",
+  "initialUserPrompt": "Create a github module that retrieves enterprises, their organizations and organizations users."
+}

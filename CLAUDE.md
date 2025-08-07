@@ -11,6 +11,7 @@
 - **READ ALL CRITICAL RULES**: Each task file contains mandatory compliance rules marked with 🚨 - violating ANY rule means task failure
 - **USE CHECKLISTS**: Complete all pre-implementation and post-implementation checklists in task files
 - **🚨 NEVER TOUCH FILES OUTSIDE THE MODULE SCOPE** - Only modify, create, or fix files within the specific module being worked on. Do not improve or fix files in other modules, shared directories, or repository-wide configurations unless explicitly requested for the current module.
+- **🚨 GIT COMMITS AND PUSHES ARE FORBIDDEN** - Never commit changes or push to remote repositories. All work remains local until explicitly authorized.
 
 This repository contains multiple types of tasks for module development. Each task type has its own dedicated documentation file.
 
@@ -62,6 +63,14 @@ Each task stores its status and intermediate results in:
 2. **Context Passing**: Tasks read previous results from memory files
 3. **Progress Tracking**: Each task stores its status and intermediate results
 4. **Completion**: Final artifacts are created, memory can be cleaned up
+
+### Module Creation Workflow
+**🚨 CRITICAL**: When executing module creation requests:
+- **AUTO-CONTINUE**: After completing any task, automatically proceed to the next task in sequence
+- **NO STOPPING**: Do not wait for user confirmation between tasks - continue until all tasks are complete
+- **SEQUENTIAL EXECUTION**: Tasks must be executed in numerical order (task-01, task-02, etc.)
+- **FAILURE HANDLING**: If a task fails, stop execution and report the issue - do not continue to subsequent tasks
+- **COMPLETION SIGNAL**: Only stop when all tasks are successfully completed or when a task fails
 
 ## Task-Specific Documentation
 

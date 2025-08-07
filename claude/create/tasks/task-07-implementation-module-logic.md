@@ -19,8 +19,8 @@ This task implements the core module logic including Client, Producer implementa
 **Before starting implementation:**
 1. **Analyze `generated/api/index.ts`** to identify exact interface names
 2. **Use interface names for all file and class naming** - ignore any mismatches in existing module structure
-3. **Example**: If generated interface is `GitHubConnector`, create `GitHubConnectorImpl.ts` with `class GitHubConnectorImpl`
-4. **Producer interfaces**: Use exact names from generated code (e.g., `UserApi`, `OrganizationApi`, etc.)
+3. **Example**: If generated interface is `ServiceConnector`, create `ServiceConnectorImpl.ts` with `class ServiceConnectorImpl`
+4. **Producer interfaces**: Use exact names from generated code (e.g., `ResourceApi`, `EntityApi`, etc.)
 
 ### 1. Pre-Implementation Validation
 
@@ -189,6 +189,12 @@ Extract the specific property mappings defined for this service from `task-05-ou
 - **Mappers preference**: Always use `toEnum()` utility function for consistency
 - **Example**: `toEnum(StatusEnum, raw.status)` (preferred) vs `StatusEnum.from(raw.status)` (alternative)
 
+**🚨 CRITICAL: Enum to String Conversion**:
+- **When enums need strings**: Use `.toString()` method or template literals
+- **toString() example**: `const statusString = myEnum.toString()`
+- **Template literal example**: `const message = \`Status: \${myEnum}\``
+- **Applies to ALL core types**: URL, UUID, Email, etc. - all support `.toString()` and template interpolation
+
 **Pattern Example**:
 ```typescript
 import { toEnum, map } from '@auditmation/util-hub-module-utils';
@@ -219,8 +225,8 @@ Create producer implementations for each API domain (based on generated interfac
 **Architecture**:
 - **Use generated interface names as source of truth**: Analyze `generated/api/index.ts` to identify exact interface names
 - **Implement generated interfaces**: Each producer implements its corresponding Api interface exactly
-- **File naming**: Use interface name + "Impl" (e.g., `GitHubConnector` → `GitHubConnectorImpl.ts`)
-- **Class naming**: Use interface name + "Impl" (e.g., `class GitHubConnectorImpl implements GitHubConnector`)
+- **File naming**: Use interface name + "Impl" (e.g., `ServiceConnector` → `ServiceConnectorImpl.ts`)
+- **Class naming**: Use interface name + "Impl" (e.g., `class ServiceConnectorImpl implements ServiceConnector`)
 - **Use HTTP client**: Get configured client from service client
 - **Apply mappers**: Transform API responses using mapper functions
 - **Handle pagination**: Follow PagedResults patterns for list operations
@@ -288,8 +294,13 @@ Create the main connector class that orchestrates all components:
 - `disconnect(): Promise<void>` - Clean up via client
 
 **Standard Methods (Mandatory)**:
-- `isSupported(operationId: string): Promise<OperationSupportStatusDef>` - Return `OperationSupportStatus.Maybe`
-- `metadata(): Promise<ConnectionMetadata>` - Return `new ConnectionMetadata(ConnectionStatus.Down)`
+- `isSupported(operationId: string): Promise<OperationSupportStatusDef>` - **ALWAYS return `OperationSupportStatus.Maybe`** (replaced by platform)
+- `metadata(): Promise<ConnectionMetadata>` - **ALWAYS return `new ConnectionMetadata(ConnectionStatus.Down)`** (replaced by platform)
+
+**🚨 CRITICAL: Fixed Return Values**:
+- **supported() method**: Must always return `OperationSupportStatus.Maybe` - the platform replaces this with actual support status
+- **metadata() method**: Must always return `ConnectionStatus.Down` - the platform replaces this with actual connection status
+- **These are placeholder implementations** - the actual functionality is provided by the platform where modules are plugged in
 
 **Producer Getters**:
 - Create getter methods for each producer (based on exact generated interface names)

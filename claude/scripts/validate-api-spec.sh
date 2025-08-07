@@ -1,6 +1,19 @@
 #!/bin/bash
 
-echo "🔍 Running Basic API Specification Validation..."
+# Usage: validate-api-spec.sh <module_path> <action> <module_identifier>
+# Example: validate-api-spec.sh /path/to/module create github-github
+
+if [ $# -ne 3 ]; then
+    echo "Usage: $0 <module_path> <action> <module_identifier>"
+    echo "Example: $0 /path/to/module create github-github"
+    exit 1
+fi
+
+MODULE_PATH="$1"
+ACTION="$2"
+MODULE_IDENTIFIER="$3"
+
+echo "🔍 Running Basic API Specification Validation for $MODULE_IDENTIFIER..."
 
 # Colors for output
 RED='\033[0;31m'
@@ -31,7 +44,7 @@ run_check() {
 }
 
 # Change to module directory
-cd /Users/ctamas/code/zborg/module/package/gitlab/gitlab
+cd "$MODULE_PATH"
 
 # Rule compliance checks
 run_check "No root level servers/security" \
@@ -55,14 +68,15 @@ run_check "All properties are camelCase (no snake_case)" \
   "yq eval '.. | select(type == \"!!map\") | keys | .[]' api.yml | grep -E '_[a-z]' && echo 'FAIL' || echo 'PASS'" \
   "PASS"
 
-# API linting check
+# API linting check - only fail on errors, not warnings
 run_check "API linting validation" \
-  "npm run lint:api >/dev/null 2>&1 && echo 'PASS' || echo 'FAIL'" \
+  "npm run lint:api 2>&1 | grep -q '  error  ' && echo 'FAIL' || echo 'PASS'" \
   "PASS"
 
-# Operation coverage check - GitLab has 4 operations mapped to 3 endpoints (listUsers and searchUsers both use /users)
+# Operation coverage check (using parameters)
+MEMORY_PATH="../../../.claude/.localmemory/${ACTION}-${MODULE_IDENTIFIER}"
 run_check "Complete operation coverage" \
-  "TASK02_OPS=\$(jq '.operations | keys | length' ../../../.claude/.localmemory/create-gitlab-gitlab/task-02-output.json) && API_PATHS=\$(yq eval '.paths | keys | length' api.yml) && [ \"\$TASK02_OPS\" -eq \"4\" ] && [ \"\$API_PATHS\" -eq \"3\" ] && echo 'PASS' || echo 'FAIL'" \
+  "TASK02_OPS=\$(jq '.operations | keys | length' \"$MEMORY_PATH/task-02-output.json\" 2>/dev/null || echo 0) && API_PATHS=\$(yq eval '.paths | keys | length' api.yml) && [ \"\$TASK02_OPS\" -eq \"\$API_PATHS\" ] && echo 'PASS' || echo 'FAIL'" \
   "PASS"
 
 echo

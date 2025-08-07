@@ -6,11 +6,17 @@
 
 ## Overview
 
-Create comprehensive integration tests that validate the module's ability to connect and interact with the real API. When test credentials are provided, these tests will run automatically to verify the integration works correctly.
+Create comprehensive integration tests that validate the module's ability to connect and interact with the real API. These tests are always created but only run when test credentials are provided. When credentials are available and tests run, they must pass with full permissions assumed.
 
 ## 🚨 Critical Rules
 
-- **NEVER run integration tests without explicit credentials** - Only run when environment variables are properly configured
+- **ALWAYS CREATE TESTS** - Integration tests are always created, regardless of credential availability
+- **🚨 MANDATORY TESTING WHEN CREDENTIALS PROVIDED** - When API keys/credentials are provided, integration tests MUST be run and MUST pass - never skip integration tests when having credentials
+- **🚨 LOCATE AND USE CREDENTIALS** - Find where credentials are stored (check .env files, environment variables) and use them for testing
+- **🚨 CREDENTIAL SECURITY** - NEVER add credentials to any code that could be committed - only use .env files (which should be in .gitignore)
+- **ASSUME FULL PERMISSIONS** - When tests run, assume a token/credentials with all necessary permissions are provided
+- **NO PERMISSION-BASED SKIPPING** - When credentials are available, do not skip tests due to lack of permissions; assume access is available
+- **CREDENTIAL-BASED EXECUTION** - Tests only run when credentials are provided; skip gracefully when missing
 - **ALWAYS sanitize sensitive data** - Remove real tokens, emails, and personal information from test outputs
 - **MUST use realistic test scenarios** - Test actual API endpoints and common use cases
 - **NEVER commit real credentials** - Use `.env.example` for templates only
@@ -40,6 +46,17 @@ Create comprehensive integration tests that validate the module's ability to con
 - `.env.example` - Environment variable template
 - `test/fixtures/integration/` - Real API response examples (sanitized)
 
+**🚨 CRITICAL: Core Type Imports Required**:
+All test files must import core types for assertions:
+```typescript
+// Core types for assertions
+import { Email, URL, UUID, IpAddress } from '@auditmation/types-core-js';
+// Vendor-specific types when applicable
+import { Arn, AwsService } from '@auditmation/types-amazon-js';  // For AWS modules
+import { AzureVmSize } from '@auditmation/types-microsoft-js';   // For Azure modules
+import { GcpAccessPolicy } from '@auditmation/types-google-js';  // For GCP modules
+```
+
 ### Memory Output
 - `.claude/.localmemory/{action}-{module-identifier}/task-08-output.json` - Task completion status and results
 
@@ -53,20 +70,52 @@ Create comprehensive integration tests that validate the module's ability to con
 
 ## Implementation
 
-### Step 1: Create Integration Test Structure
+### Step 1: Detect and Locate Credentials
+
+**🚨 CRITICAL FIRST STEP**: Before creating tests, check for existing credentials in authorized locations only:
+
+**Credential Search Locations (ONLY these):**
+1. **Initial user prompt** - Check if API keys/tokens were provided in the original request
+2. **Module directory** - Check for .env files in `${module_path}/.env*`
+3. **Repository root** - Check for .env files in repository root directory only
+
+```bash
+cd ${module_path}
+# Check module directory for .env files
+ls -la .env* 2>/dev/null || echo "No .env files found in module"
+# Check repository root for .env files  
+ls -la ../../.env* 2>/dev/null || echo "No .env files found in repo root"
+```
+
+**🚨 NEVER search credentials in:**
+- Other modules or directories outside current module
+- External files not specified in the prompt
+- System-wide configuration files
+- Other local files beyond module/repo root scope
+
+**If credentials are found:**
+- Note their location and variable names
+- Ensure tests use these credentials
+- **MANDATORY**: Run full integration test suite
+
+**If no credentials found:**
+- Create tests that skip gracefully when credentials missing
+- Provide clear instructions on how to add credentials
+
+### Step 2: Create Integration Test Structure
 
 ```bash
 cd ${module_path}
 mkdir -p test/integration test/fixtures/integration test/utils
 ```
 
-### Step 2: Install Required Dependencies
+### Step 3: Install Required Dependencies
 
 ```bash
 npm install --save-dev dotenv @types/dotenv
 ```
 
-### Step 3: Create Integration Test Suites
+### Step 4: Create Integration Test Suites
 
 Create the test file structure:
 - **Common.ts**: Credential loading, `prepareApi()` function, shared utilities
@@ -78,7 +127,46 @@ Create the test file structure:
 - Handle authentication errors gracefully
 - Sanitize and save response examples
 
-### Step 4: Create Environment Template
+### Step 4.1: Add Debug Logging to Integration Tests
+
+**IMPORTANT**: Add debug logging to all integration tests to capture both method calls and results:
+
+1. **Import logger**: Add `import { getLogger } from '@auditmation/util-logger';` to each test file
+2. **Initialize logger**: Add `const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');` 
+3. **Log method call and result**: After each module operation call, add:
+   ```typescript
+   const result = await userApi.get('octocat');
+   logger.debug(`userApi.get('octocat')`, JSON.stringify(result, null, 2));
+   ```
+
+**Format**: `logger.debug('methodName(parameters)', JSON.stringify(result, null, 2))`
+
+**Examples of exact logging code**:
+```typescript
+// Resource operations (adapt to your module's resources)
+const resource = await resourceApi.get('resource-id');
+logger.debug(`resourceApi.get('resource-id')`, JSON.stringify(resource, null, 2));
+
+const resources = await resourceApi.list(1, 10);
+logger.debug(`resourceApi.list(1, 10)`, JSON.stringify(resources, null, 2));
+
+// Entity operations
+const entity = await entityApi.get('entity-name');
+logger.debug(`entityApi.get('entity-name')`, JSON.stringify(entity, null, 2));
+
+// Collection operations  
+const collection = await collectionApi.get('collection-id');
+logger.debug(`collectionApi.get('collection-id')`, JSON.stringify(collection, null, 2));
+
+const items = await collectionApi.list(1, 5);
+logger.debug(`collectionApi.list(1, 5)`, JSON.stringify(items, null, 2));
+```
+
+**Usage**: Enable debug output by running tests with `LOG_LEVEL=debug npm run test:integration`
+
+This format shows exactly what method was called with what parameters and the complete result returned.
+
+### Step 5: Create Environment Template
 
 Generate `.env.example` with placeholders for:
 - API keys, tokens, or credentials
@@ -86,7 +174,7 @@ Generate `.env.example` with placeholders for:
 - Test-specific configuration
 - Timeout and retry settings
 
-### Step 5: Create Integration Utilities
+### Step 6: Create Integration Utilities
 
 Build helper functions for:
 - Environment variable validation
@@ -94,18 +182,21 @@ Build helper functions for:
 - Test fixture generation
 - Connection setup and teardown
 
-### Step 6: Run Integration Tests (If Credentials Available)
+### Step 7: Run Integration Tests (If Credentials Available)
+
+Tests are designed to skip gracefully when credentials are missing, but run completely when available:
 
 ```bash
-# Only run if credentials are properly configured
-if [ -f .env ] && [ "${test_credentials_available}" = "true" ]; then
-  npm run test:integration
-else
-  echo "Integration tests skipped - no credentials available"
-fi
+# Tests will check for credentials and skip if not available
+npm run test:integration
 ```
 
-### Step 7: Interpret Results and Fix Issues
+**Test Behavior**:
+- **With credentials**: All tests run and must pass with full permissions
+- **Without credentials**: Tests skip gracefully with informative messages
+- **Partial credentials**: Tests assume full permissions for provided credentials
+
+### Step 8: Interpret Results and Fix Issues
 
 Analyze test results and fix any failures following these rules:
 
@@ -130,7 +221,7 @@ Analyze test results and fix any failures following these rules:
 **Success Requirement:**
 - **ALL tests must pass** - 100% pass rate required for task completion
 
-### Step 8: Final Validation Build and Test
+### Step 9: Final Validation Build and Test
 
 After all tests pass and issues are resolved, run the complete build cycle:
 
@@ -155,7 +246,7 @@ npm run clean && npm run build && npm run test:integration
 - Integration tests pass against clean, rebuilt module
 - Module is ready for production use
 
-### Step 9: Generate Task Output
+### Step 10: Generate Task Output
 
 Create task completion record in local memory:
 - Document test execution results
@@ -168,9 +259,9 @@ Create task completion record in local memory:
 
 ### Authentication Testing
 - Valid credentials → successful connection
-- Invalid credentials → proper error handling
-- Missing credentials → graceful failure
-- Expired tokens → refresh or clear error message
+- Connection establishment and API access validation
+- Token/credential functionality verification
+- Service availability and endpoint accessibility
 
 ### Core Operations Testing
 - **List operations**: Pagination, filtering, sorting
@@ -183,14 +274,20 @@ Create task completion record in local memory:
 - Network connectivity issues
 - API rate limiting
 - Service unavailable (503)
-- Authentication failures (401, 403)
 - Resource not found (404)
 - Validation errors (400)
+- Malformed request handling
 
 ### Data Validation
 - Response schema compliance
 - Data type accuracy
 - Required vs optional fields
+- **🚨 CRITICAL: Core Type Assertions** (see [Core Type Mapping Guide](core-type-mapping-guide.md))
+  - Assert `instanceof` for core types: `expect(user.email).to.be.instanceof(Email)`
+  - Assert UUID fields: `expect(resource.id).to.be.instanceof(UUID)`
+  - Assert URL fields: `expect(resource.url).to.be.instanceof(URL)`
+  - Assert Date fields: `expect(resource.createdAt).to.be.instanceof(Date)`
+  - Assert vendor-specific types when applicable (e.g., `expect(resource.arn).to.be.instanceof(Arn)`)
 - Null and undefined handling
 
 ## Environment Variables Template
@@ -245,14 +342,14 @@ After integration tests are created:
 - **Missing credentials**: Provide clear instructions on where to get test API keys
 - **API rate limits**: Implement retry logic and appropriate delays between tests
 - **Network timeouts**: Increase timeout values for slow APIs
-- **Authentication errors**: Verify credentials have sufficient permissions
+- **Connection issues**: Verify API endpoints and network accessibility
 - **Test expectation mismatches**: Update test assertions to match actual API responses
 - **Data type mismatches**: Adjust test expectations (e.g., expect numbers vs strings)
 
 ### Troubleshooting Guidelines
 - Check environment variable names match code expectations
 - Verify API endpoints are accessible from test environment
-- Ensure test account has necessary permissions for operations
+- Validate credentials are properly configured and active
 - Review API documentation for any recent changes
 - **STOP and inform user** if API model changes are needed
 - Focus on test and implementation fixes, not generated code changes

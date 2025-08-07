@@ -79,6 +79,8 @@ This task creates a comprehensive OpenAPI specification, defines connection prof
 ### 🟢 TECHNICAL RULES:
 11. **Pagination**: Use `pageTokenParam` from core types, NOT custom parameters like `since`
 12. **Response Codes**: Only include 200 response codes
+13. **Path Conflicts**: When 2+ operations would map to same path (e.g., getByName, getById), choose ONLY the best one based on other operations. **NEVER invent ugly paths** like "/by-id" or "/by-name". Always inform user which operation was not implemented due to path conflict. **Exception**: Only use unified parameter like `{resourceNameOrId}` when very easy AND responses are identical.
+14. **API Linting**: Don't require full lint passing - only use to ensure camelCase properties and snake_case enums compliance
 
 ## 🔍 MANDATORY PRE-IMPLEMENTATION CHECKLIST
 
@@ -219,12 +221,15 @@ Create comprehensive data models in `components.schemas`:
    - No nested objects - flatten to individual schemas
    - **CRITICAL**: When there are different models for list and get operations, use "Resource" for list and "ResourceInfo" for get response model
 
-2. **Core Type Usage**:
-   - `format: uuid` for UUID identifiers
-   - `format: date-time` for timestamps
-   - `format: email` for email addresses
-   - `format: url` for absolute URLs
+2. **Core Type Usage** (see [Core Type Mapping Guide](core-type-mapping-guide.md)):
+   - `format: uuid` for UUID identifiers → maps to `UUID` type
+   - `format: date-time` for timestamps → maps to `Date` type  
+   - `format: email` for email addresses → maps to `Email` type
+   - `format: url` for absolute URLs → maps to `URL` type
+   - `format: ip` for IP addresses → maps to `IpAddress` type
+   - Use vendor-specific formats when appropriate (e.g., `format: arn` → `Arn` type)
    - Only use format types when API guarantees exact format
+   - **Reference**: See `core-type-mapping-guide.md` for complete string format → TypeScript type mappings
 
 3. **Common Schemas**:
    - Entity objects
@@ -415,9 +420,9 @@ Complete validation and metadata synchronization using hybrid approach:
      "yq eval '.. | select(type == \"!!map\") | keys | .[]' api.yml | grep -E '_[a-z]' && echo 'FAIL' || echo 'PASS'" \
      "PASS"
    
-   # API linting check
-   run_check "API linting validation" \
-     "npm run lint:api >/dev/null 2>&1 && echo 'PASS' || echo 'FAIL'" \
+   # API linting check - only for camelCase/snake_case compliance, not full pass requirement
+   run_check "API linting for camelCase/snake_case compliance" \
+     "npm run lint:api 2>&1 | grep -E '(snake_case|camelCase|property.*case)' && echo 'FAIL' || echo 'PASS'" \
      "PASS"
    
    # Operation coverage check
@@ -438,7 +443,7 @@ Complete validation and metadata synchronization using hybrid approach:
 3. **Run Basic Validation Script**:
    ```bash
    chmod +x claude/scripts/validate-api-spec.sh
-   ./claude/scripts/validate-api-spec.sh
+   ./claude/scripts/validate-api-spec.sh "$(pwd)" "${action}" "${module_identifier}"
    ```
 
 4. **AI-Powered Semantic Validation**:
@@ -497,6 +502,7 @@ Complete validation and metadata synchronization using hybrid approach:
    - **MANDATORY**: Re-run validations after fixes until all checks pass
    - Only proceed to task completion when both validations are successful
 
+
 ## Output Format
 
 Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-identifier}/task-05-output.json`
@@ -553,6 +559,22 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
         "${spec_property_name}": "${original_api_property_name}"
       }
     },
+    "enumMappings": {
+      "description": "Mapping between module API spec enum values and original API enum values",
+      "mappings": {
+        "${spec_enum_value}": "${original_api_enum_value}"
+      }
+    },
+    "operationExclusions": {
+      "description": "Operations from Task 02 that were not implemented due to path conflicts",
+      "excluded": [
+        {
+          "operationName": "${excluded_operation}",
+          "reason": "Path conflict with ${chosen_operation}",
+          "originalPath": "${original_api_path}"
+        }
+      ]
+    },
     "validations": [
       {
         "check": "API specification is valid OpenAPI 3.0",
@@ -562,7 +584,7 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
       },
       {
         "check": "Basic validation script execution",
-        "command": "./claude/scripts/validate-api-spec.sh",
+        "command": "./claude/scripts/validate-api-spec.sh \"$(pwd)\" \"${action}\" \"${module_identifier}\"",
         "expected_exit_code": 0,
         "status": "passed|failed"
       },
@@ -691,11 +713,12 @@ For endpoints that return paginated data:
 - **Property Mappings**: Document spec-to-original API property name mappings
 
 ### Core Type Format Usage
-Only use strict format types when API guarantees exact format:
-- `format: uuid` - UUID strings (RFC 4122)
-- `format: date-time` - ISO 8601 date-time with timezone
-- `format: email` - Email addresses (RFC 5322)
-- `format: url` - Absolute URLs with protocol
+Only use strict format types when API guarantees exact format (see [Core Type Mapping Guide](core-type-mapping-guide.md)):
+- `format: uuid` - UUID strings (RFC 4122) → maps to `UUID` type
+- `format: date-time` - ISO 8601 date-time with timezone → maps to `Date` type
+- `format: email` - Email addresses (RFC 5322) → maps to `Email` type
+- `format: url` - Absolute URLs with protocol → maps to `URL` type
+- **Complete Reference**: See `core-type-mapping-guide.md` for all AWS, Azure, GCP, and Core type mappings
 
 ### Schema Organization
 - Flatten nested objects to separate schemas

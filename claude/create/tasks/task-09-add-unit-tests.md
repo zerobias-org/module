@@ -41,6 +41,17 @@ Create comprehensive unit tests using HTTP-level mocking with nock. These tests 
 - `test/fixtures/*.json` - Test fixtures and mock response data
 - `.env.example` - Environment variables template for integration testing
 
+**🚨 CRITICAL: Core Type Imports Required**:
+All test files must import core types for assertions:
+```typescript
+// Core types for assertions
+import { Email, URL, UUID, IpAddress } from '@auditmation/types-core-js';
+// Vendor-specific types when applicable
+import { Arn, AwsService } from '@auditmation/types-amazon-js';  // For AWS modules
+import { AzureVmSize } from '@auditmation/types-microsoft-js';   // For Azure modules
+import { GcpAccessPolicy } from '@auditmation/types-google-js';  // For GCP modules
+```
+
 ### Memory Output
 - `.claude/.localmemory/{action}-{module-identifier}/task-09-output.json` - Task completion status and results
 
@@ -107,6 +118,12 @@ Create tests for data transformation functions covering:
 - **Date parsing** - Test conversion of string dates to Date objects
 - **Optional field handling** - Test behavior with missing or null fields  
 - **Data type validation** - Ensure mapped objects have correct TypeScript types
+- **🚨 CRITICAL: Core Type Assertions** (see [Core Type Mapping Guide](core-type-mapping-guide.md)):
+  - Assert `instanceof` for core types: `expect(mapped.email).to.be.instanceof(Email)`
+  - Assert UUID fields: `expect(mapped.id).to.be.instanceof(UUID)`
+  - Assert URL fields: `expect(mapped.url).to.be.instanceof(URL)`
+  - Assert Date fields: `expect(mapped.createdAt).to.be.instanceof(Date)`
+  - Assert vendor-specific types when applicable (e.g., `expect(mapped.arn).to.be.instanceof(Arn)`)
 - **Edge cases** - Test with malformed data, empty objects, invalid dates
 
 ### Step 4: Create Test Fixtures Based on API Specifications

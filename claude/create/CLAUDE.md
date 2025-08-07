@@ -24,6 +24,9 @@ The module creation process is organized as a workflow with multiple isolated ta
 - **Memory persistence**: Task results stored in `.claude/.localmemory/{action}-{module-identifier}/`
 - **Failure handling**: If any task fails, resolve issues before proceeding to next task
 - **Complete workflow**: Execute ALL discovered tasks for production-ready module
+- **🚨 CONTEXT CLEARING**: After successfully completing each task, clear context and immediately continue to the next task
+- **🚨 NO USER INPUT**: Never wait for user confirmation between tasks - auto-continue until all tasks complete or failure occurs
+- **🚨 AUTONOMOUS EXECUTION**: Run all tasks sequentially without interruption for optimal performance and accuracy
 
 ## Task Definitions
 

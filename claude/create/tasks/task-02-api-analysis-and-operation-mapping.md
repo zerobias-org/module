@@ -32,30 +32,30 @@ This task performs comprehensive API documentation analysis, maps user-requested
 1. **Analyze user prompt for resource intent**:
    - Parse the `initialUserPrompt` from Task 01 output to identify resource types and operation intent
    - **Intent correlation mapping**:
-     - "retrieve/get/fetch" → implies BOTH `list*` AND `get*` operations (e.g., "retrieve users" = `listUsers` + `getUser`)
+     - "retrieve/get/fetch" → implies BOTH `list*` AND `get*` operations (e.g., "retrieve entities" = `listEntities` + `getEntity`)
      - "list/show/display" → implies BOTH `list*` AND `get*` operations (comprehensive access to resources)
      - "manage/handle" → implies full CRUD operations (`list*`, `get*`, `create*`, `update*`, `delete*`)
      - "query/search/find" → implies `search*` AND `list*` AND `get*` operations
    - **Resource identification**:
-     - Extract all mentioned resources (e.g., "enterprises", "organizations", "users", "repositories")
-     - For hierarchical relationships (e.g., "organizations users"), identify both parent and child operations
+     - Extract all mentioned resources (e.g., "resources", "entities", "items", "collections")
+     - For hierarchical relationships (e.g., "resource items"), identify both parent and child operations
    - **Generate comprehensive operation list** based on intent analysis
    - **Examples**:
-     - "Create a github module that retrieves enterprises, their organizations and organizations users" →
-       - Resources: enterprises, organizations, users
+     - "Create a module that retrieves resources and their sub-resources" →
+       - Resources: resources, sub-resources
        - Intent: "retrieves" → list + get operations
-       - Operations: `listEnterprises`, `getEnterprise`, `listOrganizations`, `getOrganization`, `listEnterpriseOrganizations`, `listOrganizationMembers`, `getUser`
-     - "Build a module to manage AWS IAM users and roles" →
-       - Resources: users, roles
+       - Operations: `listResources`, `getResource`, `listSubResources`, `getSubResource`, `listResourceSubItems`
+     - "Build a module to manage entities and collections" →
+       - Resources: entities, collections
        - Intent: "manage" → full CRUD operations
-       - Operations: `listUsers`, `getUser`, `createUser`, `updateUser`, `deleteUser`, `listRoles`, `getRole`, `createRole`, `updateRole`, `deleteRole`
+       - Operations: `listEntities`, `getEntity`, `createEntity`, `updateEntity`, `deleteEntity`, `listCollections`, `getCollection`, `createCollection`, `updateCollection`, `deleteCollection`
 
 2. **Map operations comprehensively**:
    - For each identified resource and operation intent from user prompt analysis
    - **CRITICAL**: For every resource mentioned, find BOTH list and get operations:
-     - If user requests "listEnterprises" → find both `listEnterprises` AND `getEnterprise` (single item)
-     - If user requests "listUsers" → find both `listUsers` AND `getUser` (single item)
-     - If user requests "getOrganization" → find both `getOrganization` AND `listOrganizations` (multiple items)
+     - If user requests "listResources" → find both `listResources` AND `getResource` (single item)
+     - If user requests "listEntities" → find both `listEntities` AND `getEntity` (single item)
+     - If user requests "getCollection" → find both `getCollection` AND `listCollections` (multiple items)
    - **Find ALL available versions and variants**:
      - List operations: `list*`, `getAll*`, `fetch*`, `search*` (with pagination/filtering)
      - Get operations: `get*`, `fetch*`, `find*`, `retrieve*` (single item by ID/identifier)
@@ -63,9 +63,9 @@ This task performs comprehensive API documentation analysis, maps user-requested
      - Update operations: `update*`, `modify*`, `patch*`, `put*`, `edit*`
      - Delete operations: `delete*`, `remove*`, `destroy*`
    - Find corresponding API endpoints in documentation by searching comprehensively:
-     - Exact matches (e.g., "listEnterprises")
-     - Variations (e.g., "getEnterprises", "enterprises", "/enterprises GET")
-     - Related operations (e.g., "list enterprise organizations", "get enterprise orgs")
+     - Exact matches (e.g., "listResources")
+     - Variations (e.g., "getResources", "resources", "/resources GET")
+     - Related operations (e.g., "list resource items", "get resource details")
      - **Search across ALL API documentation sections** (public API, enterprise API, admin API, etc.)
    - **IMPORTANT**: Include ALL operations regardless of access level requirements:
      - Map operations that require enterprise admin privileges
@@ -98,7 +98,7 @@ This task performs comprehensive API documentation analysis, maps user-requested
      - Error handling capabilities
    - **Maintenance and quality assessment**:
      - Last update/release date
-     - GitHub stars, forks, and activity
+     - Repository metrics and activity
      - Issue resolution patterns
      - Community support and documentation quality
      - Breaking change frequency
@@ -158,30 +158,30 @@ Where:
 
 ```json
 "operations": {
-  "listEnterprises": {
-    "docUrl": "url to list enterprises api doc",
+  "listResources": {
+    "docUrl": "url to list resources api doc",
     "method": "GET|GraphQL",
-    "path": "/api/enterprises", // Optional: for REST/OpenAPI endpoints
+    "path": "/api/resources", // Optional: for REST/OpenAPI endpoints
     "body": "graphql_query", // Optional: for GraphQL or custom APIs
-    "notes": "Lists all enterprises - pagination, filtering details"
+    "notes": "Lists all resources - pagination, filtering details"
   },
-  "getEnterprise": {
-    "docUrl": "url to get single enterprise api doc", 
+  "getResource": {
+    "docUrl": "url to get single resource api doc", 
     "method": "GET|GraphQL",
-    "path": "/api/enterprises/{id}",
-    "notes": "Gets single enterprise by ID/slug"
+    "path": "/api/resources/{id}",
+    "notes": "Gets single resource by ID/identifier"
   },
-  "listOrganizations": {
-    "docUrl": "url to list organizations api doc",
+  "listEntities": {
+    "docUrl": "url to list entities api doc",
     "method": "GET",
-    "path": "/api/organizations",
-    "notes": "Lists all organizations with pagination"
+    "path": "/api/entities",
+    "notes": "Lists all entities with pagination"
   },
-  "getOrganization": {
-    "docUrl": "url to get single organization api doc",
+  "getEntity": {
+    "docUrl": "url to get single entity api doc",
     "method": "GET", 
-    "path": "/api/organizations/{id}",
-    "notes": "Gets single organization by ID"
+    "path": "/api/entities/{id}",
+    "notes": "Gets single entity by ID"
   }
 }
 ```

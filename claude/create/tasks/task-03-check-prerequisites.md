@@ -33,6 +33,12 @@ Check each required tool and verify it meets the minimum version requirement:
    - Minimum version: `>=11.0.0`
    - Check command: `java --version`
 
+5. **Yeoman Generator**:
+   - Required package: `@auditmation/generator-hub-module`
+   - Check command: `npm ls -g @auditmation/generator-hub-module`
+   - **CRITICAL**: If generator is not installed, STOP execution and ask user to install it
+   - Installation command: `npm install -g @auditmation/generator-hub-module`
+
 ### 2. Environment Validation
 
 1. **PATH Environment**:
@@ -94,6 +100,12 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
         "installed": "${actual_version}",
         "status": "passed|failed",
         "command": "java --version"
+      },
+      "generator": {
+        "required": "@auditmation/generator-hub-module",
+        "installed": "${actual_package_version}",
+        "status": "passed|failed",
+        "command": "npm ls -g @auditmation/generator-hub-module"
       }
     },
     "environment": {
@@ -115,6 +127,12 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
         "expected": "^[4-9]\\.",
         "actual": "${yo_version}",
         "status": "passed|failed"
+      },
+      {
+        "check": "Hub module generator is installed",
+        "expected": "@auditmation/generator-hub-module",
+        "actual": "${generator_package}",
+        "status": "passed|failed"
       }
     ],
     "failedTools": ["${list_of_failed_tools}"],
@@ -129,11 +147,13 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
 - **Tool not found**: Stop execution, report which tools are missing
 - **Version requirement not met**: Stop execution, report which tools need updating
 - **Environment validation failed**: Stop execution, report environment issues
+- **🚨 CRITICAL - Yeoman generator not installed**: STOP execution immediately, ask user to install `@auditmation/generator-hub-module` globally using: `npm install -g @auditmation/generator-hub-module`
 
 ## Success Criteria
 
 - All required tools are installed and meet minimum version requirements
 - Environment PATH includes all required executables
+- **🚨 CRITICAL**: Yeoman generator `@auditmation/generator-hub-module` is installed globally
 - All validation checks pass
 - Prerequisites check status is "passed"
 - Ready to proceed to module generation

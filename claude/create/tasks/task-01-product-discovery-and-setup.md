@@ -59,7 +59,7 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
 
 Where:
 - `productPackage`: Discovered product package name (e.g., "@auditlogic/product-github-github")
-- `modulePackage`: Generated module package name (always `@scope/module-{module-identifier}` format)
+- `modulePackage`: Generated module package name (always `@zerobias-org/module-{module-identifier}` format)
 - `serviceName`: Human-readable service name extracted from product files
 - `description`: Service description from product files
 - `baseUrl`: Primary service URL extracted from product files

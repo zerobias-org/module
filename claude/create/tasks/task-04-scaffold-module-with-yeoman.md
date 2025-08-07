@@ -42,6 +42,8 @@ Execute the @auditmation/hub-module generator with all required parameters:
      --repository '${repository}' \
      --author '${author}'
    ```
+   
+   **Note**: The generator package is `@auditmation/generator-hub-module` but the command uses `@auditmation/hub-module`
 
 2. **Parameters from Task 02 output**:
    - `product_package`: From Task 02 output

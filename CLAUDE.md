@@ -10,6 +10,7 @@
 - **DO NOT create modules or perform work without following the defined tasks**
 - **READ ALL CRITICAL RULES**: Each task file contains mandatory compliance rules marked with 🚨 - violating ANY rule means task failure
 - **USE CHECKLISTS**: Complete all pre-implementation and post-implementation checklists in task files
+- **🚨 NEVER TOUCH FILES OUTSIDE THE MODULE SCOPE** - Only modify, create, or fix files within the specific module being worked on. Do not improve or fix files in other modules, shared directories, or repository-wide configurations unless explicitly requested for the current module.
 
 This repository contains multiple types of tasks for module development. Each task type has its own dedicated documentation file.
 

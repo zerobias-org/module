@@ -127,7 +127,7 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
   "modulePackage": "${module_package}",
   "packageVersion": "0.0.0",
   "description": "${service_name}",
-  "repository": "https://github.com/zerobias-org/module",
+  "repository": "{repository_url}",
   "author": "team@zerobias.org",
   "apiDocumentationUrl": "${api_documentation_url}",
   "authenticationMethod": "${authentication_method}",

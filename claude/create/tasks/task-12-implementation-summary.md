@@ -117,29 +117,29 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
 The IMPLEMENTATION_SUMMARY.md should follow this structure:
 
 ```markdown
-# GitHub Module Implementation Summary
+# {Service Name} Module Implementation Summary
 
 ## Module Information
-- **Location**: `package/github/github`
-- **Package**: `@scope/module-github-github`
-- **Service**: GitHub API
+- **Location**: `package/{vendor}/{service}`
+- **Package**: `@scope/module-{vendor}-{service}`
+- **Service**: {Service Name} API
 
 ## Authentication
-- **Method**: Personal Access Token
+- **Method**: {Authentication Method}
 - **Setup**: [Brief setup instructions]
 
 ## API Operations
 ### Implemented
-- `listUsers` - Lists all users
-- `getUser` - Gets user by username
-- `getAuthenticatedUser` - Gets authenticated user info
+- `{operation1}` - {operation1 description}
+- `{operation2}` - {operation2 description}
+- `{operation3}` - {operation3 description}
 
 ### Excluded
-- `getUserById` - Excluded due to path conflict with getUser
+- `{excludedOperation}` - Excluded due to {reason}
 
 ## Property Mappings
-- `avatar_url` → `avatarUrl`
-- `created_at` → `createdAt`
+- `{external_property}` → `{internalProperty}`
+- `{another_field}` → `{anotherField}`
 - [Additional mappings...]
 
 ## Next Steps

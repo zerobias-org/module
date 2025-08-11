@@ -135,8 +135,8 @@ Create the test file structure:
 2. **Initialize logger**: Add `const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');` 
 3. **Log method call and result**: After each module operation call, add:
    ```typescript
-   const result = await userApi.get('octocat');
-   logger.debug(`userApi.get('octocat')`, JSON.stringify(result, null, 2));
+   const result = await userApi.get('testuser');
+   logger.debug(`userApi.get('testuser')`, JSON.stringify(result, null, 2));
    ```
 
 **Format**: `logger.debug('methodName(parameters)', JSON.stringify(result, null, 2))`

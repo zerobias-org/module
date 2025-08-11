@@ -50,7 +50,7 @@ Execute the @auditmation/hub-module generator with all required parameters:
    - `module_package`: From Task 02 output  
    - `package_version`: "0.0.0" (initial version)
    - `description`: Service name from Task 02 (use service name like 'Ec2', 'Jira' rather than longer descriptive text)
-   - `repository`: "https://github.com/zerobias-org/module"
+   - `repository`: "{repository_url}"
    - `author`: "team@zerobias.org"
 
 ### 4. Verify Generated Structure

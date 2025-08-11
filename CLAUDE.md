@@ -13,6 +13,7 @@
 - **🚨 NEVER TOUCH FILES OUTSIDE THE MODULE SCOPE** - Only modify, create, or fix files within the specific module being worked on. Do not improve or fix files in other modules, shared directories, or repository-wide configurations unless explicitly requested for the current module.
 - **🚨 GIT COMMITS AND PUSHES ARE FORBIDDEN** - Never commit changes or push to remote repositories. All work remains local until explicitly authorized.
 - **🚨 NEVER INSTALL PACKAGES AT ROOT LEVEL** - Never run `npm install` or any package installation commands in the repository root directory. Always use isolated work directories or specific module directories for package installations.
+- **🚨 TYPESCRIPT CODE ACCURACY** - When working with TypeScript code, always understand the interfaces first. Read the documentation, examine the modules, and understand exactly how to use functions and types. Never guess functions, values, properties, parameters, parameter count, parameter types, or return types that don't exist or don't match the actual interfaces. ALWAYS BE CORRECT FROM THE BEGINNING - verify every function signature, parameter order, and type before writing any code.
 
 This repository contains multiple types of tasks for module development. Each task type has its own dedicated documentation file.
 

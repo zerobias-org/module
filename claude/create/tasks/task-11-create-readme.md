@@ -2,18 +2,19 @@
 
 ## Overview
 
-Create an effective, short, and easy-to-read README.md file that serves as the main documentation for the module. Focus on concise, clear instructions covering essential information about installation, connection, usage, and testing.
+Create a concise, focused README.md file that provides essential information without overwhelming detail. Focus on practical information users actually need: installation, quick start, basic usage, and key links.
 
 ## 🚨 Critical Rules
 
-- **CONCISE COVERAGE** - Document essential module features and capabilities in short, readable format
-- **MINIMAL CODE EXAMPLES** - Include working examples for key features, keep examples brief
-- **CLEAR STRUCTURE** - Follow standard README format with logical sections, avoid excessive detail
-- **INSTALLATION INSTRUCTIONS** - Provide complete setup and installation steps
-- **API REFERENCE** - Document all public methods and their parameters
-- **TESTING GUIDANCE** - Include instructions for running all types of tests
-- **CONTRIBUTION GUIDELINES** - Add development and contribution information
-- **MAINTENANCE INFO** - Include version, license, and support information
+- **KEEP IT SHORT** - Maximum ~150 lines, focus on essentials only
+- **NO VERBOSE SECTIONS** - Remove detailed API reference, extensive examples, development setup
+- **ESSENTIAL ONLY** - Include: description, installation, quick start, basic usage, documentation links, license
+- **SINGLE EXAMPLE** - One working code example in Quick Start, no more
+- **LINK TO DETAILS** - Reference USER_GUIDE.md for detailed instructions
+- **NO VERSIONING** - Avoid version numbers (publish workflow handles this)
+- **NO SUPPORT/RELATED** - Remove support and related projects sections
+- **PUBLISHING AWARE** - Note that API operations/models are auto-appended during publish
+- **GENERIC EXAMPLES** - Never use "Zborg", "GitHub", or other specific product names in examples - use generic terms and placeholders like "{service_name}", "testuser"
 
 ## Input Requirements
 
@@ -60,61 +61,58 @@ Create an effective, short, and easy-to-read README.md file that serves as the m
 
 ### Step 2: Create README Structure
 
-**Standard README Sections:**
+**Concise README Sections:**
 ```markdown
 # {Module Name}
 
-[Brief description and badges]
+[Brief description - 1-2 sentences]
 
-## Table of Contents
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [API Reference](#api-reference)
-- [Testing](#testing)
-- [Examples](#examples)
-- [Error Handling](#error-handling)
-- [Contributing](#contributing)
-- [License](#license)
-- [Support](#support)
+For credential setup, see the [User Guide](USER_GUIDE.md).
 
-[Detailed sections follow...]
+**Note**: API operations and data models are automatically appended to this README during the publishing process based on the OpenAPI specification.
+
+## Installation
+
+[npm install command and basic requirements]
+
+## Quick Start
+
+[Single working example - 15-20 lines max]
+
+See [User Guide](USER_GUIDE.md) for detailed setup instructions.
+
+## Usage
+
+[Basic connection and operation examples - minimal detail]
+
+---
+
+📋 **Important**: This documentation is auto-generated. Please verify code examples work with the current version.
 ```
 
 ### Step 3: Write Project Header and Description
 
 **Project Header:**
-- Module name and version
-- Brief, clear description of what the module does
-- Badges for build status, version, license, etc.
-- Links to documentation and related resources
+- Module name (no version number - publish workflow handles versioning)
+- 1-2 sentence description of what the module does
+- No badges or decorative elements
 
 **Example Header:**
 ```markdown
 # @zerobias-org/module-{vendor}{-suite?}-{product}
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+A TypeScript client library for integrating with the {Service Name} API. Provides type-safe operations for {brief description of main capabilities}.
 
-A TypeScript client library for integrating with {Service Name} API. This module provides a clean, type-safe interface for {brief description of main capabilities}.
+For credential setup, see the [User Guide](USER_GUIDE.md).
 
-## Features
-
-- ✅ Full TypeScript support with generated types
-- ✅ {Authentication method} authentication  
-- ✅ {List key features from Task 02 operations}
-- ✅ Comprehensive error handling
-- ✅ Full test coverage
-- ✅ Promise-based async API
+**Note**: API operations and data models are automatically appended to this README during the publishing process based on the OpenAPI specification.
 ```
 
 ### Step 4: Write Installation Instructions
 
 **Installation Section:**
-- npm/yarn installation commands
-- Peer dependencies if any
-- System requirements
-- Optional dependencies
+- npm install command only
+- Basic requirements
 
 **Example:**
 ```markdown
@@ -124,412 +122,91 @@ A TypeScript client library for integrating with {Service Name} API. This module
 npm install @zerobias-org/module-{vendor}{-suite?}-{product}
 ```
 
-**Note**: This package is published to the private registry at `pkg.zerobias.org`. Ensure your `.npmrc` is configured with the appropriate registry and authentication.
-
-### Prerequisites
-
-- Node.js 16.0 or higher
-- TypeScript 4.5 or higher (for TypeScript projects)
-- {Service Name} account with API access
-- Access to pkg.zerobias.org package registry
-
-### Peer Dependencies
-
-This module requires the following peer dependencies:
-- `@auditmation/types-core`: ^1.0.0
-- `@auditmation/types-{vendor}`: ^1.0.0 (if available)
+Requires Node.js 18+ and a {Service Name} account with API access.
 ```
 
 ### Step 5: Create Quick Start Guide
 
 **Quick Start Section:**
-- Minimal example to get users started immediately
-- Basic connection and authentication
-- Simple operation example
-- Reference to detailed documentation
+- Single working example (15-20 lines max)
+- Basic connection and one operation
+- Reference to user guide
 
 **Example:**
 ```markdown
 ## Quick Start
 
 ```typescript
-import { {ServiceName}Impl } from '@zerobias-org/module-{vendor}{-suite?}-{product}';
+import { new{ServiceName} } from '@zerobias-org/module-{vendor}{-suite?}-{product}';
 
-// Initialize the client
-const client = new {ServiceName}Impl({
-  authentication: {
-    type: '{auth_type}',
-    token: process.env.{SERVICE}_API_TOKEN
-  },
-  baseUrl: process.env.{SERVICE}_BASE_URL
+const client = new{ServiceName}();
+
+await client.connect({
+  apiToken: process.env.{SERVICE}_API_TOKEN
 });
 
-// Connect and perform a basic operation
-async function example() {
-  try {
-    await client.connect();
-    
-    // Example operation from your API
-    const result = await client.{exampleProducer}.{exampleOperation}();
-    console.log('Success:', result);
-  } catch (error) {
-    console.error('Error:', error.message);
-  } finally {
-    await client.disconnect();
-  }
-}
+const result = await client.get{ExampleResource}Api().{simpleOperation}();
+console.log(result);
 
-example();
-```
-
-For detailed setup instructions, see our [User Guide](USER_GUIDE.md).
-```
-
-### Step 6: Document Configuration Options
-
-**Configuration Section:**
-- All configuration parameters from connection profile
-- Environment variable options
-- Configuration file examples
-- Authentication methods
-
-**Example:**
-```markdown
-## Configuration
-
-### Environment Variables
-
-```bash
-# Required
-{SERVICE}_API_TOKEN=your_api_token_here
-{SERVICE}_BASE_URL=https://api.{service}.com/v1
-
-# Optional  
-{SERVICE}_ORGANIZATION_ID=your_org_id
-{SERVICE}_TIMEOUT=30000
-{SERVICE}_RETRY_ATTEMPTS=3
-```
-
-### Connection Profile
-
-```yaml
-{service_name}:
-  authentication:
-    type: "{primary_auth_type}"
-    token: "${SERVICE_API_TOKEN}"
-    # Additional auth fields based on Task 02
-  baseUrl: "${SERVICE_BASE_URL}"
-  timeout: 30000
-  retryAttempts: 3
-```
-
-### Authentication Methods
-
-[Document all authentication methods from Task 02]
-```
-
-### Step 7: Create Usage Documentation
-
-**Usage Section:**
-- Client initialization patterns
-- Connection management
-- Producer usage examples
-- Common patterns and best practices
-
-**Structure based on Task 02 operations:**
-```markdown
-## Usage
-
-### Client Initialization
-
-```typescript
-import { {ServiceName}Impl, {ServiceName}Config } from '@zerobias-org/module-{vendor}{-suite?}-{product}';
-
-const config: {ServiceName}Config = {
-  authentication: {
-    type: 'token',
-    token: process.env.{SERVICE}_API_TOKEN
-  },
-  baseUrl: 'https://api.{service}.com/v1'
-};
-
-const client = new {ServiceName}Impl(config);
-```
-
-### Connection Management
-
-```typescript
-// Connect to the service
-await client.connect();
-
-// Check connection status
-if (client.isConnected()) {
-  console.log('Connected successfully');
-}
-
-// Always disconnect when done
 await client.disconnect();
 ```
 
-### Using Producers
+See [User Guide](USER_GUIDE.md) for detailed setup instructions.
+```
 
-[For each producer from Task 02, create usage examples]
+### Step 6: Create Basic Usage Section
 
-#### {Producer1Name} Operations
+**Usage Section:**
+- Brief connection example
+- List available producers/APIs
+- Keep concise without additional references
+
+**Example:**
+```markdown
+## Usage
 
 ```typescript
-// Example operations for this producer
-const {producer} = client.{producerProperty};
+const client = new{ServiceName}();
+await client.connect({ apiToken: 'your-token' });
 
-// List operation
-const items = await {producer}.list();
-
-// Get operation  
-const item = await {producer}.get(itemId);
-
-// Create operation (if available)
-const newItem = await {producer}.create(itemData);
+// Available APIs
+const {exampleApi} = client.get{ExampleResource}Api();
+await {exampleApi}.{operation}();
 ```
 ```
 
-### Step 8: Create API Reference
+### Step 7: Final Review
 
-**API Reference Section:**
-- Document all public classes and interfaces
-- Method signatures with parameters and return types
-- Error types and when they're thrown
-- Type definitions and enums
+**Final Structure Check:**
+- Ensure all sections are concise and focused
+- Verify User Guide links are properly placed
+- Confirm publishing workflow note is included
 
-**Example:**
-```markdown
-## API Reference
-
-### {ServiceName}Impl
-
-Main implementation class for the {Service Name} module.
-
-#### Constructor
-
-```typescript
-constructor(config: {ServiceName}Config)
-```
-
-**Parameters:**
-- `config`: Configuration object with authentication and connection settings
-
-#### Methods
-
-##### connect(): Promise<void>
-
-Establishes connection to the {Service Name} API.
-
-**Throws:**
-- `InvalidCredentialsError`: When authentication fails
-- `ConnectivityError`: When network connection fails
-
-##### isConnected(): boolean
-
-Returns whether the client is currently connected.
-
-##### disconnect(): Promise<void>  
-
-Closes the connection to the service.
-
-[Continue for all methods...]
-
-### Producers
-
-[Document each producer class with its methods]
-
-### Error Types
-
-[Document all error types from core-error-usage-guide.md]
-
-### Type Definitions
-
-[Reference generated types and interfaces]
-```
-
-### Step 9: Add Testing Documentation
-
-**Testing Section:**
-- How to run different types of tests
-- Test structure and organization
-- Mock setup for development
-- Integration test setup
-
-**Example:**
-```markdown
-## Testing
-
-### Running Tests
-
-```bash
-# Run all tests
-npm test
-
-# Run only unit tests
-npm run test:unit
-
-# Run integration tests (requires credentials)
-npm run test:integration
-
-# Run tests with coverage
-npm run test:coverage
-```
-
-### Test Structure
-
-- `test/unit/` - Unit tests with HTTP mocking
-- `test/integration/` - Integration tests with real API calls
-- `test/fixtures/` - Test data and mock responses
-
-### Setting Up Integration Tests
-
-1. Copy `.env.example` to `.env`
-2. Add your {Service Name} credentials
-3. Run integration tests: `npm run test:integration`
-
-### Writing Custom Tests
-
-[Example of how to write tests using the module]
-```
-
-### Step 10: Add Examples Section
-
-**Examples Section:**
-- Real-world usage scenarios
-- Common integration patterns  
-- Error handling examples
-- Advanced configuration examples
-
-**Example:**
-```markdown
-## Examples
-
-### Basic CRUD Operations
-
-[Working example of create, read, update, delete operations]
-
-### Error Handling
-
-```typescript
-import { 
-  InvalidCredentialsError, 
-  NoSuchObjectError, 
-  ConnectivityError 
-} from '@zerobias-org/module-{vendor}{-suite?}-{product}';
-
-try {
-  await client.connect();
-  const result = await client.{producer}.get('nonexistent-id');
-} catch (error) {
-  if (error instanceof NoSuchObjectError) {
-    console.log('Item not found');
-  } else if (error instanceof InvalidCredentialsError) {
-    console.log('Please check your credentials');
-  } else if (error instanceof ConnectivityError) {
-    console.log('Network connection failed');
-  } else {
-    console.log('Unexpected error:', error.message);
-  }
-}
-```
-
-### Batch Operations
-
-[Example of efficient batch processing]
-
-### Custom Configuration
-
-[Example of advanced configuration scenarios]
-```
-
-### Step 11: Add Contributing and Support Information
-
-**Contributing Section:**
-- Development setup instructions
-- Code style guidelines
-- Testing requirements
-- Pull request process
-
-**Support Section:**
-- Links to documentation
-- Issue reporting guidelines
-- Community resources
-- Commercial support options
-
-**Example:**
-```markdown
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-### Development Setup
-
-1. Fork and clone the repository
-2. Install dependencies: `npm install`
-3. Run tests: `npm test`
-4. Make your changes and add tests
-5. Submit a pull request
-
-### Code Style
-
-- Use TypeScript for all new code
-- Follow existing code patterns
-- Add tests for new functionality
-- Update documentation as needed
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-- 📖 [User Guide](USER_GUIDE.md) - Detailed setup and usage instructions
-
-## Related Projects
-
-- [@auditmation/types-core](https://github.com/auditmation/types-core) - Core type definitions
-- [@auditmation/types-{vendor}](https://github.com/auditmation/types-{vendor}) - {Vendor} specific types
-```
-
-### Step 12: Review and Validate
-
-**Content Review:**
-- Verify all code examples work correctly
-- Check that all features from implementation are documented
-- Ensure links and references are accurate
-- Validate that examples match the actual API
-
-**Completeness Check:**
-- All producers and operations documented
-- Configuration options covered
-- Error handling explained
-- Testing instructions complete
+Note: No separate Documentation section needed - User Guide links are embedded throughout.
 
 ## Success Criteria
 
-- [ ] README.md created with comprehensive module documentation
-- [ ] Clear installation and quick start instructions
-- [ ] Complete configuration documentation with examples
-- [ ] Usage examples for all major features and producers
-- [ ] API reference with method signatures and parameters
-- [ ] Testing instructions and examples
-- [ ] Error handling documentation and examples
-- [ ] Contributing guidelines and development setup
-- [ ] Support information and links to additional resources
-- [ ] All code examples validated and working
-- [ ] Documentation matches actual implementation capabilities
+- [ ] README.md created with concise, focused documentation (~150 lines max)
+- [ ] Clear project description (1-2 sentences)
+- [ ] Simple installation instructions
+- [ ] Single working Quick Start example
+- [ ] Basic usage section with API overview
+- [ ] Early link to User Guide for credential setup 
+- [ ] Links to User Guide for detailed instructions
+- [ ] Option 2 AI warning with proper formatting
+- [ ] Note about auto-generated API operations/models during publish
+- [ ] No license, version numbers, support sections, or related projects
+- [ ] No excessive detail, badges, or verbose sections
+- [ ] Code example validated and working
 
 ## Documentation Quality Standards
 
 The README should serve as:
-- **Quick reference** for experienced developers
-- **Learning resource** for new users
-- **Complete guide** covering all module capabilities
-- **Professional presentation** of the module's value proposition
+- **Quick overview** for developers evaluating the module
+- **Fast start** with minimal working example
+- **Navigation hub** linking to detailed documentation
+- **Professional but concise** presentation
 
 ---
 
-**Human Review Required**: After creating the README, verify that all examples work correctly and that the documentation accurately reflects the module's current capabilities and API.
+**Note**: Keep README under 150 lines. Detailed information belongs in USER_GUIDE.md. The publish workflow will automatically append API operations and data models from the OpenAPI specification.

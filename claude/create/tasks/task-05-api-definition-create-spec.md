@@ -12,6 +12,14 @@ This task requires the HIGHEST level of attention, precision, and quality. NO sh
 
 This task creates a comprehensive OpenAPI specification, defines connection profiles, validates the specification, and synchronizes metadata from package.json. It involves researching the target API documentation, selecting appropriate authentication methods using AI-powered analysis, and defining complete API endpoints and schemas.
 
+## 🚨 CRITICAL SCRIPT PROTECTION RULE 🚨
+
+**NEVER MODIFY OR WRITE TO CLAUDE SCRIPTS**: 
+- The validation script at `claude/scripts/validate-api-spec.sh` is PROTECTED and must NEVER be modified
+- ALWAYS use the existing script as-is with proper input parameters only
+- If the script needs updates, the user will handle it - AI agents must never touch claude scripts
+- This rule applies to ALL files in the `claude/scripts/` directory
+
 ## 🚨 CRITICAL RULES - MANDATORY COMPLIANCE 🚨
 
 **⚠️ STOP AND READ EVERY RULE BEFORE STARTING IMPLEMENTATION ⚠️**

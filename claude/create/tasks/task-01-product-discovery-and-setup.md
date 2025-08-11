@@ -20,7 +20,7 @@ This task discovers the target product, sets up the working environment, and ext
 
 2. **Identify matching product**:
    - Products follow format: `@scope/product-{vendor}{-suite?}-{product}`
-   - Examples: `@auditlogic/product-amazon-aws-iam`, `@auditlogic/product-github-github`
+   - Examples: `@auditlogic/product-amazon-aws-iam`, `@auditlogic/product-vendor-service`
    - Match case-insensitively by product component mainly
    - If multiple matches exist (e.g., `gcp-iam` and `aws-iam` for "iam" request): **STOP** and ask user to clarify which product to use
    - If product not found: **STOP** and wait for user action
@@ -58,7 +58,7 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
 ```
 
 Where:
-- `productPackage`: Discovered product package name (e.g., "@auditlogic/product-github-github")
+- `productPackage`: Discovered product package name (e.g., "@auditlogic/product-vendor-service")
 - `modulePackage`: Generated module package name (always `@zerobias-org/module-{module-identifier}` format)
 - `serviceName`: Human-readable service name extracted from product files
 - `description`: Service description from product files

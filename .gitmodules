@@ -1,3 +1,0 @@
-[submodule ".claude/.localmemory/.repos/types"]
-	path = .claude/.localmemory/.repos/types
-	url = https://github.com/auditmation/types

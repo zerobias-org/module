@@ -1,0 +1,16 @@
+{
+  "acu": {
+    "id": 183568,
+    "name": "Caspian office ACU",
+    "status": "online",
+    "serialNumber": "1917240000000100000d00010000da05",
+    "createdAt": "2024-07-17T00:21:27.000Z",
+    "updatedAt": "2025-08-18T10:14:49.000Z"
+  },
+  "validation": {
+    "hasIdentifier": true,
+    "hasIpAddress": false,
+    "hasCreatedAt": true,
+    "timestamp": "2025-08-18T16:12:35.758Z"
+  }
+}

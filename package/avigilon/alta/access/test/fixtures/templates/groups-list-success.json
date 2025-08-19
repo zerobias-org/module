@@ -1,0 +1,30 @@
+{
+  "data": [
+    {
+      "id": 123,
+      "name": "Test User",
+      "type": "access_group",
+      "description": "Administrative access group",
+      "userCount": 5,
+      "createdAt": "2023-01-01T00:00:00Z",
+      "updatedAt": "2023-01-02T00:00:00Z",
+      "organizationId": "org-456",
+      "permissions": [
+        "admin"
+      ],
+      "customFields": {
+        "category": "VIP",
+        "priority": "high"
+      }
+    },
+    {
+      "id": 456,
+      "name": "Test User",
+      "type": "access_group",
+      "description": "Standard user access",
+      "userCount": 25,
+      "createdAt": "2023-01-05T00:00:00Z"
+    }
+  ],
+  "totalCount": 10
+}

@@ -1,0 +1,770 @@
+openapi: 3.0.3
+info:
+  x-product-infos:
+    # Array of external references to Products (versions of products) involved in the module.
+    # the catalog.yml file will in most cases be referenced from `node_modules/hub-store-catalog`
+    - $ref: "./node_modules/@auditlogic/product-auditmation-auditmation/catalog.yml#/Product"
+  version: 0.0.0
+  title: '@zerobias-org/module-avigilon-alta-access'
+  description: Avigilon Alta Access
+  x-impl-name: Access
+components:
+  parameters:
+    userIdParam:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Unique identifier for a user
+    groupIdParam:
+      name: groupId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Unique identifier for a group
+    acuIdParam:
+      name: acuId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Unique identifier for an access control unit (ACU)
+    organizationIdParam:
+      name: organizationId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for the organization
+    pageNumberParam:
+      $ref: "./node_modules/@auditmation/types-core/schema/pageNumberParam.yml"
+    pageSizeParam:
+      $ref: "./node_modules/@auditmation/types-core/schema/pageSizeParam.yml"
+  headers:
+    pagedLinkHeader:
+      $ref: "./node_modules/@auditmation/types-core/schema/pagedLinkHeader.yml"
+  securitySchemes:
+    access-token:
+      type: oauth2
+      description: Authentication for the Avigilon Alta Access API (actual method is access token)
+      flows:
+        authorizationCode:
+          authorizationUrl: https://api.openpath.com/auth/login
+          tokenUrl: https://api.openpath.com/auth/accessTokens
+          scopes:
+            read:users: Read access to user information
+            read:groups: Read access to group information
+            read:acus: Read access to access control units
+            read:user-roles: Read access to user role assignments
+            read:user-sites: Read access to user site associations
+            read:group-users: Read access to group user memberships
+            read:group-entries: Read access to group entries and permissions
+            read:acu-ports: Read access to ACU port information
+  schemas:
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - firstName
+        - lastName
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the user
+        email:
+          type: string
+          format: email
+          description: User's email address
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        phoneNumber:
+          type: string
+          description: User's phone number
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+          description: User's current status
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when user was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when user was last updated
+    UserInfo:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            organizationId:
+              type: number
+              description: Organization ID the user belongs to
+            avatarUrl:
+              type: string
+              format: url
+              description: URL to user's avatar image
+            lastLoginAt:
+              type: string
+              format: date-time
+              description: Timestamp of user's last login
+            permissions:
+              type: array
+              items:
+                type: string
+              description: List of user permissions
+            customFields:
+              type: object
+              additionalProperties:
+                type: string
+              description: Custom field values for the user
+    Group:
+      type: object
+      required:
+        - id
+        - name
+        - type
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the group
+        name:
+          type: string
+          description: Name of the group
+        type:
+          type: string
+          enum: [access_group, role_group, permission_group]
+          description: Type of group
+        description:
+          type: string
+          description: Description of the group
+        userCount:
+          type: integer
+          description: Number of users in the group
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when group was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when group was last updated
+    GroupInfo:
+      allOf:
+        - $ref: '#/components/schemas/Group'
+        - type: object
+          properties:
+            organizationId:
+              type: number
+              description: Organization ID the group belongs to
+            parentGroupId:
+              type: integer
+              format: int64
+              description: Parent group ID if this is a child group
+            permissions:
+              type: array
+              items:
+                type: string
+              description: List of permissions assigned to the group
+            accessRules:
+              type: array
+              items:
+                $ref: '#/components/schemas/AccessRule'
+              description: Access rules for the group
+            customFields:
+              type: object
+              additionalProperties:
+                type: string
+              description: Custom field values for the group
+    Acu:
+      type: object
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the ACU
+        name:
+          type: string
+          description: Name of the ACU
+        status:
+          type: string
+          enum: [online, offline, error, maintenance]
+          description: Current status of the ACU
+        modelNumber:
+          type: string
+          description: ACU model number
+        serialNumber:
+          type: string
+          description: ACU serial number
+        firmwareVersion:
+          type: string
+          description: Current firmware version
+        ipAddress:
+          type: string
+          format: ip
+          description: IP address of the ACU
+        macAddress:
+          type: string
+          description: MAC address of the ACU
+        location:
+          type: string
+          description: Physical location of the ACU
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when ACU was registered
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when ACU was last updated
+    AcuInfo:
+      allOf:
+        - $ref: '#/components/schemas/Acu'
+        - type: object
+          properties:
+            organizationId:
+              type: number
+              description: Organization ID the ACU belongs to
+            siteId:
+              type: number
+              description: Site ID where the ACU is located
+            portCount:
+              type: integer
+              description: Number of ports on the ACU
+            lastHeartbeat:
+              type: string
+              format: date-time
+              description: Timestamp of last heartbeat from the ACU
+            configuration:
+              $ref: '#/components/schemas/AcuConfiguration'
+              description: ACU configuration settings
+            customFields:
+              type: object
+              additionalProperties:
+                type: string
+              description: Custom field values for the ACU
+    Role:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the role
+        name:
+          type: string
+          description: Name of the role
+        description:
+          type: string
+          description: Description of the role
+        permissions:
+          type: array
+          items:
+            type: string
+          description: List of permissions granted by this role
+        assignedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the role was assigned
+    Site:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the site
+        name:
+          type: string
+          description: Name of the site
+        address:
+          type: string
+          description: Physical address of the site
+        city:
+          type: string
+          description: City where the site is located
+        state:
+          type: string
+          description: State/province where the site is located
+        country:
+          type: string
+          description: Country where the site is located
+        postalCode:
+          type: string
+          description: Postal/zip code of the site
+        timezone:
+          type: string
+          description: Timezone of the site
+        status:
+          type: string
+          enum: [active, inactive, maintenance]
+          description: Current status of the site
+    Entry:
+      type: object
+      required:
+        - id
+        - type
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the entry
+        type:
+          type: string
+          enum: [access_permission, door_permission, zone_permission]
+          description: Type of entry/permission
+        name:
+          type: string
+          description: Name of the entry
+        description:
+          type: string
+          description: Description of the entry
+        doorId:
+          type: integer
+          format: int64
+          description: Door ID associated with the entry
+        zoneId:
+          type: integer
+          format: int64
+          description: Zone ID associated with the entry
+        timeRestrictions:
+          $ref: '#/components/schemas/TimeRestriction'
+          description: Time-based access restrictions
+        status:
+          type: string
+          enum: [active, inactive, expired]
+          description: Current status of the entry
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when entry was created
+        expiresAt:
+          type: string
+          format: date-time
+          description: Timestamp when entry expires
+    Port:
+      type: object
+      required:
+        - id
+        - number
+        - type
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the port
+        number:
+          type: integer
+          description: Port number on the ACU
+        type:
+          type: string
+          enum: [reader, door_sensor, motion_sensor, alarm_output]
+          description: Type of device connected to the port
+        name:
+          type: string
+          description: Name assigned to the port
+        description:
+          type: string
+          description: Description of the port
+        status:
+          type: string
+          enum: [active, inactive, error, disconnected]
+          description: Current status of the port
+        configuration:
+          $ref: '#/components/schemas/PortConfiguration'
+          description: Port-specific configuration settings
+        lastActivity:
+          type: string
+          format: date-time
+          description: Timestamp of last activity on the port
+    AccessRule:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the access rule
+        name:
+          type: string
+          description: Name of the access rule
+        description:
+          type: string
+          description: Description of the access rule
+        conditions:
+          type: array
+          items:
+            type: string
+          description: Conditions that must be met for access
+        actions:
+          type: array
+          items:
+            type: string
+          description: Actions to take when rule is triggered
+    TimeRestriction:
+      type: object
+      properties:
+        startTime:
+          type: string
+          format: time
+          description: Start time for access (HH:MM format)
+        endTime:
+          type: string
+          format: time
+          description: End time for access (HH:MM format)
+        daysOfWeek:
+          type: array
+          items:
+            type: string
+            enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]
+          description: Days of the week when access is allowed
+        validFrom:
+          type: string
+          format: date
+          description: Start date for the time restriction
+        validUntil:
+          type: string
+          format: date
+          description: End date for the time restriction
+    AcuConfiguration:
+      type: object
+      properties:
+        pollingInterval:
+          type: integer
+          description: Heartbeat polling interval in seconds
+        timeoutSettings:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Various timeout settings
+        securitySettings:
+          type: object
+          additionalProperties:
+            type: string
+          description: Security-related configuration
+        networkSettings:
+          type: object
+          properties:
+            dhcpEnabled:
+              type: boolean
+              description: Whether DHCP is enabled
+            staticIp:
+              type: string
+              format: ip
+              description: Static IP address if DHCP is disabled
+            subnetMask:
+              type: string
+              description: Subnet mask
+            gateway:
+              type: string
+              format: ip
+              description: Gateway IP address
+    PortConfiguration:
+      type: object
+      properties:
+        sensitivity:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Sensitivity level for the port
+        debounceTime:
+          type: integer
+          description: Debounce time in milliseconds
+        pollingRate:
+          type: integer
+          description: Polling rate in milliseconds
+        thresholds:
+          type: object
+          additionalProperties:
+            type: number
+          description: Various threshold settings
+        customSettings:
+          type: object
+          additionalProperties:
+            type: string
+          description: Custom configuration settings
+paths:
+  /organizations/{organizationId}/users:
+    get:
+      tags:
+        - user
+      summary: Retrieves all users in the organization
+      operationId: listUsers
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: List of users
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+      security:
+        - access-token: ["read:users"]
+  /organizations/{organizationId}/users/{userId}:
+    get:
+      tags:
+        - user
+      summary: Retrieves single user details by user ID
+      operationId: getUser
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/userIdParam'
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+      security:
+        - access-token: ["read:users"]
+  /organizations/{organizationId}/users/{userId}/roles:
+    get:
+      tags:
+        - user
+      summary: Retrieves all roles assigned to a specific user
+      operationId: listUserRoles
+      x-method-name: listRoles
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/userIdParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: List of user roles
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Role'
+      security:
+        - access-token: ["read:user-roles"]
+  /organizations/{organizationId}/users/{userId}/sites:
+    get:
+      tags:
+        - user
+      summary: Retrieves all sites associated with a specific user
+      operationId: listUserSites
+      x-method-name: listSites
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/userIdParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: List of user sites
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Site'
+      security:
+        - access-token: ["read:user-sites"]
+  /organizations/{organizationId}/groups:
+    get:
+      tags:
+        - group
+      summary: Retrieves all access groups in the organization
+      operationId: listGroups
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: List of groups
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Group'
+      security:
+        - access-token: ["read:groups"]
+  /organizations/{organizationId}/groups/{groupId}:
+    get:
+      tags:
+        - group
+      summary: Retrieves single access group details by group ID
+      operationId: getGroup
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/groupIdParam'
+      responses:
+        '200':
+          description: Group details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupInfo'
+      security:
+        - access-token: ["read:groups"]
+  /organizations/{organizationId}/groups/{groupId}/users:
+    get:
+      tags:
+        - group
+      summary: Retrieves all users belonging to a specific group
+      operationId: listGroupUsers
+      x-method-name: listUsers
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/groupIdParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: List of group users
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+      security:
+        - access-token: ["read:group-users"]
+  /organizations/{organizationId}/groups/{groupId}/entries:
+    get:
+      tags:
+        - group
+      summary: Retrieves all entries/permissions for a specific group
+      operationId: listGroupEntries
+      x-method-name: listEntries
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/groupIdParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: List of group entries
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Entry'
+      security:
+        - access-token: ["read:group-entries"]
+  /organizations/{organizationId}/acus:
+    get:
+      tags:
+        - acu
+      summary: Retrieves all Access Control Units (ACUs) in the organization
+      operationId: listAcus
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: List of ACUs
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Acu'
+      security:
+        - access-token: ["read:acus"]
+  /organizations/{organizationId}/acus/{acuId}:
+    get:
+      tags:
+        - acu
+      summary: Retrieves single ACU details by ACU ID
+      operationId: getAcu
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/acuIdParam'
+      responses:
+        '200':
+          description: ACU details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcuInfo'
+      security:
+        - access-token: ["read:acus"]
+  /organizations/{organizationId}/acus/{acuId}/ports:
+    get:
+      tags:
+        - acu
+      summary: Retrieves all ports for a specific ACU
+      operationId: listAcuPorts
+      x-method-name: listPorts
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+        - $ref: '#/components/parameters/acuIdParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: List of ACU ports
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Port'
+      security:
+        - access-token: ["read:acu-ports"]

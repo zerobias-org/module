@@ -1,0 +1,51 @@
+{
+  "data": [
+    {
+      "id": "port-1",
+      "name": "Test User",
+      "type": "input",
+      "status": "active",
+      "description": "Main entrance sensor",
+      "configuration": {
+        "debounceTime": 100,
+        "pollingRate": 500,
+        "enabled": true,
+        "customSettings": {
+          "sensitivity": "high",
+          "threshold": 0.8
+        }
+      }
+    },
+    {
+      "id": "port-2",
+      "name": "Test User",
+      "type": "output",
+      "status": "inactive",
+      "description": "Door strike control",
+      "configuration": {
+        "debounceTime": 50,
+        "pollingRate": 1000,
+        "enabled": true,
+        "customSettings": {
+          "voltage": "12V",
+          "duration": 3000
+        }
+      }
+    },
+    {
+      "id": "port-3",
+      "name": "Test User",
+      "type": "output",
+      "status": "active",
+      "description": "Status LED",
+      "configuration": {
+        "enabled": true,
+        "customSettings": {
+          "color": "green",
+          "brightness": 80
+        }
+      }
+    }
+  ],
+  "totalCount": 4
+}

@@ -1,0 +1,27 @@
+{
+  "id": 123,
+  "name": "Test User",
+  "type": "access_group",
+  "description": "Administrative access group",
+  "userCount": 5,
+  "createdAt": "2023-01-01T00:00:00Z",
+  "updatedAt": "2023-01-02T00:00:00Z",
+  "organizationId": "org-456",
+  "parentGroupId": "parent-789",
+  "permissions": [
+    "admin"
+  ],
+  "accessRules": [
+    {
+      "rule": "allow_all_doors",
+      "conditions": {
+        "timeRestriction": "business_hours",
+        "locationRestriction": "building_a"
+      }
+    }
+  ],
+  "customFields": {
+    "category": "VIP",
+    "priority": "high"
+  }
+}

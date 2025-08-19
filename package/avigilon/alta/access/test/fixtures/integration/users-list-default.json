@@ -1,0 +1,35 @@
+{
+  "count": 2,
+  "pageCount": 1,
+  "pageNumber": 1,
+  "pageSize": 50,
+  "items": [
+    {
+      "id": 123,
+      "identity": {
+        "email": "test@testcorp.com",
+        "firstName": "Jane",
+        "lastName": "Doe",
+        "mobilePhone": "+1-555-0123"
+      },
+      "status": "ACTIVE",
+      "createdAt": "2024-12-18T17:27:10.000Z",
+      "updatedAt": "2024-12-18T17:27:10.000Z"
+    },
+    {
+      "id": 124,
+      "identity": {
+        "email": "test@example.com",
+        "firstName": "Alice",
+        "lastName": "Johnson",
+        "mobilePhone": "+1234567890"
+      },
+      "status": "ACTIVE",
+      "createdAt": "2024-08-27T17:22:39.000Z",
+      "updatedAt": "2024-10-14T13:40:57.000Z"
+    }
+  ],
+  "columnOptions": {},
+  "sortBy": [],
+  "sortDir": []
+}

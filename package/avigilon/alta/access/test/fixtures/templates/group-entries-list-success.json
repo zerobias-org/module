@@ -1,0 +1,32 @@
+{
+  "data": [
+    {
+      "id": "entry-123",
+      "type": "card_read",
+      "userId": 456,
+      "doorId": "door-main",
+      "timestamp": "2023-01-01T08:00:00Z",
+      "granted": true,
+      "reason": "Valid access"
+    },
+    {
+      "id": "entry-456",
+      "type": "pin_entry",
+      "userId": 789,
+      "doorId": "door-secure",
+      "timestamp": "2023-01-01T08:05:00Z",
+      "granted": false,
+      "reason": "Invalid PIN"
+    },
+    {
+      "id": "entry-789",
+      "type": "mobile_unlock",
+      "userId": 123,
+      "doorId": "door-side",
+      "timestamp": "2023-01-01T08:10:00Z",
+      "granted": true,
+      "reason": "Mobile app unlock"
+    }
+  ],
+  "totalCount": 150
+}

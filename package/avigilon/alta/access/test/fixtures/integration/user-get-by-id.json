@@ -1,0 +1,12 @@
+{
+  "id": 123,
+  "identity": {
+    "email": "test@example.com",
+    "firstName": "John",
+    "lastName": "Smith",
+    "mobilePhone": "+1-555-0123"
+  },
+  "status": "ACTIVE",
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "updatedAt": "2024-01-01T00:00:00.000Z"
+}

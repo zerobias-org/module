@@ -1,0 +1,8 @@
+{
+  "user.list": "maybe",
+  "user.get": "maybe",
+  "group.list": "maybe",
+  "group.get": "maybe",
+  "acu.list": "maybe",
+  "acu.get": "maybe"
+}

@@ -1,0 +1,7 @@
+{
+  "error": {
+    "message": "Unauthorized - Invalid credentials",
+    "status": 401,
+    "code": "UNAUTHORIZED"
+  }
+}

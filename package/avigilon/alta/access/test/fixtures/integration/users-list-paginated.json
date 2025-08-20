@@ -1,1 +1,61 @@
-{"items":[{"id":125,"identity":{"email":"alice@example.com","firstName":"Alice","lastName":"Smith","mobilePhone":"+1-555-0126"},"status":"ACTIVE","createdAt":"2024-01-03T00:00:00.000Z","updatedAt":"2024-01-03T00:00:00.000Z"}],"count":25}
+{
+  "count": 50,
+  "pageCount": 10,
+  "pageNumber": 1,
+  "pageSize": 5,
+  "items": [
+    {
+      "id": 22509982,
+      "email": "user@example.com",
+      "firstName": "Delivery",
+      "lastName": null,
+      "phoneNumber": "+1-555-0123",
+      "status": "active",
+      "createdAt": "2024-12-18T17:27:10.000Z",
+      "updatedAt": "2024-12-18T17:27:10.000Z"
+    },
+    {
+      "id": 20032735,
+      "email": "user@example.com",
+      "firstName": "Luis",
+      "lastName": "Alvarado",
+      "phoneNumber": "+1-555-0123",
+      "status": "inactive",
+      "createdAt": "2024-08-27T17:22:39.000Z",
+      "updatedAt": "2024-10-14T13:40:57.000Z"
+    },
+    {
+      "id": 19710706,
+      "email": "user@example.com",
+      "firstName": "Jonathan",
+      "lastName": "Bates",
+      "phoneNumber": "+1-555-0123",
+      "status": "active",
+      "createdAt": "2024-08-14T14:56:23.000Z",
+      "updatedAt": "2024-08-17T10:26:50.000Z"
+    },
+    {
+      "id": 19010569,
+      "email": "user@example.com",
+      "firstName": "Nate",
+      "lastName": "Bauer",
+      "phoneNumber": "+1-555-0123",
+      "status": "inactive",
+      "createdAt": "2024-07-18T14:18:18.000Z",
+      "updatedAt": "2024-09-06T10:32:28.000Z"
+    },
+    {
+      "id": 19670197,
+      "email": "user@example.com",
+      "firstName": "Chris",
+      "lastName": "Bauer",
+      "phoneNumber": "+1-555-0123",
+      "status": "active",
+      "createdAt": "2024-08-13T03:26:11.000Z",
+      "updatedAt": "2024-09-17T10:28:13.000Z"
+    }
+  ],
+  "columnOptions": {},
+  "sortBy": [],
+  "sortDir": []
+}

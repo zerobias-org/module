@@ -1,6 +1,17 @@
 import { toEnum, map } from '@auditmation/util-hub-module-utils';
 import { URL, Email } from '@auditmation/types-core-js';
-import { User, UserInfo, Group, GroupInfo, Acu, AcuInfo, Role, Site, Entry, Port } from '../generated/model';
+import {
+  User,
+  UserInfo,
+  Group,
+  GroupInfo,
+  Acu,
+  AcuInfo,
+  Role,
+  Site,
+  Entry,
+  Port
+} from '../generated/model';
 
 /**
  * Maps raw API user data to User interface
@@ -14,7 +25,7 @@ export function mapUser(raw: any): User {
     // ✅ REQUIRED FIELD 2: email exists in User interface - API returns in identity.email
     email: map(Email, raw.identity?.email),
 
-    // ✅ REQUIRED FIELD 3: firstName exists in User interface - API returns in identity.firstName  
+    // ✅ REQUIRED FIELD 3: firstName exists in User interface - API returns in identity.firstName
     firstName: raw.identity?.firstName,
 
     // ✅ REQUIRED FIELD 4: lastName exists in User interface - API returns in identity.lastName
@@ -28,9 +39,9 @@ export function mapUser(raw: any): User {
       try {
         // Map API single letter codes to enum values
         const statusMapping = {
-          'A': 'Active',
-          'I': 'Inactive', 
-          'S': 'Suspended'
+          A: 'Active',
+          I: 'Inactive',
+          S: 'Suspended',
         };
         const mappedStatus = statusMapping[raw.status] || raw.status;
         return { status: toEnum(User.StatusEnum, mappedStatus) };
@@ -43,7 +54,7 @@ export function mapUser(raw: any): User {
     // ✅ OPTIONAL FIELD 3: createdAt - MUST be included in mapping
     ...(raw.createdAt && { createdAt: map(Date, raw.createdAt) }),
 
-    // ✅ OPTIONAL FIELD 4: updatedAt - MUST be included in mapping  
+    // ✅ OPTIONAL FIELD 4: updatedAt - MUST be included in mapping
     ...(raw.updatedAt && { updatedAt: map(Date, raw.updatedAt) }),
 
     // ✅ FIELD COUNT VALIDATION: 8 fields mapped = 8 fields in User interface ✓
@@ -78,9 +89,9 @@ export function mapUserInfo(raw: any): UserInfo {
       try {
         // Map API single letter codes to enum values
         const statusMapping = {
-          'A': 'Active',
-          'I': 'Inactive',
-          'S': 'Suspended'
+          A: 'Active',
+          I: 'Inactive',
+          S: 'Suspended',
         };
         const mappedStatus = statusMapping[raw.status] || raw.status;
         return { status: toEnum(UserInfo.StatusEnum, mappedStatus) };
@@ -182,7 +193,7 @@ export function mapAcu(raw: any): Acu {
         return toEnum(Acu.StatusEnum, raw.status);
       } catch (error: any) {
         // Fallback for unknown status values
-        return toEnum(Acu.StatusEnum, 'online'); 
+        return toEnum(Acu.StatusEnum, 'online');
       }
     })(),
 

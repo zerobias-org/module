@@ -1,25 +1,28 @@
 /* eslint-disable */
 // TODO - enable lint for implementation ^
-import { 
-  AccessConnector, 
-  AcuApi, 
-  GroupApi, 
+import {
+  AccessConnector,
+  AcuApi,
+  GroupApi,
   UserApi,
   wrapAcuProducer,
   wrapGroupProducer,
   wrapUserProducer
 } from '../generated/api';
 import { ConnectionProfile } from '../generated/model/ConnectionProfile';
-import { 
-  ConnectionMetadata, 
+import {
+  ConnectionMetadata,
   OperationSupportStatus,
   OperationSupportStatusDef,
-  ConnectionStatus
+  ConnectionStatus,
+  OAuthConnectionDetails
 } from '@auditmation/hub-core';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
 import { UserProducerApiImpl } from './UserProducerApiImpl';
 import { AcuProducerApiImpl } from './AcuProducerApiImpl';
 import { GroupProducerApiImpl } from './GroupProducerApiImpl';
+import { ConnectionState } from '../generated/model';
+import { AxiosInstance } from 'axios';
 
 export class AccessImpl implements AccessConnector {
   private client: AvigilonAltaAccessClient;
@@ -31,9 +34,17 @@ export class AccessImpl implements AccessConnector {
     this.client = new AvigilonAltaAccessClient();
   }
 
-  // Connection methods (delegate to client)
-  async connect(profile: ConnectionProfile): Promise<void> {
-    await this.client.connect(profile);
+  async connect(
+    connectionProfile: ConnectionProfile
+  ): Promise<ConnectionState> {
+    return this.client.connect(connectionProfile);
+  }
+
+  async refresh(
+    connectionProfile: ConnectionProfile,
+    connectionState: ConnectionState
+  ): Promise<ConnectionState> {
+    throw new Error('Method not implemented.');
   }
 
   async isConnected(): Promise<boolean> {

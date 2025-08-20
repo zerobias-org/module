@@ -13,8 +13,9 @@ dotenv.config();
 const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
 
 // Environment variables for Avigilon Alta Access API
-const API_KEY = process.env.API_TOKEN || process.env.AVIGILON_API_KEY;
-const BASE_URL = process.env.AVIGILON_BASE_URL || 'https://api.openpath.com';
+const EMAIL = process.env.AVIGILON_EMAIL;
+const PASSWORD = process.env.AVIGILON_PASSWORD;
+const TOTP_CODE = process.env.AVIGILON_TOTP_CODE; // Optional
 const ORGANIZATION_ID = process.env.AVIGILON_ORG_ID || 'test-org-123';
 
 /**
@@ -24,15 +25,14 @@ const ORGANIZATION_ID = process.env.AVIGILON_ORG_ID || 'test-org-123';
 export async function prepareApi(): Promise<AccessImpl> {
   const access = newAvigilonAltaAccess();
   
-  if (!API_KEY) {
-    throw new Error('Integration tests require API_TOKEN or AVIGILON_API_KEY environment variable. Check .env file or copy from .env.example');
+  if (!EMAIL || !PASSWORD) {
+    throw new Error('Integration tests require AVIGILON_EMAIL and AVIGILON_PASSWORD environment variables. Check .env file or copy from .env.example');
   }
 
   // Create connection profile for Avigilon Alta Access
-  const baseURL = new URL(BASE_URL);
-  const profile = new ConnectionProfile(API_KEY, baseURL);
+  const profile = new ConnectionProfile(new Email(EMAIL), PASSWORD, TOTP_CODE);
 
-  logger.debug('Connecting to Avigilon Alta Access API', { baseUrl: BASE_URL });
+  logger.debug('Connecting to Avigilon Alta Access API', { email: EMAIL });
   
   try {
     await access.connect(profile);
@@ -50,7 +50,7 @@ export async function prepareApi(): Promise<AccessImpl> {
  * @returns boolean - True if credentials are available
  */
 export function hasCredentials(): boolean {
-  return !!(API_KEY);
+  return !!(EMAIL && PASSWORD);
 }
 
 /**

@@ -13,18 +13,27 @@ export class AcuProducerApiImpl implements AcuProducerApi {
   }
 
   async get(organizationId: string, acuId: number): Promise<AcuInfo> {
-    const response = await this.httpClient.get(`/orgs/${organizationId}/acus/${acuId.toString()}`);
+    const response = await this.httpClient.get(
+      `/orgs/${organizationId}/acus/${acuId.toString()}`
+    );
+
+    // Use response.data.data like the list methods
+    const rawData = response.data.data;
 
     // For AcuInfo, we need to map the same fields as Acu but with additional extended properties
-    const acuData = mapAcu(response.data);
-    const acuInfo = mapAcuInfo(acuData, response.data);
+    const acuData = mapAcu(rawData);
+    const acuInfo = mapAcuInfo(acuData, rawData);
 
     return acuInfo;
   }
 
-  async listPorts(results: PagedResults<Port>, organizationId: string, acuId: number): Promise<void> {
-    const params: any = {};
-    
+  async listPorts(
+    results: PagedResults<Port>,
+    organizationId: string,
+    acuId: number
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
     // Convert pageNumber/pageSize to offset/limit
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
@@ -33,7 +42,10 @@ export class AcuProducerApiImpl implements AcuProducerApi {
       params.offset = 0;
     }
 
-    const response = await this.httpClient.get(`/orgs/${organizationId}/acus/${acuId.toString()}/ports`, { params });
+    const response = await this.httpClient.get(
+      `/orgs/${organizationId}/acus/${acuId.toString()}/ports`,
+      { params }
+    );
 
     // Apply mappers and set pagination info from new response structure
     results.items = response.data.data ? response.data.data.map(mapPort) : [];
@@ -44,8 +56,8 @@ export class AcuProducerApiImpl implements AcuProducerApi {
   }
 
   async list(results: PagedResults<Acu>, organizationId: string): Promise<void> {
-    const params: any = {};
-    
+    const params: Record<string, number> = {};
+
     // Convert pageNumber/pageSize to offset/limit
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;

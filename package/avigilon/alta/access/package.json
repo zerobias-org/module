@@ -60,16 +60,17 @@
     "import-artifact": "module"
   },
   "dependencies": {
-    "@auditlogic/product-auditmation-auditmation": "^1.5.1",
-    "@auditmation/hub-core": "^4.5.15",
+    "@auditmation/hub-core": "^4.5.16",
     "@auditmation/util-hub-module-utils": "^1.0.27",
     "@auditmation/util-logger": "^4.0.9",
-    "@zerobias-org/product-avigilon-access": "^1.0.0",
-    "axios": "^0.27.2"
+    "@zerobias-org/product-avigilon-alta-access": "^1.0.0",
+    "axios": "^0.27.2",
+    "inversify": "^6.0.2",
+    "reflect-metadata": "^0.1.13"
   },
   "peerDependencies": {
-    "@auditmation/types-core": "^4.8.3",
-    "@auditmation/types-core-js": "^4.9.12"
+    "@auditmation/types-core": "^4.9.0",
+    "@auditmation/types-core-js": "^4.9.13"
   },
   "devDependencies": {
     "@apidevtools/swagger-cli": "^4.0.4",

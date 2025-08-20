@@ -13,13 +13,23 @@ export class UserProducerApiImpl implements UserProducerApi {
   }
 
   async get(organizationId: string, userId: number): Promise<UserInfo> {
-    const response = await this.httpClient.get(`/orgs/${organizationId}/users/${userId.toString()}`);
-    return mapUserInfo(response.data);
+    const response = await this.httpClient.get(
+      `/orgs/${organizationId}/users/${userId.toString()}`
+    );
+
+    // Use response.data.data like the list methods
+    const rawData = response.data.data;
+
+    return mapUserInfo(rawData);
   }
 
-  async listRoles(results: PagedResults<Role>, organizationId: string, userId: number): Promise<void> {
-    const params: any = {};
-    
+  async listRoles(
+    results: PagedResults<Role>,
+    organizationId: string,
+    userId: number
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
     // Convert pageNumber/pageSize to offset/limit
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
@@ -39,9 +49,13 @@ export class UserProducerApiImpl implements UserProducerApi {
     results.pageToken = response.headers['x-next-page-token'];
   }
 
-  async listSites(results: PagedResults<Site>, organizationId: string, userId: number): Promise<void> {
-    const params: any = {};
-    
+  async listSites(
+    results: PagedResults<Site>,
+    organizationId: string,
+    userId: number
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
     // Convert pageNumber/pageSize to offset/limit
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
@@ -62,8 +76,8 @@ export class UserProducerApiImpl implements UserProducerApi {
   }
 
   async list(results: PagedResults<User>, organizationId: string): Promise<void> {
-    const params: any = {};
-    
+    const params: Record<string, number> = {};
+
     // Convert pageNumber/pageSize to offset/limit
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;

@@ -12,17 +12,20 @@ For credential setup, see the [User Guide](USER_GUIDE.md).
 npm install @zerobias-org/module-avigilon-alta-access
 ```
 
-Requires Node.js 18+ and an Avigilon Alta Access account with API token access.
+Requires Node.js 18+ and an Avigilon Alta Access account with email/password credentials.
 
 ## Quick Start
 
 ```typescript
 import { newAvigilonAltaAccess } from '@zerobias-org/module-avigilon-alta-access';
+import { Email } from '@auditmation/types-core-js';
 
 const client = newAvigilonAltaAccess();
 
 await client.connect({
-  accessToken: process.env.AVIGILON_ACCESS_TOKEN
+  email: new Email(process.env.AVIGILON_EMAIL!),
+  password: process.env.AVIGILON_PASSWORD!,
+  totpCode: process.env.AVIGILON_TOTP_CODE // Optional, for MFA
 });
 
 const users = await client.getUserProducerApi().listUsers();
@@ -36,8 +39,14 @@ See [User Guide](USER_GUIDE.md) for detailed setup instructions.
 ## Usage
 
 ```typescript
+import { Email } from '@auditmation/types-core-js';
+
 const client = newAvigilonAltaAccess();
-await client.connect({ accessToken: 'your-token' });
+await client.connect({
+  email: new Email('your-email@domain.com'),
+  password: 'your-password',
+  totpCode: '123456' // Optional, if MFA is enabled
+});
 
 // Available APIs
 const userApi = client.getUserProducerApi();

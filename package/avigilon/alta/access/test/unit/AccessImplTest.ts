@@ -9,7 +9,8 @@ import { AcuProducerApiImpl } from '../../src/AcuProducerApiImpl';
 import { 
   InvalidCredentialsError,
   UnexpectedError,
-  URL
+  URL,
+  Email
 } from '@auditmation/types-core-js';
 import {
   ConnectionMetadata,
@@ -22,7 +23,8 @@ describe('AccessImpl', () => {
   let accessImpl: AccessImpl;
   let client: AvigilonAltaAccessClient;
   const baseUrl = 'https://api.openpath.com';
-  const testToken = 'test-api-token-def456';
+  const testEmail = process.env.AVIGILON_EMAIL || 'test@example.com';
+  const testPassword = process.env.AVIGILON_PASSWORD || 'testpass123';
 
   beforeEach(() => {
     nock.disableNetConnect();
@@ -53,8 +55,19 @@ describe('AccessImpl', () => {
     describe('connect()', () => {
       it('should delegate connect to client', async () => {
         const profile: ConnectionProfile = {
-          apiToken: testToken,
+          email: new Email(testEmail),
+          password: testPassword,
         };
+
+        // Mock login endpoint
+        nock(baseUrl)
+          .post('/auth/login')
+          .reply(200, {
+            data: {
+              token: 'mock-token-123',
+              expiresAt: new Date(Date.now() + 3600000).toISOString()
+            }
+          });
 
         await accessImpl.connect(profile);
         
@@ -62,12 +75,21 @@ describe('AccessImpl', () => {
         expect(connected).to.be.true;
       });
 
-      it('should handle connection with custom URL', async () => {
-        const customUrl = 'https://custom.api.com';
+      it('should handle connection successfully', async () => {
         const profile: ConnectionProfile = {
-          apiToken: testToken,
-          url: new URL(customUrl),
+          email: new Email(testEmail),
+          password: testPassword,
         };
+
+        // Mock login endpoint
+        nock(baseUrl)
+          .post('/auth/login')
+          .reply(200, {
+            data: {
+              token: 'mock-token-123',
+              expiresAt: new Date(Date.now() + 3600000).toISOString()
+            }
+          });
 
         await accessImpl.connect(profile);
         
@@ -77,7 +99,8 @@ describe('AccessImpl', () => {
 
       it('should propagate connection errors from client', async () => {
         const profile: ConnectionProfile = {
-          apiToken: '', // Invalid token
+          email: new Email(testEmail),
+          password: '', // Invalid token
         };
 
         try {
@@ -97,8 +120,19 @@ describe('AccessImpl', () => {
 
       it('should return true when connected', async () => {
         const profile: ConnectionProfile = {
-          apiToken: testToken,
+          email: new Email(testEmail),
+          password: testPassword,
         };
+
+        // Mock login endpoint
+        nock(baseUrl)
+          .post('/auth/login')
+          .reply(200, {
+            data: {
+              token: 'mock-token-123',
+              expiresAt: new Date(Date.now() + 3600000).toISOString()
+            }
+          });
 
         await accessImpl.connect(profile);
         const connected = await accessImpl.isConnected();
@@ -109,8 +143,19 @@ describe('AccessImpl', () => {
     describe('disconnect()', () => {
       it('should delegate disconnect to client', async () => {
         const profile: ConnectionProfile = {
-          apiToken: testToken,
+          email: new Email(testEmail),
+          password: testPassword,
         };
+
+        // Mock login endpoint
+        nock(baseUrl)
+          .post('/auth/login')
+          .reply(200, {
+            data: {
+              token: 'mock-token-123',
+              expiresAt: new Date(Date.now() + 3600000).toISOString()
+            }
+          });
 
         await accessImpl.connect(profile);
         expect(await accessImpl.isConnected()).to.be.true;
@@ -130,8 +175,19 @@ describe('AccessImpl', () => {
     beforeEach(async () => {
       accessImpl = new AccessImpl();
       const profile: ConnectionProfile = {
-        apiToken: testToken,
+        email: new Email(testEmail),
+        password: testPassword,
       };
+      
+      // Mock login endpoint
+      nock(baseUrl)
+        .post('/auth/login')
+        .reply(200, {
+          data: {
+            token: 'mock-token-123',
+            expiresAt: new Date(Date.now() + 3600000).toISOString()
+          }
+        });
       
       await accessImpl.connect(profile);
     });
@@ -177,8 +233,19 @@ describe('AccessImpl', () => {
     beforeEach(async () => {
       accessImpl = new AccessImpl();
       const profile: ConnectionProfile = {
-        apiToken: testToken,
+        email: new Email(testEmail),
+        password: testPassword,
       };
+      
+      // Mock login endpoint
+      nock(baseUrl)
+        .post('/auth/login')
+        .reply(200, {
+          data: {
+            token: 'mock-token-123',
+            expiresAt: new Date(Date.now() + 3600000).toISOString()
+          }
+        });
       
       await accessImpl.connect(profile);
     });
@@ -239,7 +306,8 @@ describe('AccessImpl', () => {
 
     it('should propagate client connection errors', async () => {
       const profile: ConnectionProfile = {
-        apiToken: '', // Invalid
+        email: new Email(testEmail),
+          password: '', // Invalid
       };
 
       try {
@@ -252,8 +320,19 @@ describe('AccessImpl', () => {
 
     it('should handle errors during producer initialization gracefully', async () => {
       const profile: ConnectionProfile = {
-        apiToken: testToken,
+        email: new Email(testEmail),
+        password: testPassword,
       };
+
+      // Mock login endpoint
+      nock(baseUrl)
+        .post('/auth/login')
+        .reply(200, {
+          data: {
+            token: 'mock-token-123',
+            expiresAt: new Date(Date.now() + 3600000).toISOString()
+          }
+        });
 
       await accessImpl.connect(profile);
       

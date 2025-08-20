@@ -13,7 +13,9 @@ export class GroupProducerApiImpl implements GroupProducerApi {
   }
 
   async get(organizationId: string, groupId: number): Promise<GroupInfo> {
-    const response = await this.httpClient.get(`/orgs/${organizationId}/groups/${groupId.toString()}`);
+    const response = await this.httpClient.get(
+      `/orgs/${organizationId}/groups/${groupId.toString()}`
+    );
 
     // For GroupInfo, we need to map the same fields as Group but with additional extended properties
     const groupData = mapGroup(response.data);
@@ -22,9 +24,13 @@ export class GroupProducerApiImpl implements GroupProducerApi {
     return groupInfo;
   }
 
-  async listEntries(results: PagedResults<Entry>, organizationId: string, groupId: number): Promise<void> {
-    const params: any = {};
-    
+  async listEntries(
+    results: PagedResults<Entry>,
+    organizationId: string,
+    groupId: number
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
     // Convert pageNumber/pageSize to offset/limit
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
@@ -33,7 +39,10 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       params.offset = 0;
     }
 
-    const response = await this.httpClient.get(`/orgs/${organizationId}/groups/${groupId.toString()}/entries`, { params });
+    const response = await this.httpClient.get(
+      `/orgs/${organizationId}/groups/${groupId.toString()}/entries`,
+      { params }
+    );
 
     // Apply mappers and set pagination info from new response structure
     results.items = response.data.data ? response.data.data.map(mapEntry) : [];
@@ -43,9 +52,13 @@ export class GroupProducerApiImpl implements GroupProducerApi {
     results.pageToken = response.headers['x-next-page-token'];
   }
 
-  async listUsers(results: PagedResults<User>, organizationId: string, groupId: number): Promise<void> {
-    const params: any = {};
-    
+  async listUsers(
+    results: PagedResults<User>,
+    organizationId: string,
+    groupId: number
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
     // Convert pageNumber/pageSize to offset/limit
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
@@ -54,7 +67,10 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       params.offset = 0;
     }
 
-    const response = await this.httpClient.get(`/orgs/${organizationId}/groups/${groupId.toString()}/users`, { params });
+    const response = await this.httpClient.get(
+      `/orgs/${organizationId}/groups/${groupId.toString()}/users`,
+      { params }
+    );
 
     // Apply mappers and set pagination info from new response structure
     results.items = response.data.data ? response.data.data.map(mapUser) : [];
@@ -65,8 +81,8 @@ export class GroupProducerApiImpl implements GroupProducerApi {
   }
 
   async list(results: PagedResults<Group>, organizationId: string): Promise<void> {
-    const params: any = {};
-    
+    const params: Record<string, number> = {};
+
     // Convert pageNumber/pageSize to offset/limit
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;

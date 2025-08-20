@@ -101,6 +101,58 @@ describe('Avigilon Alta Access - Connection Tests', function () {
       // This is acceptable behavior - we just verify the disconnect doesn't throw
       expect(isConnectedAfterDisconnect).to.be.a('boolean');
     });
+
+    it('should refresh access token successfully', async function () {
+      // Get access to the underlying client
+      const client = (access as any).client;
+      
+      // Make sure we're connected by calling connect again (it's idempotent-ish)
+      const { ConnectionProfile } = require('../../generated/model/ConnectionProfile');
+      const { Email } = require('@auditmation/types-core-js');
+      
+      const profile = new ConnectionProfile(
+        new Email(process.env.AVIGILON_EMAIL), 
+        process.env.AVIGILON_PASSWORD
+      );
+      
+      // Get initial connection state from connect
+      const initialState = await client.connect(profile);
+      logger.debug('Initial connection state:', {
+        tokenPrefix: initialState.accessToken.substring(0, 20) + '...',
+        expiresIn: initialState.expiresIn
+      });
+      
+      // Wait a moment to ensure different timestamps
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Refresh the token
+      const refreshedState = await client.refresh();
+      logger.debug('Refreshed connection state:', {
+        tokenPrefix: refreshedState.accessToken.substring(0, 20) + '...',
+        expiresIn: refreshedState.expiresIn
+      });
+      
+      expect(refreshedState).to.not.be.null;
+      expect(refreshedState.accessToken).to.be.a('string');
+      expect(refreshedState.expiresIn).to.be.a('number');
+      expect(refreshedState.expiresIn).to.be.greaterThan(0);
+      
+      // Token should be different (refreshed)
+      expect(refreshedState.accessToken).to.not.equal(initialState.accessToken);
+      
+      // Refresh should give us more time (new expiration should be >= old expiration)
+      expect(refreshedState.expiresIn).to.be.greaterThanOrEqual(initialState.expiresIn - 2); // Allow 2 seconds for test execution time
+      
+      // Save refresh test result
+      await saveFixture('token-refresh-success.json', {
+        initialTokenPrefix: initialState.accessToken.substring(0, 20) + '...',
+        refreshedTokenPrefix: refreshedState.accessToken.substring(0, 20) + '...',
+        tokenChanged: true,
+        initialExpiresIn: initialState.expiresIn,
+        refreshedExpiresIn: refreshedState.expiresIn,
+        timestamp: new Date().toISOString()
+      });
+    });
   });
 
   describe('Error Handling', function () {

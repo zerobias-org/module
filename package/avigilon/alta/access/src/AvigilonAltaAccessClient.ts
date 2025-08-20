@@ -5,9 +5,11 @@ import {
   NoSuchObjectError,
   InvalidInputError,
   RateLimitExceededError,
-  UnexpectedError
+  UnexpectedError,
+  NotConnectedError
 } from '@auditmation/types-core-js';
 import { ConnectionProfile } from '../generated/model/ConnectionProfile';
+import { ConnectionState } from '../generated/model';
 
 export class AvigilonAltaAccessClient {
   private httpClient: AxiosInstance | null = null;
@@ -16,53 +18,172 @@ export class AvigilonAltaAccessClient {
 
   private baseUrl = 'https://api.openpath.com';
 
-  async connect(profile: ConnectionProfile): Promise<void> {
-    if (!profile.apiToken) {
+  private accessToken: string | null = null;
+
+  private tokenExpiresAt: Date | null = null;
+
+  async connect(profile: ConnectionProfile): Promise<ConnectionState> {
+    if (!profile.email || !profile.password) {
       throw new InvalidCredentialsError();
     }
 
-    // Use URL from profile if provided, otherwise use default baseUrl
-    const apiUrl = profile.url ? profile.url.toString() : this.baseUrl;
-
-    this.httpClient = axios.create({
-      baseURL: apiUrl,
+    // Create temporary client for login
+    const tempClient = axios.create({
+      baseURL: this.baseUrl,
       timeout: 30000,
       headers: {
-        Authorization: `Bearer ${profile.apiToken}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
+        accept: 'application/json',
+        'content-type': 'application/json',
       },
     });
 
-    // Set up error interceptor
-    this.httpClient.interceptors.response.use(
-      (response) => response,
-      (error) => this.handleError(error)
-    );
+    try {
+      // Perform login to get access token
+      const loginData: { email: string; password: string; totp_code?: string } = {
+        email: profile.email.toString(),
+        password: profile.password,
+      };
 
-    this.connected = true;
+      if (profile.totpCode) {
+        loginData.totp_code = profile.totpCode;
+      }
+
+      const loginResponse = await tempClient.post('/auth/login', loginData);
+
+      const { data } = loginResponse.data;
+      const { token, expiresAt } = data;
+
+      if (!token || !expiresAt) {
+        throw new InvalidCredentialsError();
+      }
+
+      this.accessToken = token;
+      this.tokenExpiresAt = new Date(expiresAt);
+
+      // Create authenticated client
+      this.httpClient = axios.create({
+        baseURL: this.baseUrl,
+        timeout: 30000,
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+      });
+
+      // Set up error interceptor
+      this.httpClient.interceptors.response.use(
+        (response) => response,
+        (error) => AvigilonAltaAccessClient.handleError(error)
+      );
+
+      this.connected = true;
+
+      // Calculate seconds until expiration
+      const expiresIn = Math.max(
+        0,
+        Math.floor((this.tokenExpiresAt.getTime() - Date.now()) / 1000)
+      );
+
+      return {
+        accessToken: this.accessToken || undefined,
+        expiresIn,
+      };
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        AvigilonAltaAccessClient.handleError(error);
+      }
+      throw new InvalidCredentialsError();
+    }
   }
 
   async isConnected(): Promise<boolean> {
-    return this.connected && this.httpClient !== null;
+    if (!this.connected || !this.httpClient || !this.tokenExpiresAt) {
+      return false;
+    }
+
+    // Check if token is still valid (not expired)
+    return this.tokenExpiresAt.getTime() > Date.now();
   }
 
   async disconnect(): Promise<void> {
     this.httpClient = null;
     this.connected = false;
+    this.accessToken = null;
+    this.tokenExpiresAt = null;
   }
 
   getHttpClient(): AxiosInstance {
     if (!this.httpClient) {
-      throw new UnexpectedError('Client not connected. Call connect() first.');
+      throw new NotConnectedError();
     }
     return this.httpClient;
   }
 
-  private handleError = (error: AxiosError): never => {
+  getConnectionState(): ConnectionState | null {
+    if (!this.accessToken || !this.tokenExpiresAt) {
+      return null;
+    }
+
+    const expiresIn = Math.max(
+      0,
+      Math.floor((this.tokenExpiresAt.getTime() - Date.now()) / 1000)
+    );
+
+    return {
+      accessToken: this.accessToken || undefined,
+      expiresIn,
+    };
+  }
+
+  async refresh(): Promise<ConnectionState> {
+    if (!this.accessToken || !this.httpClient) {
+      throw new NotConnectedError();
+    }
+
+    try {
+      // Use current token to refresh
+      const refreshResponse = await this.httpClient.post('/auth/accessTokens/refresh');
+
+      const { data } = refreshResponse.data;
+      const { token, expiresAt } = data;
+
+      if (!token || !expiresAt) {
+        throw new UnexpectedError(
+          'Invalid refresh response - missing token or expiration'
+        );
+      }
+
+      // Update stored token and expiration
+      this.accessToken = token;
+      this.tokenExpiresAt = new Date(expiresAt);
+
+      // Update the Authorization header in the existing HTTP client
+      // eslint-disable-next-line @typescript-eslint/dot-notation
+      this.httpClient.defaults.headers['Authorization'] = `Bearer ${this.accessToken}`;
+
+      // Calculate seconds until expiration
+      const expiresIn = Math.max(
+        0,
+        Math.floor((this.tokenExpiresAt.getTime() - Date.now()) / 1000)
+      );
+
+      return {
+        accessToken: this.accessToken || undefined,
+        expiresIn,
+      };
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        AvigilonAltaAccessClient.handleError(error);
+      }
+      throw new UnexpectedError('Token refresh failed');
+    }
+  }
+
+  private static handleError = (error: AxiosError): never => {
     const status = error.response?.status || 500;
-    const responseData = error.response?.data as any;
-    const message = responseData?.message || error.message || 'Unknown error';
+    const responseData = error.response?.data as Record<string, unknown>;
+    const message = responseData?.message as string || error.message || 'Unknown error';
 
     switch (status) {
       case 401:
@@ -82,5 +203,5 @@ export class AvigilonAltaAccessClient {
       default:
         throw new UnexpectedError(message, status);
     }
-  }
+  };
 }

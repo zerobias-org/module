@@ -3,8 +3,8 @@
   "version": "0.1.2",
   "description": "Avigilon Alta Access",
   "moduleId": "17feded8-8e28-4b45-8960-d4b1f0cbe4a8",
-  "main": "dist/src/index.js",
   "author": "ctamas@zerobias.com",
+  "main": "dist/src/index.js",
   "scripts": {
     "clean": "rm -rf generated/ dist/ docs/ full*.yml module-avigilon-alta-access.yml",
     "sync-meta": "VERSION=$(npm run -s get-version) NAME=$(yq e -oy .name package.json) DESC=$(yq e -oy .description package.json) yq e -i '.info.version=strenv(VERSION) | .info.title=strenv(NAME) | .info.description=strenv(DESC)' api.yml",

@@ -1,15 +1,15 @@
 {
   "name": "@zerobias-org/module-bundle",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "lockfileVersion": 2,
   "requires": true,
   "packages": {
     "": {
       "name": "@zerobias-org/module-bundle",
-      "version": "0.0.2",
+      "version": "0.0.3",
       "license": "ISC",
       "dependencies": {
-        "@zerobias-org/module-avigilon-alta-access": "0.1.4",
+        "@zerobias-org/module-avigilon-alta-access": "0.1.5",
         "@zerobias-org/module-readyplayerme-readyplayerme": "0.1.25"
       }
     },
@@ -196,9 +196,9 @@
       "integrity": "sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw=="
     },
     "node_modules/@zerobias-org/module-avigilon-alta-access": {
-      "version": "0.1.4",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.4.tgz",
-      "integrity": "sha512-d5fvIJGGdPyF5uQ8n8NuooWMxBsmLuwmwlk4ECQorvSEqlzOk1+5SnY1lKL8maU9h5XffDcqxCldS6Qc9tr+/w==",
+      "version": "0.1.5",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.5.tgz",
+      "integrity": "sha512-hOO89SzTDcOPsuU3tF8Tjd9YHWzc2wKjy8zhmx2iqrbFRvs0RZ6AvjEf4svOnh2UXgSvyHER6im1TYJJozWpBA==",
       "dependencies": {
         "@auditmation/hub-core": "^4.5.16",
         "@auditmation/util-hub-module-utils": "^1.0.27",
@@ -1787,9 +1787,9 @@
       "integrity": "sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw=="
     },
     "@zerobias-org/module-avigilon-alta-access": {
-      "version": "0.1.4",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.4.tgz",
-      "integrity": "sha512-d5fvIJGGdPyF5uQ8n8NuooWMxBsmLuwmwlk4ECQorvSEqlzOk1+5SnY1lKL8maU9h5XffDcqxCldS6Qc9tr+/w==",
+      "version": "0.1.5",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.5.tgz",
+      "integrity": "sha512-hOO89SzTDcOPsuU3tF8Tjd9YHWzc2wKjy8zhmx2iqrbFRvs0RZ6AvjEf4svOnh2UXgSvyHER6im1TYJJozWpBA==",
       "requires": {
         "@auditmation/hub-core": "^4.5.16",
         "@auditmation/util-hub-module-utils": "^1.0.27",

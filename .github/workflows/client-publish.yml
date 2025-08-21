@@ -1,0 +1,66 @@
+name: Client Publish
+
+on:
+  repository_dispatch:
+    types:
+      - client-publish
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+  pull-requests: write
+
+jobs:
+  client-publish:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 4
+      fail-fast: false
+      matrix:
+        package: ${{ github.event.client_payload.packages }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: master
+      - uses: zerobias-org/devops/actions/setup-node@main
+      - name: Import Secrets
+        uses: hashicorp/vault-action@v2.4.3
+        with:
+          method: jwt
+          url: ${{ secrets.VAULT_ADDR }}
+          role: publishing-role
+          path: gh-actions
+          secrets: |
+            operations-kv/data/ci/github readPackagesToken | NPM_TOKEN;
+            operations-kv/data/ci/slack devopsNotifications | SLACK_DEVOPS_NOTIFICATIONS;
+            operations-kv/data/ci/github docsDeploymentToken | DISPATCH_TOKEN;
+            operations-kv/data/ci/slack releasesWebhook | SLACK_RELEASES_WEBHOOK;
+            operations-kv/data/ci/github username | USERNAME ;
+            operations-kv/data/ci/github writePackagesToken | WRITE_TOKEN ;
+            operations-kv/data/ci/github zb-token | ZB_TOKEN;
+
+      - name: configure aws tools creds
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::961260934100:role/github-actions-publishing-role
+          role-session-name: ${{ github.event.repository.name }}
+          aws-region: us-east-1
+
+      - name: save tools profile
+        shell: bash
+        run: |
+          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile tools
+          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile tools
+          aws configure set aws_session_token $AWS_SESSION_TOKEN --profile tools
+
+      - name: publish API client
+        uses: zerobias-org/devops/actions/publish-api-client@main
+        with:
+          package: '${{ matrix.package.name }}'
+          apiName: '${{ matrix.package.apiName }}'
+          apiPath: '${{ matrix.package.apiPath }}'
+          publishToken: ${{ secrets.GITHUB_TOKEN }}
+          publishOnly: 'true'
+

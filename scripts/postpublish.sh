@@ -60,6 +60,21 @@ for ((i = 0 ; i < ${#versions[@]} ; i++)); do
   fi;
 done
 
+
+if [ "$1" = "--dry-run" ]; then
+  echo "--- This was only a dry-run ---"
+	SINCE=${2:-"HEAD~1"}
+	echo "Testing publishing images since"
+	PACKAGES=$(npx lerna list --since --ndjson | jq -r '(.name + "@" + .version)')
+	for pkg in $PACKAGES; do
+		scripts/imagepublish.sh $pkg --dry-run
+	done
+  exit 0
+fi;
+
+echo "Publishing images since $SINCE"
+SINCE=${1:-"HEAD~1"}
+
 PAYLOAD=$(npx lerna list --since $SINCE --json | jq -rc '{"event_type": "image-publish", "client_payload": { "packages": [.[] | .name + "@" + .version] }}')
 curl -X POST \
 	-vvv \

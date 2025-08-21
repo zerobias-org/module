@@ -32,6 +32,8 @@
     "lint:src:fix": "eslint --fix src/",
     "lint:api": "npx spectral lint api.yml -v -r node_modules/@auditmation/util-spectral-config/rules/.oas3.strict.spectral.yml",
     "lint:api:bundled": "npx spectral lint module-avigilon-alta-access.yml -v -r node_modules/@auditmation/util-spectral-config/rules/.oas3.strict.spectral.yml",
+    "nx:publish": "../../../scripts/publish.sh",
+    "prepublishtest": "../../../scripts/prepublish.sh",
     "prepublishOnly": "npm run build && npm run docs",
     "postpublish": "curl -i -u $NPM_USER:$WORKFLOW_DISPATCH_TOKEN -X POST -H \"Accept: application/vnd.github.v3+json\" https://api.github.com/repos/auditlogic/module/actions/workflows/$WORKFLOW_ID/dispatches -d '{\"ref\":\"master\", \"inputs\":{\"module\":\"access\", \"tag\":\"'$(yq e -oy .name package.json)@$(yq e -oy .version package.json)'\", \"message\":\"'\"$MESSAGE\"'\"}}'"
   },

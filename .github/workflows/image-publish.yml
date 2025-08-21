@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          ref: master
+          ref: main
       - uses: zerobias-org/devops/actions/setup-node@main
       - name: Import Secrets
         uses: hashicorp/vault-action@v2.4.3

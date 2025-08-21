@@ -1,7 +1,7 @@
 import { AccessImpl } from './AccessImpl';
 
 // Factory Function - Primary way to create module instances
-export function newAvigilonAltaAccess(): AccessImpl {
+export function newAccess(): AccessImpl {
   return new AccessImpl();
 }
 

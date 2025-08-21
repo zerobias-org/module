@@ -1,6 +1,6 @@
 import * as dotenv from 'dotenv';
 import { expect } from 'chai';
-import { newAvigilonAltaAccess, AccessImpl } from '../../src';
+import { newAccess, AccessImpl } from '../../src';
 import { ConnectionProfile } from '../../generated/model';
 import { getLogger } from '@auditmation/util-logger';
 
@@ -23,8 +23,8 @@ const ORGANIZATION_ID = process.env.AVIGILON_ORG_ID || 'test-org-123';
  * @returns Promise<AccessImpl> - Configured module instance
  */
 export async function prepareApi(): Promise<AccessImpl> {
-  const access = newAvigilonAltaAccess();
-  
+  const access = newAccess();
+
   if (!EMAIL || !PASSWORD) {
     throw new Error('Integration tests require AVIGILON_EMAIL and AVIGILON_PASSWORD environment variables. Check .env file or copy from .env.example');
   }
@@ -33,7 +33,7 @@ export async function prepareApi(): Promise<AccessImpl> {
   const profile = new ConnectionProfile(new Email(EMAIL), PASSWORD, TOTP_CODE);
 
   logger.debug('Connecting to Avigilon Alta Access API', { email: EMAIL });
-  
+
   try {
     await access.connect(profile);
     logger.debug('Successfully connected to Avigilon Alta Access API');
@@ -60,12 +60,12 @@ export function hasCredentials(): boolean {
  */
 export function sanitizeResponse(data: any): any {
   if (!data) return data;
-  
+
   const sanitized = JSON.parse(JSON.stringify(data));
-  
+
   // Remove or mask sensitive fields
   const sensitiveFields = ['api_key', 'token', 'password', 'secret', 'email', 'phone'];
-  
+
   function sanitizeObject(obj: any): any {
     if (Array.isArray(obj)) {
       return obj.map(sanitizeObject);
@@ -89,7 +89,7 @@ export function sanitizeResponse(data: any): any {
     }
     return obj;
   }
-  
+
   return sanitizeObject(sanitized);
 }
 
@@ -101,18 +101,18 @@ export function sanitizeResponse(data: any): any {
 export async function saveFixture(filename: string, data: any): Promise<void> {
   const fs = require('fs');
   const path = require('path');
-  
+
   const sanitized = sanitizeResponse(data);
   const fixtureDir = path.join(__dirname, '../fixtures/integration');
-  
+
   // Ensure directory exists
   if (!fs.existsSync(fixtureDir)) {
     fs.mkdirSync(fixtureDir, { recursive: true });
   }
-  
+
   const filepath = path.join(fixtureDir, filename);
   fs.writeFileSync(filepath, JSON.stringify(sanitized, null, 2));
-  
+
   logger.debug(`Saved fixture: ${filename}`);
 }
 

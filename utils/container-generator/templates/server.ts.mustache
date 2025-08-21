@@ -1,0 +1,258 @@
+{{#oauth}}
+import { OAuthConnectionDetails } from '@auditmation/hub-core';
+{{/oauth}}
+import { CoreError, NotFoundError, UnauthorizedError, UnexpectedError } from '@auditmation/types-core-js';
+import { getLogger } from '@auditmation/util-logger';
+{{#esModuleInterop}}
+import express from 'express';
+{{/esModuleInterop}}
+{{^esModuleInterop}}
+import * as express from 'express';
+{{/esModuleInterop}}
+import 'express-async-errors';
+import { Request, Response, NextFunction } from 'express';
+import * as esprima from 'esprima';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as https from 'https';
+import * as pem from 'pem';
+
+{{#dryRun}}
+import { {{pascal}} } from '../generated/api';
+import { ConnectionProfile } from '../generated/model';
+{{#oauth}}
+import { ConnectionState } from '../generated/model';
+{{/oauth}}
+
+import { {{pascal}}Impl } from '../src/{{pascal}}Impl';
+{{/dryRun}}
+{{^dryRun}}
+import { {{pascal}} } from '../dist/generated/api';
+import { ConnectionProfile } from '../dist/generated/model';
+{{#oauth}}
+import { ConnectionState } from '../dist/generated/model';
+{{/oauth}}
+
+import { {{pascal}}Impl } from '../dist/src/{{pascal}}Impl';
+{{/dryRun}}
+
+/*
+getLogger = () => {
+  console.log('LOGGER');
+  getLogger('console');
+}
+*/
+const logger = getLogger('console');
+
+import * as util from 'util';
+
+const connections: Record<string, {{pascal}}Impl> = {};
+
+const nonsensitiveProfileFields: Array<string> = [];
+try {
+  if (ConnectionProfile.attributeTypeMap) {
+    for (const attr of ConnectionProfile.attributeTypeMap) {
+      if (attr.format !== 'password') {
+        nonsensitiveProfileFields.push(attr.name);
+      }
+    }
+  }
+} catch (err) {
+  logger.error('Couldnt read connection profile for sensitive fields, filtering all of them', err);
+}
+
+const AUTH_SECRET = 'auditmation-auth'
+
+function getConnection(req: Request) {
+  const { connectionId } = req.params;
+  if (!connections[connectionId]) {
+    throw new NotFoundError(`Connection ${connectionId} not found`);
+  }
+  return connections[connectionId];
+}
+
+
+const secure = process.env.HUB_NODE_INSECURE === 'true' ? false : true;
+let authKey : string | undefined = undefined;
+
+function readSecrets() {
+  const secretDir = path.join('/', 'run', 'secrets');
+  if (fs.existsSync(secretDir)) {
+    const secretFiles = fs.readdirSync(secretDir);
+    secretFiles.forEach(secret => {
+      const val = fs.readFileSync(path.join(secretDir, secret), 'utf-8').trim();
+      if (secret === AUTH_SECRET) {
+        authKey = val;
+      }
+    });
+  }
+}
+
+export async function configureServer() {
+  const app = express();
+
+  readSecrets();
+
+  app.use(express.json());
+
+  app.use(async (req, res, next) => {
+    if (authKey && secure) {
+      if (!req.headers[AUTH_SECRET] || req.headers[AUTH_SECRET] !== authKey) {
+      console.log(authKey);
+      console.log(req.headers[AUTH_SECRET]);
+        throw new UnauthorizedError();
+      }
+    }
+    logger.info(`Handling ${req.path}`);
+    next();
+  });
+
+  app.get('/', (req, res) => {
+    res.status(200).send({ nonsensitiveProfileFields });
+  });
+  
+  app.post('/connections', async (req, res) => {
+    const { connectionId, connectionProfile, oauthDetails } = req.body;
+    const {{camel}} = new {{pascal}}Impl();
+    connections[connectionId] = {{camel}};
+    const connProfile = ConnectionProfile.newInstance(connectionProfile);
+{{#oauth}}
+    const state = await {{camel}}.connect(
+      ConnectionProfile.newInstance(connectionProfile),
+      OAuthConnectionDetails.newInstance(oauthDetails)
+    );
+{{/oauth}}
+{{^oauth}}
+    const state = await {{camel}}.connect(
+      ConnectionProfile.newInstance(connectionProfile)
+    );
+{{/oauth}}
+    return res.status(200).send(state);
+  });
+
+  app.put('/connections/:connectionId/disconnect', async (req, res) => {
+    const connection = getConnection(req);
+    await connection.disconnect();
+    delete connections[req.params.connectionId];
+    return res.status(200).send('Disconnected');
+  });
+
+{{#oauth}}
+  app.put('/connections/:connectionId/refresh', async (req, res) => {
+    const { connectionProfile, connectionState, oauthDetails, connectionId } = req.body;
+    const connection = getConnection(req);
+    if (!connection.refresh) {
+      throw new UnexpectedError(`Connection ${connectionId} is missing refresh function`);
+    }
+    const state = await connection.refresh(
+      ConnectionProfile.newInstance(connectionProfile),
+      ConnectionState.newInstance(connectionState),
+      OAuthConnectionDetails.newInstance(oauthDetails)
+    );
+    logger.info(`Refresh returning 200 ${JSON.stringify(state)}`);
+    return res.status(200).send(state);
+  });
+{{/oauth}}
+
+  app.get('/connections/:connectionId/isSupported/:operationId', async (req, res) => {
+    const connection = getConnection(req);
+    const { operationId } = req.params;
+    {{#isSupported}}
+    const isSupported = await connection.isSupported(operationId);
+    {{/isSupported}}
+    {{^isSupported}}
+    const isSupported = await connection.isSupported();
+    {{/isSupported}}
+    return res.status(200).send(isSupported);
+  });
+
+  app.get('/connections/:connectionId/metadata', async (req, res) => {
+    const connection = getConnection(req);
+    const metadata = await connection.metadata();
+    return res.status(200).send(metadata);
+  });
+
+  app.post('/connections/:connectionId/:method', async(req, res) => {
+    const connection = getConnection(req);
+
+    const { method } = req.params;
+    const { argMap } = req.body;
+    
+    // get the method to execute
+    const apiParts = method.split('.');
+    const api = connection[`get${apiParts[0]}`]();
+    const meth = api[apiParts[1]];
+
+    const args: Array<unknown> = [];
+    const ast = esprima.parse(`(\n${meth.toString()}\n)`);                                                                                                                                                                                      
+    ast
+      .body[0]
+      .expression
+      .params
+      .map((node) => {
+        const name = node.name || node?.left?.name || node?.argument?.name;
+        logger.info('Argument name:', name);
+        return name;
+      })
+      .forEach((argName: string) => args.push(argMap[argName]));
+    logger.info(`executing ${method} with args`, args);
+
+    return new Promise((resolve, reject) => {
+      setTimeout(
+        () => meth.call(api, ...args)
+          .then((ret: any) => {
+            if (ret && typeof ret === 'object' && ret.pipe) {
+              res.setHeader('content-type', 'application/octet-stream');
+              return ret.pipe(res);
+            } else {
+              res.status(200).send(ret);
+            }
+            resolve();
+          }).catch((err: Error) => reject(err)),
+        0
+      );
+    });
+  });
+
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    logger.error('Responding with error ', err);
+    const { message = 'Unknown Error', key = 'err.unknown', statusCode = 500, args = {}, template } = err;
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    try {
+      res.end(err.toString());
+    } catch (e) {
+      logger.error('Error serializing', e);
+      let json = {
+        key,
+        timestamp: new Date().toISOString(),
+        message,
+        args,
+        template,
+        statusCode,
+      };
+      res.end(JSON.stringify(json));
+    }
+  });
+
+  return app;
+}
+
+(async function main() {
+  const server = await configureServer();
+  const port = process.env.PORT || 8888;
+  if (secure) {
+    logger.info(`👂 Listening on https port ${port}...`);
+    const cert = await pem.promisified.createCertificate({days: 3650, selfSigned: true });
+    https.createServer({ key: cert.clientKey, cert: cert.certificate }, server).listen(port);
+  } else {
+    logger.info(`👂 Listening on port ${port}...`);
+    server.listen(port);
+  }
+
+  process.on('uncaughtException', function (err) {
+    logger.error('Uncaught Exception', err);
+  })
+}()).catch(async (e) => {
+  logger.error('Could not start {{pascal}} module:\n', e);
+  process.exit(1);
+});

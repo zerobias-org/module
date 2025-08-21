@@ -1,9 +1,7 @@
 openapi: 3.0.3
 info:
   x-product-infos:
-    # Array of external references to Products (versions of products) involved in the module.
-    # the catalog.yml file will in most cases be referenced from `node_modules/hub-store-catalog`
-    - $ref: "./node_modules/@auditlogic/product-auditmation-auditmation/catalog.yml#/Product"
+    - $ref: "./node_modules/@auditlogic/product-avigilon-alta-access/catalog.yml#/Product"
   version: 0.1.0
   title: '@zerobias-org/module-avigilon-alta-access'
   description: Avigilon Alta Access

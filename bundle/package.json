@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-bundle",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "All installable modules",
   "author": "team@auditmation.io",
   "license": "ISC",
@@ -18,7 +18,7 @@
     "dataloader-version": "0.5.4"
   },
   "dependencies": {
-    "@zerobias-org/module-avigilon-alta-access": "0.1.8",
+    "@zerobias-org/module-avigilon-alta-access": "0.1.9",
     "@zerobias-org/module-readyplayerme-readyplayerme": "0.1.25"
   }
 }

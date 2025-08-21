@@ -122,7 +122,7 @@ else
   docker buildx build --platform linux/amd64,linux/arm64 -t 961260934100.dkr.ecr.us-east-1.amazonaws.com/$REPOSITORY_NAME:$version --push .
 
   echo "Building image for ghcr"
-  docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/zerobias-org/$REPOSITORY_NAME:$version --push .
+  docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/auditlogic/$REPOSITORY_NAME:$version --push .
 fi
 
 echo "--- Changing back to $BASEDIR"

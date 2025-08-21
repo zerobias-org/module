@@ -1,0 +1,121 @@
+openapi: 3.0.2
+info:
+  version: 1.0.0
+  description: Auditmaion Hub Connector
+  title: 'Auditmation Hub Connector'
+servers:
+  - url: '/connections/{id}'
+paths:
+  /connections/{id}:
+    parameters:
+      - name: id
+        in: path
+        description: Connection ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags:
+        - connection
+      summary: Calls 'connect' on this connection. This method is only valid if the connection is manually controlled.
+      operationId: connect
+      requestBody:
+        required: true
+        content:
+          '*/*':
+            schema:
+              type: object
+              description: 'Connection profile for the module'
+              additionalProperties: {}
+              # $ref: '#/components/schemas/ConnectionProfile'
+      responses:
+        '204':
+          description: Successfully connected
+  /connections/{id}/disconnect:
+    parameters:
+      - name: id
+        in: path
+        description: Connection ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags:
+        - connection
+      summary: Calls 'disconnect' on this connection. This method is only valid if the connection is manually controlled.
+      operationId: disconnect
+      responses:
+        '204':
+          description: Successfully disconnected
+  /connections/{id}/metadata:
+    get:
+      parameters:
+        - name: id
+          in: path
+          description: >-
+            A Target ID is either a Deployment or Connection ID, depending on the implementation  of the ModuleVersion. If a ConnectionProfile is required, then targets must be  Connections. Else, they can be Deployments.
+          required: true
+          schema:
+            type: string
+            format: uuid
+      tags:
+        - target
+      summary: >-
+        Returns the metadata from the Target. If this Target is not a `Connection`, then nothing is returned
+      operationId: getMetadata
+      responses:
+        '204':
+          description: Response if the Target is not a Connection
+        '200':
+          description: Response containing ConnectionMetadata
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ConnectionMetadata'
+  /connections/{id}/refresh:
+    parameters:
+      - name: id
+        in: path
+        description: Connection ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags:
+        - connection
+      summary: Calls 'connect' on this connection. This method is only valid if the connection is manually controlled.
+      operationId: connect
+      requestBody:
+        required: true
+        content:
+          '*/*':
+            schema:
+              type: object
+              description: 'Connection profile for the module'
+              additionalProperties: {}
+              # $ref: '#/components/schemas/ConnectionProfile'
+      responses:
+        '204':
+          description: Successfully connected
+  /connections/{id}/reverify:
+    parameters:
+      - name: id
+        in: path
+        description: Connection ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags:
+        - connection
+      summary: Attempts to verify the currently-stored ConnectionProfile
+      description: >-
+        Re-verifies the ConnectionProfile that is stored. This is for when the ConnectionProfile  is correct, but the external system was misconfigured, resulting in the Connection landing in `error` status.
+      operationId: reverify
+      responses:
+        '200':
+          $ref: '#/components/responses/UpdateConnectionResultsResponse'

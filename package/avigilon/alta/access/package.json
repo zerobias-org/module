@@ -4,6 +4,7 @@
   "description": "Avigilon Alta Access",
   "moduleId": "17feded8-8e28-4b45-8960-d4b1f0cbe4a8",
   "main": "dist/src/index.js",
+  "author": "ctamas@zerobias.com",
   "scripts": {
     "clean": "rm -rf generated/ dist/ docs/ full*.yml module-avigilon-alta-access.yml",
     "sync-meta": "VERSION=$(npm run -s get-version) NAME=$(yq e -oy .name package.json) DESC=$(yq e -oy .description package.json) yq e -i '.info.version=strenv(VERSION) | .info.title=strenv(NAME) | .info.description=strenv(DESC)' api.yml",
@@ -34,7 +35,6 @@
     "prepublishOnly": "npm run build && npm run docs",
     "postpublish": "curl -i -u $NPM_USER:$WORKFLOW_DISPATCH_TOKEN -X POST -H \"Accept: application/vnd.github.v3+json\" https://api.github.com/repos/auditlogic/module/actions/workflows/$WORKFLOW_ID/dispatches -d '{\"ref\":\"master\", \"inputs\":{\"module\":\"access\", \"tag\":\"'$(yq e -oy .name package.json)@$(yq e -oy .version package.json)'\", \"message\":\"'\"$MESSAGE\"'\"}}'"
   },
-  "author": "ctamas@zerobias.com",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

@@ -87,7 +87,7 @@ npm i -D -E @types/express@4.17.13
 
 echo "--- Building container wrapper"
 cp $GENERATOR_DIR/templates/Dockerfile $tmpdir
-cp $BASEDIR/package/amazon/aws/ec2/tsconfig.json $tmpdir
+cp $BASEDIR/package/avigilon/alta/access/tsconfig.json $tmpdir
 if [ -e "$LOCATION/tsconfig.json" ]; then
   cp $LOCATION/tsconfig.json $tmpdir || 'No specific tsconfig found'
 fi

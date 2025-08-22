@@ -1,15 +1,15 @@
 {
   "name": "@zerobias-org/module-bundle",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "lockfileVersion": 2,
   "requires": true,
   "packages": {
     "": {
       "name": "@zerobias-org/module-bundle",
-      "version": "0.0.9",
+      "version": "0.0.10",
       "license": "ISC",
       "dependencies": {
-        "@zerobias-org/module-avigilon-alta-access": "0.1.11",
+        "@zerobias-org/module-avigilon-alta-access": "0.1.12",
         "@zerobias-org/module-readyplayerme-readyplayerme": "0.1.25"
       }
     },
@@ -174,9 +174,9 @@
       "integrity": "sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw=="
     },
     "node_modules/@zerobias-org/module-avigilon-alta-access": {
-      "version": "0.1.11",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.11.tgz",
-      "integrity": "sha512-RjPN31qsP6I+ugpVqs5zarWXgM0Oo4QkGclfKyotUGM7oRQG4CtCy/IXbWP6PW1Or2UdCn0NFandJ41xwOMxdA==",
+      "version": "0.1.12",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.12.tgz",
+      "integrity": "sha512-byQ5Uc/6sHjm1JcNWJHKWY4miCjwLyQgPF7geOjfsIpCNHAdUSLrKMot6/yDdXsxICrSVlpNe4wGZxl94DWO6A==",
       "dependencies": {
         "@auditmation/hub-core": "^4.5.16",
         "@auditmation/util-hub-module-utils": "^1.0.27",
@@ -1720,9 +1720,9 @@
       "integrity": "sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw=="
     },
     "@zerobias-org/module-avigilon-alta-access": {
-      "version": "0.1.11",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.11.tgz",
-      "integrity": "sha512-RjPN31qsP6I+ugpVqs5zarWXgM0Oo4QkGclfKyotUGM7oRQG4CtCy/IXbWP6PW1Or2UdCn0NFandJ41xwOMxdA==",
+      "version": "0.1.12",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.12.tgz",
+      "integrity": "sha512-byQ5Uc/6sHjm1JcNWJHKWY4miCjwLyQgPF7geOjfsIpCNHAdUSLrKMot6/yDdXsxICrSVlpNe4wGZxl94DWO6A==",
       "requires": {
         "@auditmation/hub-core": "^4.5.16",
         "@auditmation/util-hub-module-utils": "^1.0.27",

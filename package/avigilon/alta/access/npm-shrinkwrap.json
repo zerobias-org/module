@@ -9,7 +9,7 @@
       "version": "0.1.12",
       "license": "UNLICENSED",
       "dependencies": {
-        "@auditmation/hub-core": "^4.5.16",
+        "@auditmation/hub-core": "^4.5.18",
         "@auditmation/util-hub-module-utils": "^1.0.27",
         "@auditmation/util-logger": "^4.0.9",
         "@zerobias-org/product-avigilon-alta-access": "^1.0.1",
@@ -159,16 +159,16 @@
       }
     },
     "node_modules/@auditmation/hub-core": {
-      "version": "4.5.16",
-      "resolved": "https://pkg.zerobias.org/@auditmation/hub-core/-/77c39338df3a7ca9214d8898189d293489e5525b",
-      "integrity": "sha512-Du9giWTEjQuEcxOtElfwaXU8sue1YdpDit46qfMksS8Wr20bE55isSaM5NomRuBdzLix4ck0rrFnIZdUfSPWng==",
+      "version": "4.5.18",
+      "resolved": "https://pkg.zerobias.org/@auditmation/hub-core/-/bc8e18e2d9f3c14e340ff93c95bb57030d6b6bdb",
+      "integrity": "sha512-vvRKlWuY6YeaLZ0wKT1xgPkqDAJbP7GyVM+mO3mlvRlZHCfSVmA4yeKkAczpGBY2k/D/HvpFNIfRYuHy9GHfgA==",
       "license": "ISC",
       "dependencies": {
         "winston": "3.2.1"
       },
       "peerDependencies": {
-        "@auditmation/types-core": "^4.8.3",
-        "@auditmation/types-core-js": "^4.9.12",
+        "@auditmation/types-core": "^4.9.0",
+        "@auditmation/types-core-js": "^4.9.13",
         "@auditmation/util-logger": "^4.0.9",
         "axios": ">=0.27.0 <1.0.0"
       }
@@ -3867,9 +3867,9 @@
       "license": "MIT"
     },
     "node_modules/fast-uri": {
-      "version": "3.0.6",
-      "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.0.6.tgz",
-      "integrity": "sha512-Atfo14OibSv5wAp4VWNsFYE1AchQRTv9cBGWET4pZWHzYshFSS9NQI6I57rdKn9croWVMbYFbLhJ+yJvmZIIHw==",
+      "version": "3.1.0",
+      "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.0.tgz",
+      "integrity": "sha512-iPeeDKJSWf4IEOasVVrknXpaBV0IApz/gp7S2bb7Z4Lljbl2MGJRqInZiUrQwV16cpzw/D3S5j5Julj/gT52AA==",
       "dev": true,
       "funding": [
         {

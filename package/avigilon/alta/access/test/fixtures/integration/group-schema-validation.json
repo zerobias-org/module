@@ -2,7 +2,6 @@
   "group": {
     "id": 537268,
     "name": "ATS",
-    "type": "access_group",
     "description": "Inventory Access",
     "userCount": 2,
     "createdAt": "2024-07-17T00:49:23.000Z",
@@ -12,6 +11,6 @@
     "hasIdentifier": true,
     "hasName": true,
     "hasCreatedAt": true,
-    "timestamp": "2025-08-20T21:13:29.071Z"
+    "timestamp": "2025-08-27T12:44:11.827Z"
   }
 }

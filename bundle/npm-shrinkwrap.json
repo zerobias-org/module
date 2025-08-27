@@ -1,15 +1,15 @@
 {
   "name": "@zerobias-org/module-bundle",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "lockfileVersion": 2,
   "requires": true,
   "packages": {
     "": {
       "name": "@zerobias-org/module-bundle",
-      "version": "0.0.10",
+      "version": "0.0.11",
       "license": "ISC",
       "dependencies": {
-        "@zerobias-org/module-avigilon-alta-access": "0.1.12",
+        "@zerobias-org/module-avigilon-alta-access": "0.1.13",
         "@zerobias-org/module-readyplayerme-readyplayerme": "0.1.25"
       }
     },
@@ -33,15 +33,15 @@
       "integrity": "sha512-/9s0pcJ98i9cibTE/yLyidu7dEL6fY4wNsZMLa0fwX13R83XZyAICKwMKmatlKOlqorsdx5FFyRRwNaPSfgWsw=="
     },
     "node_modules/@auditmation/hub-core": {
-      "version": "4.5.16",
-      "resolved": "https://pkg.zerobias.org/@auditmation/hub-core/-/77c39338df3a7ca9214d8898189d293489e5525b",
-      "integrity": "sha512-Du9giWTEjQuEcxOtElfwaXU8sue1YdpDit46qfMksS8Wr20bE55isSaM5NomRuBdzLix4ck0rrFnIZdUfSPWng==",
+      "version": "4.5.18",
+      "resolved": "https://pkg.zerobias.org/@auditmation/hub-core/-/bc8e18e2d9f3c14e340ff93c95bb57030d6b6bdb",
+      "integrity": "sha512-vvRKlWuY6YeaLZ0wKT1xgPkqDAJbP7GyVM+mO3mlvRlZHCfSVmA4yeKkAczpGBY2k/D/HvpFNIfRYuHy9GHfgA==",
       "dependencies": {
         "winston": "3.2.1"
       },
       "peerDependencies": {
-        "@auditmation/types-core": "^4.8.3",
-        "@auditmation/types-core-js": "^4.9.12",
+        "@auditmation/types-core": "^4.9.0",
+        "@auditmation/types-core-js": "^4.9.13",
         "@auditmation/util-logger": "^4.0.9",
         "axios": ">=0.27.0 <1.0.0"
       }
@@ -174,11 +174,11 @@
       "integrity": "sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw=="
     },
     "node_modules/@zerobias-org/module-avigilon-alta-access": {
-      "version": "0.1.12",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.12.tgz",
-      "integrity": "sha512-byQ5Uc/6sHjm1JcNWJHKWY4miCjwLyQgPF7geOjfsIpCNHAdUSLrKMot6/yDdXsxICrSVlpNe4wGZxl94DWO6A==",
+      "version": "0.1.13",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.13.tgz",
+      "integrity": "sha512-fY/1uVOOfsh7FJCcZ+j4BMR9CDwSvfa9wS8I/CHE9UI1vZTRPuQal3BIPXDVWe4hzFoZK5EWQmeJ5FUXOXKHOQ==",
       "dependencies": {
-        "@auditmation/hub-core": "^4.5.16",
+        "@auditmation/hub-core": "^4.5.18",
         "@auditmation/util-hub-module-utils": "^1.0.27",
         "@auditmation/util-logger": "^4.0.9",
         "@zerobias-org/product-avigilon-alta-access": "^1.0.1",
@@ -1617,9 +1617,9 @@
       "integrity": "sha512-/9s0pcJ98i9cibTE/yLyidu7dEL6fY4wNsZMLa0fwX13R83XZyAICKwMKmatlKOlqorsdx5FFyRRwNaPSfgWsw=="
     },
     "@auditmation/hub-core": {
-      "version": "4.5.16",
-      "resolved": "https://pkg.zerobias.org/@auditmation/hub-core/-/77c39338df3a7ca9214d8898189d293489e5525b",
-      "integrity": "sha512-Du9giWTEjQuEcxOtElfwaXU8sue1YdpDit46qfMksS8Wr20bE55isSaM5NomRuBdzLix4ck0rrFnIZdUfSPWng==",
+      "version": "4.5.18",
+      "resolved": "https://pkg.zerobias.org/@auditmation/hub-core/-/bc8e18e2d9f3c14e340ff93c95bb57030d6b6bdb",
+      "integrity": "sha512-vvRKlWuY6YeaLZ0wKT1xgPkqDAJbP7GyVM+mO3mlvRlZHCfSVmA4yeKkAczpGBY2k/D/HvpFNIfRYuHy9GHfgA==",
       "requires": {
         "winston": "3.2.1"
       }
@@ -1720,11 +1720,11 @@
       "integrity": "sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw=="
     },
     "@zerobias-org/module-avigilon-alta-access": {
-      "version": "0.1.12",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.12.tgz",
-      "integrity": "sha512-byQ5Uc/6sHjm1JcNWJHKWY4miCjwLyQgPF7geOjfsIpCNHAdUSLrKMot6/yDdXsxICrSVlpNe4wGZxl94DWO6A==",
+      "version": "0.1.13",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.13.tgz",
+      "integrity": "sha512-fY/1uVOOfsh7FJCcZ+j4BMR9CDwSvfa9wS8I/CHE9UI1vZTRPuQal3BIPXDVWe4hzFoZK5EWQmeJ5FUXOXKHOQ==",
       "requires": {
-        "@auditmation/hub-core": "^4.5.16",
+        "@auditmation/hub-core": "^4.5.18",
         "@auditmation/util-hub-module-utils": "^1.0.27",
         "@auditmation/util-logger": "^4.0.9",
         "@zerobias-org/product-avigilon-alta-access": "^1.0.1",

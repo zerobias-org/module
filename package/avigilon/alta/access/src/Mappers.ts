@@ -130,7 +130,7 @@ export function mapUserInfo(raw: any): UserInfo {
 
 /**
  * Maps raw API group data to Group interface
- * Field count validation: Group interface has 7 fields (3 required + 4 optional)
+ * Field count validation: Group interface has 7 fields (2 required + 5 optional)
  */
 export function mapGroup(raw: any): Group {
   const output: Group = {
@@ -140,8 +140,8 @@ export function mapGroup(raw: any): Group {
     // ✅ REQUIRED FIELD 2: name exists in both Group interface AND api.yml response
     name: raw.name,
 
-    // ✅ REQUIRED FIELD 3: type exists in both Group interface AND api.yml response
-    type: toEnum(Group.TypeEnum, raw.type || 'access_group'),
+    // ✅ OPTIONAL FIELD: type - only include when present in API response
+    ...(raw.type && { type: toEnum(Group.TypeEnum, raw.type) }),
 
     // ✅ OPTIONAL FIELD 1: description - MUST be mapped with conditional logic
     ...(raw.description && { description: raw.description }),
@@ -155,7 +155,7 @@ export function mapGroup(raw: any): Group {
     // ✅ OPTIONAL FIELD 4: updatedAt - MUST be included in mapping
     ...(raw.updatedAt && { updatedAt: map(Date, raw.updatedAt) }),
 
-    // ✅ FIELD COUNT VALIDATION: 7 fields mapped = 7 fields in Group interface ✓
+    // ✅ FIELD COUNT VALIDATION: 7 fields total = 2 required + 5 optional ✓
   };
 
   return output;

@@ -64,6 +64,33 @@ await groupApi.getGroup('group-id');
 await acuApi.getAcu('acu-id');
 ```
 
+## Development
+
+### Testing
+
+Run integration tests:
+
+```bash
+npm run test:integration
+```
+
+### Test Fixtures
+
+Integration tests use fixtures stored in `test/fixtures/integration/` for consistent test data. These fixtures are **not automatically updated** during test runs.
+
+To update fixtures when API responses change:
+
+```bash
+SAVE_FIXTURES=true npm run test:integration
+```
+
+**When to update fixtures:**
+- API response format changes
+- New test scenarios require different data
+- Debugging integration issues
+
+**⚠️ Important:** Only update fixtures intentionally. Review changes before committing to ensure they reflect expected API behavior.
+
 ---
 
 📋 **Important**: This documentation is auto-generated. Please verify code examples work with the current version.

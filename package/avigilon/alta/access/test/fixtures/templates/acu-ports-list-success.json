@@ -1,9 +1,10 @@
 {
   "data": [
     {
-      "id": "port-1",
+      "id": 1,
+      "number": 1,
       "name": "Test User",
-      "type": "input",
+      "type": "reader",
       "status": "active",
       "description": "Main entrance sensor",
       "configuration": {
@@ -17,9 +18,10 @@
       }
     },
     {
-      "id": "port-2",
+      "id": 2,
+      "number": 2,
       "name": "Test User",
-      "type": "output",
+      "type": "door_sensor",
       "status": "inactive",
       "description": "Door strike control",
       "configuration": {
@@ -33,9 +35,10 @@
       }
     },
     {
-      "id": "port-3",
+      "id": 3,
+      "number": 3,
       "name": "Test User",
-      "type": "output",
+      "type": "door_sensor",
       "status": "active",
       "description": "Status LED",
       "configuration": {

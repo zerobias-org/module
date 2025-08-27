@@ -17,9 +17,16 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       `/orgs/${organizationId}/groups/${groupId.toString()}`
     );
 
-    // For GroupInfo, we need to map the same fields as Group but with additional extended properties
-    const groupData = mapGroup(response.data);
-    const groupInfo = mapGroupInfo(groupData, response.data);
+    // Extract the actual group data from the nested response structure
+    const rawGroupData = response.data.data;
+
+    if (!rawGroupData) {
+      throw new Error(`Group with ID ${groupId} not found`);
+    }
+
+    // Map to Group interface and extend to GroupInfo - use exactly what API returns
+    const groupData = mapGroup(rawGroupData);
+    const groupInfo = mapGroupInfo(groupData, rawGroupData);
 
     return groupInfo;
   }

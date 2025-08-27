@@ -95,10 +95,16 @@ export function sanitizeResponse(data: any): any {
 
 /**
  * Saves sanitized API response as fixture file
+ * Only saves when SAVE_FIXTURES environment variable is set to 'true'
  * @param filename - Name of the fixture file
  * @param data - API response data to save
  */
 export async function saveFixture(filename: string, data: any): Promise<void> {
+  // Only save fixtures when explicitly requested
+  if (process.env.SAVE_FIXTURES !== 'true') {
+    return;
+  }
+
   const fs = require('fs');
   const path = require('path');
 

@@ -1,0 +1,737 @@
+# Alta Access API Schema
+
+This diagram shows all entities and relationships in the Alta Access API.
+
+```mermaid
+erDiagram
+    ORGANIZATIONS {
+        string org_id PK "*"
+        string name "*"
+        string description
+        string subdomain
+        string timezone
+        boolean sso_enabled
+        string logo_url
+        json settings
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    SITES {
+        string site_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string description
+        string address
+        string city
+        string state
+        string postal_code
+        string country
+        string phone
+        float latitude
+        float longitude
+        string timezone
+        boolean active "*"
+        json settings
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    ZONES {
+        string zone_id PK "*"
+        string site_id FK "*"
+        string name "*"
+        string description
+        string zone_type
+        boolean shared
+        boolean anti_passback_enabled
+        integer capacity_limit
+        string parent_zone_id FK
+        json settings
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    ENTRIES {
+        string entry_id PK "*"
+        string zone_id FK "*"
+        string acu_id FK "*"
+        string name "*"
+        string description
+        string entry_type "*"
+        string state "*"
+        string door_position
+        boolean rex_enabled
+        boolean unlock_on_exit
+        integer unlock_time
+        boolean monitoring_enabled
+        json reader_settings
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    USERS {
+        string user_id PK "*"
+        string org_id FK "*"
+        string email "*"
+        string first_name "*"
+        string last_name "*"
+        string phone
+        string employee_id
+        string department
+        string title
+        string status "*"
+        boolean portal_access
+        boolean override_permission
+        string pin_code
+        string external_id
+        json custom_fields
+        datetime start_date
+        datetime end_date
+        datetime last_login
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    GROUPS {
+        string group_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string description
+        string group_type
+        boolean system_group
+        integer member_count
+        json settings
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    ACUS {
+        string acu_id PK "*"
+        string site_id FK "*"
+        string name "*"
+        string description
+        string serial_number
+        string ip_address "*"
+        string mac_address
+        string firmware_version
+        string hardware_version
+        string status "*"
+        boolean online
+        datetime last_seen
+        json network_settings
+        json capabilities
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    CREDENTIALS {
+        string credential_id PK "*"
+        string user_id FK "*"
+        string credential_type "*"
+        string status "*"
+        string card_number
+        string facility_code
+        string mobile_pass_id
+        string cloud_key_url
+        string pin_code
+        datetime expires_at
+        datetime activated_at
+        datetime last_used
+        integer use_count
+        json metadata
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    SCHEDULES {
+        string schedule_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string description
+        string schedule_type "*"
+        json time_periods "*"
+        string timezone
+        boolean active "*"
+        datetime effective_from
+        datetime effective_to
+        json exceptions
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    EVENTS {
+        string event_id PK "*"
+        string entry_id FK
+        string user_id FK
+        string org_id FK "*"
+        string event_type "*"
+        string result "*"
+        string credential_type
+        string reader_name
+        string failure_reason
+        json metadata
+        datetime timestamp "*"
+        datetime processed_at
+        string processed_by
+    }
+    
+    WEBHOOKS {
+        string webhook_id PK "*"
+        string site_id FK "*"
+        string url "*"
+        string description
+        json event_types "*"
+        string secret_key
+        boolean active "*"
+        integer retry_count
+        datetime last_success
+        datetime last_failure
+        json headers
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    AREAS {
+        string area_id PK "*"
+        string zone_id FK "*"
+        string name "*"
+        string description
+        integer capacity_limit
+        integer current_occupancy
+        boolean anti_passback "*"
+        boolean occupancy_enabled
+        string area_type
+        json entry_points
+        json exit_points
+        json current_users
+        json settings
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    READERS {
+        string reader_id PK "*"
+        string acu_id FK "*"
+        string entry_id FK
+        string name "*"
+        string description
+        string reader_type "*"
+        string serial_number
+        string firmware_version
+        string status "*"
+        boolean online
+        json capabilities
+        json settings
+        datetime last_seen
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    LOCKDOWN_PLANS {
+        string plan_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string description
+        string plan_type
+        boolean active "*"
+        json target_zones
+        json entry_states
+        integer priority
+        json triggers
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    VISITORS {
+        string visitor_id PK "*"
+        string org_id FK "*"
+        string email "*"
+        string first_name "*"
+        string last_name "*"
+        string phone
+        string company
+        string host_user_id FK
+        string visitor_type
+        string status "*"
+        datetime visit_start "*"
+        datetime visit_end "*"
+        string cloud_key_url
+        json access_zones
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    RULES {
+        string rule_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string description
+        string rule_type "*"
+        json conditions "*"
+        json actions "*"
+        boolean active "*"
+        integer priority
+        datetime last_triggered
+        integer trigger_count
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    AUDIT_LOGS {
+        string log_id PK "*"
+        string org_id FK "*"
+        string user_id FK
+        string resource_type "*"
+        string resource_id
+        string action "*"
+        string result "*"
+        json before_state
+        json after_state
+        string ip_address
+        string user_agent
+        datetime timestamp "*"
+        json metadata
+    }
+    
+    REPORTS {
+        string report_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string description
+        string report_type "*"
+        json parameters "*"
+        string format
+        string status "*"
+        string file_url
+        datetime generated_at
+        datetime expires_at
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    CONTACT_SENSORS {
+        string sensor_id PK "*"
+        string entry_id FK "*"
+        string name "*"
+        string description
+        string sensor_type "*"
+        string status "*"
+        boolean online
+        string last_state
+        datetime last_change
+        json settings
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    API_KEYS {
+        string key_id PK "*"
+        string org_id FK "*"
+        string user_id FK "*"
+        string name "*"
+        string key_hash "*"
+        json permissions "*"
+        string status "*"
+        datetime expires_at
+        datetime last_used
+        string last_ip
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    PERMISSIONS {
+        string permission_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string description
+        string resource_type "*"
+        string action "*"
+        string scope
+        boolean system_permission
+        datetime created_at "*"
+        datetime updated_at "*"
+    }
+    
+    ROLES {
+        string role_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string description
+        boolean system_role
+        json permissions "*"
+        integer member_count
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    SETTINGS {
+        string setting_id PK "*"
+        string org_id FK
+        string site_id FK
+        string setting_key "*"
+        string setting_value "*"
+        string data_type "*"
+        string category
+        string description
+        boolean system_setting
+        datetime updated_at "*"
+        string updated_by
+    }
+    
+    TIME_ZONES {
+        string timezone_id PK "*"
+        string name "*"
+        string tz_identifier "*"
+        integer utc_offset "*"
+        boolean dst_enabled
+        string description
+        boolean active "*"
+    }
+    
+    HOLIDAYS {
+        string holiday_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        date holiday_date "*"
+        boolean recurring
+        string recurrence_pattern
+        string description
+        boolean active "*"
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    NOTIFICATIONS {
+        string notification_id PK "*"
+        string org_id FK "*"
+        string user_id FK
+        string title "*"
+        string message "*"
+        string notification_type "*"
+        string status "*"
+        string priority
+        json metadata
+        datetime sent_at
+        datetime read_at
+        datetime created_at "*"
+    }
+    
+    ALERTS {
+        string alert_id PK "*"
+        string org_id FK "*"
+        string alert_type "*"
+        string severity "*"
+        string title "*"
+        string description "*"
+        string status "*"
+        string source_type
+        string source_id
+        json alert_data
+        datetime triggered_at "*"
+        datetime resolved_at
+        string resolved_by
+        datetime created_at "*"
+    }
+    
+    EMAIL_TEMPLATES {
+        string template_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string subject "*"
+        string body_html "*"
+        string body_text
+        string template_type "*"
+        json variables
+        boolean active "*"
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    SMS_SETTINGS {
+        string setting_id PK "*"
+        string org_id FK "*"
+        string provider "*"
+        json provider_config "*"
+        boolean enabled "*"
+        string sender_id
+        json templates
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    INTEGRATIONS {
+        string integration_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string integration_type "*"
+        string status "*"
+        json configuration "*"
+        json credentials
+        datetime last_sync
+        string last_sync_status
+        json sync_errors
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    API_LOGS {
+        string log_id PK "*"
+        string org_id FK "*"
+        string api_key_id FK
+        string endpoint "*"
+        string method "*"
+        integer status_code "*"
+        integer response_time
+        string ip_address
+        string user_agent
+        json request_data
+        json response_data
+        datetime timestamp "*"
+    }
+    
+    SYNC_JOBS {
+        string job_id PK "*"
+        string org_id FK "*"
+        string integration_id FK
+        string job_type "*"
+        string status "*"
+        datetime started_at
+        datetime completed_at
+        integer records_processed
+        integer records_failed
+        json error_details
+        json job_data
+        datetime created_at "*"
+    }
+    
+    WEBHOOK_LOGS {
+        string log_id PK "*"
+        string webhook_id FK "*"
+        string event_id FK
+        string status "*"
+        integer http_status
+        integer attempt_number "*"
+        string response_body
+        string error_message
+        datetime attempted_at "*"
+        datetime next_retry_at
+    }
+    
+    FIRMWARE_UPDATES {
+        string update_id PK "*"
+        string org_id FK "*"
+        string device_type "*"
+        string current_version
+        string target_version "*"
+        string status "*"
+        json target_devices
+        datetime scheduled_at
+        datetime started_at
+        datetime completed_at
+        json update_results
+        datetime created_at "*"
+        string created_by
+    }
+    
+    DEVICE_HEALTH {
+        string health_id PK "*"
+        string device_id FK "*"
+        string device_type "*"
+        string status "*"
+        float cpu_usage
+        float memory_usage
+        float temperature
+        boolean network_connected
+        datetime last_heartbeat "*"
+        json metrics
+        json alerts
+        datetime recorded_at "*"
+    }
+    
+    NETWORK_SETTINGS {
+        string setting_id PK "*"
+        string device_id FK "*"
+        string ip_address
+        string subnet_mask
+        string gateway
+        string dns_primary
+        string dns_secondary
+        boolean dhcp_enabled "*"
+        integer port
+        json security_settings
+        datetime updated_at "*"
+        string updated_by
+    }
+    
+    OCCUPANCY_TRACKING {
+        string tracking_id PK "*"
+        string area_id FK "*"
+        integer current_count "*"
+        integer max_capacity
+        json entry_counts
+        json exit_counts
+        datetime last_updated "*"
+        json historical_data
+    }
+    
+    ANALYTICS {
+        string analytics_id PK "*"
+        string org_id FK "*"
+        string metric_type "*"
+        string period "*"
+        json metric_data "*"
+        datetime period_start "*"
+        datetime period_end "*"
+        datetime calculated_at "*"
+        json metadata
+    }
+    
+    COMPLIANCE_POLICIES {
+        string policy_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string policy_type "*"
+        json requirements "*"
+        boolean active "*"
+        json compliance_rules
+        datetime effective_date
+        datetime expiry_date
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+    
+    BACKUP_CONFIGS {
+        string backup_id PK "*"
+        string org_id FK "*"
+        string name "*"
+        string backup_type "*"
+        string frequency "*"
+        json included_resources "*"
+        string storage_location
+        boolean enabled "*"
+        datetime last_backup
+        string last_backup_status
+        json retention_policy
+        datetime created_at "*"
+        datetime updated_at "*"
+        string created_by
+    }
+
+    %% Organizational Hierarchy
+    ORGANIZATIONS ||--o{ SITES : "contains"
+    SITES ||--o{ ZONES : "contains"
+    ZONES ||--o{ ENTRIES : "contains"
+    ZONES ||--o{ AREAS : "contains"
+    SITES ||--o{ ACUS : "located_at"
+    ACUS ||--o{ ENTRIES : "controls"
+    ACUS ||--o{ READERS : "connected_to"
+    ENTRIES ||--o{ READERS : "has"
+    ENTRIES ||--o{ CONTACT_SENSORS : "monitors"
+    
+    %% User Management & Security
+    ORGANIZATIONS ||--o{ USERS : "employs"
+    ORGANIZATIONS ||--o{ GROUPS : "contains"
+    ORGANIZATIONS ||--o{ VISITORS : "hosts"
+    ORGANIZATIONS ||--o{ ROLES : "defines"
+    USERS ||--o{ CREDENTIALS : "has"
+    USERS ||--o{ VISITORS : "hosts"
+    USERS ||--o{ API_KEYS : "owns"
+    USERS }o--o{ ROLES : "assigned"
+    ROLES }o--o{ PERMISSIONS : "includes"
+    
+    %% Access Control (Many-to-Many)
+    USERS }o--o{ GROUPS : "member_of"
+    GROUPS }o--o{ ZONES : "has_access_to"
+    USERS }o--o{ ZONES : "direct_access_to"
+    VISITORS }o--o{ ZONES : "temporary_access_to"
+    
+    %% Scheduling & Time Management
+    USERS }o--o{ SCHEDULES : "follows"
+    GROUPS }o--o{ SCHEDULES : "follows"
+    ENTRIES }o--o{ SCHEDULES : "follows"
+    ORGANIZATIONS ||--o{ HOLIDAYS : "observes"
+    SCHEDULES }o--o{ HOLIDAYS : "excludes"
+    TIME_ZONES ||--o{ SCHEDULES : "applies_to"
+    
+    %% Events & Monitoring
+    ENTRIES ||--o{ EVENTS : "generates"
+    USERS ||--o{ EVENTS : "triggers"
+    VISITORS ||--o{ EVENTS : "triggers"
+    SITES ||--o{ WEBHOOKS : "sends"
+    WEBHOOKS ||--o{ WEBHOOK_LOGS : "logged_by"
+    EVENTS ||--o{ WEBHOOK_LOGS : "triggers"
+    
+    %% Security & Rules
+    ORGANIZATIONS ||--o{ LOCKDOWN_PLANS : "defines"
+    ORGANIZATIONS ||--o{ RULES : "defines"
+    LOCKDOWN_PLANS }o--o{ ZONES : "affects"
+    RULES }o--o{ EVENTS : "triggered_by"
+    ORGANIZATIONS ||--o{ ALERTS : "generates"
+    ALERTS ||--o{ NOTIFICATIONS : "creates"
+    
+    %% Configuration & Settings
+    ORGANIZATIONS ||--o{ SETTINGS : "configures"
+    SITES ||--o{ SETTINGS : "configures"
+    ORGANIZATIONS ||--o{ EMAIL_TEMPLATES : "uses"
+    ORGANIZATIONS ||--o{ SMS_SETTINGS : "configures"
+    
+    %% Integration & APIs
+    ORGANIZATIONS ||--o{ INTEGRATIONS : "connects"
+    ORGANIZATIONS ||--o{ API_LOGS : "tracks"
+    INTEGRATIONS ||--o{ SYNC_JOBS : "executes"
+    API_KEYS ||--o{ API_LOGS : "generates"
+    
+    %% Hardware Management
+    ACUS ||--o{ DEVICE_HEALTH : "monitors"
+    READERS ||--o{ DEVICE_HEALTH : "monitors"
+    CONTACT_SENSORS ||--o{ DEVICE_HEALTH : "monitors"
+    ACUS ||--o{ NETWORK_SETTINGS : "configured_by"
+    READERS ||--o{ NETWORK_SETTINGS : "configured_by"
+    ORGANIZATIONS ||--o{ FIRMWARE_UPDATES : "manages"
+    
+    %% Areas & Advanced Access Control
+    AREAS ||--o{ OCCUPANCY_TRACKING : "tracked_by"
+    AREAS }o--o{ ENTRIES : "controls_flow_through"
+    AREAS }o--o{ USERS : "tracks_presence_of"
+    AREAS ||--o{ EVENTS : "generates_occupancy_events"
+    USERS }o--o{ AREAS : "currently_present_in"
+    ORGANIZATIONS ||--o{ ANALYTICS : "generates"
+    ORGANIZATIONS ||--o{ COMPLIANCE_POLICIES : "enforces"
+    ORGANIZATIONS ||--o{ BACKUP_CONFIGS : "maintains"
+    
+    %% Reporting & Audit
+    ORGANIZATIONS ||--o{ REPORTS : "generates"
+    ORGANIZATIONS ||--o{ AUDIT_LOGS : "tracks"
+    USERS ||--o{ AUDIT_LOGS : "performs_actions"
+    USERS ||--o{ NOTIFICATIONS : "receives"
+    
+    %% Organizational Scope
+    ORGANIZATIONS ||--o{ SCHEDULES : "defines"
+    ORGANIZATIONS ||--o{ EVENTS : "tracks"
+    ORGANIZATIONS ||--o{ PERMISSIONS : "defines"
+```

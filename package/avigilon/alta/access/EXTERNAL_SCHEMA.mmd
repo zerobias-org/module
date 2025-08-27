@@ -1,8 +1,3 @@
-# Alta Access API Schema
-
-This diagram shows all entities and relationships in the Alta Access API.
-
-```mermaid
 erDiagram
     ORGANIZATIONS {
         string org_id PK "*"
@@ -734,4 +729,3 @@ erDiagram
     ORGANIZATIONS ||--o{ SCHEDULES : "defines"
     ORGANIZATIONS ||--o{ EVENTS : "tracks"
     ORGANIZATIONS ||--o{ PERMISSIONS : "defines"
-```

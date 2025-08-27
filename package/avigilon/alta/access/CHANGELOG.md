@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.13](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@0.1.12...@zerobias-org/module-avigilon-alta-access@0.1.13) (2025-08-27)
+
+
+### Bug Fixes
+
+* fix get group mapper to bring name and id ([6e3cd08](https://github.com/zerobias-org/module-avigilon-alta-access/commit/6e3cd08eee52d26e010ada82e1fbffebe96fee60))
+
+
+
+
+
 ## [0.1.12](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@0.1.11...@zerobias-org/module-avigilon-alta-access@0.1.12) (2025-08-22)
 
 **Note:** Version bump only for package @zerobias-org/module-avigilon-alta-access

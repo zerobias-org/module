@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   x-product-infos:
     - $ref: "./node_modules/@zerobias-org/product-avigilon-alta-access/catalog.yml#/Product"
-  version: 0.1.12
+  version: 0.1.13
   title: '@zerobias-org/module-avigilon-alta-access'
   description: Avigilon Alta Access
   x-impl-name: Access

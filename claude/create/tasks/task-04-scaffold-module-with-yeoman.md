@@ -1,5 +1,9 @@
 # Task 04: Scaffold Module with Yeoman Generator
 
+## Prerequisites
+
+**🚨 CRITICAL**: Before starting this task, read `CLAUDE.md` to understand the project structure, rules, and requirements.
+
 ## Overview
 
 This task creates the initial module structure using the @auditmation/hub-module Yeoman generator. It sets up the complete directory structure, generates configuration files, and prepares the module for development.
@@ -8,9 +12,34 @@ This task creates the initial module structure using the @auditmation/hub-module
 
 - Task 03 output file: `.claude/.localmemory/{action}-{module-identifier}/task-03-output.json`
 - Task 02 output file: `.claude/.localmemory/{action}-{module-identifier}/task-02-output.json`
+- Where `{module-identifier}` is the product identifier derived from the identified product package (e.g., `vendor-suite-service` from `@scope/product-vendor-suite-service`, or `vendor-service` from `@scope/product-vendor-service`)
 - All prerequisites must be verified as passing from Task 03
 
 ## Process Steps
+
+### 0. Context Management and Goal Reminder
+
+**🚨 MANDATORY FIRST STEP - CONTEXT CLEARING**: 
+- **IGNORE all previous conversation context** - This task runs in isolation
+- **CLEAR mental context** - Treat this as a fresh start with no prior assumptions
+- **REQUEST**: User should run `/clear` or `/compact` command before starting this task for optimal performance
+
+**🚨 MANDATORY SECOND STEP**: Read and understand the original user intent:
+
+1. **Read initial user prompt**:
+   - Load `.claude/.localmemory/{action}-{module-identifier}/task-01-output.json`
+   - Where `{module-identifier}` is derived from the product package (see Task 01 for derivation rules)
+   - Extract and review the `initialUserPrompt` field
+   - Understand the original goal, scope, and specific user requirements
+
+2. **Goal alignment verification**:
+   - Ensure all scaffolding decisions align with the original user request
+   - Keep the user's specific intentions and scope in mind throughout the task
+   - If any conflicts arise between task instructions and user intent, prioritize user intent
+
+3. **Context preservation**:
+   - Reference the original prompt when making generator configuration decisions
+   - Ensure the module structure serves the user's actual needs, not generic assumptions
 
 ### 1. Extract Module Components
 

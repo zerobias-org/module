@@ -1,20 +1,61 @@
-# Task 8: Add and Run Integration Tests
+# Task 7: Add and Run Integration Tests
+
+## Prerequisites
+
+**🚨 CRITICAL**: Before starting this task, read `CLAUDE.md` to understand the project structure, rules, and requirements.
 
 **Task ID**: `testing-add-integration-tests`  
-**Step**: 8  
+**Step**: 7  
 **Category**: Testing & Validation  
 
 ## Overview
 
-Create comprehensive integration tests that validate the module's ability to connect and interact with the real API. When test credentials are provided, these tests will run automatically to verify the integration works correctly.
+### 0. Context Management and Goal Reminder
+
+**🚨 MANDATORY FIRST STEP - CONTEXT CLEARING**: 
+- **IGNORE all previous conversation context** - This task runs in isolation
+- **CLEAR mental context** - Treat this as a fresh start with no prior assumptions
+- **REQUEST**: User should run `/clear` or `/compact` command before starting this task for optimal performance
+
+**🚨 MANDATORY SECOND STEP**: Read and understand the original user intent:
+
+1. **Read initial user prompt**:
+   - Load `.claude/.localmemory/{action}-{module-identifier}/task-01-output.json`
+   - Extract and review the `initialUserPrompt` field
+   - Understand the original goal, scope, and specific user requirements
+
+2. **Goal alignment verification**:
+   - Ensure all integration test decisions align with the original user request
+   - Keep the user's specific intentions and scope in mind throughout the task
+   - If any conflicts arise between task instructions and user intent, prioritize user intent
+
+3. **Context preservation**:
+   - Reference the original prompt when designing test scenarios
+   - Ensure the integration tests validate the user's actual needs, not generic functionality
+
+## Task Overview
+
+Create comprehensive integration tests that validate the module's ability to connect and interact with the real API. These tests are always created but only run when test credentials are provided. When credentials are available and tests run, they must pass with full permissions assumed.
 
 ## 🚨 Critical Rules
 
-- **NEVER run integration tests without explicit credentials** - Only run when environment variables are properly configured
+- **ALWAYS CREATE TESTS** - Integration tests are always created, regardless of credential availability
+- **🚨 MANDATORY TESTING WHEN CREDENTIALS PROVIDED** - When API keys/credentials are provided, integration tests MUST be run and MUST pass - never skip integration tests when having credentials
+- **🚨 NEVER SKIP TESTS** - Do not skip tests regardless of credentials availability or other conditions - tests must always execute
+- **🚨 NEVER RETRY OPERATIONS** - Do not use retry mechanisms or retryOperation() function - use direct await operation(params...) calls only
+- **🚨 LOCATE AND USE CREDENTIALS** - Find where credentials are stored (check .env files, environment variables) and use them for testing
+- **🚨 CREDENTIAL SECURITY** - NEVER add credentials to any code that could be committed - only use .env files (which should be in .gitignore)
+- **ASSUME FULL PERMISSIONS** - When tests run, assume a token/credentials with all necessary permissions are provided
+- **NO PERMISSION-BASED SKIPPING** - When credentials are available, do not skip tests due to lack of permissions; assume access is available
+- **DIRECT OPERATION CALLS** - Always use direct await operation(params...) calls without retry wrappers or skip conditions
 - **ALWAYS sanitize sensitive data** - Remove real tokens, emails, and personal information from test outputs
 - **MUST use realistic test scenarios** - Test actual API endpoints and common use cases
 - **NEVER commit real credentials** - Use `.env.example` for templates only
-- **ALL TESTS MUST PASS** - Integration tests must achieve 100% pass rate before task completion
+- **🚨 MANDATORY: ALL INTEGRATION TESTS MUST PASS** - **ZERO FAILURES ALLOWED** when credentials are provided - 100% pass rate is REQUIRED for task completion
+- **🚨 NO SKIP/IGNORE/EXCEPTIONS** - NO `.skip()`, `.only()`, or ignored tests - All tests must execute and pass regardless of credentials
+- **🚨 NO RETRY WRAPPERS** - Remove all retryOperation() calls and use direct await operation(params...) calls
+- **🚨 FIX IMPLEMENTATION IF TESTS FAIL** - If integration tests fail, fix the implementation code or test issues, not the tests themselves
+- **🚨 VALIDATE TEST EXECUTION** - Must run `npm run test:integration` and verify 0 failures before task completion when credentials available
 - **NEVER modify generated files** - Do not edit any files in `/generated/` directory
 - **NEVER modify api.yml** - API specification is immutable during integration testing
 - **REQUEST USER ACTION for model changes** - If API model changes are needed, inform user and stop
@@ -41,7 +82,7 @@ Create comprehensive integration tests that validate the module's ability to con
 - `test/fixtures/integration/` - Real API response examples (sanitized)
 
 ### Memory Output
-- `.claude/.localmemory/{action}-{module-identifier}/task-08-output.json` - Task completion status and results
+- `.claude/.localmemory/{action}-{module-identifier}/task-07-output.json` - Task completion status and results
 
 ### Test Coverage Areas
 - **Connection tests**: Authentication and connection validation  
@@ -105,21 +146,53 @@ else
 fi
 ```
 
-### Step 7: Interpret Results and Fix Issues
+**Test Behavior**:
+- **With credentials**: All tests run and must pass with full permissions
+- **Without credentials**: Tests skip gracefully with informative messages
+- **Partial credentials**: Tests assume full permissions for provided credentials
 
-Analyze test results and fix any failures following these rules:
+### Step 8: Execute and Validate Integration Tests - 🚨 MANDATORY VALIDATION
 
-**Allowed Fixes:**
+**🚨 CRITICAL: MANDATORY INTEGRATION TEST EXECUTION AND VALIDATION (When Credentials Available)**
+
+**Run Integration Tests:**
+When credentials are available, execute all integration tests and verify **ZERO FAILURES**:
+```bash
+# Must execute this command and verify 0 failures when credentials are available
+npm run test:integration
+```
+
+**🚨 FAILURE RESOLUTION PROTOCOL (When Credentials Available):**
+If ANY integration tests fail, you MUST:
+1. **ANALYZE the failure** - Understand why integration tests are failing
+2. **FIX THE IMPLEMENTATION** - Correct bugs in source code (`src/` directory)
+3. **FIX TEST SETUP ISSUES** - Resolve authentication, network, or configuration problems
+4. **NEVER SKIP TESTS** - Do not use `.skip()`, `.only()`, or comment out failing tests
+5. **NEVER MODIFY GENERATED FILES** - Focus on implementation and test fixes only
+6. **RE-RUN TESTS** - Execute `npm run test:integration` again until ALL tests pass
+7. **REPEAT UNTIL ZERO FAILURES** - Continue fixing until 100% pass rate achieved
+
+**🚨 TASK IS NOT COMPLETE UNTIL (When Credentials Available):**
+- `npm run test:integration` shows **0 failures, 0 errors**
+- All integration tests execute (no skipped tests due to implementation issues)
+- Test output shows **100% pass rate**
+- No `.skip()`, `.only()`, or ignored test methods remain in code
+
+**ACCEPTABLE FIXES (in order of preference):**
 - **Test code issues**: Debug and fix problems in test files
 - **Implementation errors**: Fix bugs in module source code (src/ directory)
 - **Authentication issues**: Verify credentials and permissions
 - **Network issues**: Add retry logic or increase timeouts
 - **Data mapping errors**: Adjust test expectations to match API reality
 
-**Prohibited Actions:**
+**PROHIBITED ACTIONS:**
 - **NEVER modify /generated files** - These are auto-generated from API specifications
 - **NEVER modify api.yml** - API specification is source of truth
 - **NEVER change model definitions** - Models are generated from OpenAPI spec
+- Using `.skip()` to ignore failing tests when credentials are available
+- Using `.only()` to run only passing tests when credentials are available
+- Commenting out failing test cases when credentials are available
+- Accepting any test failures as "expected" when credentials are available
 
 **If Model Changes Required:**
 1. **STOP task execution**
@@ -127,8 +200,8 @@ Analyze test results and fix any failures following these rules:
 3. **Request user action** to update api.yml and regenerate
 4. **Wait for user** to complete changes before continuing
 
-**Success Requirement:**
-- **ALL tests must pass** - 100% pass rate required for task completion
+**🚨 Success Requirement:**
+- **ALL integration tests must pass** - 100% pass rate required for task completion when credentials are available
 
 ### Step 8: Final Validation Build and Test
 
@@ -163,6 +236,34 @@ Create task completion record in local memory:
 - Note any credential requirements or limitations
 - Save integration test summary and recommendations
 - Confirm final validation build success
+
+## Output Format
+
+Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-identifier}/task-07-output.json`
+
+```json
+{
+  "status": "completed|failed|error",
+  "timestamp": "${iso_timestamp}",
+  "integrationTests": {
+    "credentialsAvailable": "${test_credentials_available}",
+    "testsCreated": "${created_test_count}",
+    "testsExecuted": "${executed_test_count}",
+    "testsPassed": "${passed_test_count}",
+    "testsFailed": "${failed_test_count}",
+    "testPassRate": "${pass_rate_percentage}",
+    "allTestsPassed": "${boolean_all_tests_passed}",
+    "npmTestIntegrationOutput": "${npm_test_integration_final_output}"
+  },
+  "files": {
+    "connectionTest": "${module_path}/test/integration/ConnectionTest.ts",
+    "commonUtilities": "${module_path}/test/integration/Common.ts",
+    "producerTests": ["${list_of_producer_test_files}"],
+    "fixtures": ["${list_of_fixture_files}"],
+    "envTemplate": "${module_path}/.env.example"
+  }
+}
+```
 
 ## Test Scenarios
 
@@ -224,7 +325,10 @@ INTEGRATION_TIMEOUT=30000
 - [ ] Tests run successfully when credentials are provided
 - [ ] Tests skip gracefully when credentials are missing  
 - [ ] Real API responses are captured and sanitized
-- [ ] **ALL TESTS PASS (100% pass rate required)**
+- [ ] **🚨 MANDATORY: ALL INTEGRATION TESTS PASS - ZERO FAILURES REQUIRED (when credentials available)**
+- [ ] **🚨 MANDATORY: `npm run test:integration` command executed and shows 0 failures, 0 errors (when credentials available)**
+- [ ] **🚨 MANDATORY: No skipped, ignored, or .only() tests remain when credentials available**
+- [ ] **🚨 MANDATORY: Implementation code fixed if any integration tests initially failed**
 - [ ] Test failures resolved without modifying generated files or api.yml
 - [ ] Environment template is comprehensive
 - [ ] No sensitive data is committed to git
@@ -268,5 +372,43 @@ If integration tests reveal any of these issues, **STOP and inform the user**:
 The user must update `api.yml` and regenerate before integration testing can continue.
 
 ---
+
+## 🚨 FINAL VALIDATION CHECKLIST (When Credentials Available)
+
+Before marking this task as complete when credentials are available, you MUST verify:
+
+**✅ CREDENTIAL AND EXECUTION VALIDATION:**
+- [ ] Credentials were detected and located in authorized locations (.env files)
+- [ ] Executed `npm run test:integration` command successfully
+- [ ] Command output shows "0 failing" tests
+- [ ] Command output shows "X passing" tests (where X > 0)
+- [ ] No test errors, timeouts, or crashes occurred
+- [ ] Exit code was 0 (success)
+
+**✅ CODE QUALITY VALIDATION:**
+- [ ] No `.skip()` methods remain in any integration test files when credentials available
+- [ ] No `.only()` methods remain in any integration test files when credentials available
+- [ ] No commented-out test cases when credentials available
+- [ ] All test files compile without TypeScript errors
+- [ ] Implementation code passes lint checks (if applicable)
+
+**✅ IMPLEMENTATION VALIDATION:**
+- [ ] If any integration tests initially failed, implementation bugs were fixed
+- [ ] No generated files in `/generated/` directory were modified
+- [ ] Only `src/` and `test/` files were changed to fix issues
+- [ ] Core type assertions work correctly with real API data (Email, URL, UUID, etc.)
+- [ ] API responses are properly sanitized in captured fixtures
+
+**✅ SECURITY VALIDATION:**
+- [ ] No real credentials committed to git
+- [ ] Sensitive data properly sanitized in test fixtures
+- [ ] `.env.example` contains only template values, no real credentials
+
+**🚨 TASK COMPLETION REQUIREMENT:**
+This task is **NOT COMPLETE** until ALL above checkboxes are verified when credentials are available. If credentials are not available, tests should skip gracefully and task can be marked complete after test structure creation.
+
+**🚨 CONDITIONAL COMPLETION:**
+- **With credentials**: ALL integration tests must pass (100% pass rate) + all validation checkboxes complete
+- **Without credentials**: Test structure created + tests skip gracefully when credentials missing
 
 **Human Review Required**: After integration tests are created, verify that sensitive test data is properly sanitized and real credentials are not exposed in test fixtures or logs.

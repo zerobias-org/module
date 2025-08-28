@@ -1,5 +1,9 @@
 # Task 05: Define API Specification, Validate, and Sync Metadata
 
+## Prerequisites
+
+**🚨 CRITICAL**: Before starting this task, read `CLAUDE.md` to understand the project structure, rules, and requirements.
+
 ## ⚠️ CRITICAL IMPORTANCE ⚠️
 
 **THIS IS THE MOST IMPORTANT TASK IN THE ENTIRE MODULE DEVELOPMENT PROCESS**
@@ -94,9 +98,33 @@ This task creates a comprehensive OpenAPI specification, defines connection prof
 
 - Task 04 output file: `.claude/.localmemory/{action}-{module-identifier}/task-04-output.json`
 - Task 02 output file: `.claude/.localmemory/{action}-{module-identifier}/task-02-output.json`
+- Where `{module-identifier}` is the product identifier derived from the identified product package (e.g., `vendor-suite-service` from `@scope/product-vendor-suite-service`, or `vendor-service` from `@scope/product-vendor-service`)
 - Module scaffolding must be completed with base `api.yml` file
 
 ## Process Steps
+
+### 0. Context Management and Goal Reminder
+
+**🚨 MANDATORY FIRST STEP - CONTEXT CLEARING**: 
+- **IGNORE all previous conversation context** - This task runs in isolation
+- **CLEAR mental context** - Treat this as a fresh start with no prior assumptions
+- **REQUEST**: User should run `/clear` or `/compact` command before starting this task for optimal performance
+
+**🚨 MANDATORY SECOND STEP**: Read and understand the original user intent:
+
+1. **Read initial user prompt**:
+   - Load `.claude/.localmemory/{action}-{module-identifier}/task-01-output.json`
+   - Extract and review the `initialUserPrompt` field
+   - Understand the original goal, scope, and specific user requirements
+
+2. **Goal alignment verification**:
+   - Ensure all API definition decisions align with the original user request
+   - Keep the user's specific intentions and scope in mind throughout the task
+   - If any conflicts arise between task instructions and user intent, prioritize user intent
+
+3. **Context preservation**:
+   - Reference the original prompt when making API specification decisions
+   - Ensure the API definition serves the user's actual needs, not generic assumptions
 
 ### 1. Research Target API Documentation
 
@@ -107,10 +135,17 @@ Research the target service's API documentation and authentication methods:
    - Verify documentation is accessible and current
    - Document service name, base URL, and authentication methods
 
-2. **Authentication Method Research**:
-   - Priority order: Personal Access Token > API Key > Bearer Token > Basic Auth > OAuth2
-   - OAuth2 is deferred to later iterations for simplicity
-   - Document findings and rationale for selected method
+2. **Credential-Based Authentication Analysis**:
+   - **🚨 MANDATORY FIRST STEP**: Analyze what credentials were provided during module development
+   - **Credential-Based Selection**: Use the authentication method that matches provided credentials:
+     - API Key/Token provided → API Key authentication
+     - Personal Access Token provided → PAT authentication  
+     - Bearer Token provided → Bearer Token authentication
+     - Username/Password provided → Basic Authentication
+     - **Note**: OAuth2 credentials (client_id/client_secret) are deferred until OAuth2 support is added
+   - **Vendor Research**: Research vendor-specific authentication patterns that match the credential type
+   - **Document**: Record the credential type provided and rationale for connection profile selection
+   - **Never Override**: Use the authentication method that matches the provided credentials, not documentation preferences
 
 ### 2. Update API Specification Metadata
 
@@ -158,12 +193,22 @@ Configure authentication with OAuth2 security schema (ALWAYS use OAuth2 with sco
 
 Create comprehensive API endpoints based on service documentation:
 
-1. **Endpoint Path Standards** (**MANDATORY COMPLIANCE**):
-   - Use RESTful resource naming (not GraphQL paths)
-   - Format: `/resources`, `/resources/{resourceId}`, `/resources/{resourceId}/sub-resources`
-   - Examples: `/items`, `/items/{itemId}`, `/groups/{groupId}/members`
-   - **CRITICAL**: Choose the term that makes most sense for users, use consistently throughout
-   - **CRITICAL**: Use descriptive path parameter names (e.g., `{resourceId}`, `{userId}`, `{itemId}`)
+1. **🚨 CRITICAL: Standardized Path Format Rules** (**MANDATORY COMPLIANCE**):
+   - **🚨 NEVER use ugly external API path formats** like `{owner}/{resource}/{subResource}` or `/users/{username}/repos/{repo}`
+   - **🚨 ALWAYS use clean standardized format**:
+     - `/resources` (for list operations)
+     - `/resources/{resourceId}` (for single resource operations)  
+     - `/resources/{resourceId}/sub-resources` (for nested list operations)
+     - `/resources/{resourceId}/sub-resources/{subResourceId}` (for nested single operations)
+     - `/resources/{resourceId}/sub-resources/{subResourceId}/sub-sub-resources` (for deeper nesting)
+   - **🚨 ALWAYS ignore original API paths**: Store original path mapping in output file for later implementation, but API spec MUST use standardized format
+   - **🚨 Parameter names must describe what property/identifier is expected**:
+     - ❌ BAD: `{id}`, `{name}`, `{owner}`, `{repo}` (generic, unclear)
+     - ✅ GOOD: `{resourceId}`, `{userId}`, `{repositoryId}`, `{organizationId}` (specific, descriptive)
+   - **Examples of correct standardized paths**:
+     - Original: `/users/{username}/repos/{repo}` → Standardized: `/repositories/{repositoryId}` 
+     - Original: `/orgs/{org}/members/{username}` → Standardized: `/organizations/{organizationId}/members/{memberId}`
+     - Original: `/projects/{project}/issues/{issue_id}` → Standardized: `/projects/{projectId}/issues/{issueId}`
 
 2. **Endpoint Definition**:
    - Reference operations from Task 02 output
@@ -174,6 +219,21 @@ Create comprehensive API endpoints based on service documentation:
 3. **PagedResults Configuration**:
    - Add `pageNumberParam` and `pageSizeParam` to paginated endpoints
    - Include `pagedLinkHeader` in response headers
+   - **🚨 CRITICAL PAGED RESULTS SCHEMA REQUIREMENT**: 
+     - For paged endpoints, the response content schema MUST be of type `array`
+     - Items MUST be the generic type `T` from `PagedResults<T>`
+     - **NEVER** use `object` or nested properties like `data`, `results`, `items`
+     - If original API returns results inside properties (data/results/items), store mapping in output file for later implementation
+     ```yaml
+     responses:
+       '200':
+         content:
+           application/json:
+             schema:
+               type: array  # MANDATORY - never object
+               items:
+                 $ref: '#/components/schemas/ResourceType'  # Direct array of T
+     ```
    - Reference core paged schemas:
      ```yaml
      parameters:
@@ -194,9 +254,11 @@ Create comprehensive API endpoints based on service documentation:
    - **MANDATORY**: Path parameters must be descriptive - specify what type of identifier (e.g., `{resourceId}`, `{itemId}`, `{groupId}`)
    - **MANDATORY**: Resource identifier priority order: `id` > `name` > others (handle, key, etc.)
    - **MANDATORY**: All path parameters used in 2+ operations MUST be declared in `components/parameters`
+   - **🚨 CRITICAL: NO ENVIRONMENT VARIABLES**: All parameters needed for API calls MUST be available through path parameters, query parameters, or request body - NEVER assume parameters exist in environment variables
+   - **MANDATORY**: If operations require contextual parameters (like organizationId, tenantId), these MUST be passed as path or query parameters in the API specification
    - Declare enum inputs in `components/schemas`
    - Use camelCase for parameter names
-   - Examples of reusable parameters: `pageNumberParam`, `pageSizeParam`, `pageTokenParam`, `orderByParam`, `orderDirParam`
+   - Examples of reusable parameters: `pageNumberParam`, `pageSizeParam`, `pageTokenParam`, `orderByParam`, `orderDirParam`, `organizationIdParam`, `tenantIdParam`
 
 5. **Security Mapping**:
    - Attach security scheme to ALL operations with specific scopes:
@@ -208,9 +270,9 @@ Create comprehensive API endpoints based on service documentation:
    - **CRITICAL**: Specify exact scopes needed for each operation
    - Map operation requirements to appropriate scopes (read, write, admin, etc.)
 
-### 5. Define Data Schemas
+### 5. Define Data Schemas and Mappers
 
-Create comprehensive data models in `components.schemas`:
+Create comprehensive data models in `components.schemas` and define required mappers:
 
 1. **Schema Requirements**:
    - All property names must use camelCase
@@ -232,33 +294,52 @@ Create comprehensive data models in `components.schemas`:
    - Resource objects
    - Error responses (reference core error types)
 
+4. **🚨 CRITICAL MAPPER REQUIREMENTS**:
+   - **MANDATORY PROPERTY COVERAGE**: ALL properties from input type MUST be mapped - never skip or omit properties
+   - **AVOID UNNECESSARY CASTING**: Only use type casting when absolutely necessary for type safety
+   - **MAPPER PATTERN**: Use function pattern: `raw: InputType => output: OutputType = { property1: raw.prop_1, property2: raw.prop_2 }`
+   - **INFO MODEL EXTENSION**: For extended models: `raw: InputType => output: OutputTypeInfo = { ...mapperBase(raw), additionalProp1: raw.add_1 }`
+   - **NESTED MODEL HANDLING**: 
+     - Create mappers for nested models but DO NOT export them from Mappers.ts
+     - Handle optional nested objects: `property1: raw.property1 ? mapProp1Model(raw.property1) : undefined`
+     - Handle arrays: `property2: raw.property2?.map(mapProp2Model)`
+   - **COMPLETE MAPPING**: Ensure every property in the input type has a corresponding mapping in the output
+   - **PROPERTY NAME CONVERSION**: Convert snake_case input properties to camelCase output properties consistently
+
 ### 6. Create Connection Profile
 
 **⚠️ MANDATORY AI-POWERED PROFILE SELECTION ⚠️**
 
 You MUST use AI analysis to find and select the most appropriate existing connection profile. Creating a custom profile is ONLY allowed when AI analysis confirms NO existing profile satisfies the authentication requirements.
 
-1. **AI-Powered Profile Analysis**:
-   Use the Task tool to comprehensively analyze all available connection profiles:
+1. **AI-Powered Profile Analysis Based on Provided Credentials**:
+   Use the Task tool to analyze available connection profiles that match the provided credential type:
    
    **Task prompt**:
    ```
-   Search for and analyze all connection profiles in @auditmation/types-* packages using the pattern @auditmation/types-*/**/*profile.yml
+   Analyze the provided credentials for this module development and find matching connection profiles.
    
-   For each profile found:
-   1. Read and understand the authentication fields, requirements, and structure
-   2. Analyze compatibility with {SERVICE_NAME}'s authentication method: {AUTH_METHOD}
-   3. Consider field names, required properties, authentication flow, and additional fields
-   4. Rate compatibility on a scale of 1-10 with detailed rationale
-   5. Check if the profile can be used as-is or needs extension with allOf
+   CRITICAL: First determine what type of credentials were provided:
+   - Check Task 01 output for any credential information
+   - Look for client_id/client_secret, api_key/token, username/password, bearer_token, personal_access_token
+   - If no credentials were explicitly provided, note this and proceed with vendor research
    
-   Based on analysis, recommend:
-   - The best matching profile with exact $ref path
-   - Whether it can be used directly or needs extension
-   - If extension needed, specify only the additional fields required
-   - If no profile matches, justify why a custom profile is necessary
+   Then search for and analyze connection profiles in @auditmation/types-* packages that match the credential type:
    
-   Focus on: token-based auth, API key auth, basic auth patterns that match {AUTH_METHOD}
+   For vendor {VENDOR_NAME} with credential type {CREDENTIAL_TYPE}:
+   1. Search for vendor-specific profiles: @auditmation/types-{vendor}/**/*profile.yml
+   2. Search for credential-type-specific profiles matching the provided credential structure
+   3. Focus on simple authentication methods: API Key, Personal Access Token, Bearer Token, Basic Auth
+   4. Analyze field compatibility between provided credentials and profile requirements
+   5. Rate compatibility focusing on exact credential field matching (not generic auth methods)
+   
+   Based on credential analysis, recommend:
+   - The profile that best matches the provided credential structure
+   - Whether the profile can accommodate the specific credential fields provided
+   - If extension needed, specify fields to accommodate the provided credentials
+   - Never recommend OAuth2 profiles or different credential types than what was provided
+   
+   Focus on: matching the exact credential structure provided, avoiding OAuth2 complexity
    ```
 
 2. **Profile Implementation Based on AI Analysis**:
@@ -283,12 +364,13 @@ You MUST use AI analysis to find and select the most appropriate existing connec
    Create custom profile following core type patterns
 
 3. **Profile Requirements**:
-   - **CRITICAL**: Follow AI analysis recommendations exactly
-   - **CRITICAL**: Do NOT create custom profile unless AI analysis confirms necessity
-   - **CRITICAL**: Do NOT duplicate fields available in recommended core types
-   - **CRITICAL**: Use AI-recommended approach (direct reference vs extension)
-   - Document AI analysis rationale in task output
-   - Match authentication method selected in Task 02 analysis
+   - **CRITICAL**: Follow AI analysis recommendations based on provided credentials
+   - **CRITICAL**: Profile MUST accommodate the exact credential structure provided
+   - **CRITICAL**: Do NOT change credential types - use what was provided
+   - **CRITICAL**: Do NOT create custom profile unless no existing profile matches the provided credential structure
+   - **CRITICAL**: Use AI-recommended approach that matches provided credentials (direct reference vs extension)
+   - Document provided credential type and AI analysis rationale in task output
+   - Profile selection MUST align with credential type from Task 02 analysis
 
 ### 7. API Specification Style Compliance
 
@@ -348,7 +430,46 @@ Ensure the specification follows established guidelines:
    - **MANDATORY**: All endpoints must have proper security scope mappings
    - **MANDATORY**: Path parameter consistency across all operations
 
-### 9. Validate and Sync
+### 9. Generate and Validate Interfaces
+
+Generate TypeScript interfaces and validate both specification and generated code:
+
+1. **Clean Previous Generation**:
+   ```bash
+   cd ${module_path}
+   npm run clean
+   ```
+
+2. **Generate Interfaces**:
+   ```bash
+   cd ${module_path}
+   npm run generate
+   ```
+
+3. **Validate Generated Code**:
+   ```bash
+   cd ${module_path}
+   npm run transpile
+   ```
+
+4. **Check for Invalid Generated Names**:
+   - Generated interfaces MUST NOT contain names like "InlineResponse" or "InlineRequestBody"
+   - If found, these indicate API spec issues that need fixing
+   - **MANDATORY**: If invalid names found, go back to `api.yml` and extract inline schemas into proper named schemas
+   - Re-run generation after fixing API spec
+   ```bash
+   # Check for invalid generated names
+   grep -r "InlineResponse\|InlineRequestBody" generated/ && echo "INVALID NAMES FOUND - FIX API SPEC" || echo "Generated names OK"
+   ```
+
+5. **Verify Generation Success**:
+   ```bash
+   ls -la generated/api/
+   grep -c 'Connector' generated/api/index.ts
+   grep -c 'Api' generated/api/index.ts
+   ```
+
+### 10. API Specification Validation and Sync
 
 Complete validation and metadata synchronization using hybrid approach:
 
@@ -493,9 +614,11 @@ Complete validation and metadata synchronization using hybrid approach:
 
 5. **Final Validation Requirements**:
    - **MANDATORY**: Both basic script validation AND AI semantic validation must pass
-   - **MANDATORY**: Fix any issues identified by either validation method
-   - **MANDATORY**: Re-run validations after fixes until all checks pass
-   - Only proceed to task completion when both validations are successful
+   - **MANDATORY**: Interface generation must succeed without "InlineResponse" or "InlineRequestBody" names
+   - **MANDATORY**: Generated TypeScript code must transpile without errors in `generated/` directory
+   - **MANDATORY**: Fix any issues identified by validation methods and re-run until all checks pass
+   - **MANDATORY**: If interface generation fails due to invalid names, fix API spec schemas and regenerate
+   - Only proceed to task completion when all validations and generation are successful
 
 ## Output Format
 
@@ -511,10 +634,13 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
     "authenticationMethod": "${authentication_method}",
     "apiDocumentationUrl": "${api_documentation_url}",
     "aiProfileAnalysis": {
+      "providedCredentialType": "${credential_type_provided}",
+      "credentialFields": "${credential_fields_identified}",
       "recommendedProfile": "${core_type_reference}",
       "rationale": "${ai_analysis_summary}",
       "profilesAnalyzed": "${number_of_profiles_analyzed}",
-      "selectionMethod": "direct_reference|extension|custom_profile"
+      "selectionMethod": "direct_reference|extension|custom_profile",
+      "credentialCompatibility": "${how_profile_matches_provided_credentials}"
     },
     "files": {
       "apiSpec": {
@@ -553,6 +679,37 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
         "${spec_property_name}": "${original_api_property_name}"
       }
     },
+    "mapperRequirements": {
+      "description": "Mapper implementation requirements for type conversions",
+      "completeCoverage": "All input properties must be mapped to output",
+      "avoidCasting": "Only use type casting when absolutely necessary",
+      "nestedHandling": "Nested models require non-exported helper mappers",
+      "optionalHandling": "Handle optional nested objects and arrays safely",
+      "namingConversion": "Convert snake_case input to camelCase output consistently"
+    },
+    "enumMappings": {
+      "description": "Mapping between module API spec enum values and original API enum values",
+      "mappings": {
+        "${spec_enum_value}": "${original_api_enum_value}"
+      }
+    },
+    "pathMappings": {
+      "description": "Mapping between standardized API spec paths and original API paths for implementation",
+      "mappings": {
+        "${standardized_path}": "${original_api_path}"
+      }
+    },
+    "operationExclusions": {
+      "description": "Operations from Task 02 that were not implemented due to path conflicts",
+      "excluded": [
+        {
+          "operationName": "${excluded_operation}",
+          "reason": "Path conflict with ${chosen_operation}",
+          "originalPath": "${original_api_path}",
+          "standardizedPath": "${standardized_path_used}"
+        }
+      ]
+    },
     "validations": [
       {
         "check": "API specification is valid OpenAPI 3.0",
@@ -574,9 +731,11 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
         "aiAnalysisSummary": "${ai_validation_results}"
       },
       {
-        "check": "Connection profile exists and uses AI-recommended type",
+        "check": "Connection profile exists and matches provided credential type",
         "file_exists": "${module_path}/connectionProfile.yml",
-        "content_matches": "${ai_recommended_pattern}",
+        "content_matches": "${provided_credential_structure}",
+        "credential_type_used": "${credential_type_from_provided_creds}",
+        "profile_compatibility": "${how_profile_accommodates_provided_creds}",
         "status": "passed|failed"
       },
       {
@@ -592,8 +751,51 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
         "validation_method": "Both count matching and semantic analysis",
         "status": "passed|failed",
         "details": "${operation_coverage_details}"
+      },
+      {
+        "check": "TypeScript interface generation successful",
+        "command": "npm run generate && npm run transpile",
+        "expected_exit_code": 0,
+        "status": "passed|failed"
+      },
+      {
+        "check": "Generated interfaces have proper names (no InlineResponse/InlineRequestBody)",
+        "command": "grep -r 'InlineResponse\\|InlineRequestBody' generated/",
+        "expected_exit_code": 1,
+        "status": "passed|failed",
+        "description": "Ensures no invalid inline schema names in generated interfaces"
+      },
+      {
+        "check": "Mapper implementation requirements documented",
+        "description": "Verifies mapper requirements are properly documented for implementation phase",
+        "requirements_documented": {
+          "complete_property_coverage": "All input properties mapped",
+          "casting_minimization": "Avoid unnecessary type casting",
+          "nested_model_handling": "Non-exported helper mappers for nested types",
+          "safe_optional_handling": "Proper handling of optional objects and arrays"
+        },
+        "status": "passed|failed"
+      },
+      {
+        "check": "Connector and API interfaces generated",
+        "validation_method": "File content analysis",
+        "files_checked": [
+          "generated/api/index.ts",
+          "generated/api/manifest.json"
+        ],
+        "status": "passed|failed"
       }
-    ]
+    ],
+    "interfaceGeneration": {
+      "status": "completed|failed",
+      "generatedFiles": {
+        "bundledSpec": "${module_path}/module-${vendor}{-suite?}-${product}.yml",
+        "interfaces": "${module_path}/generated/api/index.ts",
+        "manifest": "${module_path}/generated/api/manifest.json"
+      },
+      "validNames": "${no_inline_names_found}",
+      "transpilationSuccess": "${transpilation_passed}"
+    }
   }
 }
 ```
@@ -609,6 +811,9 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
 - **AI semantic validation failed**: Address semantic rule violations and retry
 - **Missing operations from Task 02**: Add missing endpoints to API specification before proceeding
 - **Operation count mismatch**: Verify all Task 02 operations are implemented as API paths
+- **Interface generation failed**: Fix API specification schemas and retry generation
+- **Invalid generated names found**: Extract inline schemas to proper named schemas in API spec
+- **TypeScript transpilation failed**: Fix generated code issues by improving API specification
 
 ## Success Criteria
 
@@ -620,6 +825,56 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
 - Specification follows established style guidelines
 - Both basic script validation and AI semantic validation pass
 - All 12 critical rules are verified as compliant
+- TypeScript interfaces generate successfully without invalid names
+- Generated code transpiles without errors in `generated/` directory
+- Connector and API interfaces are properly created
+
+## Mapper Implementation Guidelines
+
+### Mandatory Mapping Patterns
+
+1. **Basic Mapper Pattern**:
+   ```typescript
+   const mapResourceModel = (raw: InputType): OutputType => {
+     return {
+       property1: raw.prop_1,
+       property2: raw.prop_2,
+       // Map ALL properties - never skip any
+     };
+   };
+   ```
+
+2. **Extended Info Model Pattern**:
+   ```typescript
+   const mapResourceInfoModel = (raw: InputType): OutputTypeInfo => {
+     return {
+       ...mapResourceModel(raw),  // Base mapping
+       additionalProp1: raw.add_1,
+       additionalProp2: raw.add_2
+     };
+   };
+   ```
+
+3. **Nested Model Handling**:
+   ```typescript
+   // Helper mapper (NOT exported from Mappers.ts)
+   const mapNestedModel = (raw: NestedInputType): NestedOutputType => ({ /* mapping */ });
+   
+   const mapMainModel = (raw: MainInputType): MainOutputType => {
+     return {
+       property1: raw.property1 ? mapNestedModel(raw.property1) : undefined,
+       property2: raw.property2?.map(mapNestedModel),  // For arrays
+       // ... other properties
+     };
+   };
+   ```
+
+### Critical Requirements
+- **Complete Coverage**: Map every single property from input type
+- **No Casting**: Avoid `as` casting unless absolutely required for type safety
+- **Consistent Naming**: Convert snake_case to camelCase consistently
+- **Non-Exported Helpers**: Nested model mappers must not be exported
+- **Safe Optionals**: Use optional chaining and proper undefined handling
 
 ## Authentication Method Guidelines
 
@@ -628,7 +883,7 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
 2. **API Key** - Simple header-based authentication
 3. **Bearer Token** - Generic token authentication
 4. **Basic Auth** - Username/password authentication
-5. **OAuth2** - Deferred to later iterations due to complexity
+5. **OAuth2** - **AVOIDED FOR NOW** - Deferred until OAuth2 support context is added
 
 ### OAuth2 Technical Requirement
 - **MANDATORY**: Always use OAuth2 security schema format due to technical limitations

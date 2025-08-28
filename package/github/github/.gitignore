@@ -1,0 +1,11 @@
+wwwroot/*.js
+node_modules/
+typings
+dist/
+generated/
+docs/
+full.yml
+module-github-github.yml
+redoc-static.html
+test-results.json
+.env

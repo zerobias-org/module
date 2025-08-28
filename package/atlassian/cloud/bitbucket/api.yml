@@ -1,0 +1,1108 @@
+openapi: 3.0.3
+info:
+  x-product-infos:
+    # Array of external references to Products (versions of products) involved in the module.
+    # the catalog.yml file will in most cases be referenced from `node_modules/hub-store-catalog`
+    - $ref: "./node_modules/@auditlogic/product-atlassian-cloud-bitbucket/catalog.yml#/Product"
+  version: 0.0.0
+  title: '@zerobias-org/module-atlassian-cloud-bitbucket'
+  description: Bitbucket
+  x-impl-name: Bitbucket
+components:
+  securitySchemes:
+    bitbucket-token:
+      type: oauth2
+      description: Authentication for the Bitbucket API (actual method is App Password/Basic Auth)
+      flows:
+        authorizationCode:
+          authorizationUrl: https://bitbucket.org/oauth/authorize
+          tokenUrl: https://bitbucket.org/oauth/token
+          scopes:
+            read:repository: Read repository information
+            read:workspace: Read workspace and project information
+            read:pullrequest: Read pull request information
+            read:issue: Read issue information
+            read:user: Read user and member information
+            read:branch: Read branch information
+            read:commit: Read commit information
+  parameters:
+    workspaceParam:
+      name: workspaceId
+      in: path
+      required: true
+      description: The workspace ID or UUID
+      schema:
+        type: string
+    repositoryParam:
+      name: repositoryId
+      in: path
+      required: true
+      description: The repository slug or UUID
+      schema:
+        type: string
+    projectParam:
+      name: projectId
+      in: path
+      required: true
+      description: The project key
+      schema:
+        type: string
+    issueParam:
+      name: issueId
+      in: path
+      required: true
+      description: The issue ID
+      schema:
+        type: string
+    pullRequestParam:
+      name: pullRequestId
+      in: path
+      required: true
+      description: The pull request ID
+      schema:
+        type: integer
+    branchParam:
+      name: branchId
+      in: path
+      required: true
+      description: The branch name
+      schema:
+        type: string
+    commitParam:
+      name: commitId
+      in: path
+      required: true
+      description: The commit hash
+      schema:
+        type: string
+    memberParam:
+      name: memberId
+      in: path
+      required: true
+      description: The member UUID or username
+      schema:
+        type: string
+    restrictionParam:
+      name: restrictionId
+      in: path
+      required: true
+      description: The branch restriction ID
+      schema:
+        type: string
+    pageNumberParam:
+      $ref: "./node_modules/@auditmation/types-core/schema/pageNumberParam.yml"
+    pageSizeParam:
+      $ref: "./node_modules/@auditmation/types-core/schema/pageSizeParam.yml"
+  headers:
+    pagedLinkHeader:
+      $ref: "./node_modules/@auditmation/types-core/schema/pagedLinkHeader.yml"
+  schemas:
+    Workspace:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The workspace UUID
+        name:
+          type: string
+          description: The workspace name
+        slug:
+          type: string
+          description: The workspace slug
+        isPrivate:
+          type: boolean
+          description: Whether the workspace is private
+        type:
+          type: string
+          description: The workspace type
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+      required:
+        - uuid
+        - name
+        - slug
+    WorkspaceInfo:
+      allOf:
+        - $ref: '#/components/schemas/Workspace'
+        - type: object
+          properties:
+            createdOn:
+              type: string
+              format: date-time
+              description: When the workspace was created
+            updatedOn:
+              type: string
+              format: date-time
+              description: When the workspace was last updated
+    Project:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The project UUID
+        key:
+          type: string
+          description: The project key
+        name:
+          type: string
+          description: The project name
+        description:
+          type: string
+          description: The project description
+        isPrivate:
+          type: boolean
+          description: Whether the project is private
+        type:
+          type: string
+          description: The project type
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+      required:
+        - uuid
+        - key
+        - name
+    ProjectInfo:
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          properties:
+            createdOn:
+              type: string
+              format: date-time
+              description: When the project was created
+            updatedOn:
+              type: string
+              format: date-time
+              description: When the project was last updated
+            mainbranch:
+              $ref: '#/components/schemas/Branch'
+    Repository:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The repository UUID
+        name:
+          type: string
+          description: The repository name
+        fullName:
+          type: string
+          description: The full repository name
+        description:
+          type: string
+          description: The repository description
+        isPrivate:
+          type: boolean
+          description: Whether the repository is private
+        scm:
+          type: string
+          description: The source control management type
+        size:
+          type: integer
+          description: The repository size in bytes
+        language:
+          type: string
+          description: The primary programming language
+        hasIssues:
+          type: boolean
+          description: Whether the repository has issues enabled
+        hasWiki:
+          type: boolean
+          description: Whether the repository has wiki enabled
+        forkPolicy:
+          type: string
+          description: The fork policy
+        type:
+          type: string
+          description: The repository type
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+        owner:
+          $ref: '#/components/schemas/Account'
+        project:
+          $ref: '#/components/schemas/Project'
+      required:
+        - uuid
+        - name
+        - fullName
+        - isPrivate
+        - scm
+    RepositoryInfo:
+      allOf:
+        - $ref: '#/components/schemas/Repository'
+        - type: object
+          properties:
+            createdOn:
+              type: string
+              format: date-time
+              description: When the repository was created
+            updatedOn:
+              type: string
+              format: date-time
+              description: When the repository was last updated
+            mainbranch:
+              $ref: '#/components/schemas/Branch'
+    Issue:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: The issue ID
+        title:
+          type: string
+          description: The issue title
+        content:
+          $ref: '#/components/schemas/Content'
+        reporter:
+          $ref: '#/components/schemas/Account'
+        assignee:
+          $ref: '#/components/schemas/Account'
+        state:
+          type: string
+          enum: [new, open, resolved, on_hold, invalid, duplicate, wontfix, closed]
+          description: The issue state
+        kind:
+          type: string
+          enum: [bug, enhancement, proposal, task]
+          description: The issue kind
+        priority:
+          type: string
+          enum: [trivial, minor, major, critical, blocker]
+          description: The issue priority
+        type:
+          type: string
+          description: The issue type
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+      required:
+        - id
+        - title
+        - state
+        - kind
+    IssueInfo:
+      allOf:
+        - $ref: '#/components/schemas/Issue'
+        - type: object
+          properties:
+            createdOn:
+              type: string
+              format: date-time
+              description: When the issue was created
+            updatedOn:
+              type: string
+              format: date-time
+              description: When the issue was last updated
+            editedOn:
+              type: string
+              format: date-time
+              description: When the issue was last edited
+    PullRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: The pull request ID
+        title:
+          type: string
+          description: The pull request title
+        description:
+          type: string
+          description: The pull request description
+        state:
+          type: string
+          enum: [OPEN, MERGED, DECLINED, SUPERSEDED]
+          description: The pull request state
+        author:
+          $ref: '#/components/schemas/Account'
+        source:
+          $ref: '#/components/schemas/Branch'
+        destination:
+          $ref: '#/components/schemas/Branch'
+        closeSourceBranch:
+          type: boolean
+          description: Whether to close source branch after merge
+        type:
+          type: string
+          description: The pull request type
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+      required:
+        - id
+        - title
+        - state
+        - author
+        - source
+        - destination
+    PullRequestInfo:
+      allOf:
+        - $ref: '#/components/schemas/PullRequest'
+        - type: object
+          properties:
+            createdOn:
+              type: string
+              format: date-time
+              description: When the pull request was created
+            updatedOn:
+              type: string
+              format: date-time
+              description: When the pull request was last updated
+            mergeCommit:
+              $ref: '#/components/schemas/Commit'
+            commentCount:
+              type: integer
+              description: Number of comments
+            taskCount:
+              type: integer
+              description: Number of tasks
+    Branch:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The branch name
+        type:
+          type: string
+          description: The branch type
+        target:
+          $ref: '#/components/schemas/Commit'
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+      required:
+        - name
+        - type
+    BranchInfo:
+      allOf:
+        - $ref: '#/components/schemas/Branch'
+        - type: object
+          properties:
+            defaultMergeStrategy:
+              type: string
+              description: The default merge strategy
+            mergeStrategies:
+              type: array
+              items:
+                type: string
+              description: Available merge strategies
+    Commit:
+      type: object
+      properties:
+        hash:
+          type: string
+          description: The commit hash
+        message:
+          type: string
+          description: The commit message
+        author:
+          $ref: '#/components/schemas/Account'
+        date:
+          type: string
+          format: date-time
+          description: The commit date
+        parents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Commit'
+          description: Parent commits
+        type:
+          type: string
+          description: The commit type
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+      required:
+        - hash
+        - message
+        - author
+        - date
+    CommitInfo:
+      allOf:
+        - $ref: '#/components/schemas/Commit'
+        - type: object
+          properties:
+            summary:
+              $ref: '#/components/schemas/Content'
+            participants:
+              type: array
+              items:
+                $ref: '#/components/schemas/Participant'
+              description: Commit participants
+    Member:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The member UUID
+        displayName:
+          type: string
+          description: The member display name
+        username:
+          type: string
+          description: The member username
+        accountId:
+          type: string
+          description: The member account ID
+        nickname:
+          type: string
+          description: The member nickname
+        type:
+          type: string
+          description: The member type
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+      required:
+        - uuid
+        - displayName
+        - accountId
+    MemberInfo:
+      allOf:
+        - $ref: '#/components/schemas/Member'
+        - type: object
+          properties:
+            createdOn:
+              type: string
+              format: date-time
+              description: When the member was created
+            location:
+              type: string
+              description: The member location
+            website:
+              type: string
+              format: url
+              description: The member website
+    BranchRestriction:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: The restriction ID
+        kind:
+          type: string
+          enum: [require_tasks_to_be_completed, force, restrict_merges, enforce_merge_checks, require_approvals_to_merge, delete, require_all_dependencies_merged, push, require_passing_builds_to_merge, reset_pullrequest_approvals_on_change, smart_reset_pullrequest_approvals]
+          description: The restriction kind
+        branchMatchKind:
+          type: string
+          enum: [branching_model, glob]
+          description: How to match branches
+        branchType:
+          type: string
+          enum: [feature, bugfix, release, hotfix, development, production]
+          description: The branch type to restrict
+        pattern:
+          type: string
+          description: The branch pattern
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+          description: Users this restriction applies to
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/Group'
+          description: Groups this restriction applies to
+        type:
+          type: string
+          description: The restriction type
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+      required:
+        - id
+        - kind
+        - branchMatchKind
+    BranchRestrictionInfo:
+      allOf:
+        - $ref: '#/components/schemas/BranchRestriction'
+        - type: object
+          properties:
+            value:
+              type: integer
+              description: The restriction value
+    Account:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: The account UUID
+        displayName:
+          type: string
+          description: The account display name
+        username:
+          type: string
+          description: The account username
+        accountId:
+          type: string
+          description: The account ID
+        nickname:
+          type: string
+          description: The account nickname
+        type:
+          type: string
+          description: The account type
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+      required:
+        - uuid
+        - displayName
+        - accountId
+    Group:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The group name
+        slug:
+          type: string
+          description: The group slug
+        type:
+          type: string
+          description: The group type
+        links:
+          $ref: '#/components/schemas/BitbucketLinks'
+      required:
+        - name
+        - slug
+    Content:
+      type: object
+      properties:
+        raw:
+          type: string
+          description: The raw content
+        markup:
+          type: string
+          description: The markup format
+        html:
+          type: string
+          description: The HTML content
+        type:
+          type: string
+          description: The content type
+    Participant:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/Account'
+        role:
+          type: string
+          enum: [PARTICIPANT, REVIEWER]
+          description: The participant role
+        approved:
+          type: boolean
+          description: Whether the participant approved
+        participatedOn:
+          type: string
+          format: date-time
+          description: When the user participated
+        type:
+          type: string
+          description: The participant type
+      required:
+        - user
+        - role
+    BitbucketLinks:
+      type: object
+      properties:
+        self:
+          $ref: '#/components/schemas/Link'
+        html:
+          $ref: '#/components/schemas/Link'
+        avatar:
+          $ref: '#/components/schemas/Link'
+        clone:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+        commits:
+          $ref: '#/components/schemas/Link'
+        issues:
+          $ref: '#/components/schemas/Link'
+        pullrequests:
+          $ref: '#/components/schemas/Link'
+        branches:
+          $ref: '#/components/schemas/Link'
+        tags:
+          $ref: '#/components/schemas/Link'
+        downloads:
+          $ref: '#/components/schemas/Link'
+        source:
+          $ref: '#/components/schemas/Link'
+    Link:
+      type: object
+      properties:
+        href:
+          type: string
+          format: url
+          description: The link URL
+        name:
+          type: string
+          description: The link name
+      required:
+        - href
+paths:
+  /workspaces:
+    get:
+      tags:
+        - workspace
+      summary: Retrieves all workspaces
+      operationId: listWorkspaces
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      security:
+        - bitbucket-token: ["read:workspace"]
+      responses:
+        '200':
+          description: List of workspaces
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Workspace'
+  /workspaces/{workspaceId}:
+    get:
+      tags:
+        - workspace
+      summary: Retrieves a workspace
+      operationId: getWorkspace
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/workspaceParam'
+      security:
+        - bitbucket-token: ["read:workspace"]
+      responses:
+        '200':
+          description: Workspace details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkspaceInfo'
+  /workspaces/{workspaceId}/projects:
+    get:
+      tags:
+        - project
+      summary: Retrieves all projects in a workspace
+      operationId: listProjects
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/workspaceParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      security:
+        - bitbucket-token: ["read:workspace"]
+      responses:
+        '200':
+          description: List of projects
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+  /workspaces/{workspaceId}/projects/{projectId}:
+    get:
+      tags:
+        - project
+      summary: Retrieves a project
+      operationId: getProject
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/workspaceParam'
+        - $ref: '#/components/parameters/projectParam'
+      security:
+        - bitbucket-token: ["read:workspace"]
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectInfo'
+  /repositories:
+    get:
+      tags:
+        - repository
+      summary: Retrieves all repositories in a workspace
+      operationId: listRepositories
+      x-method-name: list
+      parameters:
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      security:
+        - bitbucket-token: ["read:repository"]
+      responses:
+        '200':
+          description: List of repositories
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Repository'
+  /repositories/{repositoryId}:
+    get:
+      tags:
+        - repository
+      summary: Retrieves a repository
+      operationId: getRepository
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+      security:
+        - bitbucket-token: ["read:repository"]
+      responses:
+        '200':
+          description: Repository details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepositoryInfo'
+  /repositories/{repositoryId}/issues:
+    get:
+      tags:
+        - issue
+      summary: Retrieves all issues in a repository
+      operationId: listIssues
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      security:
+        - bitbucket-token: ["read:issue"]
+      responses:
+        '200':
+          description: List of issues
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Issue'
+  /repositories/{repositoryId}/issues/{issueId}:
+    get:
+      tags:
+        - issue
+      summary: Retrieves an issue
+      operationId: getIssue
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - $ref: '#/components/parameters/issueParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+      security:
+        - bitbucket-token: ["read:issue"]
+      responses:
+        '200':
+          description: Issue details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueInfo'
+  /repositories/{repositoryId}/pullrequests:
+    get:
+      tags:
+        - pullrequest
+      summary: Retrieves all pull requests in a repository
+      operationId: listPullRequests
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      security:
+        - bitbucket-token: ["read:pullrequest"]
+      responses:
+        '200':
+          description: List of pull requests
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PullRequest'
+  /repositories/{repositoryId}/pullrequests/{pullRequestId}:
+    get:
+      tags:
+        - pullrequest
+      summary: Retrieves a pull request
+      operationId: getPullRequest
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - $ref: '#/components/parameters/pullRequestParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+      security:
+        - bitbucket-token: ["read:pullrequest"]
+      responses:
+        '200':
+          description: Pull request details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullRequestInfo'
+  /repositories/{repositoryId}/branches:
+    get:
+      tags:
+        - branch
+      summary: Retrieves all branches in a repository
+      operationId: listBranches
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      security:
+        - bitbucket-token: ["read:branch"]
+      responses:
+        '200':
+          description: List of branches
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Branch'
+  /repositories/{repositoryId}/branches/{branchId}:
+    get:
+      tags:
+        - branch
+      summary: Retrieves a branch
+      operationId: getBranch
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - $ref: '#/components/parameters/branchParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+      security:
+        - bitbucket-token: ["read:branch"]
+      responses:
+        '200':
+          description: Branch details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchInfo'
+  /repositories/{repositoryId}/commits:
+    get:
+      tags:
+        - commit
+      summary: Retrieves all commits in a repository
+      operationId: listCommits
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      security:
+        - bitbucket-token: ["read:commit"]
+      responses:
+        '200':
+          description: List of commits
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Commit'
+  /repositories/{repositoryId}/commits/{commitId}:
+    get:
+      tags:
+        - commit
+      summary: Retrieves a commit
+      operationId: getCommit
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - $ref: '#/components/parameters/commitParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+      security:
+        - bitbucket-token: ["read:commit"]
+      responses:
+        '200':
+          description: Commit details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitInfo'
+  /workspaces/{workspaceId}/members:
+    get:
+      tags:
+        - member
+      summary: Retrieves all members in a workspace
+      operationId: listMembers
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/workspaceParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      security:
+        - bitbucket-token: ["read:user"]
+      responses:
+        '200':
+          description: List of members
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Member'
+  /workspaces/{workspaceId}/members/{memberId}:
+    get:
+      tags:
+        - member
+      summary: Retrieves a member
+      operationId: getMember
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/workspaceParam'
+        - $ref: '#/components/parameters/memberParam'
+      security:
+        - bitbucket-token: ["read:user"]
+      responses:
+        '200':
+          description: Member details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberInfo'
+  /repositories/{repositoryId}/branch-restrictions:
+    get:
+      tags:
+        - branchrestriction
+      summary: Retrieves all branch restrictions in a repository
+      operationId: listBranchRestrictions
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      security:
+        - bitbucket-token: ["read:repository"]
+      responses:
+        '200':
+          description: List of branch restrictions
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BranchRestriction'
+  /repositories/{repositoryId}/branch-restrictions/{restrictionId}:
+    get:
+      tags:
+        - branchrestriction
+      summary: Retrieves a branch restriction
+      operationId: getBranchRestriction
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/repositoryParam'
+        - $ref: '#/components/parameters/restrictionParam'
+        - name: workspaceId
+          in: query
+          required: true
+          description: The workspace ID or UUID
+          schema:
+            type: string
+      security:
+        - bitbucket-token: ["read:repository"]
+      responses:
+        '200':
+          description: Branch restriction details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchRestrictionInfo'

@@ -62,6 +62,14 @@ Each task stores its status and intermediate results in:
 3. **Progress Tracking**: Each task stores its status and intermediate results
 4. **Completion**: Final artifacts are created, memory can be cleaned up
 
+### Module Creation Workflow
+**🚨 CRITICAL**: When executing individual module creation tasks:
+- **SINGLE TASK EXECUTION**: Execute only the requested task, then stop and return control
+- **NO AUTO-CONTINUE**: Do not automatically proceed to subsequent tasks - wait for explicit instruction
+- **TASK COMPLETION**: After completing a task, provide a summary of the work done and stop
+- **FAILURE HANDLING**: If a task fails, stop execution and report the issue clearly
+- **RETURN CONTROL**: Always return control to the calling script after task completion or failure
+
 ## Task-Specific Documentation
 
 - **[Module Creation](claude/create/CLAUDE.md)** - Process to create a module from scratch

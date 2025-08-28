@@ -1,14 +1,32 @@
 # Task 01: Product Discovery and Setup
 
+## Prerequisites
+
+**🚨 CRITICAL**: Before starting this task, read `CLAUDE.md` to understand the project structure, rules, and requirements.
+
 ## Overview
 
 This task discovers the target product, sets up the working environment, and extracts basic product information. Task 02 will handle the comprehensive API analysis and operation mapping.
 
 ## Input Requirements
 
-- User-provided module identifier: `{vendor}-{module}` or `{vendor}-{suite}-{module}`
+- User request specifying the target product/service for module creation
 - **Complete initial user prompt** - Store the full user request for context preservation across tasks
 - User prompt will be analyzed for resource intent in Task 02 to determine actual operations needed
+
+## Module Identifier Definition
+
+**Module Identifier Derivation**: When a product package is identified (e.g., `@scope/product-xyz`), the **module identifier** is `xyz` (the part after `product-`).
+
+**Examples**:
+- Product: `@scope/product-vendor-suite-service` → Module Identifier: `vendor-suite-service`
+- Product: `@scope/product-vendor-service` → Module Identifier: `vendor-service`  
+- Product: `@scope/product-company-platform` → Module Identifier: `company-platform`
+
+**Memory Folder Structure**: `.claude/.localmemory/{action}-{module-identifier}/`
+- Examples: 
+  - `.claude/.localmemory/create-vendor-suite-service/`
+  - `.claude/.localmemory/create-vendor-service/`
 
 ## Process Steps
 
@@ -30,6 +48,7 @@ This task discovers the target product, sets up the working environment, and ext
 
 1. **Create memory folder**:
    - Create directory structure: `.claude/.localmemory/{action}-{module-identifier}/_work/`
+   - Where `{module-identifier}` is derived from the identified product package (see Module Identifier Definition above)
 
 2. **Install product package temporarily**:
    - Navigate to work directory
@@ -47,6 +66,7 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
 
 ```json
 {
+  "status": "completed|failed|error",
   "productPackage": "${product_package}",
   "modulePackage": "${module_package}",
   "serviceName": "${service_name}",
@@ -58,8 +78,8 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
 ```
 
 Where:
-- `productPackage`: Discovered product package name (e.g., "@auditlogic/product-github-github")
-- `modulePackage`: Generated module package name (always `@scope/module-{module-identifier}` format)
+- `productPackage`: Discovered product package name (e.g., "@auditlogic/product-vendor-service")
+- `modulePackage`: Generated module package name (replace product package scope with `@zerobias-org` and change `product-` prefix to `module-`, e.g., `@auditlogic/product-xyz` becomes `@zerobias-org/module-xyz`)
 - `serviceName`: Human-readable service name extracted from product files
 - `description`: Service description from product files
 - `baseUrl`: Primary service URL extracted from product files

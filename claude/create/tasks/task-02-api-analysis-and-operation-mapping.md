@@ -1,5 +1,9 @@
 # Task 02: API Analysis and Operation Mapping
 
+## Prerequisites
+
+**🚨 CRITICAL**: Before starting this task, read `CLAUDE.md` to understand the project structure, rules, and requirements.
+
 ## Overview
 
 This task performs comprehensive API documentation analysis, maps user-requested operations to API endpoints, analyzes available client libraries, and generates the complete module request specification.
@@ -7,9 +11,34 @@ This task performs comprehensive API documentation analysis, maps user-requested
 ## Input Requirements
 
 - Task 01 output file: `.claude/.localmemory/{action}-{module-identifier}/task-01-output.json`
+- Where `{module-identifier}` is the product identifier derived from the identified product package (e.g., `vendor-suite-service` from `@scope/product-vendor-suite-service`, or `vendor-service` from `@scope/product-vendor-service`)
 - User prompt analysis to determine required operations based on intent
 
 ## Process Steps
+
+### 0. Context Management and Goal Reminder
+
+**🚨 MANDATORY FIRST STEP - CONTEXT CLEARING**: 
+- **IGNORE all previous conversation context** - This task runs in isolation
+- **CLEAR mental context** - Treat this as a fresh start with no prior assumptions
+- **REQUEST**: User should run `/clear` or `/compact` command before starting this task for optimal performance
+
+**🚨 MANDATORY SECOND STEP**: Read and understand the original user intent:
+
+1. **Read initial user prompt**:
+   - Load `.claude/.localmemory/{action}-{module-identifier}/task-01-output.json`
+   - Where `{module-identifier}` is derived from the product package (see Task 01 for derivation rules)
+   - Extract and review the `initialUserPrompt` field
+   - Understand the original goal, scope, and specific user requirements
+
+2. **Goal alignment verification**:
+   - Ensure all analysis and decisions align with the original user request
+   - Keep the user's specific intentions and scope in mind throughout the task
+   - If any conflicts arise between task instructions and user intent, prioritize user intent
+
+3. **Context preservation**:
+   - Reference the original prompt when making operation mapping decisions
+   - Ensure the analysis serves the user's actual needs, not generic assumptions
 
 ### 1. API Documentation Discovery
 
@@ -27,15 +56,38 @@ This task performs comprehensive API documentation analysis, maps user-requested
    - **Priority**: Ensure comprehensive coverage rather than limiting to basic documentation
    - Look across different API sections (public API, enterprise API, admin API, etc.)
 
-### 2. User Intent Analysis and Operation Mapping
+### 2. Credential Analysis and Authentication Method Selection
+
+1. **Parse provided credentials from user prompt**:
+   - **🚨 CRITICAL**: Extract ONLY the credentials explicitly mentioned in the `initialUserPrompt`
+   - Parse environment variable names and credential types from user request
+   - **Examples**:
+     - "BITBUCKET_TOKEN" → Token-based authentication (1 field: token)
+     - "API_KEY" → API Key authentication (1 field: key)  
+     - "USERNAME and PASSWORD" → Basic Authentication (2 fields: username, password)
+     - "BITBUCKET_TOKEN and BITBUCKET_EMAIL" → App Password authentication (2 fields: email, token)
+   - **NEVER infer additional credentials** beyond what user explicitly provided
+   - **NEVER assume standard patterns** if user didn't mention them
+
+2. **Match authentication method to provided credentials**:
+   - Research vendor's authentication options and match to provided credential pattern
+   - **Priority order**: Exact credential match > Vendor preference > API documentation default
+   - **If mismatch detected**: Document the mismatch but proceed with closest compatible method
+   - **Document alternative methods**: If vendor supports multiple authentication types, list them in keyNotes
+
+### 3. User Intent Analysis and Operation Mapping
 
 1. **Analyze user prompt for resource intent**:
    - Parse the `initialUserPrompt` from Task 01 output to identify resource types and operation intent
-   - **Intent correlation mapping**:
-     - "retrieve/get/fetch" → implies BOTH `list*` AND `get*` operations (e.g., "retrieve users" = `listUsers` + `getUser`)
-     - "list/show/display" → implies BOTH `list*` AND `get*` operations (comprehensive access to resources)
-     - "manage/handle" → implies full CRUD operations (`list*`, `get*`, `create*`, `update*`, `delete*`)
-     - "query/search/find" → implies `search*` AND `list*` AND `get*` operations
+   - **🚨 CRITICAL: CRUD Operation Synonym Mapping Rules**:
+     - **READ Operations** (read/retrieval/get/retrieve/see/grab/fetch/show/display/list/view/obtain/access/query/find) → **ALWAYS** maps to BOTH `list*` AND `get*` operations
+     - **CREATE Operations** (create/add/make/insert/new/build/establish/generate) → maps to `create*` operations ONLY
+     - **UPDATE Operations** (update/change/upsert/modify/edit/patch/alter/revise) → maps to `update*` operations ONLY  
+     - **DELETE Operations** (delete/remove/eliminate/erase/destroy/purge/clear) → maps to `delete*` operations ONLY
+   - **🚨 NEVER MIX CRUD CATEGORIES**: Only include operations from the CRUD categories that were explicitly requested. If user asks for "read" operations, NEVER add create/update/delete operations
+   - **Special Intent Mapping**:
+     - "manage/handle/administer" → implies full CRUD operations (`list*`, `get*`, `create*`, `update*`, `delete*`)
+     - "search/query/find" → maps to READ operations (`list*` AND `get*` operations)
    - **Resource identification**:
      - Extract all mentioned resources (e.g., "enterprises", "organizations", "users", "repositories")
      - For hierarchical relationships (e.g., "organizations users"), identify both parent and child operations
@@ -53,15 +105,14 @@ This task performs comprehensive API documentation analysis, maps user-requested
 2. **Map operations comprehensively**:
    - For each identified resource and operation intent from user prompt analysis
    - **CRITICAL**: For every resource mentioned, find BOTH list and get operations:
-     - If user requests "listEnterprises" → find both `listEnterprises` AND `getEnterprise` (single item)
-     - If user requests "listUsers" → find both `listUsers` AND `getUser` (single item)
-     - If user requests "getOrganization" → find both `getOrganization` AND `listOrganizations` (multiple items)
-   - **Find ALL available versions and variants**:
-     - List operations: `list*`, `getAll*`, `fetch*`, `search*` (with pagination/filtering)
-     - Get operations: `get*`, `fetch*`, `find*`, `retrieve*` (single item by ID/identifier)
-     - Create operations: `create*`, `add*`, `post*`, `insert*`
-     - Update operations: `update*`, `modify*`, `patch*`, `put*`, `edit*`
-     - Delete operations: `delete*`, `remove*`, `destroy*`
+     - If user requests "listResources" → find both `listResources` AND `getResource` (single item)
+     - If user requests "listEntities" → find both `listEntities` AND `getEntity` (single item)
+     - If user requests "getCollection" → find both `getCollection` AND `listCollections` (multiple items)
+   - **🚨 STRICT CRUD Category Compliance**: Find operations ONLY for the requested CRUD categories:
+     - **READ Operations**: `list*`, `getAll*`, `fetch*`, `search*` (with pagination/filtering) AND `get*`, `fetch*`, `find*`, `retrieve*` (single item by ID/identifier)
+     - **CREATE Operations**: `create*`, `add*`, `post*`, `insert*`, `new*` (ONLY if create was requested)
+     - **UPDATE Operations**: `update*`, `modify*`, `patch*`, `put*`, `edit*` (ONLY if update was requested)  
+     - **DELETE Operations**: `delete*`, `remove*`, `destroy*`, `purge*` (ONLY if delete was requested)
    - Find corresponding API endpoints in documentation by searching comprehensively:
      - Exact matches (e.g., "listEnterprises")
      - Variations (e.g., "getEnterprises", "enterprises", "/enterprises GET")
@@ -75,13 +126,36 @@ This task performs comprehensive API documentation analysis, maps user-requested
    - Normalize internal names to standard patterns: "list*", "get*", "create*", "update*", "delete*", "search*"
    - **Prioritize finding the most comprehensive operations** even if they're in different API sections
 
-2. **Extract authentication methods**:
-   - Identify all available authentication methods from API documentation
-   - Look for authentication-related sections, security schemes, auth examples
-   - Select most preferred method based on current instructions
-   - Preference order: API Key > Basic Auth > Others > OAuth2
+3. **Final authentication method validation**:
+   - **🚨 CRITICAL**: First analyze what credentials were provided during module development request
+   - **🚨 STRICT CREDENTIAL ADHERENCE**: ONLY use authentication methods that match the exact credentials provided:
+     - **If ONLY token provided** → Use token-based authentication (API Key, Personal Access Token, or Bearer Token)
+     - **If ONLY username/password provided** → Use Basic Authentication  
+     - **If token + email provided** → Use App Password or token authentication that requires email
+     - **If multiple credential types provided** → Use the most secure method supported by the API
+     - **NEVER assume missing credentials** → If email is required but not provided, flag as authentication mismatch
+   - **Credential-Based Selection Rules**:
+     - If API token/key provided → Use API Key authentication  
+     - If personal access token provided → Use Personal Access Token authentication
+     - If bearer token provided → Use Bearer Token authentication
+     - If username/password provided → Use Basic Authentication
+     - If app password + email provided → Use App Password authentication
+     - **Note**: OAuth2 client credentials (client_id/client_secret) are deferred until OAuth2 support is added
+   - **Authentication Method Validation**:
+     - **🚨 CRITICAL**: If the vendor's primary authentication method requires credentials NOT provided by the user, document this as a credential mismatch
+     - Research alternative authentication methods that work with provided credentials
+     - If no compatible authentication method exists, flag as authentication incompatibility issue
+     - Document both the recommended method (based on API docs) and the selected method (based on provided credentials)
+   - **Research vendor-specific authentication**:
+     - Look for vendor-specific connection profiles that match the provided credential type
+     - Check authentication-related sections, security schemes, auth examples in vendor documentation
+     - Verify the selected authentication method is supported by the vendor's API
+     - Find alternative authentication methods if primary method doesn't match provided credentials
+   - **Priority**: Provided credentials type > API documentation preferences
+   - **Never override**: If specific credentials are provided, never suggest a different authentication method
+   - **Credential Mismatch Handling**: If there's a mismatch between provided credentials and vendor requirements, document this clearly in keyNotes
 
-### 3. Client Library Analysis
+### 4. Client Library Analysis
 
 1. **Comprehensive client library analysis**:
    - **Official SDKs**: Search for official SDKs and client libraries maintained by the product/service provider
@@ -113,7 +187,7 @@ This task performs comprehensive API documentation analysis, maps user-requested
      - Middleware support
    - Document comprehensive findings with specific version numbers, feature matrices, and clear recommendations
 
-### 4. Generate Module Request
+### 5. Generate Module Request
 
 Compile all discovered information into the complete module request JSON format.
 
@@ -123,6 +197,7 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
 
 ```json
 {
+  "status": "completed|failed|error",
   "productPackage": "${product_package}",
   "modulePackage": "${module_package}",
   "packageVersion": "0.0.0",
@@ -131,6 +206,12 @@ Store the following JSON in memory file: `.claude/.localmemory/{action}-{module-
   "author": "team@zerobias.org",
   "apiDocumentationUrl": "${api_documentation_url}",
   "authenticationMethod": "${authentication_method}",
+  "providedCredentials": {
+    "type": "${credential_type_provided}",
+    "fields": ${actual_credential_fields_array},
+    "source": "user_provided",
+    "mismatch": "${true_if_vendor_requires_different_credentials}"
+  },
   "baseUrl": "${base_url}",
   "serviceName": "${service_name}",
   "httpClientLibrary": "${recommended_http_client}",
@@ -144,7 +225,12 @@ Where:
 - `productPackage`: From Task 01 output
 - `modulePackage`: Generated module package name (always `@scope/module-{module-identifier}` format)
 - `apiDocumentationUrl`: Primary API documentation URL discovered
-- `authenticationMethod`: Selected authentication method
+- `authenticationMethod`: Selected authentication method (must match provided credential type)
+- `providedCredentials`: Details about credentials actually provided by user (never assume additional credentials)
+  - `type`: The type of authentication based on provided credentials only
+  - `fields`: Array of actual credential field names provided by user  
+  - `source`: Always "user_provided" for this workflow
+  - `mismatch`: Boolean indicating if vendor requires different credentials than what user provided
 - `baseUrl`: API base URL for making requests
 - `serviceName`: Human-readable service name
 - `httpClientLibrary`: Recommended HTTP client library based on analysis

@@ -26,7 +26,7 @@ encode_mermaid() {
 update_readme() {
     local mermaid_url="$1"
     local readme_file="README.md"
-    local current_hash=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+    local current_hash="$2"
     
     # Create README if it doesn't exist
     if [ ! -f "$readme_file" ]; then
@@ -82,19 +82,19 @@ if [ ! -f "$mermaid_file" ]; then
 fi
 
 # Check if there are changes to external-api.mmd since last update
-current_hash=$(git rev-parse HEAD 2>/dev/null || echo "")
+current_hash=$(md5 "$mermaid_file" 2>/dev/null | cut -d'=' -f2 | tr -d ' ' | cut -c1-8)
 
 if [ -z "$current_hash" ]; then
-    echo "Not in a git repository, proceeding with update..."
+    echo "Failed to calculate file hash, proceeding with update..."
 elif grep -q "<!-- external-api-hash: " README.md 2>/dev/null; then
     # Extract last updated hash from README
-    last_hash=$(grep "<!-- external-api-hash: " README.md | sed 's/.*external-api-hash: \([a-f0-9]*\).*/\1/')
+    last_hash=$(grep "<!-- external-api-hash: " README.md | sed 's/.*external-api-hash: \([a-f0-9A-F]*\).*/\1/')
     
-    if [ -n "$last_hash" ] && git diff --quiet "$last_hash" HEAD -- "$mermaid_file" 2>/dev/null; then
+    if [ -n "$last_hash" ] && [ "$current_hash" = "$last_hash" ]; then
         echo "No changes in $mermaid_file since last update ($last_hash), skipping..."
         exit 0
     else
-        echo "Found changes in $mermaid_file since last update ($last_hash)"
+        echo "Found changes in $mermaid_file since last update ($last_hash -> $current_hash)"
     fi
 else
     echo "No previous update hash found, proceeding with update..."
@@ -109,4 +109,4 @@ if [ -z "$mermaid_url" ]; then
     exit 1
 fi
 
-update_readme "$mermaid_url"
+update_readme "$mermaid_url" "$current_hash"

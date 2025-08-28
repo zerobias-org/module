@@ -1,0 +1,997 @@
+erDiagram
+    Identity {
+        string id PK "*"
+        string email UK "*"
+        string firstName
+        string lastName
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+    }
+    
+    Organization {
+        string id PK "*"
+        string name UK "*"
+        string description
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+        string timezone
+        string subdomain
+        boolean ssoEnabled
+        string logoUrl
+        json settings
+    }
+    
+    User {
+        string id PK "*"
+        string identityId FK "*"
+        string orgId FK "*"
+        boolean suspended "*"
+        datetime suspendedUntil
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        json customFields
+        string pictureUrl
+        string thumbnailUrl
+        boolean isAttachedToIntercom
+        string phone
+        string employeeId
+        string department
+        string title
+        string status "*"
+        boolean portalAccess
+        boolean overridePermission
+        string pinCode
+        string externalId
+        datetime startDate
+        datetime endDate
+        datetime lastLogin
+    }
+    
+    Role {
+        string id PK "*"
+        string orgId FK "*"
+        string name UK "*"
+        string description
+        json scopes "*"
+        boolean isStandard "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean systemRole
+        json permissions "*"
+        integer memberCount
+    }
+    
+    Group {
+        string id PK "*"
+        string orgId FK "*"
+        string name UK "*"
+        string description
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+        string groupType
+        boolean systemGroup
+        integer memberCount
+        json settings
+    }
+    
+    Site {
+        string id PK "*"
+        string orgId FK "*"
+        string name UK "*"
+        string description
+        string address
+        string city
+        string state
+        string country
+        string postalCode
+        decimal latitude
+        decimal longitude
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+        string phone
+        string timezone
+        json settings
+    }
+    
+    Zone {
+        string id PK "*"
+        string orgId FK "*"
+        string siteId FK "*"
+        string name UK "*"
+        string description
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+        string zoneType
+        boolean shared
+        boolean antiPassbackEnabled
+        integer capacityLimit
+        string parentZoneId FK
+        json settings
+    }
+    
+    Entry {
+        string id PK "*"
+        string orgId FK "*"
+        string siteId FK
+        string zoneId FK
+        string name UK "*"
+        string description
+        string entryType "*"
+        boolean isLocked "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+        json locationRestriction
+        string state "*"
+        string doorPosition
+        boolean rexEnabled
+        boolean unlockOnExit
+        integer unlockTime
+        boolean monitoringEnabled
+        json readerSettings
+    }
+    
+    ACU {
+        string id PK "*"
+        string orgId FK "*"
+        string siteId FK
+        string name UK "*"
+        string serialNumber UK "*"
+        string macAddress UK
+        string ipAddress
+        string firmwareVersion
+        string hardwareVersion
+        boolean online "*"
+        datetime lastSeen
+        string timezone
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+        string modelNumber
+        string status "*"
+        string location
+        json networkSettings
+        json capabilities
+    }
+    
+    AcuConfiguration {
+        string id PK "*"
+        string acuId FK "*"
+        json networkSettings
+        json deviceSettings
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        integer pollingInterval
+        json timeoutSettings
+        json securitySettings
+    }
+    
+    AcuConfigurationNetworkSettings {
+        string id PK "*"
+        string acuConfigurationId FK "*"
+        string ipAddress
+        string subnetMask
+        string gateway
+        string dnsServer
+        boolean dhcpEnabled "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        string dnsSecondary
+        integer port
+    }
+    
+    AccessRule {
+        string id PK "*"
+        string orgId FK "*"
+        string userId FK
+        string groupId FK
+        string entryId FK
+        string zoneId FK
+        string scheduleId FK
+        boolean allowed "*"
+        datetime validFrom
+        datetime validUntil
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+        string name "*"
+        string description
+        json conditions "*"
+        json actions "*"
+    }
+    
+    TimeRestriction {
+        string id PK "*"
+        string orgId FK "*"
+        string entityId FK "*"
+        string entityType "*"
+        json timeRules "*"
+        string timezone "*"
+        boolean active "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        string startTime
+        string endTime
+        json daysOfWeek
+        datetime validFrom
+        datetime validUntil
+    }
+    
+    PortConfiguration {
+        string id PK "*"
+        string portId FK "*"
+        string configurationType "*"
+        json settings
+        boolean active "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        integer sensitivity
+        integer debounceTime
+        integer pollingRate
+        json thresholds
+        json customSettings
+    }
+    
+    Reader {
+        string id PK "*"
+        string orgId FK "*"
+        string acuId FK "*"
+        string entryId FK
+        string name UK "*"
+        string serialNumber UK
+        string readerType "*"
+        boolean isWiegand "*"
+        integer portNumber "*"
+        boolean online "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+        string description
+        string firmwareVersion
+        string status "*"
+        json capabilities
+        json settings
+        datetime lastSeen
+    }
+    
+    Port {
+        string id PK "*"
+        string acuId FK "*"
+        integer portNumber "*"
+        string portType "*"
+        boolean inUse "*"
+        json configuration
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        string name
+        string description
+        string status "*"
+        datetime lastActivity
+    }
+    
+    Credential {
+        string id PK "*"
+        string userId FK "*"
+        string orgId FK "*"
+        string credentialTypeId FK "*"
+        string credentialData "*"
+        boolean active "*"
+        datetime expiresAt
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        json metadata
+        string credentialType "*"
+        string status "*"
+        string cardNumber
+        string facilityCode
+        string mobilePassId
+        string cloudKeyUrl
+        string pinCode
+        datetime activatedAt
+        datetime lastUsed
+        integer useCount
+    }
+    
+    CredentialType {
+        string id PK "*"
+        string orgId FK "*"
+        string name UK "*"
+        string type "*"
+        string description
+        json configuration
+        boolean active "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    Schedule {
+        string id PK "*"
+        string orgId FK "*"
+        string name UK "*"
+        string description
+        json timeRanges "*"
+        json dateRanges
+        string timezone "*"
+        boolean active "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        string scheduleType "*"
+        json timePeriods "*"
+        datetime effectiveFrom
+        datetime effectiveTo
+        json exceptions
+    }
+    
+    AccessToken {
+        string token PK "*"
+        string identityId FK "*"
+        json scopes "*"
+        datetime expiresAt "*"
+        datetime createdAt "*"
+        string tokenType "*"
+        boolean active "*"
+    }
+    
+    Event {
+        string id PK "*"
+        string orgId FK "*"
+        string userId FK
+        string entryId FK
+        string readerId FK
+        string eventType "*"
+        string action "*"
+        datetime timestamp "*"
+        json metadata
+        boolean success "*"
+        string description
+        string result "*"
+        string credentialType
+        string readerName
+        string failureReason
+        datetime processedAt
+        string processedBy
+    }
+    
+    ContactSensor {
+        string id PK "*"
+        string orgId FK "*"
+        string entryId FK "*"
+        string acuId FK "*"
+        string name UK "*"
+        string sensorType "*"
+        boolean normallyOpen "*"
+        boolean online "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+        string description
+        string status "*"
+        string lastState
+        datetime lastChange
+        json settings
+    }
+    
+    Relay {
+        string id PK "*"
+        string orgId FK "*"
+        string entryId FK "*"
+        string acuId FK "*"
+        string name UK "*"
+        string relayType "*"
+        boolean normallyOpen "*"
+        integer activationTime
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+    }
+    
+    Rex {
+        string id PK "*"
+        string orgId FK "*"
+        string entryId FK "*"
+        string acuId FK "*"
+        string name UK "*"
+        string rexType "*"
+        boolean normallyOpen "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+    }
+    
+    Wiegand {
+        string id PK "*"
+        string orgId FK "*"
+        string readerId FK "*"
+        string name UK "*"
+        integer dataBits "*"
+        integer facilityCode
+        json configuration
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+    }
+    
+    ExpansionBoard {
+        string id PK "*"
+        string acuId FK "*"
+        string name UK "*"
+        string boardType "*"
+        string serialNumber UK
+        boolean online "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+    }
+    
+    IdentityProvider {
+        string id PK "*"
+        string orgId FK "*"
+        string name UK "*"
+        string providerType "*"
+        json configuration "*"
+        boolean active "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    CustomField {
+        string id PK "*"
+        string orgId FK "*"
+        string entityType "*"
+        string fieldName UK "*"
+        string fieldType "*"
+        json configuration
+        boolean required "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+        boolean active "*"
+    }
+    
+    LocationRestriction {
+        string id PK "*"
+        string orgId FK "*"
+        string entityId FK "*"
+        string entityType "*"
+        string restrictionType "*"
+        json boundaries "*"
+        boolean active "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    LockdownPlan {
+        string id PK "*"
+        string orgId FK "*"
+        string name "*"
+        string description
+        string planType
+        boolean active "*"
+        json targetZones
+        json entryStates
+        integer priority
+        json triggers
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    PackagePlan {
+        string id PK "*"
+        string orgId FK "*"
+        string name "*"
+        string description
+        string planType "*"
+        json features "*"
+        boolean active "*"
+        datetime effectiveDate
+        datetime expiryDate
+        json limitations
+        decimal price
+        string billingCycle
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    Mailroom {
+        string id PK "*"
+        string orgId FK "*"
+        string siteId FK "*"
+        string name "*"
+        string description
+        string location
+        boolean active "*"
+        json accessRules
+        json operatingHours
+        json settings
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    CardFormat {
+        string id PK "*"
+        string orgId FK "*"
+        string name "*"
+        string description
+        string formatType "*"
+        integer bitLength "*"
+        json fieldDefinitions "*"
+        boolean active "*"
+        json settings
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    Visitor {
+        string id PK "*"
+        string orgId FK "*"
+        string email "*"
+        string firstName "*"
+        string lastName "*"
+        string phone
+        string company
+        string hostUserId FK
+        string visitorType
+        string status "*"
+        datetime visitStart "*"
+        datetime visitEnd "*"
+        string cloudKeyUrl
+        json accessZones
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    Webhook {
+        string id PK "*"
+        string siteId FK "*"
+        string url "*"
+        string description
+        json eventTypes "*"
+        string secretKey
+        boolean active "*"
+        integer retryCount
+        datetime lastSuccess
+        datetime lastFailure
+        json headers
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    Alert {
+        string id PK "*"
+        string orgId FK "*"
+        string alertType "*"
+        string severity "*"
+        string title "*"
+        string description "*"
+        string status "*"
+        string sourceType
+        string sourceId
+        json alertData
+        datetime triggeredAt "*"
+        datetime resolvedAt
+        string resolvedBy
+        datetime createdAt "*"
+    }
+    
+    Notification {
+        string id PK "*"
+        string orgId FK "*"
+        string userId FK
+        string title "*"
+        string message "*"
+        string notificationType "*"
+        string status "*"
+        string priority
+        json metadata
+        datetime sentAt
+        datetime readAt
+        datetime createdAt "*"
+    }
+    
+    Report {
+        string id PK "*"
+        string orgId FK "*"
+        string name "*"
+        string description
+        string reportType "*"
+        json parameters "*"
+        string format
+        string status "*"
+        string fileUrl
+        datetime generatedAt
+        datetime expiresAt
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    Integration {
+        string id PK "*"
+        string orgId FK "*"
+        string name "*"
+        string integrationType "*"
+        string status "*"
+        json configuration "*"
+        json credentials
+        datetime lastSync
+        string lastSyncStatus
+        json syncErrors
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    ApiKey {
+        string id PK "*"
+        string orgId FK "*"
+        string userId FK "*"
+        string name "*"
+        string keyHash "*"
+        json permissions "*"
+        string status "*"
+        datetime expiresAt
+        datetime lastUsed
+        string lastIp
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    AuditLog {
+        string id PK "*"
+        string orgId FK "*"
+        string userId FK
+        string resourceType "*"
+        string resourceId
+        string action "*"
+        string result "*"
+        json beforeState
+        json afterState
+        string ipAddress
+        string userAgent
+        datetime timestamp "*"
+        json metadata
+    }
+    
+    Area {
+        string id PK "*"
+        string zoneId FK "*"
+        string name "*"
+        string description
+        integer capacityLimit
+        integer currentOccupancy
+        boolean antiPassback "*"
+        boolean occupancyEnabled
+        string areaType
+        json entryPoints
+        json exitPoints
+        json currentUsers
+        json settings
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    OccupancyTracking {
+        string id PK "*"
+        string areaId FK "*"
+        integer currentCount "*"
+        integer maxCapacity
+        json entryCounts
+        json exitCounts
+        datetime lastUpdated "*"
+        json historicalData
+    }
+    
+    Analytics {
+        string id PK "*"
+        string orgId FK "*"
+        string metricType "*"
+        string period "*"
+        json metricData "*"
+        datetime periodStart "*"
+        datetime periodEnd "*"
+        datetime calculatedAt "*"
+        json metadata
+    }
+    
+    CompliancePolicy {
+        string id PK "*"
+        string orgId FK "*"
+        string name "*"
+        string policyType "*"
+        json requirements "*"
+        boolean active "*"
+        json complianceRules
+        datetime effectiveDate
+        datetime expiryDate
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    BackupConfig {
+        string id PK "*"
+        string orgId FK "*"
+        string name "*"
+        string backupType "*"
+        string frequency "*"
+        json includedResources "*"
+        string storageLocation
+        boolean enabled "*"
+        datetime lastBackup
+        string lastBackupStatus
+        json retentionPolicy
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    Holiday {
+        string id PK "*"
+        string orgId FK "*"
+        string name "*"
+        date holidayDate "*"
+        boolean recurring
+        string recurrencePattern
+        string description
+        boolean active "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    EmailTemplate {
+        string id PK "*"
+        string orgId FK "*"
+        string name "*"
+        string subject "*"
+        string bodyHtml "*"
+        string bodyText
+        string templateType "*"
+        json variables
+        boolean active "*"
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    SmsSettings {
+        string id PK "*"
+        string orgId FK "*"
+        string provider "*"
+        json providerConfig "*"
+        boolean enabled "*"
+        string senderId
+        json templates
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    FirmwareUpdate {
+        string id PK "*"
+        string orgId FK "*"
+        string deviceType "*"
+        string currentVersion
+        string targetVersion "*"
+        string status "*"
+        json targetDevices
+        datetime scheduledAt
+        datetime startedAt
+        datetime completedAt
+        json updateResults
+        datetime createdAt "*"
+    }
+    
+    DeviceHealth {
+        string id PK "*"
+        string deviceId FK "*"
+        string deviceType "*"
+        string status "*"
+        float cpuUsage
+        float memoryUsage
+        float temperature
+        boolean networkConnected
+        datetime lastHeartbeat "*"
+        json metrics
+        json alerts
+        datetime recordedAt "*"
+    }
+    
+    NetworkSettings {
+        string id PK "*"
+        string deviceId FK "*"
+        string ipAddress
+        string subnetMask
+        string gateway
+        string dnsPrimary
+        string dnsSecondary
+        boolean dhcpEnabled "*"
+        integer port
+        json securitySettings
+        datetime updatedAt "*"
+    }
+    
+    Permission {
+        string id PK "*"
+        string orgId FK "*"
+        string name "*"
+        string description
+        string resourceType "*"
+        string action "*"
+        string scope
+        boolean systemPermission
+        datetime createdAt "*"
+        datetime updatedAt "*"
+    }
+    
+    Settings {
+        string id PK "*"
+        string orgId FK
+        string siteId FK
+        string settingKey "*"
+        string settingValue "*"
+        string dataType "*"
+        string category
+        string description
+        boolean systemSetting
+        datetime updatedAt "*"
+    }
+    
+    TimeZone {
+        string id PK "*"
+        string name "*"
+        string tzIdentifier "*"
+        integer utcOffset "*"
+        boolean dstEnabled
+        string description
+        boolean active "*"
+    }
+    
+    SyncJob {
+        string id PK "*"
+        string orgId FK "*"
+        string integrationId FK
+        string jobType "*"
+        string status "*"
+        datetime startedAt
+        datetime completedAt
+        integer recordsProcessed
+        integer recordsFailed
+        json errorDetails
+        json jobData
+        datetime createdAt "*"
+    }
+    
+    WebhookLog {
+        string id PK "*"
+        string webhookId FK "*"
+        string eventId FK
+        string status "*"
+        integer httpStatus
+        integer attemptNumber "*"
+        string responseBody
+        string errorMessage
+        datetime attemptedAt "*"
+        datetime nextRetryAt
+    }
+    
+    ApiLog {
+        string id PK "*"
+        string orgId FK "*"
+        string apiKeyId FK
+        string endpoint "*"
+        string method "*"
+        integer statusCode "*"
+        integer responseTime
+        string ipAddress
+        string userAgent
+        json requestData
+        json responseData
+        datetime timestamp "*"
+    }
+    
+    User }|--|| Identity : has_identity
+    User }|--|| Organization : belongs_to
+    Role }|--|| Organization : belongs_to
+    Group }|--|| Organization : belongs_to
+    Site }|--|| Organization : belongs_to
+    Zone }|--|| Site : belongs_to
+    Zone }|--|| Organization : belongs_to
+    Entry }|--|| Organization : belongs_to
+    Entry }|--|| Site : belongs_to
+    Entry }|--|| Zone : belongs_to
+    ACU }|--|| Organization : belongs_to
+    ACU }|--|| Site : belongs_to
+    Reader }|--|| ACU : connected_to
+    Reader }|--|| Organization : belongs_to
+    Reader }|--|| Entry : controls
+    Port }|--|| ACU : belongs_to
+    Credential }|--|| User : belongs_to
+    Credential }|--|| Organization : belongs_to
+    Credential }|--|| CredentialType : has_type
+    CredentialType }|--|| Organization : belongs_to
+    Schedule }|--|| Organization : belongs_to
+    AccessToken }|--|| Identity : issued_to
+    Event }|--|| Organization : belongs_to
+    Event }|--|| User : involves
+    Event }|--|| Entry : occurs_at
+    Event }|--|| Reader : triggered_by
+    ContactSensor }|--|| Entry : monitors
+    ContactSensor }|--|| ACU : connected_to
+    ContactSensor }|--|| Organization : belongs_to
+    Relay }|--|| Entry : controls
+    Relay }|--|| ACU : connected_to
+    Relay }|--|| Organization : belongs_to
+    Rex }|--|| Entry : serves
+    Rex }|--|| ACU : connected_to
+    Rex }|--|| Organization : belongs_to
+    Wiegand }|--|| Reader : configures
+    Wiegand }|--|| Organization : belongs_to
+    ExpansionBoard }|--|| ACU : extends
+    IdentityProvider }|--|| Organization : belongs_to
+    CustomField }|--|| Organization : belongs_to
+    LocationRestriction }|--|| Organization : belongs_to
+    User }|--|{ Group : member_of
+    User }|--|{ Role : has_role
+    User }|--|{ Site : can_access
+    Group }|--|{ Role : has_role
+    Group }|--|{ Entry : can_access
+    Group }|--|{ Zone : can_access
+    Group }|--|{ Schedule : follows
+    User }|--|{ Schedule : follows
+    Identity }|--|{ IdentityProvider : authenticated_by
+    ACU }|--|| AcuConfiguration : has_configuration
+    AcuConfiguration }|--|| AcuConfigurationNetworkSettings : has_network_settings
+    AccessRule }|--|| Organization : belongs_to
+    AccessRule }|--|| User : applies_to_user
+    AccessRule }|--|| Group : applies_to_group
+    AccessRule }|--|| Entry : applies_to_entry
+    AccessRule }|--|| Zone : applies_to_zone
+    AccessRule }|--|| Schedule : follows_schedule
+    TimeRestriction }|--|| Organization : belongs_to
+    PortConfiguration }|--|| Port : configures
+    LockdownPlan }|--|| Organization : belongs_to
+    LockdownPlan }|--|{ Zone : affects
+    PackagePlan }|--|| Organization : belongs_to
+    Mailroom }|--|| Organization : belongs_to
+    Mailroom }|--|| Site : located_at
+    CardFormat }|--|| Organization : belongs_to
+    Visitor }|--|| Organization : belongs_to
+    Visitor }|--|| User : hosted_by
+    Visitor }|--|{ Zone : can_access
+    Webhook }|--|| Site : belongs_to
+    WebhookLog }|--|| Webhook : logs
+    WebhookLog }|--|| Event : triggered_by
+    Alert }|--|| Organization : belongs_to
+    Notification }|--|| Organization : belongs_to
+    Notification }|--|| User : sent_to
+    Alert }|--|| Notification : creates
+    Report }|--|| Organization : belongs_to
+    Integration }|--|| Organization : belongs_to
+    SyncJob }|--|| Integration : executed_by
+    SyncJob }|--|| Organization : belongs_to
+    ApiKey }|--|| Organization : belongs_to
+    ApiKey }|--|| User : owned_by
+    ApiLog }|--|| Organization : belongs_to
+    ApiLog }|--|| ApiKey : generated_by
+    AuditLog }|--|| Organization : belongs_to
+    AuditLog }|--|| User : performed_by
+    Area }|--|| Zone : belongs_to
+    OccupancyTracking }|--|| Area : tracks
+    Area }|--|{ User : tracks_presence
+    Area }|--|{ Entry : controls_flow
+    Analytics }|--|| Organization : belongs_to
+    CompliancePolicy }|--|| Organization : belongs_to
+    BackupConfig }|--|| Organization : belongs_to
+    Holiday }|--|| Organization : belongs_to
+    Schedule }|--|{ Holiday : excludes
+    EmailTemplate }|--|| Organization : belongs_to
+    SmsSettings }|--|| Organization : belongs_to
+    FirmwareUpdate }|--|| Organization : belongs_to
+    DeviceHealth }|--|| ACU : monitors
+    DeviceHealth }|--|| Reader : monitors
+    DeviceHealth }|--|| ContactSensor : monitors
+    NetworkSettings }|--|| ACU : configures
+    NetworkSettings }|--|| Reader : configures
+    Permission }|--|| Organization : belongs_to
+    Role }|--|{ Permission : includes
+    Settings }|--|| Organization : belongs_to
+    Settings }|--|| Site : belongs_to
+    TimeZone }|--|{ Schedule : applies_to

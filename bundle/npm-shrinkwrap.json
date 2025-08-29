@@ -1,15 +1,15 @@
 {
   "name": "@zerobias-org/module-bundle",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "lockfileVersion": 2,
   "requires": true,
   "packages": {
     "": {
       "name": "@zerobias-org/module-bundle",
-      "version": "0.0.14",
+      "version": "0.0.15",
       "license": "ISC",
       "dependencies": {
-        "@zerobias-org/module-avigilon-alta-access": "0.1.16",
+        "@zerobias-org/module-avigilon-alta-access": "0.1.17",
         "@zerobias-org/module-readyplayerme-readyplayerme": "0.1.25"
       }
     },
@@ -174,9 +174,9 @@
       "integrity": "sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw=="
     },
     "node_modules/@zerobias-org/module-avigilon-alta-access": {
-      "version": "0.1.16",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.16.tgz",
-      "integrity": "sha512-Nw6yWW1S4zFPWtGCUhNAxbUjURRMvtM/pr1n0g2MXZvEoSisvFDTdfhTU293LJD7bholGXiQuV6ji5ueB5ZzmQ==",
+      "version": "0.1.17",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.17.tgz",
+      "integrity": "sha512-WNUNHuethFEQZoE01BRHnohX0cTxWJ/1cJ3HPVsVw8cn772vVx+yBgYjw7aRYQWUvTCYBP2Gn+zAfjkiA3mDWA==",
       "dependencies": {
         "@auditmation/hub-core": "^4.5.18",
         "@auditmation/util-hub-module-utils": "^1.0.27",
@@ -1720,9 +1720,9 @@
       "integrity": "sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw=="
     },
     "@zerobias-org/module-avigilon-alta-access": {
-      "version": "0.1.16",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.16.tgz",
-      "integrity": "sha512-Nw6yWW1S4zFPWtGCUhNAxbUjURRMvtM/pr1n0g2MXZvEoSisvFDTdfhTU293LJD7bholGXiQuV6ji5ueB5ZzmQ==",
+      "version": "0.1.17",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.1.17.tgz",
+      "integrity": "sha512-WNUNHuethFEQZoE01BRHnohX0cTxWJ/1cJ3HPVsVw8cn772vVx+yBgYjw7aRYQWUvTCYBP2Gn+zAfjkiA3mDWA==",
       "requires": {
         "@auditmation/hub-core": "^4.5.18",
         "@auditmation/util-hub-module-utils": "^1.0.27",

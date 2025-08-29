@@ -84,15 +84,14 @@ curl -X POST \
 	-H "Content-type: application/json" https://api.github.com/repos/zerobias-org/module/dispatches \
 	-d ''"$PAYLOAD"''
 
-# not available on zerobias-org yet
-# PAYLOAD=$(npx lerna list --since $SINCE --json | jq -rc '{"event_type": "generate-kb", "client_payload": { "code_prefix": "ct", "title_prefix": "Connect to", "packages": [.[] | .name + "@" + .version] }}')
-# curl -X POST \
-# 	-vvv \
-# 	--fail \
-# 	-H "Authorization: token $DISPATCH_TOKEN" \
-# 	-H "Accept: application/vnd.github.v3+json" \
-# 	-H "Content-type: application/json" https://api.github.com/repos/zerobias-org/kb/dispatches \
-# 	-d ''"$PAYLOAD"''
+PAYLOAD=$(npx lerna list --since $SINCE --json | jq -rc '{"event_type": "generate-kb", "client_payload": { "code_prefix": "ct", "title_prefix": "Connect to", "packages": [.[] | .name + "@" + .version] }}')
+curl -X POST \
+	-vvv \
+	--fail \
+	-H "Authorization: token $DISPATCH_TOKEN" \
+	-H "Accept: application/vnd.github.v3+json" \
+	-H "Content-type: application/json" https://api.github.com/repos/zerobias-org/kb/dispatches \
+	-d ''"$PAYLOAD"''
 
 PAYLOAD=$(npx lerna list --since $SINCE --json | jq -rc '{"event_type": "client-publish", "client_payload": { "packages": [.[] | { "name": (.name + "@" + .version), "version": .version, "apiName": (.name | split("-") | .[-1] ), "apiPath": (.name | split("-") | .[-1] ) } ] }}')
 curl -X POST \

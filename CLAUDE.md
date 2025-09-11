@@ -73,7 +73,20 @@ Each task stores its status and intermediate results in:
 ## Task-Specific Documentation
 
 - **[Module Creation](claude/create/CLAUDE.md)** - Process to create a module from scratch
+- **[Module Updates](claude/update/CLAUDE.md)** - Process to add operations to existing modules
 - **[Additional task types]** - More documentation files will be added as needed
+
+## Breaking Changes Policy
+
+### Update Workflow (claude/update/)
+- **NO BREAKING CHANGES ALLOWED** - All existing functionality must be preserved exactly
+- **FAIL FAST ON REGRESSIONS** - Any existing test failure stops the update process immediately
+- **BACKWARD COMPATIBILITY MANDATORY** - All existing client code must continue to work
+
+### Fix Workflow (claude/fix/ - to be created)
+- **BREAKING CHANGES PERMITTED** - May modify existing functionality to fix issues
+- **REGRESSION FIXES ALLOWED** - May change behavior to correct bugs
+- **CLIENT CODE UPDATES MAY BE REQUIRED** - Breaking changes require version bumps
 
 ## Repository Structure
 

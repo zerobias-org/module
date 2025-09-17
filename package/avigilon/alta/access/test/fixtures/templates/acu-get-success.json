@@ -1,7 +1,7 @@
 {
   "id": 123,
   "name": "Test User",
-  "status": "online",
+  "status": "A",
   "modelNumber": "AC-100",
   "serialNumber": "SN123456",
   "firmwareVersion": "1.2.3",

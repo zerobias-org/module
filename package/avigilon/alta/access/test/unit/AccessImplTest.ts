@@ -22,7 +22,7 @@ import { mockAuthenticatedRequest, cleanNock, loadFixture } from '../utils/nock-
 describe('AccessImpl', () => {
   let accessImpl: AccessImpl;
   let client: AvigilonAltaAccessClient;
-  const baseUrl = 'https://api.openpath.com';
+  const baseUrl = 'https://helium.prod.openpath.com';
   const testEmail = process.env.AVIGILON_EMAIL || 'test@example.com';
   const testPassword = process.env.AVIGILON_PASSWORD || 'testpass123';
 

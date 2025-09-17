@@ -22,7 +22,7 @@ import {
 describe('AcuProducerApiImpl', () => {
   let client: AvigilonAltaAccessClient;
   let producer: AcuProducerApiImpl;
-  const baseUrl = 'https://api.openpath.com';
+  const baseUrl = 'https://helium.prod.openpath.com';
   const testEmail = process.env.AVIGILON_EMAIL || 'test@example.com';
   const testPassword = process.env.AVIGILON_PASSWORD || 'testpass';
   const orgId = 'test-org-123';
@@ -75,7 +75,7 @@ describe('AcuProducerApiImpl', () => {
         {
           id: 183568,
           name: "Caspian office ACU",
-          status: "online",
+          status: "A",
           serialNumber: "1917240000000100000d00010000da05",
           createdAt: "2024-07-17T00:21:27.000Z",
           updatedAt: "2025-08-26T10:13:23.000Z"
@@ -83,7 +83,7 @@ describe('AcuProducerApiImpl', () => {
         {
           id: 196495,
           name: "Lobby Entrance Video Intercom",
-          status: "online",
+          status: "A",
           serialNumber: "3318060000000100000900010000062c",
           createdAt: "2024-09-03T20:05:49.000Z",
           updatedAt: "2025-08-26T10:27:02.000Z"
@@ -110,7 +110,7 @@ describe('AcuProducerApiImpl', () => {
       
       // Verify the ACUs have expected properties
       expect(['Caspian office ACU', 'Lobby Entrance Video Intercom', 'Main Entrance Video Intercom']).to.include(results.items[0].name);
-      expect(['online', 'offline']).to.include(results.items[0].status.toString());
+      expect(['active', 'inactive', 'error', 'maintenance']).to.include(results.items[0].status.toString());
       expect(results.items[0].serialNumber).to.be.a('string');
       
       scope.done();
@@ -126,7 +126,7 @@ describe('AcuProducerApiImpl', () => {
         {
           id: 183574,
           name: "Main Entrance Video Intercom",
-          status: "online",
+          status: "A",
           serialNumber: "33180c00000001000009000100000831",
           createdAt: "2024-07-17T01:22:03.000Z",
           updatedAt: "2025-08-22T10:21:02.000Z"
@@ -161,7 +161,7 @@ describe('AcuProducerApiImpl', () => {
       const mockAcuData = {
         id: acuId,
         name: "Caspian office ACU",
-        status: "online",
+        status: "A",
         serialNumber: "1917240000000100000d00010000da05",
         createdAt: "2024-07-17T00:21:27.000Z",
         updatedAt: "2025-08-26T10:13:23.000Z"
@@ -169,7 +169,7 @@ describe('AcuProducerApiImpl', () => {
       
       const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
         .get(`/orgs/${orgId}/acus/${acuId}`)
-        .reply(200, { data: mockAcuData });
+        .reply(200, mockAcuData);
 
       const result = await producer.get(orgId, acuId);
 
@@ -181,7 +181,7 @@ describe('AcuProducerApiImpl', () => {
       
       // Verify the data matches expected values
       expect(['Caspian office ACU', 'Lobby Entrance Video Intercom', 'Main Entrance Video Intercom']).to.include(result.name);
-      expect(['online', 'offline']).to.include(result.status.toString());
+      expect(['active', 'inactive', 'error', 'maintenance']).to.include(result.status.toString());
       
       scope.done();
     });
@@ -211,7 +211,7 @@ describe('AcuProducerApiImpl', () => {
       const mockAcuData = {
         id: 183568,
         name: "Caspian office ACU",
-        status: "online",
+        status: "A",
         serialNumber: "1917240000000100000d00010000da05",
         createdAt: "2024-07-17T00:21:27.000Z",
         updatedAt: "2025-08-26T10:13:23.000Z"
@@ -221,7 +221,7 @@ describe('AcuProducerApiImpl', () => {
         mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
         'GET',
         `/orgs/${orgId}/acus/${acuId}`,
-        { data: mockAcuData }
+        mockAcuData
       );
 
       const result = await producer.get(orgId, acuId);
@@ -234,7 +234,7 @@ describe('AcuProducerApiImpl', () => {
       // Validate data types
       expect(result.id).to.be.a('number');
       expect(result.name).to.be.a('string');
-      expect(['online', 'offline']).to.include(result.status.toString());
+      expect(['active', 'inactive', 'error', 'maintenance']).to.include(result.status.toString());
       
       // Optional fields should be present when provided
       if (result.serialNumber) {

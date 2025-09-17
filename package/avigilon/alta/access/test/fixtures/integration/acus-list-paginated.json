@@ -7,7 +7,7 @@
     {
       "id": 183568,
       "name": "Caspian office ACU",
-      "status": "online",
+      "status": "A",
       "serialNumber": "1917240000000100000d00010000da05",
       "createdAt": "2024-07-17T00:21:27.000Z",
       "updatedAt": "2025-08-26T10:13:23.000Z"
@@ -15,7 +15,7 @@
     {
       "id": 196495,
       "name": "Lobby Entrance Video Intercom",
-      "status": "online",
+      "status": "A",
       "serialNumber": "3318060000000100000900010000062c",
       "createdAt": "2024-09-03T20:05:49.000Z",
       "updatedAt": "2025-08-27T10:31:51.000Z"
@@ -23,7 +23,7 @@
     {
       "id": 183574,
       "name": "Main Entrance Video Intercom",
-      "status": "online",
+      "status": "A",
       "serialNumber": "33180c00000001000009000100000831",
       "createdAt": "2024-07-17T01:22:03.000Z",
       "updatedAt": "2025-08-27T10:14:36.000Z"

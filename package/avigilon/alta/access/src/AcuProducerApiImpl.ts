@@ -17,8 +17,8 @@ export class AcuProducerApiImpl implements AcuProducerApi {
       `/orgs/${organizationId}/acus/${acuId.toString()}`
     );
 
-    // Use response.data.data like the list methods
-    const rawData = response.data.data;
+    // Individual ACU response is directly in response.data, not nested in data.data like list responses
+    const rawData = response.data;
 
     // For AcuInfo, we need to map the same fields as Acu but with additional extended properties
     const acuData = mapAcu(rawData);

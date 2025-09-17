@@ -3,6 +3,7 @@ import { URL, Email } from '@auditmation/types-core-js';
 import {
   User,
   UserInfo,
+  UserIdentity,
   Group,
   GroupInfo,
   Acu,
@@ -22,42 +23,34 @@ export function mapUser(raw: any): User {
     // ✅ REQUIRED FIELD 1: id exists in both User interface AND api.yml response - numeric ID
     id: raw.id,
 
-    // ✅ REQUIRED FIELD 2: email exists in User interface - API returns in identity.email
-    email: map(Email, raw.identity?.email),
+    // ✅ REQUIRED FIELD 2: status - Handle status enum mapping (API: A/S/I -> active/suspended/inactive)
+    status: toEnum(User.StatusEnum, raw.status, (apiValue: string) => {
+      const statusMap = { 'A': 'active', 'S': 'suspended', 'I': 'inactive' };
+      return statusMap[apiValue] || 'active';
+    }),
 
-    // ✅ REQUIRED FIELD 3: firstName exists in User interface - API returns in identity.firstName
-    firstName: raw.identity?.firstName,
-
-    // ✅ REQUIRED FIELD 4: lastName exists in User interface - API returns in identity.lastName
-    lastName: raw.identity?.lastName,
-
-    // ✅ OPTIONAL FIELD 1: phoneNumber - API returns in identity.mobilePhone
-    ...(raw.identity?.mobilePhone && { phoneNumber: raw.identity.mobilePhone }),
-
-    // ✅ OPTIONAL FIELD 2: status - Handle status enum mapping safely (API: A/I/S -> Enum: Active/Inactive/Suspended)
-    ...(raw.status && (() => {
-      try {
-        // Map API single letter codes to enum values
-        const statusMapping = {
-          A: 'Active',
-          I: 'Inactive',
-          S: 'Suspended',
-        };
-        const mappedStatus = statusMapping[raw.status] || raw.status;
-        return { status: toEnum(User.StatusEnum, mappedStatus) };
-      } catch (error: any) {
-        // Skip invalid status values - API may return unsupported status codes
-        return {};
-      }
-    })()),
-
-    // ✅ OPTIONAL FIELD 3: createdAt - MUST be included in mapping
-    ...(raw.createdAt && { createdAt: map(Date, raw.createdAt) }),
-
-    // ✅ OPTIONAL FIELD 4: updatedAt - MUST be included in mapping
-    ...(raw.updatedAt && { updatedAt: map(Date, raw.updatedAt) }),
-
-    // ✅ FIELD COUNT VALIDATION: 8 fields mapped = 8 fields in User interface ✓
+    // ✅ OPTIONAL FIELDS: Map all the new User properties from API response
+    ...(raw.opal && { opal: raw.opal }),
+    ...(raw.identity && { identity: mapUserIdentity(raw.identity) }),
+    ...(raw.groups && { groups: raw.groups }), // Will need proper mapper
+    ...(raw.sites && { sites: raw.sites }), // Will need proper mapper
+    ...(raw.buildingFloorUnits && { buildingFloorUnits: raw.buildingFloorUnits }),
+    ...(raw.hasRemoteUnlock !== undefined && { hasRemoteUnlock: raw.hasRemoteUnlock }),
+    ...(raw.isOverrideAllowed !== undefined && { isOverrideAllowed: raw.isOverrideAllowed }),
+    ...(raw.startDate && { startDate: new Date(raw.startDate) }),
+    ...(raw.endDate && { endDate: new Date(raw.endDate) }),
+    ...(raw.startAndEndDateTimeZoneId && { startAndEndDateTimeZoneId: raw.startAndEndDateTimeZoneId }),
+    ...(raw.externalId && { externalId: raw.externalId }),
+    ...(raw.personId && { personId: raw.personId }),
+    ...(raw.title && { title: raw.title }),
+    ...(raw.department && { department: raw.department }),
+    ...(raw.lastActivityAt && { lastActivityAt: new Date(raw.lastActivityAt) }),
+    ...(raw.lastParcelReminderAt && { lastParcelReminderAt: new Date(raw.lastParcelReminderAt) }),
+    ...(raw.manuallyInactivatedAt && { manuallyInactivatedAt: new Date(raw.manuallyInactivatedAt) }),
+    ...(raw.statusLastUpdatedAt && { statusLastUpdatedAt: new Date(raw.statusLastUpdatedAt) }),
+    ...(raw.userCustomFields && { userCustomFields: raw.userCustomFields }),
+    ...(raw.createdAt && { createdAt: new Date(raw.createdAt) }),
+    ...(raw.updatedAt && { updatedAt: new Date(raw.updatedAt) }),
   };
 
   return output;
@@ -72,57 +65,35 @@ export function mapUserInfo(raw: any): UserInfo {
     // ✅ REQUIRED FIELD 1: id exists in both UserInfo interface AND api.yml response - numeric ID
     id: raw.id,
 
-    // ✅ REQUIRED FIELD 2: email exists in UserInfo interface - API returns in identity.email
-    email: map(Email, raw.identity?.email),
+    // ✅ REQUIRED FIELD 2: status - Handle status enum mapping safely (API: A/S/I -> Enum values)
+    status: toEnum(UserInfo.StatusEnum, raw.status, (apiValue: string) => {
+      const statusMap = { 'A': 'active', 'S': 'suspended', 'I': 'inactive' };
+      return statusMap[apiValue] || 'active';
+    }),
 
-    // ✅ REQUIRED FIELD 3: firstName exists in UserInfo interface - API returns in identity.firstName
-    firstName: raw.identity?.firstName,
+    // ✅ OPTIONAL FIELD: identity - Map to UserIdentity object
+    ...(raw.identity && { identity: mapUserIdentity(raw.identity) }),
 
-    // ✅ REQUIRED FIELD 4: lastName exists in UserInfo interface - API returns in identity.lastName
-    lastName: raw.identity?.lastName,
-
-    // ✅ OPTIONAL FIELD 1: phoneNumber - API returns in identity.mobilePhone
-    ...(raw.identity?.mobilePhone && { phoneNumber: raw.identity.mobilePhone }),
-
-    // ✅ OPTIONAL FIELD 2: status - Handle status enum mapping safely (API: A/I/S -> Enum: Active/Inactive/Suspended)
-    ...(raw.status && (() => {
-      try {
-        // Map API single letter codes to enum values
-        const statusMapping = {
-          A: 'Active',
-          I: 'Inactive',
-          S: 'Suspended',
-        };
-        const mappedStatus = statusMapping[raw.status] || raw.status;
-        return { status: toEnum(UserInfo.StatusEnum, mappedStatus) };
-      } catch (error: any) {
-        // Skip invalid status values - API may return unsupported status codes
-        return {};
-      }
-    })()),
-
-    // ✅ OPTIONAL FIELD 3: createdAt - MUST be included in mapping
+    // ✅ OPTIONAL FIELD: createdAt - MUST be included in mapping
     ...(raw.createdAt && { createdAt: map(Date, raw.createdAt) }),
 
-    // ✅ OPTIONAL FIELD 4: updatedAt - MUST be included in mapping
+    // ✅ OPTIONAL FIELD: updatedAt - MUST be included in mapping
     ...(raw.updatedAt && { updatedAt: map(Date, raw.updatedAt) }),
 
-    // ✅ OPTIONAL FIELD 5: organizationId - MUST be included in mapping
+    // ✅ OPTIONAL FIELD: organizationId - MUST be included in mapping
     ...(raw.identity?.namespace?.org?.id && { organizationId: raw.identity.namespace.org.id }),
 
-    // ✅ OPTIONAL FIELD 6: avatarUrl - MUST be included in mapping
+    // ✅ OPTIONAL FIELD: avatarUrl - MUST be included in mapping
     ...(raw.avatarUrl && { avatarUrl: map(URL, raw.avatarUrl) }),
 
-    // ✅ OPTIONAL FIELD 7: lastLoginAt - MUST be included in mapping
+    // ✅ OPTIONAL FIELD: lastLoginAt - MUST be included in mapping
     ...(raw.lastLoginAt && { lastLoginAt: map(Date, raw.lastLoginAt) }),
 
-    // ✅ OPTIONAL FIELD 8: permissions - MUST be included in mapping
+    // ✅ OPTIONAL FIELD: permissions - MUST be included in mapping
     ...(raw.permissions && { permissions: raw.permissions }),
 
-    // ✅ OPTIONAL FIELD 9: customFields - MUST be included in mapping
+    // ✅ OPTIONAL FIELD: customFields - MUST be included in mapping
     ...(raw.userCustomFields && { customFields: raw.userCustomFields }),
-
-    // ✅ FIELD COUNT VALIDATION: 13 fields mapped = 13 fields in UserInfo interface ✓
   };
 
   return output;
@@ -140,8 +111,8 @@ export function mapGroup(raw: any): Group {
     // ✅ REQUIRED FIELD 2: name exists in both Group interface AND api.yml response
     name: raw.name,
 
-    // ✅ OPTIONAL FIELD: type - only include when present in API response
-    ...(raw.type && { type: toEnum(Group.TypeEnum, raw.type) }),
+    // ✅ OPTIONAL FIELD: badgeConfig - new field from API response
+    ...(raw.badgeConfig && { badgeConfig: raw.badgeConfig }),
 
     // ✅ OPTIONAL FIELD 1: description - MUST be mapped with conditional logic
     ...(raw.description && { description: raw.description }),
@@ -188,14 +159,10 @@ export function mapAcu(raw: any): Acu {
     name: raw.name,
 
     // ✅ REQUIRED FIELD 3: status exists in both Acu interface AND api.yml response
-    status: (() => {
-      try {
-        return toEnum(Acu.StatusEnum, raw.status);
-      } catch (error: any) {
-        // Fallback for unknown status values
-        return toEnum(Acu.StatusEnum, 'online');
-      }
-    })(),
+    status: toEnum(Acu.StatusEnum, raw.status, (apiValue: string) => {
+      const statusMap = { 'A': 'active', 'I': 'inactive', 'E': 'error', 'M': 'maintenance' };
+      return statusMap[apiValue] || 'active';
+    }),
 
     // ✅ OPTIONAL FIELD 1: modelNumber - MUST be mapped with conditional logic
     ...(raw.modelNumber && { modelNumber: raw.modelNumber }),
@@ -311,4 +278,26 @@ export function mapPort(raw: any): Port {
     ...(raw.description && { description: raw.description }),
     ...(raw.configuration && { configuration: mapPortConfiguration(raw.configuration) }),
   };
+}
+
+export function mapUserIdentity(raw: any): UserIdentity {
+  const result = new UserIdentity(
+    raw.id || 0, // id is required but might not be in raw data, default to 0
+    new Email(raw.email || 'unknown@example.com'), // Convert string email to Email object
+    raw.firstName || '', // Required field
+    raw.lastName || '', // Required field
+    raw.mobilePhone || raw.phoneNumber, // Map mobilePhone to phoneNumber
+    raw.avatarUrl,
+    raw.middleName,
+    raw.suffix,
+    raw.preferredName,
+    raw.pronouns,
+    raw.dateOfBirth ? new Date(raw.dateOfBirth) : undefined,
+    raw.emergencyContactName,
+    raw.emergencyContactPhone,
+    raw.homeAddress,
+    raw.companyName,
+    raw.workAddress
+  );
+  return result;
 }

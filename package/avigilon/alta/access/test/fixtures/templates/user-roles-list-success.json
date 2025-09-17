@@ -1,1 +1,19 @@
-{"data":[{"id":123,"name":"Admin","description":"Administrator role"}],"totalCount":1}
+{
+  "data": [
+    {
+      "id": 12345,
+      "name": "Admin Role",
+      "description": "Administrator access role",
+      "createdAt": "2024-07-17T00:49:23.000Z",
+      "updatedAt": "2024-12-18T17:28:38.000Z"
+    },
+    {
+      "id": 12346,
+      "name": "User Role", 
+      "description": "Standard user access role",
+      "createdAt": "2024-08-01T00:49:23.000Z",
+      "updatedAt": "2024-12-18T17:28:38.000Z"
+    }
+  ],
+  "totalCount": 2
+}

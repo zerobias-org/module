@@ -22,7 +22,7 @@ import {
 describe('UserProducerApiImpl', () => {
   let client: AvigilonAltaAccessClient;
   let producer: UserProducerApiImpl;
-  const baseUrl = 'https://api.openpath.com';
+  const baseUrl = 'https://helium.prod.openpath.com';
   const testEmail = process.env.AVIGILON_EMAIL || 'test@example.com';
   const testPassword = process.env.AVIGILON_PASSWORD || 'testpass';
   const orgId = 'test-org-123';
@@ -113,16 +113,16 @@ describe('UserProducerApiImpl', () => {
       expect(results.items).to.have.length.above(0);
       expect(results.count).to.be.above(0);
       expect(results.items[0]).to.have.property('id');
-      expect(results.items[0]).to.have.property('email');
-      expect(results.items[0]).to.have.property('firstName');
+      expect(results.items[0].identity).to.have.property("email");
+      expect(results.items[0].identity).to.have.property("firstName");
       
       // Verify anonymized data is used - email could be string or Email object
-      const emailStr = typeof results.items[0].email === 'string' 
-        ? results.items[0].email 
-        : results.items[0].email?.toString() || '';
+      const emailStr = typeof results.items[0].identity?.email === 'string' 
+        ? results.items[0].identity?.email 
+        : results.items[0].identity?.email?.toString() || '';
       expect(emailStr).to.include('@');
       expect(['example.com', 'testcorp.com', 'demo.org']).to.include(emailStr.split('@')[1]);
-      expect(['Jane', 'Alice', 'John', 'Bob', 'Carol', 'David', 'Delivery', 'Luis']).to.include(results.items[0].firstName);
+      expect(['Jane', 'Alice', 'John', 'Bob', 'Carol', 'David', 'Delivery', 'Luis']).to.include(results.items[0].identity?.firstName);
       
       scope.done();
     });
@@ -188,22 +188,22 @@ describe('UserProducerApiImpl', () => {
       
       const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
         .get(`/orgs/${orgId}/users/${userId}`)
-        .reply(200, { data: mockUserData });
+        .reply(200, mockUserData);
 
       const result = await producer.get(orgId, userId);
 
       expect(result).to.be.an('object');
       expect(result.id).to.be.a('number');
-      expect(result.firstName).to.be.a('string');
-      expect(result.lastName).to.be.a('string');
-      expect(result.email).to.not.be.undefined;
+      expect(result.identity?.firstName).to.be.a('string');
+      expect(result.identity?.lastName).to.be.a('string');
+      expect(result.identity?.email).to.not.be.undefined;
       
       // Verify anonymized data - email could be string or Email object
-      const emailStr = typeof result.email === 'string' 
-        ? result.email 
-        : result.email?.toString() || '';
+      const emailStr = typeof result.identity?.email === 'string' 
+        ? result.identity?.email 
+        : result.identity?.email?.toString() || '';
       expect(['example.com', 'testcorp.com', 'demo.org']).to.include(emailStr.split('@')[1]);
-      expect(['Jane', 'Alice', 'John', 'Bob', 'Carol', 'David', 'Delivery', 'Luis']).to.include(result.firstName);
+      expect(['Jane', 'Alice', 'John', 'Bob', 'Carol', 'David', 'Delivery', 'Luis']).to.include(result.identity?.firstName);
       
       scope.done();
     });
@@ -247,26 +247,26 @@ describe('UserProducerApiImpl', () => {
         mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
         'GET',
         `/orgs/${orgId}/users/${userId}`,
-        { data: mockUserData }
+        mockUserData
       );
 
       const result = await producer.get(orgId, userId);
 
       // Validate required fields
       expect(result).to.have.property('id');
-      expect(result).to.have.property('firstName');
-      expect(result).to.have.property('lastName');
-      expect(result).to.have.property('email');
+      expect(result.identity).to.have.property("firstName");
+      expect(result.identity).to.have.property("lastName");
+      expect(result.identity).to.have.property("email");
       
       // Validate data types
       expect(result.id).to.be.a('number');
-      expect(result.firstName).to.be.a('string');
-      expect(result.email).to.not.be.undefined;
+      expect(result.identity?.firstName).to.be.a('string');
+      expect(result.identity?.email).to.not.be.undefined;
       
       // Ensure anonymized data - email could be string or Email object
-      const emailStr = typeof result.email === 'string' 
-        ? result.email 
-        : result.email?.toString() || '';
+      const emailStr = typeof result.identity?.email === 'string' 
+        ? result.identity?.email 
+        : result.identity?.email?.toString() || '';
       expect(emailStr).to.match(/@(example\.com|testcorp\.com|demo\.org)$/);
       
       scope.done();

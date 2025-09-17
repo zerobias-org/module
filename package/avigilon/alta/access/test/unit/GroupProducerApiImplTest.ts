@@ -22,7 +22,7 @@ import {
 describe('GroupProducerApiImpl', () => {
   let client: AvigilonAltaAccessClient;
   let producer: GroupProducerApiImpl;
-  const baseUrl = 'https://api.openpath.com';
+  const baseUrl = 'https://helium.prod.openpath.com';
   const testEmail = process.env.AVIGILON_EMAIL || 'test@example.com';
   const testPassword = process.env.AVIGILON_PASSWORD || 'testpass';
   const orgId = 'test-org-123';
@@ -168,7 +168,7 @@ describe('GroupProducerApiImpl', () => {
       
       const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
         .get(`/orgs/${orgId}/groups/${groupId}`)
-        .reply(200, { data: mockGroupData });
+        .reply(200, mockGroupData);
 
       const result = await producer.get(orgId, groupId);
 
@@ -220,7 +220,7 @@ describe('GroupProducerApiImpl', () => {
         mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
         'GET',
         `/orgs/${orgId}/groups/${groupId}`,
-        { data: mockGroupData }
+        mockGroupData
       );
 
       const result = await producer.get(orgId, groupId);

@@ -50,8 +50,8 @@ describe('Avigilon Alta Access - ACU Producer Tests', function () {
             expect(firstAcu.id).to.be.greaterThan(0);
           }
           
-          if (firstAcu.ipAddress) {
-            validateCoreTypes.isIpAddress(firstAcu.ipAddress);
+          if (firstAcu.hostname) {
+            validateCoreTypes.isIpAddress(firstAcu.hostname);
           }
           
           if (firstAcu.createdAt && firstAcu.createdAt instanceof Date) {
@@ -120,8 +120,8 @@ describe('Avigilon Alta Access - ACU Producer Tests', function () {
         expect(acu.id).to.be.greaterThan(0);
       }
       
-      if (acu.ipAddress) {
-        validateCoreTypes.isIpAddress(acu.ipAddress);
+      if (acu.hostname) {
+        validateCoreTypes.isIpAddress(acu.hostname);
       }
       
       if (acu.createdAt && acu.createdAt instanceof Date) {
@@ -199,7 +199,7 @@ describe('Avigilon Alta Access - ACU Producer Tests', function () {
         acu: acu,
         validation: {
           hasIdentifier: !!hasIdentifier,
-          hasIpAddress: !!acu.ipAddress,
+          hasIpAddress: !!acu.hostname,
           hasCreatedAt: !!acu.createdAt,
           timestamp: new Date().toISOString()
         }

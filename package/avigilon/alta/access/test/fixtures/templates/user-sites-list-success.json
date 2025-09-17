@@ -1,1 +1,21 @@
-{"data":[{"id":456,"name":"Main Site","address":"123 Test Street"}],"totalCount":1}
+{
+  "data": [
+    {
+      "id": 67890,
+      "name": "Main Office",
+      "description": "Primary office location", 
+      "address": "123 Business St",
+      "createdAt": "2024-07-17T00:49:23.000Z",
+      "updatedAt": "2024-12-18T17:28:38.000Z"
+    },
+    {
+      "id": 67891,
+      "name": "Branch Office",
+      "description": "Secondary office location",
+      "address": "456 Branch Ave", 
+      "createdAt": "2024-08-01T00:49:23.000Z",
+      "updatedAt": "2024-12-18T17:28:38.000Z"
+    }
+  ],
+  "totalCount": 2
+}

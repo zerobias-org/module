@@ -10,7 +10,7 @@
       "firstName": "Delivery",
       "lastName": null,
       "phoneNumber": "+1-555-0123",
-      "status": "active",
+      "status": "A",
       "createdAt": "2024-12-18T17:27:10.000Z",
       "updatedAt": "2024-12-18T17:27:10.000Z"
     },
@@ -20,7 +20,7 @@
       "firstName": "Luis",
       "lastName": "Alvarado",
       "phoneNumber": "+1-555-0123",
-      "status": "inactive",
+      "status": "I",
       "createdAt": "2024-08-27T17:22:39.000Z",
       "updatedAt": "2024-10-14T13:40:57.000Z"
     },
@@ -30,7 +30,7 @@
       "firstName": "Jonathan",
       "lastName": "Bates",
       "phoneNumber": "+1-555-0123",
-      "status": "active",
+      "status": "A",
       "createdAt": "2024-08-14T14:56:23.000Z",
       "updatedAt": "2024-08-17T10:26:50.000Z"
     },
@@ -40,7 +40,7 @@
       "firstName": "Nate",
       "lastName": "Bauer",
       "phoneNumber": "+1-555-0123",
-      "status": "inactive",
+      "status": "I",
       "createdAt": "2024-07-18T14:18:18.000Z",
       "updatedAt": "2024-09-06T10:32:28.000Z"
     },
@@ -50,7 +50,7 @@
       "firstName": "Chris",
       "lastName": "Bauer",
       "phoneNumber": "+1-555-0123",
-      "status": "active",
+      "status": "A",
       "createdAt": "2024-08-13T03:26:11.000Z",
       "updatedAt": "2024-09-17T10:28:13.000Z"
     }

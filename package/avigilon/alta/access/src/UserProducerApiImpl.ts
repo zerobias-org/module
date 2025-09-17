@@ -17,8 +17,8 @@ export class UserProducerApiImpl implements UserProducerApi {
       `/orgs/${organizationId}/users/${userId.toString()}`
     );
 
-    // Use response.data.data like the list methods
-    const rawData = response.data.data;
+    // Individual user response is directly in response.data, not nested in data.data like list responses
+    const rawData = response.data;
 
     return mapUserInfo(rawData);
   }

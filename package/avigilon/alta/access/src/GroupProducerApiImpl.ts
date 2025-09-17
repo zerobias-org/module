@@ -17,8 +17,8 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       `/orgs/${organizationId}/groups/${groupId.toString()}`
     );
 
-    // Extract the actual group data from the nested response structure
-    const rawGroupData = response.data.data;
+    // Individual group response is directly in response.data, not nested in data.data like list responses
+    const rawGroupData = response.data;
 
     if (!rawGroupData) {
       throw new Error(`Group with ID ${groupId} not found`);

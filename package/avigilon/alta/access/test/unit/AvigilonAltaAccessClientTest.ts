@@ -12,7 +12,7 @@ import { cleanNock } from '../utils/nock-helpers';
 
 describe('AvigilonAltaAccessClient', () => {
   let client: AvigilonAltaAccessClient;
-  const baseUrl = 'https://api.openpath.com';
+  const baseUrl = 'https://helium.prod.openpath.com';
   const testEmail = process.env.AVIGILON_EMAIL || 'test@example.com';
   const testPassword = process.env.AVIGILON_PASSWORD || 'testpass123';
 
@@ -275,7 +275,7 @@ describe('AvigilonAltaAccessClient', () => {
     });
 
     it('should handle 401 Unauthorized errors', async () => {
-      const scope = nock('https://api.openpath.com')
+      const scope = nock(baseUrl)
         .matchHeader('authorization', `Bearer mock-token-123`)
         .get('/test-endpoint')
         .reply(401, { error: 'Unauthorized', statusCode: 401 });
@@ -293,7 +293,7 @@ describe('AvigilonAltaAccessClient', () => {
     });
 
     it('should handle 404 Not Found errors', async () => {
-      const scope = nock('https://api.openpath.com')
+      const scope = nock(baseUrl)
         .matchHeader('authorization', `Bearer mock-token-123`)
         .get('/nonexistent-endpoint')
         .reply(404, { error: 'Not found', statusCode: 404 });
@@ -311,7 +311,7 @@ describe('AvigilonAltaAccessClient', () => {
     });
 
     it('should handle 500 Internal Server errors', async () => {
-      const scope = nock('https://api.openpath.com')
+      const scope = nock(baseUrl)
         .matchHeader('authorization', `Bearer mock-token-123`)
         .get('/error-endpoint')
         .reply(500, { error: 'Internal server error', statusCode: 500 });

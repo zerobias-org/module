@@ -1,32 +1,23 @@
 {
   "data": [
     {
-      "id": 123,
-      "type": "access_permission",
-      "userId": 456,
-      "doorId": 1,
-      "timestamp": "2023-01-01T08:00:00Z",
-      "granted": true,
-      "reason": "Valid access"
+      "id": 55555,
+      "timestamp": "2024-12-18T17:27:10.000Z",
+      "userId": 22509982,
+      "acuId": 183568,
+      "action": "entry",
+      "status": "granted",
+      "createdAt": "2024-12-18T17:27:10.000Z"
     },
     {
-      "id": 456,
-      "type": "door_permission",
-      "userId": 789,
-      "doorId": 2,
-      "timestamp": "2023-01-01T08:05:00Z",
-      "granted": false,
-      "reason": "Invalid PIN"
-    },
-    {
-      "id": 789,
-      "type": "zone_permission",
-      "userId": 123,
-      "doorId": 3,
-      "timestamp": "2023-01-01T08:10:00Z",
-      "granted": true,
-      "reason": "Mobile app unlock"
+      "id": 55556,
+      "timestamp": "2024-12-18T18:30:15.000Z", 
+      "userId": 20032735,
+      "acuId": 183568,
+      "action": "exit",
+      "status": "granted",
+      "createdAt": "2024-12-18T18:30:15.000Z"
     }
   ],
-  "totalCount": 150
+  "totalCount": 2
 }

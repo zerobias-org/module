@@ -52,8 +52,8 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
             }
           }
 
-          if (firstUser.email) {
-            validateCoreTypes.isEmail(firstUser.email);
+          if (firstUser.identity?.email) {
+            validateCoreTypes.isEmail(firstUser.identity?.email);
           }
 
           if (firstUser.createdAt && firstUser.createdAt instanceof Date) {
@@ -122,8 +122,8 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
         }
       }
 
-      if (user.email) {
-        validateCoreTypes.isEmail(user.email);
+      if (user.identity?.email) {
+        validateCoreTypes.isEmail(user.identity?.email);
       }
 
       if (user.createdAt && user.createdAt instanceof Date) {
@@ -193,7 +193,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       // Note: Actual fields depend on the API response structure
 
       // Most user APIs should have some form of identifier
-      const hasIdentifier = user.id || user.email;
+      const hasIdentifier = user.id || user.identity?.email;
       expect(hasIdentifier).to.not.be.undefined;
 
       // Save schema validation fixture
@@ -201,7 +201,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
         user: user,
         validation: {
           hasIdentifier: !!hasIdentifier,
-          hasEmail: !!user.email,
+          hasEmail: !!user.identity?.email,
           hasCreatedAt: !!user.createdAt,
           timestamp: new Date().toISOString()
         }

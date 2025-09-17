@@ -1,54 +1,25 @@
 {
   "data": [
     {
-      "id": 1,
-      "number": 1,
-      "name": "Test User",
+      "id": 1001,
+      "name": "Main Door",
+      "portNumber": 1,
       "type": "reader",
       "status": "active",
-      "description": "Main entrance sensor",
-      "configuration": {
-        "debounceTime": 100,
-        "pollingRate": 500,
-        "enabled": true,
-        "customSettings": {
-          "sensitivity": "high",
-          "threshold": 0.8
-        }
-      }
+      "acuId": 183568,
+      "createdAt": "2024-07-17T00:21:27.000Z",
+      "updatedAt": "2024-12-18T17:28:38.000Z"
     },
     {
-      "id": 2,
-      "number": 2,
-      "name": "Test User",
-      "type": "door_sensor",
-      "status": "inactive",
-      "description": "Door strike control",
-      "configuration": {
-        "debounceTime": 50,
-        "pollingRate": 1000,
-        "enabled": true,
-        "customSettings": {
-          "voltage": "12V",
-          "duration": 3000
-        }
-      }
-    },
-    {
-      "id": 3,
-      "number": 3,
-      "name": "Test User",
-      "type": "door_sensor",
+      "id": 1002,
+      "name": "Secondary Door",
+      "portNumber": 2, 
+      "type": "reader",
       "status": "active",
-      "description": "Status LED",
-      "configuration": {
-        "enabled": true,
-        "customSettings": {
-          "color": "green",
-          "brightness": 80
-        }
-      }
+      "acuId": 183568,
+      "createdAt": "2024-07-17T00:21:27.000Z",
+      "updatedAt": "2024-12-18T17:28:38.000Z"
     }
   ],
-  "totalCount": 4
+  "totalCount": 2
 }

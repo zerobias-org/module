@@ -17,7 +17,15 @@ import {
   ZoneEntry,
   ZoneEntryAcu,
   ZoneSiteRef,
-  OrganizationRef
+  OrganizationRef,
+  EntryDetails,
+  EntryZone,
+  EntryZoneSite,
+  EntryAcu,
+  EntryState,
+  EntrySchedule,
+  EntryCamera,
+  VideoProvider
 } from '../generated/model';
 
 /**
@@ -386,5 +394,84 @@ export function mapZone(raw: any): Zone {
     raw.apbAreas,
     raw.createdAt ? map(Date, raw.createdAt) : undefined,
     raw.updatedAt ? map(Date, raw.updatedAt) : undefined
+  );
+}
+
+// Helper functions for EntryDetails mapping
+function mapVideoProvider(raw: any): VideoProvider | undefined {
+  if (!raw) return undefined;
+  return new VideoProvider(raw.id, raw.videoProviderTypeId);
+}
+
+function mapEntryCamera(raw: any): EntryCamera | undefined {
+  if (!raw) return undefined;
+  return new EntryCamera(
+    raw.id,
+    raw.name,
+    raw.nameExt,
+    raw.idExt,
+    raw.supportsSnapshot,
+    raw.supportsDeeplink,
+    raw.supportsMotionSnapshot,
+    raw.supportsFaceCrop,
+    raw.supportsFaceDetection,
+    raw.supportsPeopleDetection,
+    raw.supportsMotionRecap,
+    raw.supportsLivestream,
+    raw.videoProviderId,
+    mapVideoProvider(raw.videoProvider)
+  );
+}
+
+function mapEntrySchedule(raw: any): EntrySchedule | undefined {
+  if (!raw) return undefined;
+  return new EntrySchedule(raw.id, raw.name);
+}
+
+function mapEntryState(raw: any): EntryState | undefined {
+  if (!raw) return undefined;
+  return new EntryState(raw.id, raw.name);
+}
+
+function mapEntryAcu(raw: any): EntryAcu | undefined {
+  if (!raw) return undefined;
+  return new EntryAcu(raw.id, raw.name, raw.isGatewayMode);
+}
+
+function mapEntryZoneSite(raw: any): EntryZoneSite | undefined {
+  if (!raw) return undefined;
+  return new EntryZoneSite(raw.id, raw.name);
+}
+
+function mapEntryZone(raw: any): EntryZone | undefined {
+  if (!raw) return undefined;
+  return new EntryZone(raw.id, raw.name, mapEntryZoneSite(raw.site));
+}
+
+/**
+ * Maps raw API entry data to EntryDetails interface
+ * Based on the actual API response structure from /orgs/{organizationId}/entries
+ */
+export function mapEntryDetails(raw: any): EntryDetails {
+  return new EntryDetails(
+    raw.id,
+    raw.name,
+    raw.opal,
+    raw.pincode,
+    raw.isPincodeEnabled,
+    raw.color,
+    raw.isMusterPoint,
+    raw.notes,
+    raw.externalUuid,
+    raw.isReaderless,
+    raw.isIntercomEntry,
+    raw.createdAt ? map(Date, raw.createdAt) : undefined,
+    raw.updatedAt ? map(Date, raw.updatedAt) : undefined,
+    mapEntryZone(raw.zone),
+    mapEntryAcu(raw.acu),
+    raw.wirelessLock,
+    mapEntryState(raw.entryState),
+    mapEntrySchedule(raw.schedule),
+    raw.cameras?.map(mapEntryCamera)
   );
 }

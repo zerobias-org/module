@@ -4,12 +4,14 @@ import {
   AccessConnector,
   AcuApi,
   AuthApi,
+  EntryApi,
   GroupApi,
   SiteApi,
   UserApi,
   ZoneApi,
   wrapAcuProducer,
   wrapAuthProducer,
+  wrapEntryProducer,
   wrapGroupProducer,
   wrapSiteProducer,
   wrapUserProducer,
@@ -27,6 +29,7 @@ import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
 import { UserProducerApiImpl } from './UserProducerApiImpl';
 import { AcuProducerApiImpl } from './AcuProducerApiImpl';
 import { AuthProducerApiImpl } from './AuthProducerApiImpl';
+import { EntryProducerApiImpl } from './EntryProducerApiImpl';
 import { GroupProducerApiImpl } from './GroupProducerApiImpl';
 import { SiteProducerApiImpl } from './SiteProducerApiImpl';
 import { ZoneProducerApiImpl } from './ZoneProducerApiImpl';
@@ -38,6 +41,7 @@ export class AccessImpl implements AccessConnector {
   private userApiProducer?: UserApi;
   private acuApiProducer?: AcuApi;
   private authApiProducer?: AuthApi;
+  private entryApiProducer?: EntryApi;
   private groupApiProducer?: GroupApi;
   private siteApiProducer?: SiteApi;
   private zoneApiProducer?: ZoneApi;
@@ -101,6 +105,14 @@ export class AccessImpl implements AccessConnector {
       this.authApiProducer = wrapAuthProducer(producer);
     }
     return this.authApiProducer;
+  }
+
+  getEntryApi(): EntryApi {
+    if (!this.entryApiProducer) {
+      const producer = new EntryProducerApiImpl(this.client);
+      this.entryApiProducer = wrapEntryProducer(producer);
+    }
+    return this.entryApiProducer;
   }
 
   getGroupApi(): GroupApi {

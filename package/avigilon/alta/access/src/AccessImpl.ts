@@ -7,11 +7,13 @@ import {
   GroupApi,
   SiteApi,
   UserApi,
+  ZoneApi,
   wrapAcuProducer,
   wrapAuthProducer,
   wrapGroupProducer,
   wrapSiteProducer,
-  wrapUserProducer
+  wrapUserProducer,
+  wrapZoneProducer
 } from '../generated/api';
 import { ConnectionProfile } from '../generated/model/ConnectionProfile';
 import {
@@ -27,6 +29,7 @@ import { AcuProducerApiImpl } from './AcuProducerApiImpl';
 import { AuthProducerApiImpl } from './AuthProducerApiImpl';
 import { GroupProducerApiImpl } from './GroupProducerApiImpl';
 import { SiteProducerApiImpl } from './SiteProducerApiImpl';
+import { ZoneProducerApiImpl } from './ZoneProducerApiImpl';
 import { ConnectionState } from '../generated/model';
 import { AxiosInstance } from 'axios';
 
@@ -37,6 +40,7 @@ export class AccessImpl implements AccessConnector {
   private authApiProducer?: AuthApi;
   private groupApiProducer?: GroupApi;
   private siteApiProducer?: SiteApi;
+  private zoneApiProducer?: ZoneApi;
 
   constructor() {
     this.client = new AvigilonAltaAccessClient();
@@ -113,5 +117,13 @@ export class AccessImpl implements AccessConnector {
       this.siteApiProducer = wrapSiteProducer(producer);
     }
     return this.siteApiProducer;
+  }
+
+  getZoneApi(): ZoneApi {
+    if (!this.zoneApiProducer) {
+      const producer = new ZoneProducerApiImpl(this.client);
+      this.zoneApiProducer = wrapZoneProducer(producer);
+    }
+    return this.zoneApiProducer;
   }
 }

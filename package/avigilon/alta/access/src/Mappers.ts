@@ -12,7 +12,12 @@ import {
   Site,
   Entry,
   Port,
-  TokenProperties
+  TokenProperties,
+  Zone,
+  ZoneEntry,
+  ZoneEntryAcu,
+  ZoneSiteRef,
+  OrganizationRef
 } from '../generated/model';
 
 /**
@@ -327,5 +332,59 @@ export function mapTokenProperties(raw: any): TokenProperties {
     raw.jti,
     raw.iat,
     raw.exp
+  );
+}
+
+// Helper functions for Zone mapping
+function mapZoneEntryAcu(raw: any): ZoneEntryAcu | undefined {
+  if (!raw) return undefined;
+  return new ZoneEntryAcu(raw.id);
+}
+
+function mapZoneEntry(raw: any): ZoneEntry | undefined {
+  if (!raw) return undefined;
+  return new ZoneEntry(
+    raw.id,
+    raw.name,
+    raw.wirelessLock,
+    mapZoneEntryAcu(raw.acu)
+  );
+}
+
+function mapZoneSiteRef(raw: any): ZoneSiteRef | undefined {
+  if (!raw) return undefined;
+  return new ZoneSiteRef(raw.id, raw.name);
+}
+
+function mapOrganizationRef(raw: any): OrganizationRef | undefined {
+  if (!raw) return undefined;
+  return new OrganizationRef(raw.id, raw.name);
+}
+
+/**
+ * Maps raw API zone data to Zone interface
+ * Flattens the response from {data: [...], meta: {...}} to just the zones array
+ */
+export function mapZone(raw: any): Zone {
+  return new Zone(
+    raw.id,
+    raw.name,
+    raw.opal,
+    raw.description,
+    raw.apbResetIcalText,
+    raw.apbExpirationSeconds,
+    raw.apbUseContactSensor,
+    raw.apbAllowSharedOrgReset,
+    raw.entryCount,
+    raw.offlineEntryCount,
+    raw.userCount,
+    raw.groupCount,
+    mapOrganizationRef(raw.org),
+    mapZoneSiteRef(raw.site),
+    raw.zoneShares,
+    raw.entries?.map(mapZoneEntry),
+    raw.apbAreas,
+    raw.createdAt ? map(Date, raw.createdAt) : undefined,
+    raw.updatedAt ? map(Date, raw.updatedAt) : undefined
   );
 }

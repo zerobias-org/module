@@ -810,6 +810,44 @@ components:
         type:
           type: string
           description: Custom field type
+    TokenProperties:
+      type: object
+      properties:
+        organizationId:
+          type: integer
+          format: int64
+          description: Organization ID associated with the token
+        identityId:
+          type: integer
+          format: int64
+          description: Identity ID of the token holder
+        issuedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Token issued timestamp
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Token expiration timestamp
+        scope:
+          type: array
+          items:
+            type: string
+          description: Permissions granted by this token
+        tokenType:
+          type: string
+          description: Type of the access token
+        jti:
+          type: string
+          description: JWT token identifier
+        iat:
+          type: integer
+          description: Issued at timestamp (Unix epoch)
+        exp:
+          type: integer
+          description: Expiration timestamp (Unix epoch)
 paths:
   /organizations/{organizationId}/users:
     get:
@@ -1073,3 +1111,19 @@ paths:
                   $ref: '#/components/schemas/Port'
       security:
         - access-token: ["read:acu-ports"]
+  /auth/accessTokens/current:
+    get:
+      tags:
+        - auth
+      summary: Retrieves properties and metadata for the current access token
+      operationId: getTokenProperties
+      x-method-name: getTokenProperties
+      responses:
+        '200':
+          description: Token properties and metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenProperties'
+      security:
+        - access-token: []

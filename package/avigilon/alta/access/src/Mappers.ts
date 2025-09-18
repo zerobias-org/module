@@ -11,7 +11,8 @@ import {
   Role,
   Site,
   Entry,
-  Port
+  Port,
+  TokenProperties
 } from '../generated/model';
 
 /**
@@ -300,4 +301,27 @@ export function mapUserIdentity(raw: any): UserIdentity {
     raw.workAddress
   );
   return result;
+}
+
+/**
+ * Maps raw API token properties data to TokenProperties interface
+ */
+export function mapTokenProperties(raw: any): TokenProperties {
+  // Extract organization ID from tokenScopeList
+  const organizationId = raw.tokenScopeList?.[0]?.org?.id;
+  
+  // Extract scope array from tokenScopeList
+  const scope = raw.tokenScopeList?.[0]?.scope;
+  
+  return new TokenProperties(
+    organizationId,
+    raw.identityId,
+    map(Date, raw.createdAt),
+    map(Date, raw.expiresAt),
+    scope,
+    raw.tokenType,
+    raw.jti,
+    raw.iat,
+    raw.exp
+  );
 }

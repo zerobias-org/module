@@ -282,6 +282,21 @@ describe('AccessImpl', () => {
       });
     });
 
+    describe('getAuthApi', () => {
+      it('should return AuthApi instance', () => {
+        const authApi = accessImpl.getAuthApi();
+        // Test that it's the wrapped AuthProducerApiImpl
+        expect(authApi).to.be.an('object');
+        expect(authApi).to.have.property('getTokenProperties');
+      });
+
+      it('should return same instance on multiple calls', () => {
+        const authApi1 = accessImpl.getAuthApi();
+        const authApi2 = accessImpl.getAuthApi();
+        expect(authApi1).to.equal(authApi2);
+      });
+    });
+
     describe('getGroupApi', () => {
       it('should return GroupApi instance', () => {
         const groupApi = accessImpl.getGroupApi();

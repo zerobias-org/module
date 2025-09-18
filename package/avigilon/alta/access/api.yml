@@ -58,6 +58,7 @@ components:
             read:users: Read access to user information
             read:groups: Read access to group information
             read:acus: Read access to access control units
+            read:sites: Read access to site information
             read:user-roles: Read access to user role assignments
             read:user-sites: Read access to user site associations
             read:group-users: Read access to group user memberships
@@ -402,31 +403,53 @@ components:
           type: integer
           format: int64
           description: Unique identifier for the site
+        opal:
+          type: string
+          description: OPAL identifier for the site
         name:
           type: string
           description: Name of the site
         address:
           type: string
           description: Physical address of the site
+        address2:
+          type: string
+          nullable: true
+          description: Secondary address line
         city:
           type: string
           description: City where the site is located
         state:
           type: string
           description: State/province where the site is located
+        zip:
+          type: string
+          description: Postal/zip code of the site
         country:
           type: string
           description: Country where the site is located
-        postalCode:
+        phone:
           type: string
-          description: Postal/zip code of the site
-        timezone:
+          nullable: true
+          description: Phone number for the site
+        language:
           type: string
-          description: Timezone of the site
-        status:
+          nullable: true
+          description: Language setting for the site
+        zoneCount:
+          type: integer
+          description: Number of zones at the site
+        userCount:
+          type: integer
+          description: Number of users at the site
+        createdAt:
           type: string
-          enum: [active, inactive, maintenance]
-          description: Current status of the site
+          format: date-time
+          description: Timestamp when site was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when site was last updated
     Entry:
       type: object
       required:
@@ -1111,6 +1134,26 @@ paths:
                   $ref: '#/components/schemas/Port'
       security:
         - access-token: ["read:acu-ports"]
+  /organizations/{organizationId}/sites:
+    get:
+      tags:
+        - site
+      summary: Retrieves all sites in the organization
+      operationId: listSites
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/organizationIdParam'
+      responses:
+        '200':
+          description: List of sites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Site'
+      security:
+        - access-token: ["read:sites"]
   /auth/accessTokens/current:
     get:
       tags:

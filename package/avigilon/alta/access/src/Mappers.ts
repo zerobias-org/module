@@ -226,19 +226,23 @@ export function mapRole(raw: any): Role {
  * Maps raw API site data to Site interface
  */
 export function mapSite(raw: any): Site {
-  return {
-    id: raw.id,
-    name: raw.name,
-    ...(raw.description && { description: raw.description }),
-    ...(raw.address && { address: raw.address }),
-    ...(raw.city && { city: raw.city }),
-    ...(raw.state && { state: raw.state }),
-    ...(raw.postalCode && { postalCode: raw.postalCode }),
-    ...(raw.country && { country: raw.country }),
-    ...(raw.timezone && { timezone: raw.timezone }),
-    ...(raw.createdAt && { createdAt: map(Date, raw.createdAt) }),
-    ...(raw.updatedAt && { updatedAt: map(Date, raw.updatedAt) }),
-  };
+  return new Site(
+    raw.id,
+    raw.name,
+    raw.opal,
+    raw.address,
+    raw.address2,
+    raw.city,
+    raw.state,
+    raw.zip,
+    raw.country,
+    raw.phone,
+    raw.language,
+    raw.zoneCount,
+    raw.userCount,
+    raw.createdAt ? map(Date, raw.createdAt) : undefined,
+    raw.updatedAt ? map(Date, raw.updatedAt) : undefined
+  );
 }
 
 /**

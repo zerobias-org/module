@@ -5,10 +5,12 @@ import {
   AcuApi,
   AuthApi,
   GroupApi,
+  SiteApi,
   UserApi,
   wrapAcuProducer,
   wrapAuthProducer,
   wrapGroupProducer,
+  wrapSiteProducer,
   wrapUserProducer
 } from '../generated/api';
 import { ConnectionProfile } from '../generated/model/ConnectionProfile';
@@ -24,6 +26,7 @@ import { UserProducerApiImpl } from './UserProducerApiImpl';
 import { AcuProducerApiImpl } from './AcuProducerApiImpl';
 import { AuthProducerApiImpl } from './AuthProducerApiImpl';
 import { GroupProducerApiImpl } from './GroupProducerApiImpl';
+import { SiteProducerApiImpl } from './SiteProducerApiImpl';
 import { ConnectionState } from '../generated/model';
 import { AxiosInstance } from 'axios';
 
@@ -33,6 +36,7 @@ export class AccessImpl implements AccessConnector {
   private acuApiProducer?: AcuApi;
   private authApiProducer?: AuthApi;
   private groupApiProducer?: GroupApi;
+  private siteApiProducer?: SiteApi;
 
   constructor() {
     this.client = new AvigilonAltaAccessClient();
@@ -101,5 +105,13 @@ export class AccessImpl implements AccessConnector {
       this.groupApiProducer = wrapGroupProducer(producer);
     }
     return this.groupApiProducer;
+  }
+
+  getSiteApi(): SiteApi {
+    if (!this.siteApiProducer) {
+      const producer = new SiteProducerApiImpl(this.client);
+      this.siteApiProducer = wrapSiteProducer(producer);
+    }
+    return this.siteApiProducer;
   }
 }

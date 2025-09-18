@@ -30,23 +30,6 @@ describe('Avigilon Alta Access - Zone Producer Tests', () => {
 
       const zones = await zoneApi.list(organizationId);
 
-      console.log('\n=== ZONES LIST RETRIEVED ===');
-      console.log(`Zones in Response: ${zones.length}`);
-      
-      if (zones.length > 0) {
-        const firstZone = zones[0];
-        console.log(`First Zone - ID: ${firstZone.id}, Name: ${firstZone.name}`);
-        console.log(`Description: ${firstZone.description || 'N/A'}`);
-        console.log(`Entry Count: ${firstZone.entryCount || 0}, User Count: ${firstZone.userCount || 0}`);
-        console.log(`APB Use Contact Sensor: ${firstZone.apbUseContactSensor}`);
-        if (firstZone.org) {
-          console.log(`Organization: ${firstZone.org.name} (ID: ${firstZone.org.id})`);
-        }
-        if (firstZone.site) {
-          console.log(`Site: ${firstZone.site.name} (ID: ${firstZone.site.id})`);
-        }
-      }
-      console.log('===========================\n');
 
       // Validate the response is a flat array
       expect(zones).to.be.an('array');

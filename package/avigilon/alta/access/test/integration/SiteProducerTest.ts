@@ -30,16 +30,6 @@ describe('Avigilon Alta Access - Site Producer Tests', () => {
 
       const sites = await siteApi.list(organizationId);
 
-      console.log('\n=== SITES LIST RETRIEVED ===');
-      console.log(`Sites in Response: ${sites.length}`);
-      
-      if (sites.length > 0) {
-        const firstSite = sites[0];
-        console.log(`First Site - ID: ${firstSite.id}, Name: ${firstSite.name}`);
-        console.log(`Address: ${firstSite.address || 'N/A'}, City: ${firstSite.city || 'N/A'}`);
-        console.log(`Zone Count: ${firstSite.zoneCount || 0}, User Count: ${firstSite.userCount || 0}`);
-      }
-      console.log('===========================\n');
 
       // Validate the response is a flat array
       expect(sites).to.be.an('array');

@@ -12,6 +12,28 @@ dotenv.config();
 
 const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
 
+/**
+ * Debug logging utility for integration tests
+ * Only logs when LOG_LEVEL=debug
+ * @param operation - Operation name (e.g., 'listEntries', 'getUser')
+ * @param params - Parameters passed to the operation
+ * @param response - Response from the operation (will be sanitized)
+ */
+export function debugLog(operation: string, params: any, response?: any): void {
+  if (process.env.LOG_LEVEL === 'debug') {
+    logger.debug(`🔧 OPERATION: ${operation}`);
+    if (params) {
+      logger.debug(`📥 PARAMS: ${JSON.stringify(params, null, 2)}`);
+    }
+    if (response) {
+      // Sanitize response to remove sensitive data
+      const sanitized = sanitizeResponse(response);
+      logger.debug(`📤 RESPONSE: ${JSON.stringify(sanitized, null, 2)}`);
+    }
+  }
+}
+
+
 // Environment variables for Avigilon Alta Access API
 const EMAIL = process.env.AVIGILON_EMAIL;
 const PASSWORD = process.env.AVIGILON_PASSWORD;

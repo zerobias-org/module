@@ -43,15 +43,21 @@ describe('AuthProducerApiImpl', () => {
   describe('getTokenProperties', () => {
     it('should retrieve token properties successfully', async () => {
       const mockTokenProperties = {
-        organizationId: 1067,
         identityId: 30053017,
-        issuedAt: '2025-07-01T10:00:00.000Z',
+        createdAt: '2025-07-01T10:00:00.000Z',
         expiresAt: '2025-07-15T10:00:00.000Z',
-        scope: ['read:users', 'read:groups'],
         tokenType: 'Bearer',
         jti: 'token-id-123',
         iat: 1719828000,
-        exp: 1721044800
+        exp: 1721044800,
+        tokenScopeList: [
+          {
+            org: {
+              id: 1067
+            },
+            scope: ['read:users', 'read:groups']
+          }
+        ]
       };
 
       const scope = mockAuthenticatedRequest(baseUrl, mockToken)

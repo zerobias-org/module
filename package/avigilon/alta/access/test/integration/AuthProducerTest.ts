@@ -24,13 +24,6 @@ describe('Avigilon Alta Access - Auth Producer Tests', () => {
       const authApi = access.getAuthApi();
       const tokenProperties = await authApi.getTokenProperties();
 
-      console.log('\n=== TOKEN PROPERTIES RETRIEVED ===');
-      console.log(`Organization ID: ${tokenProperties.organizationId}`);
-      console.log(`Identity ID: ${tokenProperties.identityId}`);
-      console.log(`Created At: ${tokenProperties.issuedAt}`);
-      console.log(`Expires At: ${tokenProperties.expiresAt}`);
-      console.log(`Scope Count: ${tokenProperties.scope?.length || 0} permissions`);
-      console.log('==================================\n');
 
       // Validate the key properties we care about
       expect(tokenProperties).to.be.an('object');

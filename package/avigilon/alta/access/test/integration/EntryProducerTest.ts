@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'mocha';
 import { expect } from 'chai';
-import { prepareApi } from './Common';
+import { prepareApi, debugLog } from './Common';
 import { AccessImpl } from '../../src/AccessImpl';
 
 describe('Avigilon Alta Access - Entry Producer Tests', () => {
@@ -29,6 +29,9 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
       const organizationId = tokenProperties.organizationId!.toString();
 
       const entries = await entryApi.list(organizationId);
+      
+      // Debug logging (only shows when LOG_LEVEL=debug)
+      debugLog('listEntries', { organizationId }, entries);
 
 
       // Validate the response is a flat array (as requested - dropping metadata and pagination)

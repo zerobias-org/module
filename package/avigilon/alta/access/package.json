@@ -63,20 +63,20 @@
     "import-artifact": "module"
   },
   "dependencies": {
-    "@auditmation/hub-core": "^4.5.18",
-    "@auditmation/util-hub-module-utils": "^1.0.27",
+    "@auditmation/hub-core": "^4.5.19",
+    "@auditmation/util-hub-module-utils": "^1.0.32",
     "@auditmation/util-logger": "^4.0.9",
     "@zerobias-org/product-avigilon-alta-access": "^1.0.1",
     "axios": "^0.27.2"
   },
   "peerDependencies": {
-    "@auditmation/types-core": "^4.9.0",
-    "@auditmation/types-core-js": "^4.9.13"
+    "@auditmation/types-core": "^4.9.1",
+    "@auditmation/types-core-js": "^4.10.2"
   },
   "devDependencies": {
     "@apidevtools/swagger-cli": "^4.0.4",
     "@auditmation/eslint-config": "^1.1.17",
-    "@auditmation/util-codegen": "^5.5.22",
+    "@auditmation/util-codegen": "^5.5.27",
     "@auditmation/util-spectral-config": "^0.4.11",
     "@types/chai": "^4.3.4",
     "@types/dotenv": "^6.1.1",

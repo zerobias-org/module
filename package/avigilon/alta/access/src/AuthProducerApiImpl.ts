@@ -13,15 +13,15 @@ export class AuthProducerApiImpl implements AuthProducerApi {
   async getTokenProperties(): Promise<TokenProperties> {
     const httpClient = this.client.getHttpClient();
     const connectionState = this.client.getConnectionState();
-    
+
     if (!connectionState?.accessToken) {
       throw new Error('No access token available');
     }
 
     const response = await httpClient.get(`/auth/accessTokens/${connectionState.accessToken}`);
-    
+
     const { data } = response.data;
-    
+
     return mapTokenProperties(data);
   }
 }

@@ -28,6 +28,28 @@ import {
   VideoProvider
 } from '../generated/model';
 
+export function mapUserIdentity(raw: any): UserIdentity {
+  const result = new UserIdentity(
+    raw.id || 0, // id is required but might not be in raw data, default to 0
+    new Email(raw.email || 'unknown@example.com'), // Convert string email to Email object
+    raw.firstName || '', // Required field
+    raw.lastName || '', // Required field
+    raw.mobilePhone || raw.phoneNumber, // Map mobilePhone to phoneNumber
+    raw.avatarUrl,
+    raw.middleName,
+    raw.suffix,
+    raw.preferredName,
+    raw.pronouns,
+    raw.dateOfBirth ? new Date(raw.dateOfBirth) : undefined,
+    raw.emergencyContactName,
+    raw.emergencyContactPhone,
+    raw.homeAddress,
+    raw.companyName,
+    raw.workAddress
+  );
+  return result;
+}
+
 /**
  * Maps raw API user data to User interface
  * Field count validation: User interface has 8 fields (4 required + 4 optional)
@@ -39,7 +61,7 @@ export function mapUser(raw: any): User {
 
     // ✅ REQUIRED FIELD 2: status - Handle status enum mapping (API: A/S/I -> active/suspended/inactive)
     status: toEnum(User.StatusEnum, raw.status, (apiValue: string) => {
-      const statusMap = { 'A': 'active', 'S': 'suspended', 'I': 'inactive' };
+      const statusMap = { A: 'active', S: 'suspended', I: 'inactive' };
       return statusMap[apiValue] || 'active';
     }),
 
@@ -81,7 +103,7 @@ export function mapUserInfo(raw: any): UserInfo {
 
     // ✅ REQUIRED FIELD 2: status - Handle status enum mapping safely (API: A/S/I -> Enum values)
     status: toEnum(UserInfo.StatusEnum, raw.status, (apiValue: string) => {
-      const statusMap = { 'A': 'active', 'S': 'suspended', 'I': 'inactive' };
+      const statusMap = { A: 'active', S: 'suspended', I: 'inactive' };
       return statusMap[apiValue] || 'active';
     }),
 
@@ -174,7 +196,7 @@ export function mapAcu(raw: any): Acu {
 
     // ✅ REQUIRED FIELD 3: status exists in both Acu interface AND api.yml response
     status: toEnum(Acu.StatusEnum, raw.status, (apiValue: string) => {
-      const statusMap = { 'A': 'active', 'I': 'inactive', 'E': 'error', 'M': 'maintenance' };
+      const statusMap = { A: 'active', I: 'inactive', E: 'error', M: 'maintenance' };
       return statusMap[apiValue] || 'active';
     }),
 
@@ -298,38 +320,16 @@ export function mapPort(raw: any): Port {
   };
 }
 
-export function mapUserIdentity(raw: any): UserIdentity {
-  const result = new UserIdentity(
-    raw.id || 0, // id is required but might not be in raw data, default to 0
-    new Email(raw.email || 'unknown@example.com'), // Convert string email to Email object
-    raw.firstName || '', // Required field
-    raw.lastName || '', // Required field
-    raw.mobilePhone || raw.phoneNumber, // Map mobilePhone to phoneNumber
-    raw.avatarUrl,
-    raw.middleName,
-    raw.suffix,
-    raw.preferredName,
-    raw.pronouns,
-    raw.dateOfBirth ? new Date(raw.dateOfBirth) : undefined,
-    raw.emergencyContactName,
-    raw.emergencyContactPhone,
-    raw.homeAddress,
-    raw.companyName,
-    raw.workAddress
-  );
-  return result;
-}
-
 /**
  * Maps raw API token properties data to TokenProperties interface
  */
 export function mapTokenProperties(raw: any): TokenProperties {
   // Extract organization ID from tokenScopeList
   const organizationId = raw.tokenScopeList?.[0]?.org?.id;
-  
+
   // Extract scope array from tokenScopeList
   const scope = raw.tokenScopeList?.[0]?.scope;
-  
+
   return new TokenProperties(
     organizationId,
     raw.identityId,

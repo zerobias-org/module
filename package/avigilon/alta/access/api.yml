@@ -103,17 +103,20 @@ components:
         groups:
           type: array
           items:
-            $ref: '#/components/schemas/UserGroup'
+            allOf:
+              - $ref: '#/components/schemas/UserGroup'
           description: Groups the user belongs to
         sites:
           type: array
           items:
-            $ref: '#/components/schemas/UserSite'
+            allOf:
+              - $ref: '#/components/schemas/UserSite'
           description: Sites the user has access to
         buildingFloorUnits:
           type: array
           items:
-            $ref: '#/components/schemas/BuildingFloorUnit'
+            allOf:
+              - $ref: '#/components/schemas/BuildingFloorUnit'
           description: Building floor units associated with the user
         hasRemoteUnlock:
           type: boolean
@@ -163,7 +166,8 @@ components:
         userCustomFields:
           type: array
           items:
-            $ref: '#/components/schemas/UserCustomField'
+            allOf:
+              - $ref: '#/components/schemas/UserCustomField'
           description: Custom field values for the user
         createdAt:
           type: string
@@ -249,7 +253,8 @@ components:
             accessRules:
               type: array
               items:
-                $ref: '#/components/schemas/AccessRule'
+                allOf:
+                  - $ref: '#/components/schemas/AccessRule'
               description: Access rules for the group
             customFields:
               type: object
@@ -328,7 +333,8 @@ components:
         expansionBoards:
           type: array
           items:
-            $ref: '#/components/schemas/ExpansionBoard'
+            allOf:
+              - $ref: '#/components/schemas/ExpansionBoard'
           description: Array of expansion boards connected to this ACU
         org:
           $ref: '#/components/schemas/OrganizationRef'
@@ -361,7 +367,8 @@ components:
               format: date-time
               description: Timestamp of last heartbeat from the ACU
             configuration:
-              $ref: '#/components/schemas/AcuConfiguration'
+              allOf:
+                - $ref: '#/components/schemas/AcuConfiguration'
               description: ACU configuration settings
             customFields:
               type: object
@@ -476,7 +483,8 @@ components:
           format: int64
           description: Zone ID associated with the entry
         timeRestrictions:
-          $ref: '#/components/schemas/TimeRestriction'
+          allOf:
+            - $ref: '#/components/schemas/TimeRestriction'
           description: Time-based access restrictions
         status:
           type: string
@@ -519,7 +527,8 @@ components:
           enum: [active, inactive, error, disconnected]
           description: Current status of the port
         configuration:
-          $ref: '#/components/schemas/PortConfiguration'
+          allOf:
+            - $ref: '#/components/schemas/PortConfiguration'
           description: Port-specific configuration settings
         lastActivity:
           type: string
@@ -871,7 +880,8 @@ components:
         entries:
           type: array
           items:
-            $ref: '#/components/schemas/ZoneEntry'
+            allOf:
+              - $ref: '#/components/schemas/ZoneEntry'
           description: Entries in the zone
         apbAreas:
           type: array
@@ -1023,7 +1033,8 @@ components:
         cameras:
           type: array
           items:
-            $ref: '#/components/schemas/EntryCamera'
+            allOf:
+              - $ref: '#/components/schemas/EntryCamera'
           description: Cameras associated with the entry
     EntryZone:
       type: object

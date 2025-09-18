@@ -1,3 +1,6 @@
 {
-  "extends": "@auditmation"
+  "extends": "@auditmation",
+  "rules": {
+    "max-len": ["error", { "code": 150 }]
+  }
 }

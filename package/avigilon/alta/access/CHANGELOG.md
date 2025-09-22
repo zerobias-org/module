@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [0.2.0](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@0.1.17...@zerobias-org/module-avigilon-alta-access@0.2.0) (2025-09-22)
+
+
+### Bug Fixes
+
+* update API spec and mappers to use consistent enum values with proper toEnum transforms ([68ab1af](https://github.com/zerobias-org/module-avigilon-alta-access/commit/68ab1af710ff00591c251864fe4a5a65729a3ba0))
+
+
+### Features
+
+* add list entries operation with flattened response ([a05ac36](https://github.com/zerobias-org/module-avigilon-alta-access/commit/a05ac36e2cdda877ac5c0c29cae1d16e0c07de7f))
+* add more operations on alta access module ([6551a4d](https://github.com/zerobias-org/module-avigilon-alta-access/commit/6551a4dc0e28877c0abc5110a4ee20de996b9f90))
+* add sites list operation with simplified response structure ([e1604c4](https://github.com/zerobias-org/module-avigilon-alta-access/commit/e1604c48df054d95ef47426c1ea3c5ba2957b5cf))
+* add zones list operation with flattened response structure ([2465e29](https://github.com/zerobias-org/module-avigilon-alta-access/commit/2465e290301fee840968af5774bb2346047acf92))
+
+
+
+
+
 ## [0.1.17](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@0.1.16...@zerobias-org/module-avigilon-alta-access@0.1.17) (2025-08-29)
 
 **Note:** Version bump only for package @zerobias-org/module-avigilon-alta-access

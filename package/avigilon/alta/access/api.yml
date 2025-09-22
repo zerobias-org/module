@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   x-product-infos:
     - $ref: "./node_modules/@zerobias-org/product-avigilon-alta-access/catalog.yml#/Product"
-  version: 0.1.17
+  version: 0.2.0
   title: '@zerobias-org/module-avigilon-alta-access'
   description: Avigilon Alta Access
   x-impl-name: Access
@@ -93,7 +93,7 @@ components:
           description: Unique identifier for the user
         status:
           type: string
-          enum: [active, suspended, inactive]  # Changed to snake_case for consistency
+          enum: [active, suspended, inactive] # Changed to snake_case for consistency
           description: User's current status
         opal:
           type: string
@@ -277,7 +277,7 @@ components:
           description: Name of the ACU
         status:
           type: string
-          enum: [active, inactive, error, maintenance]  # Changed to snake_case for consistency
+          enum: [active, inactive, error, maintenance] # Changed to snake_case for consistency
           description: Current status of the ACU
         opal:
           type: string

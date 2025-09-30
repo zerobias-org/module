@@ -1,1 +1,0 @@
-../../create/tasks/core-type-mapping-guide.md

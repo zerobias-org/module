@@ -1,8 +1,0 @@
-{
-  "initialTokenPrefix": "[REDACTED]",
-  "refreshedTokenPrefix": "[REDACTED]",
-  "tokenChanged": "[REDACTED]",
-  "initialExpiresIn": 1209599,
-  "refreshedExpiresIn": 1209599,
-  "timestamp": "2025-08-27T12:44:07.348Z"
-}

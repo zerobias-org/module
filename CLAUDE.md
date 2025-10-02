@@ -1,17 +1,88 @@
 # Claude Instructions
 
+## 🚨 CRITICAL: STRICT ENFORCEMENT MODE
+
+This project uses **STRICT ENFORCEMENT** - there is NO flexibility in execution.
+- Every rule violation = TASK FAILURE
+- Every skipped step = TASK FAILURE
+- Every incomplete execution = TASK FAILURE
+
+## 🚨 RULE UPDATE PROTOCOL
+
+**When user asks to update a rule:**
+1. **STOP ALL OTHER WORK IMMEDIATELY**
+2. **UPDATE THE RULE FIRST** - before any other action
+3. **CONFIRM the update with the user**
+4. **THEN proceed** with the original task using the new rule
+
+This ensures all subsequent work follows the updated rule from the start.
+
+## 🚨 MANDATORY FIRST STEP - READ EXECUTION PROTOCOL
+**BEFORE DOING ANYTHING ELSE**:
+1. Read @claude/EXECUTION-PROTOCOL.md - Learn the exact execution sequence
+2. Read @claude/ENFORCEMENT.md - Understand validation gates and zero-tolerance policy
+
+Without reading these, you WILL fail to properly execute any module work.
+
 ## General Rules
 
-**IMPORTANT**: When working in this repository or any of its subdirectories, always:
-- First run `pwd` to get the current repository root path
-- Store this path and use absolute paths in all commands and file operations
-- Never use relative paths to avoid "file not found" errors
-- **NEVER work independently** - always follow the task definitions in the appropriate workflow directory
-- **DO NOT create modules or perform work without following the defined tasks**
-- **READ ALL CRITICAL RULES**: Each task file contains mandatory compliance rules marked with 🚨 - violating ANY rule means task failure
-- **USE CHECKLISTS**: Complete all pre-implementation and post-implementation checklists in task files
+**IMPORTANT**: When working in this repository or any of its subdirectories, you MUST follow this exact sequence:
 
-This repository contains multiple types of tasks for module development. Each task type has its own dedicated documentation file.
+### 🚨 MANDATORY PRE-EXECUTION SEQUENCE
+
+**BEFORE any work, complete these steps in order:**
+
+1. **Identify Task Type**
+   - Map user request to workflow: analyze-api / create-module / add-operation / update-module / fix-module
+   - Open the corresponding task file in `claude/workflow/tasks/`
+
+2. **Load Required Rules** (ONLY the relevant ones)
+   - API work → `claude/rules/api-specification.md` + `claude/ENFORCEMENT.md`
+   - Implementation → `claude/rules/implementation.md` + `claude/rules/error-handling.md`
+   - Testing → `claude/rules/testing.md`
+   - Always → `claude/rules/prerequisites.md`
+
+3. **Identify Active Personas**
+   - API Specification → API Architect + Security Auditor
+   - Implementation → TypeScript Expert + Integration Engineer
+   - Testing → Testing Specialist
+
+4. **Create TodoWrite** with ALL workflow steps (usually 7 steps for add-operation)
+
+5. **Execute with Constraints**
+   - Work ONLY within loaded rules
+   - Validate at EACH gate (see `claude/ENFORCEMENT.md`)
+   - Stop at any gate failure
+   - Never work independently outside the workflow
+
+**See `claude/EXECUTION-PROTOCOL.md` for complete details.**
+
+### Other Important Rules
+- Run `pwd` to get repository root path, use absolute paths
+- **NEVER work independently** - always follow the workflow
+- **READ ALL CRITICAL RULES** marked with 🚨 - violations = task failure
+- **USE CHECKLISTS** in `claude/ENFORCEMENT.md` before marking complete
+
+## 🚀 SYSTEM STRUCTURE
+
+**Core enforcement and execution:**
+- **🚨 [EXECUTION PROTOCOL](claude/EXECUTION-PROTOCOL.md)** - **READ THIS FIRST!** Exact execution sequence
+- **🚨 [ENFORCEMENT](claude/ENFORCEMENT.md)** - Validation gates and completion checklist
+- **[Rules](claude/rules/)** - Consolidated, organized rules by domain
+- **[Workflows](claude/workflow/)** - Task-specific workflows
+
+**Consolidated rule files:**
+- **[API Specification](claude/rules/api-specification.md)** - All API spec rules in one place
+- **[Implementation](claude/rules/implementation.md)** - Streamlined implementation patterns
+- **[Testing](claude/rules/testing.md)** - Streamlined testing requirements
+- **[Error Handling](claude/rules/error-handling.md)** - Core error types
+- **[Type Mapping](claude/rules/type-mapping.md)** - Type conversion reference
+
+The system provides:
+- Zero redundancy - each rule appears once
+- Clear enforcement - validation gates at each step
+- Positive examples - focus on correct patterns
+- Fast loading - reduced file count and size
 
 ## Memory Management
 
@@ -70,11 +141,25 @@ Each task stores its status and intermediate results in:
 - **FAILURE HANDLING**: If a task fails, stop execution and report the issue clearly
 - **RETURN CONTROL**: Always return control to the calling script after task completion or failure
 
-## Task-Specific Documentation
+## Task Execution
 
-- **[Module Creation](claude/create/CLAUDE.md)** - Process to create a module from scratch
-- **[Module Updates](claude/update/CLAUDE.md)** - Process to add operations to existing modules
-- **[Additional task types]** - More documentation files will be added as needed
+### Using the New System (Recommended)
+1. Express your intent (e.g., "Create GitHub module" or "Add webhook operations")
+2. System analyzes request and activates appropriate personas
+3. Rules are enforced throughout
+4. Workflow adapts to your needs
+
+### Workflow Entry Points
+- **[Unified Workflow](claude/workflow/WORKFLOW.md)** - Single adaptive workflow
+- **[Create Module Task](claude/workflow/tasks/create-module.md)** - New module creation
+- **[Update Module Task](claude/workflow/tasks/update-module.md)** - Add operations
+- **[Add Operation Task](claude/workflow/tasks/add-operation.md)** - Single operation
+
+### Legacy Task Documentation (Reference)
+- **[Module Creation Tasks](claude/create/CLAUDE.md)** - Detailed step-by-step tasks
+- **[Module Update Tasks](claude/update/CLAUDE.md)** - Update process tasks
+
+Note: The legacy tasks contain detailed examples and edge cases but should be interpreted through the new persona/rule system.
 
 ## Breaking Changes Policy
 

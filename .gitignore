@@ -134,4 +134,4 @@ generated
 **/.DS_Store
 
 # Claude Code
-.claude/
+.claude/.localmemory

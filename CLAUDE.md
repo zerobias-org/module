@@ -42,10 +42,11 @@ Without reading these, you WILL fail to properly execute any module work.
    - Testing → `claude/rules/testing.md`
    - Always → `claude/rules/prerequisites.md`
 
-3. **Identify Active Personas**
-   - API Specification → API Architect + Security Auditor
-   - Implementation → TypeScript Expert + Integration Engineer
-   - Testing → Testing Specialist
+3. **Identify Active Agents** (invoke with @agent-name)
+   - API Specification → @api-architect + @schema-specialist + @security-auditor
+   - Implementation → @typescript-expert + @operation-engineer + @mapping-engineer
+   - Testing → @test-orchestrator + @mock-specialist + test engineers
+   - See [claude/agents/AGENTS.md](claude/agents/AGENTS.md) for complete agent reference
 
 4. **Create TodoWrite** with ALL workflow steps (usually 7 steps for add-operation)
 
@@ -83,6 +84,128 @@ The system provides:
 - Clear enforcement - validation gates at each step
 - Positive examples - focus on correct patterns
 - Fast loading - reduced file count and size
+
+## 🤖 AGENT SYSTEM
+
+**26 Specialized AI Agents** organized by workflow phase, each with distinct personality and expertise.
+
+**Agent Directory:**
+- **[AGENTS.md](claude/agents/AGENTS.md)** - Complete agent reference
+- **[agent-invocation-guide.md](claude/agents/agent-invocation-guide.md)** - How to invoke agents with @
+
+**Agent Phases:**
+1. **ANALYSIS & DISCOVERY** (4 agents) - @product-specialist, @api-researcher, @operation-analyst, @credential-manager
+2. **DESIGN & SPECIFICATION** (5 agents) - @api-architect, @schema-specialist, @api-reviewer, @security-auditor, @documentation-writer
+3. **GENERATION** (1 agent) - @build-validator
+4. **IMPLEMENTATION** (6 agents) - @typescript-expert, @client-engineer, @operation-engineer, @mapping-engineer, @build-reviewer, @style-reviewer
+5. **TESTING** (10 agents) - @test-orchestrator, @mock-specialist, test engineers, reviewers
+6. **ORCHESTRATION** (1 agent) - @gate-controller
+
+**Invoke agents with @agent-name:**
+```
+@api-researcher Research GitHub webhook endpoints
+@api-architect Design OpenAPI spec for webhooks
+@operation-engineer Implement listWebhooks operation
+@test-orchestrator Coordinate testing for operation
+@gate-controller Validate all gates
+```
+
+**Agent Features:**
+- Distinct personality per agent (e.g., @api-researcher is meticulous investigator)
+- Domain-specific expertise
+- Enforces specific rules from claude/rules/
+- Collaborative workflow integration
+- Clear invocation patterns
+
+## ⚡ SLASH COMMANDS (Quick Workflow Execution)
+
+**6 Slash Commands** for executing complete workflows with full agent orchestration.
+
+**Quick Start:**
+```bash
+/add-operation github-github listWebhooks
+/add-operations github-github list,get,create,update,delete
+/create-module github github
+/analyze-api github webhooks
+/fix-issue github-github "type error"
+/validate-gates github-github
+```
+
+**Command Directory:**
+- **[Slash Commands README](claude/.slashcommands/README.md)** - Complete command reference
+- **[Command Definitions](claude/.slashcommands/)** - JSON specs for each command
+
+**Available Commands:**
+
+1. **`/create-module <vendor> <service> [suite]`** - Create new module (3-4 hours)
+2. **`/add-operation <module-id> <operation>`** - Add single operation (45-70 min)
+3. **`/add-operations <module-id> <op1,op2,op3>`** - Add multiple operations
+4. **`/analyze-api <vendor> <product>`** - Create API entity diagram (30-60 min)
+5. **`/fix-issue <module-id> [description]`** - Diagnose and fix (15 min - 2 hours)
+6. **`/validate-gates <module-id>`** - Check all 6 gates (5-10 min)
+
+**Module Identifier Format:** `vendor-service` or `vendor-suite-service`
+- Examples: `github-github`, `amazon-aws-s3`, `avigilon-alta-access`
+
+**Benefits:**
+- Single command triggers complete workflow
+- Automatic agent orchestration
+- All gates validated
+- Progress tracking
+- Error handling
+
+## 🎯 ORCHESTRATION SYSTEM
+
+**How the general purpose agent orchestrates workflows and agents.**
+
+**Orchestration Directory:**
+- **[ORCHESTRATION-GUIDE.md](claude/orchestration/ORCHESTRATION-GUIDE.md)** - Main orchestration rules
+- **[agent-routing-rules.md](claude/orchestration/agent-routing-rules.md)** - Agent selection logic
+- **[Workflow Templates](claude/orchestration/workflow-templates/)** - Detailed execution workflows
+
+**Core Concepts:**
+
+**1. Request → Workflow Mapping**
+```
+User request analyzed → Task type identified → Workflow template loaded → Agents orchestrated
+```
+
+**2. Agent Routing**
+```
+"Add operation" → add-operation-workflow → 18 agents in sequence
+"Create module" → create-module-workflow → 24 agents across 9 phases
+"Fix issue" → fix-issue-workflow → Diagnostic → Specialist → Validate
+```
+
+**3. Context Management**
+```
+Agent output → Memory files → Next agent input
+Stored in: .claude/.localmemory/{action}-{module}/
+```
+
+**4. Validation Gates**
+```
+Gate 1: API Specification
+Gate 2: Type Generation
+Gate 3: Implementation
+Gate 4: Test Creation
+Gate 5: Test Execution
+Gate 6: Build
+
+Each phase validated before proceeding
+```
+
+**Orchestration Features:**
+- Sequential phase execution
+- Context passing via memory
+- Failure handling and recovery
+- Task decomposition for complex requests
+- Agent collaboration coordination
+
+**See Also:**
+- [context-management.md](claude/orchestration/context-management.md) - How context flows
+- [task-breakdown-patterns.md](claude/orchestration/task-breakdown-patterns.md) - How tasks decompose
+- [agent-collaboration-patterns.md](claude/orchestration/agent-collaboration-patterns.md) - How agents collaborate
 
 ## Memory Management
 
@@ -143,11 +266,12 @@ Each task stores its status and intermediate results in:
 
 ## Task Execution
 
-### Using the New System (Recommended)
+### Using the Agent System (Recommended)
 1. Express your intent (e.g., "Create GitHub module" or "Add webhook operations")
-2. System analyzes request and activates appropriate personas
-3. Rules are enforced throughout
-4. Workflow adapts to your needs
+2. Invoke appropriate agents with @agent-name for each phase
+3. Agents enforce their domain-specific rules throughout
+4. Workflow progresses through validation gates
+5. See [claude/agents/AGENTS.md](claude/agents/AGENTS.md) for complete agent guide
 
 ### Workflow Entry Points
 - **[Unified Workflow](claude/workflow/WORKFLOW.md)** - Single adaptive workflow

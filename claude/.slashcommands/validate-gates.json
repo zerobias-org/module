@@ -1,0 +1,161 @@
+{
+  "name": "validate-gates",
+  "description": "Validate all 6 quality gates for a module",
+  "usage": "/validate-gates <module-identifier>",
+
+  "arguments": [
+    {
+      "name": "module-identifier",
+      "description": "Module identifier in format: vendor-service or vendor-suite-service",
+      "required": true,
+      "type": "string",
+      "pattern": "^[a-z0-9]+-[a-z0-9]+(-[a-z0-9]+)?$",
+      "examples": [
+        "github-github",
+        "amazon-aws-s3",
+        "avigilon-alta-access"
+      ]
+    }
+  ],
+
+  "workflow": {
+    "name": "Gate Validation",
+    "summary": "Validate all 6 quality gates sequentially",
+    "duration": "5-10 minutes",
+    "gates": [
+      "Gate 1: API Specification",
+      "Gate 2: Type Generation",
+      "Gate 3: Implementation",
+      "Gate 4: Test Creation",
+      "Gate 5: Test Execution",
+      "Gate 6: Build"
+    ]
+  },
+
+  "agents": [
+    "@gate-controller"
+  ],
+
+  "execution": {
+    "entrypoint": "validate_all_gates",
+    "strategy": "Sequential validation of all 6 gates",
+    "validates": "All 6 gates",
+    "outputs": [
+      "Gate status report (PASS/FAIL for each)",
+      "List of failures (if any)",
+      "Recommendations for fixes"
+    ]
+  },
+
+  "gate_validations": {
+    "gate_1": {
+      "name": "API Specification",
+      "validator": "@api-reviewer",
+      "checks": [
+        "No 'describe' operations",
+        "Only 200/201 responses",
+        "camelCase properties",
+        "No nullable",
+        "No connection context parameters",
+        "Consistent naming"
+      ]
+    },
+    "gate_2": {
+      "name": "Type Generation",
+      "validator": "@build-validator",
+      "checks": [
+        "npm run generate succeeds (exit code 0)",
+        "Generated types exist",
+        "No InlineResponse types",
+        "TypeScript compiles"
+      ]
+    },
+    "gate_3": {
+      "name": "Implementation",
+      "validator": "@typescript-expert + engineers",
+      "checks": [
+        "No Promise<any> types",
+        "Using generated types",
+        "Mappers implemented",
+        "Core errors used",
+        "No env vars in src/"
+      ]
+    },
+    "gate_4": {
+      "name": "Test Creation",
+      "validator": "@test-orchestrator + reviewers",
+      "checks": [
+        "Unit tests exist",
+        "Integration tests exist",
+        "3+ test cases per operation",
+        "Only nock for mocking",
+        "No hardcoded test data"
+      ]
+    },
+    "gate_5": {
+      "name": "Test Execution",
+      "validator": "@test-orchestrator",
+      "checks": [
+        "npm test succeeds (exit code 0)",
+        "All tests passing",
+        "No regressions"
+      ]
+    },
+    "gate_6": {
+      "name": "Build",
+      "validator": "@build-reviewer",
+      "checks": [
+        "npm run build succeeds (exit code 0)",
+        "No TypeScript errors",
+        "Artifacts created",
+        "npm shrinkwrap succeeds",
+        "npm-shrinkwrap.json exists"
+      ]
+    }
+  },
+
+  "examples": [
+    {
+      "command": "/validate-gates github-github",
+      "description": "Validate all gates for GitHub module"
+    },
+    {
+      "command": "/validate-gates amazon-aws-s3",
+      "description": "Validate all gates for AWS S3 module"
+    }
+  ],
+
+  "output_format": {
+    "summary": "Gate status summary (X/6 passed)",
+    "per_gate": [
+      "Gate name",
+      "Status (PASS/FAIL)",
+      "Failures (if any)",
+      "Recommendations"
+    ],
+    "overall": "PASSED (all gates) or BLOCKED (any gate failed)"
+  },
+
+  "example_output": {
+    "all_passed": "✅ All 6 gates PASSED\n\nGate 1: API Specification ✅\nGate 2: Type Generation ✅\nGate 3: Implementation ✅\nGate 4: Test Creation ✅\nGate 5: Test Execution ✅\nGate 6: Build ✅\n\nModule ready for commit",
+    "some_failed": "❌ 2 gates FAILED, 4 gates PASSED\n\nGate 1: API Specification ✅\nGate 2: Type Generation ✅\nGate 3: Implementation ❌\n  - Promise<any> found in src/WebhookProducer.ts:45\n  - No mapper call\nGate 4: Test Creation ✅\nGate 5: Test Execution ❌\n  - 2 tests failing\nGate 6: Build ✅\n\nFix Gate 3 and Gate 5 before proceeding"
+  },
+
+  "error_handling": {
+    "module_not_found": "Error: Module {module-identifier} not found",
+    "gate_validation_error": "Error running gate validation, check module state"
+  },
+
+  "success_criteria": [
+    "All 6 gates validated",
+    "Clear report generated",
+    "Failures identified with recommendations"
+  ],
+
+  "use_cases": [
+    "Before marking task complete",
+    "After fixing issues",
+    "Pre-commit validation",
+    "Continuous integration checks"
+  ]
+}

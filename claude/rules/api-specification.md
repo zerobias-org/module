@@ -486,7 +486,443 @@ components:
 
 **WHY**: Prevents InlineResponse/InlineObject types in generated code.
 
-### 19. Schema Context Separation - Summary vs Full
+### 19. Schema Name Conflict Check When Adding Operations
+**🚨 CRITICAL: When adding a new operation, ALWAYS check if response schema name conflicts with existing schemas**
+
+**MANDATORY WORKFLOW when adding new operation:**
+
+1. **Identify the response schema name** from external API documentation
+2. **Check if schema already exists** in api.yml components/schemas
+3. **If exists, COMPARE fields** between existing and external API documentation
+4. **Determine if rename needed** based on comparison
+
+**DECISION TREE:**
+
+```
+Adding operation with response schema "User"
+  ↓
+Does "User" exist in api.yml?
+  ↓ YES
+Compare fields: existing vs external API docs
+  ↓
+Are they identical?
+  ↓ NO → Different contexts
+Rename existing based on its usage:
+  - If nested/minimal → UserSummary
+  - If extended → UserInfo
+  - If parent-scoped → ParentUser
+Then add new schema with correct name
+```
+
+**EXAMPLE SCENARIO:**
+
+```yaml
+# BEFORE: Existing api.yml has minimal User schema
+User:
+  type: object
+  required:
+    - id
+  properties:
+    id:
+      type: string
+    opal:
+      type: string
+
+# You're adding listUsers operation
+# External API docs show User has 50+ fields
+
+# ❌ WRONG: Just add fields to existing User
+User:
+  type: object
+  required:
+    - id
+  properties:
+    id: string
+    opal: string
+    # ... 50 more fields  # This breaks nested references!
+
+# ✅ CORRECT: Rename existing, add full schema
+UserSummary:  # Renamed - used in nested contexts
+  type: object
+  required:
+    - id
+  properties:
+    id: string
+    opal: string
+
+User:  # New full schema for direct API responses
+  type: object
+  required:
+    - id
+  properties:
+    id: string
+    opal: string
+    # ... 50 more fields from API docs
+
+# Update nested references
+TokenScope:
+  properties:
+    user:
+      $ref: '#/components/schemas/UserSummary'  # Updated reference
+```
+
+**NAMING PATTERNS:**
+- **Summary**: Minimal version for nested references (e.g., `UserSummary`, `OrganizationSummary`)
+- **Info**: Extended version with additional details (e.g., `UserInfo`)
+- **ParentResource**: When scoped to parent context (e.g., `OrgUser`, `SiteEntry`)
+
+**WHY THIS MATTERS:**
+- Prevents accidentally breaking nested references by expanding schemas
+- Ensures schemas accurately reflect API responses in each context
+- Maintains type safety across different usage patterns
+- Avoids validation errors in parent mappers
+
+**VALIDATION:**
+```bash
+# Before adding operation, check if schema exists
+yq eval '.components.schemas | keys' api.yml | grep "^User$"
+
+# If found, compare field counts
+existing_fields=$(yq eval '.components.schemas.User.properties | length' api.yml)
+echo "Existing schema has $existing_fields fields"
+# Compare with external API documentation field count
+```
+
+### 20. Never Update Connection Profile During Operation Implementation
+**🚨 CRITICAL: Connection profiles are configuration, NOT operation parameters**
+
+**RULE**: When implementing operations, NEVER add fields to connectionProfile.yml
+
+**WRONG APPROACH**:
+```yaml
+# ❌ Adding organizationId to connectionProfile during operation implementation
+connectionProfile.yml:
+  properties:
+    organizationId:  # NO! Don't add this during operation work
+      type: string
+```
+
+**CORRECT APPROACHES**:
+
+**Option 1: Operation Parameter** (if varies per call)
+```yaml
+# ✅ Add as operation parameter if it changes per call
+paths:
+  /users:
+    get:
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+```
+
+**Option 2: Connection State** (if obtained during connect)
+```yaml
+# ✅ Add to connectionState if API returns it during authentication
+connectionState.yml:
+  properties:
+    organizationId:  # Stored after connect()
+      type: string
+```
+
+**Option 3: Existing Setup** (if already configured)
+```yaml
+# ✅ Use what's already in connectionProfile
+# If organizationId not in profile, it shouldn't be added during operation work
+```
+
+**WHY THIS MATTERS**:
+- Connection profiles are set up ONCE during module initialization
+- Operations should NOT require profile changes
+- Changing profile during operation work breaks existing connections
+- Profile changes require regeneration of ALL operations
+
+**WHEN TO UPDATE CONNECTION PROFILE**:
+- ✅ During initial module scaffolding
+- ✅ When fixing connection authentication
+- ✅ When user explicitly requests profile changes
+- ❌ NEVER during "add operation" tasks
+
+### 21. Enum Fields with Descriptions
+**🚨 CRITICAL: String fields with known values MUST use enums with descriptions**
+
+**RULE**: When a string field has known possible values, define as enum with x-enum-descriptions
+
+**PATTERN**:
+```yaml
+status:
+  type: string
+  description: User status
+  enum:
+    - I
+    - A
+    - S
+  x-enum-descriptions:
+    - Inactive
+    - Active
+    - Suspended
+```
+
+**EXAMPLES**:
+
+```yaml
+# ✅ CORRECT - Status field with enum
+userStatus:
+  type: string
+  description: Current status of the user
+  enum:
+    - active
+    - inactive
+    - suspended
+    - pending
+  x-enum-descriptions:
+    - User is active and can access the system
+    - User account is temporarily inactive
+    - User is suspended due to policy violation
+    - User registration is pending approval
+
+# ✅ CORRECT - Role field with enum
+role:
+  type: string
+  description: User role
+  enum:
+    - admin
+    - user
+    - viewer
+  x-enum-descriptions:
+    - Administrator with full access
+    - Regular user with standard permissions
+    - Read-only viewer access
+
+# ❌ WRONG - Known values but no enum
+status:
+  type: string
+  description: Status (can be 'A', 'I', or 'S')  # Don't describe in text!
+```
+
+**BENEFITS**:
+- Type-safe code generation
+- Better documentation
+- IDE autocomplete
+- Validation at API boundary
+- Self-documenting schemas
+
+**WHEN TO USE**:
+- ✅ Status fields (active/inactive/pending)
+- ✅ Types (admin/user/guest)
+- ✅ Categories with fixed set
+- ✅ API returns specific codes
+- ❌ Free-text fields
+- ❌ Dynamic/unlimited values
+
+### 22. Complete Response Model Mapping
+**🚨 CRITICAL: When external API documentation/spec provides full response model, ALL properties MUST be defined in api.yml**
+
+**RULE**: Never leave out properties from external API documentation - map complete response models
+
+**PROCESS**:
+1. Review external API documentation or OpenAPI spec
+2. Identify ALL properties in response model
+3. Map EVERY property to our api.yml (no omissions)
+4. Extract nested objects to components/schemas and reference them
+
+**EXAMPLE**:
+
+```yaml
+# ❌ WRONG - Missing properties from external API
+User:
+  type: object
+  properties:
+    id: string
+    name: string
+    # Missing: email, status, createdAt, roles, etc.
+
+# ✅ CORRECT - Complete mapping from external API
+User:
+  type: object
+  required:
+    - id
+  properties:
+    id:
+      type: string
+      description: Unique identifier
+    name:
+      type: string
+      description: User's full name
+    email:
+      type: string
+      format: email
+      description: User's email address
+    status:
+      type: string
+      enum: [active, inactive, suspended]
+      x-enum-descriptions:
+        - User is active
+        - User is inactive
+        - User is suspended
+    createdAt:
+      type: string
+      format: date-time
+      description: Account creation timestamp
+    roles:
+      type: array
+      items:
+        $ref: '#/components/schemas/Role'
+      description: User's assigned roles
+    profile:
+      $ref: '#/components/schemas/UserProfile'
+    # ... ALL other properties from external API
+
+# Extract nested objects
+UserProfile:
+  type: object
+  properties:
+    avatarUrl:
+      type: string
+      format: url
+    bio:
+      type: string
+    location:
+      type: string
+```
+
+**VALIDATION**:
+```bash
+# Compare property counts
+external_props=$(jq '.components.schemas.User.properties | length' external-openapi.json)
+our_props=$(yq eval '.components.schemas.User.properties | length' api.yml)
+echo "External: $external_props, Ours: $our_props"
+# Must match!
+```
+
+**WHY THIS MATTERS**:
+- Ensures complete data access for module users
+- Prevents "missing field" bugs in production
+- Maintains consistency with external API
+- Enables proper type safety in generated code
+
+**WHEN TO USE**:
+- ✅ External API spec available
+- ✅ Documentation shows complete model
+- ✅ Adding new operation with documented response
+- ❌ External API undocumented (map what you observe)
+
+### 23. Paged Results Pattern
+**🚨 CRITICAL: List operations returning multiple items MUST use PagedResults pattern with correct schema structure**
+
+**RULE**: For paginated endpoints, response schema MUST be `array` type, NOT object wrapper
+
+**CORRECT PATTERN**:
+
+```yaml
+paths:
+  /organizations/{organizationId}/users:
+    get:
+      operationId: listUsers
+      x-method-name: list
+      parameters:
+        - name: organizationId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            Link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array  # ✅ MANDATORY - Direct array, not object!
+                items:
+                  $ref: '#/components/schemas/User'
+
+components:
+  parameters:
+    pageNumberParam:
+      $ref: './node_modules/@auditmation/types-core/schema/pageNumberParam.yml'
+    pageSizeParam:
+      $ref: './node_modules/@auditmation/types-core/schema/pageSizeParam.yml'
+  headers:
+    pagedLinkHeader:
+      $ref: './node_modules/@auditmation/types-core/schema/pagedLinkHeader.yml'
+```
+
+**❌ WRONG PATTERNS**:
+
+```yaml
+# ❌ DON'T wrap in object
+schema:
+  type: object
+  properties:
+    data:
+      type: array
+      items:
+        $ref: '#/components/schemas/User'
+
+# ❌ DON'T use nested structure
+schema:
+  type: object
+  properties:
+    results:
+      type: array
+    totalCount: integer
+    page: integer
+```
+
+**WHY DIRECT ARRAY**:
+- Framework generates `PagedResults<T>` automatically
+- `PagedResults` provides: `items`, `count`, `pageNumber`, `pageSize`, `pageToken`
+- Wrapping in object breaks type generation
+- Framework handles pagination metadata from Link headers
+
+**IF EXTERNAL API USES WRAPPER**:
+```yaml
+# External API returns: { data: [...], totalCount: 123, page: 1 }
+
+# In api.yml - Still use array!
+responses:
+  '200':
+    content:
+      application/json:
+        schema:
+          type: array  # Direct array in spec
+          items:
+            $ref: '#/components/schemas/User'
+
+# In Producer implementation - Extract array
+async list(results: PagedResults<User>): Promise<void> {
+  const response = await this.client.get('/users');
+
+  // Extract items from wrapper
+  const items = response.data.data || response.data.items || response.data.results;
+
+  // Apply mappers
+  results.items = items.map(toUser);
+
+  // Set count if available
+  if (response.data.totalCount !== undefined) {
+    results.count = response.data.totalCount;
+  }
+}
+```
+
+**PAGINATION PARAMETERS**:
+- Use `pageNumberParam` and `pageSizeParam` from `@auditmation/types-core`
+- NEVER create custom pagination parameters
+- Use `pageTokenParam` for cursor-based pagination if API supports it
+
+**BENEFITS**:
+- Type-safe `PagedResults<T>` in generated code
+- Automatic pagination handling
+- Consistent interface across all modules
+- Framework-level pagination support
+
+### 24. Schema Context Separation - Summary vs Full
 **🚨 CRITICAL: When a schema is used in MULTIPLE contexts, create separate schemas for each context**
 
 **PROBLEM**: A schema used in different contexts often has different field requirements:

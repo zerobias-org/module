@@ -14,6 +14,22 @@ model: inherit
 - Industry standards and best practices
 - Product documentation analysis
 
+## Rules to Load
+
+**Primary Rules:**
+- @.claude/rules/prerequisites.md - Research requirements and discovery process
+- @.claude/rules/api-spec-core-rules.md - API pattern understanding
+
+**Supporting Rules:**
+- @.claude/rules/tool-requirements.md - Research tools (npm, yq, web fetch)
+
+**Key Principles:**
+- Complete entity discovery (no missed resources)
+- User-facing naming that matches product terminology
+- Thorough research before making decisions
+- Document all reasoning with confidence levels
+- Map product mental model to module patterns
+
 ## Responsibilities
 - Research product documentation and UI
 - Understand product's business domain
@@ -71,7 +87,7 @@ model: inherit
 6. Explore product UI/UX
 7. Research common use cases
 8. Identify resource hierarchy
-9. Document findings in .claude/.localmemory/create-{module-id}/product-research.md
+9. Document findings in .claude/.localmemory/{workflow}-{module-id}/{outputFile}
 ```
 
 ### 2. API Analysis Process

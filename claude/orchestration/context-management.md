@@ -19,9 +19,16 @@ Ensures context files exist before invoking dependent agents.
 ## Memory Structure
 
 ```
-.claude/.localmemory/{action}-{module-identifier}/
-├── initial-request.json         # User's original request
-├── _work/                        # Working directory
+.claude/.localmemory/{workflow}-{module-identifier}/
+├── phase-01-discovery.json      # Phase 1 output
+├── phase-02-scaffolding.json    # Phase 2 output (for create-module)
+├── phase-03-api-spec.json       # Phase 3 output
+├── phase-04-type-generation.json # Phase 4 output
+├── phase-05-implementation.json # Phase 5 output
+├── phase-06-testing.json        # Phase 6 output
+├── phase-07-documentation.json  # Phase 7 output (optional)
+├── phase-08-build.json          # Phase 8 output
+├── _work/                       # Working directory
 │   ├── credentials-status.md    # From @credential-manager
 │   ├── api-research.md          # From @api-researcher
 │   ├── operation-analysis.md    # From @operation-analyst
@@ -33,27 +40,33 @@ Ensures context files exist before invoking dependent agents.
 │       ├── api-decisions.md     # From @api-architect
 │       ├── type-decisions.md    # From @typescript-expert
 │       └── security-decisions.md # From @security-auditor
-├── gate-status.json             # From @gate-controller
-├── task-status.json             # Progress tracking
-└── operation-status/            # Per-operation tracking
-    ├── listWebhooks-status.json
-    ├── getWebhook-status.json
-    └── ...
+└── gate-status.json             # From @gate-controller (optional)
 ```
 
 ## Context Files Specification
 
-### initial-request.json
+### phase-{NN}-{phase-name}.json
+Standard format for all phase outputs. See `.claude/rules/output-file-naming.md` for complete specification.
+
+Example `phase-01-discovery.json`:
 ```json
 {
-  "timestamp": "2025-10-03T13:00:00Z",
-  "user_request": "Add webhook CRUD operations to github-github",
-  "parsed": {
-    "action": "add-operations",
-    "module_identifier": "github-github",
-    "operations": ["listWebhooks", "getWebhook", "createWebhook", "updateWebhook", "deleteWebhook"]
+  "phase": 1,
+  "name": "Discovery & Analysis",
+  "status": "completed",
+  "timestamp": "2025-10-08T10:00:00Z",
+  "productPackage": "@auditlogic/product-github-github",
+  "modulePackage": "@zerobias-org/module-github-github",
+  "moduleIdentifier": "github-github",
+  "serviceName": "GitHub",
+  "credentials": {
+    "status": "found",
+    "authMethod": "Bearer token"
   },
-  "workflow": "update-module-workflow.md"
+  "selectedOperation": {
+    "name": "listRepositories",
+    "endpoint": "/user/repos"
+  }
 }
 ```
 
@@ -208,35 +221,8 @@ Tested with real API on 2025-10-03
 }
 ```
 
-### task-status.json
-```json
-{
-  "module": "github-github",
-  "workflow": "add-operation-workflow",
-  "operation": "listWebhooks",
-  "status": "completed",
-  "started_at": "2025-10-03T13:00:00Z",
-  "completed_at": "2025-10-03T14:30:00Z",
-  "duration_minutes": 90,
-  "phases": {
-    "phase_0_credentials": "completed",
-    "phase_1_research": "completed",
-    "phase_2_design": "completed",
-    "phase_3_generation": "completed",
-    "phase_4_implementation": "completed",
-    "phase_5_testing": "completed",
-    "phase_6_build": "completed"
-  },
-  "gates": {
-    "gate_1": "PASSED",
-    "gate_2": "PASSED",
-    "gate_3": "PASSED",
-    "gate_4": "PASSED",
-    "gate_5": "PASSED",
-    "gate_6": "PASSED"
-  }
-}
-```
+### Working Files (_work/)
+Additional context files for detailed information and decision tracking. These are intermediate files used during workflow execution, not standardized phase outputs.
 
 ## Context Passing Patterns
 
@@ -329,12 +315,11 @@ Keep all context - needed for later phases
 ### After Successful Completion
 ```
 Keep:
-- initial-request.json
-- gate-status.json
-- task-status.json
+- phase-{NN}-*.json files (all phase outputs)
+- gate-status.json (if used)
 
 Optional cleanup:
-- _work/ directory (can be removed)
+- _work/ directory (can be removed, but useful for reference)
 ```
 
 ### After Failed Workflow

@@ -17,11 +17,14 @@ Integration test quality guardian. Ensures tests actually test real APIs. Valida
 - Credential usage validation
 - End-to-end flow verification
 
-## Rules They Enforce
-**Primary Rules:**
-- [testing.md](../rules/testing.md) - Integration test requirements
-- Rule #7: NO hardcoded values
-- All test data from .env
+## Rules to Load
+
+**Critical Rules:**
+- @.claude/rules/testing.md - All integration test patterns (especially Rule #7: NO hardcoded values)
+- @.claude/rules/gate-5-test-execution.md - Integration test execution validation
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - Test execution failures (Rule 11)
 
 **Key Principles:**
 - Tests use real API

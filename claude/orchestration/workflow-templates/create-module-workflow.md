@@ -25,84 +25,124 @@ Complete workflow for creating a new module from scratch.
 
 ## Workflow Phases
 
-### Phase 1: Discovery & Planning
+### Phase 1: Discovery & Planning (MINIMAL SCOPE)
 
 **Agents:** @product-specialist, @api-researcher, @operation-analyst, @credential-manager
 
 **Actions:**
 ```
-@product-specialist Research product and API
-- Understand vendor's product
-- Identify main resources
-- Review API documentation
-- Suggest resource naming
+@product-specialist Product package discovery and setup
+- List product bundles to find matching product
+- Extract module identifier from product package name
+- Create memory folder: .claude/.localmemory/create-{module-identifier}/_work
+- Install product package in _work directory
+- Extract product info from index.yml or catalog.yml#Product (NO Operations)
+- Document findings
 
-@credential-manager Setup credential infrastructure
-- Identify authentication method
+@credential-manager Check credentials FIRST
+- Check .env, .connectionProfile.json, root .env
+- If missing: ASK user (provide now or continue without)
+- Identify authentication method from API docs
 - Select core profile (tokenProfile, oauthClientProfile, etc.)
-- Guide .env setup
-- Verify credentials work
+- Guide .env setup if needed
 
-@api-researcher Test authentication endpoint
-- Test connection with curl/node
-- Verify credentials work
-- Document auth flow
-- Save test response
+@operation-analyst Select SINGLE MVP operation
+- Review available API endpoints from docs
+- Apply selection criteria:
+  - PREFER: GET operations (read-only)
+  - PREFER: No required parameters (or minimal)
+  - PREFER: Returns list or simple object
+  - AVOID: Complex setup or many dependencies
+- Select ONE operation for MVP
+- Document selection reasoning
+- Save other operations for future
 
-@operation-analyst Identify MVP operation
-- Suggest first operation (list or get)
-- Confirm with user if needed
-- Plan future operations
+@api-researcher Research MINIMAL SCOPE (connection + ONE operation)
+- Research connection/authentication endpoint ONLY
+- Research the ONE operation selected by @operation-analyst
+- Test BOTH endpoints with curl/node
+- Save example responses (2 files only)
+- Document auth flow, rate limits, base URL
+- DO NOT research other operations yet
 ```
 
 **Deliverables:**
-- Product understanding documented
-- Authentication verified
-- Credentials configured
-- MVP operation identified
+- Module identifier extracted
+- Product package installed in _work directory
+- Product information extracted (NO Operations)
+- Credentials checked and configured
+- SINGLE MVP operation selected with reasoning
+- Connection + ONE operation tested and documented
 
 **Context saved:**
 ```
-.claude/.localmemory/create-{module}/
+.claude/.localmemory/create-{module-identifier}/
 ├── _work/
-│   ├── product-model.md
-│   ├── api-research.md
+│   ├── node_modules/{product-package}/  # Temporarily installed
+│   ├── product-model.md                 # Product info (NO Operations)
 │   ├── credentials-status.md
-│   └── mvp-plan.md
+│   ├── operation-selection.md           # ONE operation + reasoning
+│   ├── api-research.md                  # Connection + ONE operation
+│   └── test-responses/
+│       ├── auth-response.json           # Connection test
+│       └── operation-response.json      # ONE operation test
 ```
 
 ---
 
-### Phase 2: Scaffolding
+### Phase 2: Module Scaffolding
+
+**Agent:** @module-scaffolder
 
 **Actions:**
 ```
-Run Yeoman generator:
-
-yo @auditmation/hub-module
-
-Inputs:
-- Vendor name
-- Suite name (optional)
-- Service name
-- Module name
-- Description
-
-Generated structure:
-package/{vendor}/{suite?}/{service}/
-├── api.yml
-├── connectionProfile.yml
-├── connectionState.yml
-├── src/
-├── test/
-├── package.json
-└── tsconfig.json
+@module-scaffolder Execute Yeoman scaffolding
+- Extract parameters from Phase 1 outputs
+- Determine module path (vendor/suite?/service)
+- Run Yeoman generator:
+  yo @auditmation/hub-module \
+    --productPackage '${product_package}' \
+    --modulePackage '${module_package}' \
+    --packageVersion '0.0.0' \
+    --description '${service_name}' \
+    --repository 'https://github.com/zerobias-org/module' \
+    --author '${author}'
+- Navigate to module directory
+- Run npm run sync-meta (syncs title/version to api.yml)
+- Install dependencies: npm install
+- Create symlinks (.npmrc, .nvmrc) if root configs exist
+- Validate complete structure
+- Run initial build validation (must pass with stubs)
+- Git commit: "chore: scaffold {module} module"
 ```
 
-**Validate:**
-- Files created
-- Structure correct
-- npm install succeeds
+**Deliverables:**
+- Module directory created: package/{vendor}/{suite?}/{service}/
+- Stub files generated:
+  - api.yml (template with x-product-infos)
+  - connectionProfile.yml (stub)
+  - connectionState.yml (stub)
+  - src/index.ts
+  - src/{Service}Impl.ts
+  - test/unit/{Service}Test.ts
+- Dependencies installed
+- Initial build passing
+- Git commit created
+
+**Validation Checklist:**
+- ✅ package.json has moduleId and correct metadata
+- ✅ api.yml has x-product-infos reference
+- ✅ api.yml has title and version synced
+- ✅ Source files exist with proper structure
+- ✅ Test files exist
+- ✅ npm install completed
+- ✅ npm run build passes
+- ✅ Git commit created
+
+**DEFER to Phase 3:**
+- Designing real connectionProfile.yml schema (currently stub)
+- Designing real connectionState.yml schema (currently stub)
+- Designing real api.yml specification (currently template)
 
 ---
 

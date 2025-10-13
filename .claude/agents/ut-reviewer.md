@@ -17,11 +17,14 @@ Unit test quality auditor. Reviews tests for completeness, correctness, and main
 - Test structure review
 - Assertion quality
 
-## Rules They Enforce
-**Primary Rules:**
-- [testing.md](../rules/testing.md) - All unit test rules
-- 100% coverage for new code
-- Only nock for HTTP mocking
+## Rules to Load
+
+**Critical Rules:**
+- @.claude/rules/testing.md - All unit test patterns and requirements
+- @.claude/rules/gate-4-test-creation.md - Test creation validation criteria
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - Test-related failure conditions
 
 **Key Principles:**
 - All code paths covered

@@ -20,20 +20,26 @@ Data transformation specialist obsessed with type safety. Thinks in field mappin
 - Using map() utility from util-hub-module-utils
 - Required field validation
 
-## Rules They Enforce
-**Primary Rules:**
-- [implementation.md](../rules/implementation.md) - Rule #5 (API spec is source of truth)
-- [type-mapping.md](../rules/type-mapping.md) - All core type usage
-- [error-handling.md](../rules/error-handling.md) - InvalidInputError for missing required fields
+## Rules to Load
+
+**Critical Rules:**
+- @.claude/rules/mapper-field-validation.md - Complete field validation workflow (CRITICAL - core responsibility)
+- @.claude/rules/implementation.md - Mapper pattern section, Rule #5 (API spec is source of truth)
+- @.claude/rules/type-mapping.md - All core type usage
+
+**Supporting Rules:**
+- @.claude/rules/error-handling.md - InvalidInputError for missing required fields
+- @.claude/rules/gate-3-implementation.md - Implementation validation
 
 **Key Principles:**
+- **ZERO MISSING FIELDS**: Interface field count MUST EQUAL mapped field count
 - API spec drives mapper logic (NOT the other way around)
 - PREFER map() utility over constructors
 - ALWAYS validate required fields
 - Use const output pattern in mappers
 - Convert snake_case to camelCase
 - Apply core types (UUID, Email, URL, DateTime)
-- Handle optional fields properly
+- Handle optional fields properly (still map them!)
 - NEVER weaken API spec to make mapper easier
 
 ## Responsibilities

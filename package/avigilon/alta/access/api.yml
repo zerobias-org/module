@@ -1,0 +1,701 @@
+openapi: 3.0.3
+info:
+  x-product-infos:
+    # Array of external references to Products (versions of products) involved in the module.
+    # the catalog.yml file will in most cases be referenced from `node_modules/hub-store-catalog`
+    - $ref: "./node_modules/@zerobias-org/product-avigilon-alta-access/catalog.yml#/Product"
+  version: 0.0.0
+  title: '@zerobias-org/module-avigilon-alta-access'
+  description: Avigilon Alta Access
+  x-impl-name: AltaAccess
+tags:
+  - name: connection
+    description: Authentication operations
+  - name: user
+    description: User management operations
+  - name: entry
+    description: Entry point (door) management
+  - name: credential
+    description: User credential management
+  - name: group
+    description: User group management
+components:
+  parameters:
+    # Path parameters
+    orgIdParam:
+      name: orgId
+      in: path
+      required: true
+      description: Organization identifier
+      schema:
+        type: string
+    userIdParam:
+      name: userId
+      in: path
+      required: true
+      description: User identifier
+      schema:
+        type: string
+    entryIdParam:
+      name: entryId
+      in: path
+      required: true
+      description: Entry point identifier
+      schema:
+        type: string
+    credentialIdParam:
+      name: credentialId
+      in: path
+      required: true
+      description: Credential identifier
+      schema:
+        type: string
+    groupIdParam:
+      name: groupId
+      in: path
+      required: true
+      description: Group identifier
+      schema:
+        type: string
+
+    # Core pagination parameters
+    pageSizeParam:
+      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageSizeParam'
+    pageNumberParam:
+      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageNumberParam'
+
+    # listUsers query parameters
+    withPictureListUsersParam:
+      name: withPicture
+      in: query
+      description: Include full-size and thumbnail user picture URLs
+      schema:
+        type: boolean
+    withUserSitesListUsersParam:
+      name: withUserSites
+      in: query
+      description: Include user's sites
+      schema:
+        type: boolean
+    ignoreSiteSpecificAccessListUsersParam:
+      name: ignoreSiteSpecificAccess
+      in: query
+      description: Bypass site-specific access checks
+      schema:
+        type: boolean
+    withBuildingsListUsersParam:
+      name: withBuildings
+      in: query
+      description: Include nested building/floor/unit details
+      schema:
+        type: boolean
+    isAttachedToAtLeastOneIntercomListUsersParam:
+      name: isAttachedToAtLeastOneIntercom
+      in: query
+      description: Filter users attached to at least one intercom
+      schema:
+        type: boolean
+
+  headers:
+    linksHeader:
+      $ref: './node_modules/@auditmation/types-core/schema/headers.yml#/linksHeader'
+
+  schemas:
+    # Connection-related schemas
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+        password:
+          type: string
+          format: password
+          description: User password
+
+    LoginResponse:
+      type: object
+      required:
+        - token
+        - identityId
+        - expiresAt
+        - createdAt
+      properties:
+        token:
+          type: string
+          description: JWT bearer token for authentication
+        identityId:
+          type: string
+          description: Identity ID of authenticated user
+        expiresAt:
+          type: string
+          format: date-time
+          description: Token expiration timestamp
+        createdAt:
+          type: string
+          format: date-time
+          description: Token creation timestamp
+        identity:
+          $ref: '#/components/schemas/Identity'
+        tokenScopeList:
+          type: array
+          description: Array of token scopes with organization and user context
+          items:
+            $ref: '#/components/schemas/TokenScope'
+
+    Identity:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Identity unique identifier
+        namespace:
+          $ref: '#/components/schemas/Namespace'
+
+    Namespace:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Namespace unique identifier
+        nickname:
+          type: string
+          description: Namespace nickname
+
+    TokenScope:
+      type: object
+      properties:
+        org:
+          $ref: '#/components/schemas/Organization'
+        user:
+          $ref: '#/components/schemas/UserReference'
+        scope:
+          type: array
+          description: Array of permission scopes
+          items:
+            type: string
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Organization unique identifier
+        name:
+          type: string
+          description: Organization name
+        opal:
+          type: string
+          description: Organization OPAL identifier
+        parentOrg:
+          description: Parent organization (null if top-level)
+          oneOf:
+            - $ref: '#/components/schemas/Organization'
+            - type: "null"
+        isUnified:
+          type: boolean
+          description: Whether organization is unified
+
+    UserReference:
+      type: object
+      properties:
+        id:
+          type: string
+          description: User unique identifier
+        opal:
+          type: string
+          description: User OPAL identifier
+
+    # User-related schemas
+    User:
+      type: object
+      required:
+        - id
+        - opal
+        - status
+      properties:
+        id:
+          type: string
+          description: User unique identifier
+        opal:
+          type: string
+          description: User OPAL identifier
+        status:
+          type: string
+          description: User status
+          enum: [A, I, S]
+          x-enum-descriptions:
+            - Active - user can access the system
+            - Inactive - user account is deactivated
+            - Suspended - user access is temporarily disabled
+        startDate:
+          type: string
+          format: date-time
+          description: User access start date
+        endDate:
+          type: string
+          format: date-time
+          description: User access end date (null if no end date)
+        hasRemoteUnlock:
+          type: boolean
+          description: Whether user has remote unlock capability
+        isOverrideAllowed:
+          type: boolean
+          description: Whether access override is allowed for this user
+        externalId:
+          type: string
+          description: External system identifier for this user
+        title:
+          type: string
+          description: User job title
+        department:
+          type: string
+          description: User department
+        groups:
+          type: array
+          description: Groups this user belongs to
+          items:
+            $ref: '#/components/schemas/GroupReference'
+        identity:
+          $ref: '#/components/schemas/UserIdentity'
+        userCustomFields:
+          type: array
+          description: Custom fields defined for this user
+          items:
+            $ref: '#/components/schemas/CustomField'
+
+    UserIdentity:
+      type: object
+      properties:
+        fullName:
+          type: string
+          description: User full name
+        firstName:
+          type: string
+          description: User first name
+        lastName:
+          type: string
+          description: User last name
+        middleName:
+          type: string
+          description: User middle name
+        email:
+          type: string
+          format: email
+          description: User email address
+        mobilePhone:
+          type: string
+          format: phoneNumber
+          description: User mobile phone number
+        isEmailVerified:
+          type: boolean
+          description: Whether user email is verified
+        language:
+          type: string
+          description: User preferred language
+        namespace:
+          $ref: '#/components/schemas/Namespace'
+        nicknames:
+          type: array
+          description: User nicknames
+          items:
+            type: string
+
+    GroupReference:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Group unique identifier
+        name:
+          type: string
+          description: Group name
+        opal:
+          type: string
+          description: Group OPAL identifier
+
+    CustomField:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Custom field unique identifier
+        name:
+          type: string
+          description: Custom field name
+        value:
+          type: string
+          description: Custom field value
+
+    # Entry-related schemas
+    Entry:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: Entry point unique identifier
+        name:
+          type: string
+          description: Entry point name
+        opal:
+          type: string
+          description: Entry point OPAL identifier
+        description:
+          type: string
+          description: Entry point description
+        entryType:
+          type: string
+          description: Type of entry point
+        deviceId:
+          type: string
+          description: Associated device identifier
+        siteId:
+          type: string
+          description: Associated site identifier
+        isEnabled:
+          type: boolean
+          description: Whether entry point is enabled
+        accessScheduleId:
+          type: string
+          description: Associated access schedule identifier
+
+    # Credential-related schemas
+    Credential:
+      type: object
+      required:
+        - id
+        - credentialType
+      properties:
+        id:
+          type: string
+          description: Credential unique identifier
+        opal:
+          type: string
+          description: Credential OPAL identifier
+        credentialType:
+          type: string
+          description: Type of credential
+          enum: [badge, mobile, pin, qr, nfc]
+          x-enum-descriptions:
+            - Physical badge credential
+            - Mobile app credential
+            - PIN code credential
+            - QR code credential
+            - NFC credential
+        credentialValue:
+          type: string
+          description: Credential value (format depends on type)
+        status:
+          type: string
+          description: Credential status
+          enum: [A, I, S, L]
+          x-enum-descriptions:
+            - Active - credential can be used
+            - Inactive - credential is deactivated
+            - Suspended - credential is temporarily disabled
+            - Lost - credential is marked as lost
+        startDate:
+          type: string
+          format: date-time
+          description: Credential validity start date
+        endDate:
+          type: string
+          format: date-time
+          description: Credential validity end date
+        userId:
+          type: string
+          description: User this credential belongs to
+
+    # Group-related schemas
+    Group:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: Group unique identifier
+        name:
+          type: string
+          description: Group name
+        opal:
+          type: string
+          description: Group OPAL identifier
+        description:
+          type: string
+          description: Group description
+        groupType:
+          type: string
+          description: Type of group
+        memberCount:
+          type: integer
+          description: Number of members in group
+        accessScheduleId:
+          type: string
+          description: Associated access schedule identifier
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - connection
+      summary: Authenticate user
+      operationId: connect
+      x-method-name: connect
+      description: |
+        Authenticate with email and password to receive JWT bearer token.
+        Token is valid for 14 days and includes organization and scope information.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '201':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /orgs/{orgId}/users:
+    get:
+      tags:
+        - user
+      summary: Retrieve users
+      operationId: listUsers
+      x-method-name: listUsers
+      description: |
+        Lists all users in the specified organization.
+        Supports pagination and various filtering options.
+      parameters:
+        - $ref: '#/components/parameters/orgIdParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/withPictureListUsersParam'
+        - $ref: '#/components/parameters/withUserSitesListUsersParam'
+        - $ref: '#/components/parameters/ignoreSiteSpecificAccessListUsersParam'
+        - $ref: '#/components/parameters/withBuildingsListUsersParam'
+        - $ref: '#/components/parameters/isAttachedToAtLeastOneIntercomListUsersParam'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            links:
+              $ref: '#/components/headers/linksHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+  /orgs/{orgId}/users/{userId}:
+    get:
+      tags:
+        - user
+      summary: Retrieve a user
+      operationId: getUser
+      x-method-name: getUser
+      description: |
+        Retrieves detailed information about a specific user including
+        their profile, groups, and custom fields.
+      parameters:
+        - $ref: '#/components/parameters/orgIdParam'
+        - $ref: '#/components/parameters/userIdParam'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /orgs/{orgId}/entries:
+    get:
+      tags:
+        - entry
+      summary: Retrieve entries
+      operationId: listEntries
+      x-method-name: listEntries
+      description: |
+        Lists all entry points (doors) in the specified organization.
+        Entry points are physical access control points.
+      parameters:
+        - $ref: '#/components/parameters/orgIdParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            links:
+              $ref: '#/components/headers/linksHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Entry'
+
+  /orgs/{orgId}/entries/{entryId}:
+    get:
+      tags:
+        - entry
+      summary: Retrieve an entry
+      operationId: getEntry
+      x-method-name: getEntry
+      description: |
+        Retrieves detailed information about a specific entry point including
+        its configuration, associated device, and access schedule.
+      parameters:
+        - $ref: '#/components/parameters/orgIdParam'
+        - $ref: '#/components/parameters/entryIdParam'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entry'
+
+  /orgs/{orgId}/users/{userId}/credentials:
+    get:
+      tags:
+        - credential
+      summary: Retrieve user credentials
+      operationId: listUserCredentials
+      x-method-name: listCredentials
+      description: |
+        Lists all credentials for a specific user including badges,
+        mobile keys, PINs, and other access credentials.
+      parameters:
+        - $ref: '#/components/parameters/orgIdParam'
+        - $ref: '#/components/parameters/userIdParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            links:
+              $ref: '#/components/headers/linksHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Credential'
+
+  /orgs/{orgId}/groups:
+    get:
+      tags:
+        - group
+      summary: Retrieve groups
+      operationId: listGroups
+      x-method-name: listGroups
+      description: |
+        Lists all user groups in the specified organization.
+        Groups are used to organize users for permission management.
+      parameters:
+        - $ref: '#/components/parameters/orgIdParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            links:
+              $ref: '#/components/headers/linksHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Group'
+
+  /orgs/{orgId}/groups/{groupId}:
+    get:
+      tags:
+        - group
+      summary: Retrieve a group
+      operationId: getGroup
+      x-method-name: getGroup
+      description: |
+        Retrieves detailed information about a specific group including
+        its configuration and member count.
+      parameters:
+        - $ref: '#/components/parameters/orgIdParam'
+        - $ref: '#/components/parameters/groupIdParam'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+
+  /orgs/{orgId}/groups/{groupId}/users:
+    get:
+      tags:
+        - group
+      summary: Retrieve group users
+      operationId: listGroupUsers
+      x-method-name: listUsers
+      description: |
+        Lists all users that belong to a specific group.
+        Useful for auditing group membership.
+      parameters:
+        - $ref: '#/components/parameters/orgIdParam'
+        - $ref: '#/components/parameters/groupIdParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            links:
+              $ref: '#/components/headers/linksHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+
+  /orgs/{orgId}/entries/{entryId}/users:
+    get:
+      tags:
+        - entry
+      summary: Retrieve entry users
+      operationId: listEntryUsers
+      x-method-name: listUsers
+      description: |
+        Lists all users that have access to a specific entry point.
+        Critical for access auditing and security reviews.
+      parameters:
+        - $ref: '#/components/parameters/orgIdParam'
+        - $ref: '#/components/parameters/entryIdParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            links:
+              $ref: '#/components/headers/linksHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'

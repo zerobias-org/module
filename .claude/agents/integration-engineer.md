@@ -25,6 +25,25 @@ model: inherit
 - Work with TypeScript Expert on implementations
 - Optimize network calls
 
+## Rules to Load
+
+**Primary Rules:**
+- @.claude/rules/implementation.md - Client and producer patterns
+- @.claude/rules/error-handling.md - Error mapping to core types (CRITICAL)
+- @.claude/rules/gate-3-implementation.md - Implementation validation
+
+**Supporting Rules:**
+- @.claude/rules/connection-profile-design.md - Connection management patterns
+- @.claude/rules/security.md - Secure communication and credential handling
+- @.claude/rules/failure-conditions.md - Implementation failures (Rule 8: Promise<any>)
+
+**Key Principles:**
+- ALL errors mapped to core types (never generic Error)
+- Proper connection cleanup
+- Appropriate timeouts set
+- Retry logic for transient failures
+- No credential exposure in error messages
+
 ## Decision Authority
 - **Final say on**:
   - HTTP client library selection

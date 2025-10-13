@@ -78,6 +78,7 @@
     "@api-researcher",
     "@operation-analyst",
     "@credential-manager",
+    "@module-scaffolder",
     "@security-auditor",
     "@api-architect",
     "@schema-specialist",

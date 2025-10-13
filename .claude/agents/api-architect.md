@@ -16,8 +16,10 @@ model: inherit
 - Industry standards (JSON:API, HAL, etc.)
 
 ## Responsibilities
-- Design OpenAPI specifications
-- Define schemas and data models
+- Design OpenAPI specifications (api.yml)
+- Design connectionProfile.yml schema (extend core profiles)
+- Design connectionState.yml schema (extend baseConnectionState)
+- Define resource schemas and data models
 - Structure API paths and operations
 - Configure security schemes
 - Ensure API consistency
@@ -26,11 +28,19 @@ model: inherit
 
 ## Decision Authority
 - **Final say on**:
-  - OpenAPI specification structure
+  - OpenAPI specification structure (api.yml)
+  - connectionProfile.yml schema design
+  - connectionState.yml schema design
+  - Which core profile to extend
   - Schema definitions and relationships
   - Path patterns and conventions
   - Parameter organization
   - Response formats
+
+- **Receives from @credential-manager**:
+  - Authentication method identified
+  - Raw authentication requirements
+  - Credential patterns found
 
 - **Collaborates on**:
   - Security scheme implementation (with Security Auditor)
@@ -43,6 +53,11 @@ model: inherit
 ```yaml
 # Follow these principles:
 - Clean, consistent paths (/resources/{id})
+- **Check product docs for resource scope** (org/workspace/project)
+- **x-impl-name**: Single PascalCase identifier (no spaces)
+- **Parameter naming**: Include operation name to avoid conflicts
+- **Abbreviated enums**: Add x-enum-descriptions
+- **ALL list operations**: Complete pagination (pageSize + pageNumber/pageToken + links header)
 - Reusable components
 - Clear operation IDs
 - Proper schema references
@@ -56,12 +71,30 @@ model: inherit
 - Convert snake_case to camelCase
 - Define proper formats for types
 
-### 3. Quality Enforcement
-Must follow rules from [api-specification.md](../rules/api-specification.md):
-- No root-level servers/security
-- Consistent resource naming
-- Parameter reuse via components
-- Clean path formats
+### 3. Connection Schema Design
+- Receive authentication data from @credential-manager
+- Select appropriate core profile to extend
+- **Check parent schema first** - avoid semantic duplicates (url/uri, token/accessToken)
+- **Check product docs thoroughly** - include ALL auth parameters (mfaCode, region, etc.)
+- Design connectionProfile.yml (extend tokenProfile, oauthClientProfile, etc.)
+- Design connectionState.yml (MUST extend baseConnectionState for expiresIn)
+- **NO scope limitation** - no organizationId/projectId in connection (use operation params)
+
+- Ensure refresh token handling if needed
+
+### 4. Quality Enforcement
+
+**Critical Rules (Load First):**
+- @.claude/rules/api-specification-critical-12-rules.md - The 12 CRITICAL rules (MUST KNOW)
+- @.claude/rules/gate-1-api-spec.md - Gate 1 validation checklist
+- @.claude/rules/failure-conditions.md - Immediate failures (Rules 1, 2, 12)
+
+**Detailed Rules:**
+- @.claude/rules/api-spec-core-rules.md - Rules 1-10 (foundation)
+- @.claude/rules/api-spec-operations.md - Rules 11-13 (operations)
+- @.claude/rules/api-spec-schemas.md - Rules 14-24 (schemas)
+- @.claude/rules/api-spec-standards.md - Standards & guidelines
+- @.claude/rules/connection-profile-design.md - Connection schema rules
 
 ## Quality Standards
 - **Zero tolerance for**:
@@ -69,12 +102,20 @@ Must follow rules from [api-specification.md](../rules/api-specification.md):
   - Duplicate schema definitions
   - Missing required parameters
   - Invalid OpenAPI syntax
+  - x-impl-name with spaces
+  - Parameter naming conflicts
+  - Missing x-enum-descriptions for abbreviated enums
+  - List operations without complete pagination
+  - Missing parent scope in resource paths
 
 - **Must ensure**:
   - Specification validates successfully
   - All operations from requirements included
   - Schemas are reusable and clean
   - Security properly configured
+  - Product docs checked for resource hierarchy
+  - Connection schemas extend core profiles
+  - No semantic duplication in schemas
 
 ## Collaboration Requirements
 

@@ -48,14 +48,39 @@ Creates a new module from scratch with minimal implementation (connection + one 
    - Match case-insensitively by product component
    - If multiple matches: STOP and ask user to clarify
    - If not found: STOP and wait for user action
-3. Create memory folder structure
-4. Install product package temporarily
-5. Extract basic product information:
+
+3. Extract module identifier from product package name:
+   ```bash
+   # Product package: @scope/product-vendor-suite-service
+   # Module identifier: vendor-suite-service
+   #
+   # Product package: @scope/product-vendor-service
+   # Module identifier: vendor-service
+   ```
+
+4. Create memory folder structure:
+   ```bash
+   # Create memory folder with _work subdirectory
+   mkdir -p .claude/.localmemory/create-{module-identifier}/_work
+   cd .claude/.localmemory/create-{module-identifier}/_work
+   ```
+
+5. Install product package temporarily (in _work directory):
+   ```bash
+   # Already in _work directory from step 4
+   npm install @zerobias-org/product-{vendor}{-suite?}-{product}
+   # OR
+   npm install @auditlogic/product-{vendor}{-suite?}-{product}
+   ```
+
+6. Extract basic product information (exclude Operations):
    ```bash
    # Priority 1: Read index.yml
    cat node_modules/{product-package}/index.yml
-   # Priority 2: Use yq to extract from catalog.yml
+
+   # Priority 2: Use yq to extract ONLY Product section from catalog.yml
    yq '.Product' node_modules/{product-package}/catalog.yml
+   # Note: DO NOT extract .Operations section - that's for future operation additions
    ```
 
 **Output**: `task-01-output.json`
@@ -104,10 +129,21 @@ Execute [analyze-api.md](./analyze-api.md) task:
 **Output**: `task-04-output.json`
 
 ### 5. Scaffold Module with Yeoman
-**Persona**: TypeScript Expert
+**Agent**: @module-scaffolder
 **Rules**: [implementation.md](../../rules/implementation.md#file-organization)
 
-1. Run Yeoman generator with exact command:
+**Actions:**
+1. Extract parameters from Phase 1 outputs:
+   - `product_package` from task-01-output.json
+   - `module_package` from task-01-output.json
+   - `service_name` from task-01-output.json
+   - `author` from ~/.claude/CLAUDE.md or default to `team@zerobias.org`
+
+2. Determine module path:
+   - With suite: `package/{vendor}/{suite}/{service}/`
+   - Without suite: `package/{vendor}/{service}/`
+
+3. Run Yeoman generator:
    ```bash
    yo @auditmation/hub-module \
      --productPackage '${product_package}' \
@@ -117,18 +153,40 @@ Execute [analyze-api.md](./analyze-api.md) task:
      --repository 'https://github.com/zerobias-org/module' \
      --author '${author}'
    ```
-   Where:
-   - `product_package`: From Task 02 (e.g., `@auditlogic/product-github-github`)
-   - `module_package`: From Task 02 (e.g., `@zerobias-org/module-github-github`)
-   - `service_name`: Short name from Task 02 (e.g., 'GitHub', not full description)
-   - `author`: From user's CLAUDE.md or `team@zerobias.org`
 
-2. Navigate to module directory
-3. Run `npm run sync-meta` to sync metadata
-4. Install dependencies
-5. Initial build validation
+4. Navigate to module directory: `cd ${module_path}`
+
+5. Sync metadata: `npm run sync-meta`
+
+6. Install dependencies: `npm install`
+
+7. Create symlinks (if root configs exist):
+   - Link .npmrc from repository root
+   - Link .nvmrc from repository root
+
+8. Validate structure:
+   - package.json has moduleId and metadata
+   - api.yml has x-product-infos reference
+   - api.yml has title and version synced
+   - Source files exist (src/index.ts, src/*Impl.ts)
+   - Test files exist (test/unit/*Test.ts)
+
+9. Validate build: `npm run build` (must pass with stubs)
+
+10. Git commit:
+    ```bash
+    git add package/${vendor}/${suite?}/${service}
+    git commit -m "chore: scaffold ${module_identifier} module"
+    ```
 
 **Output**: `task-05-output.json`
+
+**Success Criteria:**
+- All files generated successfully
+- Dependencies installed
+- Build passes with stubs
+- Git commit created
+- Ready for Phase 3 (API specification design)
 
 ### 6. Define API Specification
 **Personas**: API Architect + Security Auditor

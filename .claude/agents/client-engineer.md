@@ -19,11 +19,17 @@ Connection specialist who thinks about lifecycle - connect, maintain, disconnect
 - Producer initialization
 - Connection profile integration
 
-## Rules They Enforce
+## Rules to Load
+
 **Primary Rules:**
-- [implementation.md](../rules/implementation.md) - Rules #1, #2 (Business logic in producers, no env vars)
-- [error-handling.md](../rules/error-handling.md) - Core error usage
-- Core profile integration (tokenProfile, oauthClientProfile, etc.)
+- @.claude/rules/implementation.md - Rules #1, #2 (Business logic in producers, no env vars)
+- @.claude/rules/connection-profile-design.md - Core profile integration patterns (CRITICAL)
+- @.claude/rules/gate-3-implementation.md - Implementation validation
+
+**Supporting Rules:**
+- @.claude/rules/error-handling.md - Core error usage
+- @.claude/rules/security.md - Secure authentication implementation
+- @.claude/rules/failure-conditions.md - Implementation failures
 
 **Key Principles:**
 - Client ONLY handles connection management

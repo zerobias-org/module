@@ -1,0 +1,87 @@
+{
+  "name": "@zerobias-org/module-avigilon-alta-access",
+  "version": "0.0.0",
+  "description": "Avigilon Alta Access",
+  "moduleId": "a1ccd27c-18d1-438a-97bf-56193e66cbc4",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "clean": "rm -rf generated/ dist/ docs/ full*.yml module-avigilon-alta-access.yml",
+    "sync-meta": "VERSION=$(npm run -s get-version) NAME=$(yq e -oy .name package.json) DESC=$(yq e -oy .description package.json) yq e -i '.info.version=strenv(VERSION) | .info.title=strenv(NAME) | .info.description=strenv(DESC)' api.yml",
+    "validate": "npx swagger-cli validate api.yml",
+    "generate:full": "cp api.yml full.yml && if test -f connectionProfile.yml; then yq e -i '.components.schemas.ConnectionProfile.$ref'=\\\"./connectionProfile.yml\\\" full.yml; fi && if test -f connectionState.yml; then yq e -i '.components.schemas.ConnectionState.$ref'=\\\"./connectionState.yml\\\" full.yml; fi",
+    "generate:inflate": "swagger-cli bundle -t yaml full.yml > full2.yml && mv full2.yml full.yml && cp full.yml module-avigilon-alta-access.yml",
+    "generate:api": "hub-generator generate -g hub-module -i full.yml -o generated/ $(if test -f connectionProfile.yml; then echo -p isConnector=true;fi) $(if test -f connectionState.yml; then echo -p hasState=true;fi)",
+    "generate": "npm run generate:full && npm run generate:inflate && npm run generate:api",
+    "transpile": "tsc",
+    "build": "npm run validate && npm run generate && npm run transpile",
+    "docs:redoc": "redoc-cli bundle module-avigilon-alta-access.yml -o docs/index.html",
+    "docs:api": "hub-generator generate -g hub-markdown -i full.yml -o docs/",
+    "docs:combine": "concat-md --toc --decrease-title-levels --dir-name-as-title docs >> README.md",
+    "docs": "npm run docs:redoc && npm run docs:api && npm run docs:combine",
+    "version": "npm run sync-meta && git add api.yml",
+    "test": "mocha --inline-diffs --reporter=list test/unit/**/*.ts",
+    "test:watch": "npm run test -- --watch --reporter=min",
+    "test:integration": "mocha --inline-diffs --reporter=list test/integration/**/*.ts",
+    "test:integration:json": "mocha --reporter=json --reporter-option output=test-results.json test/integration/**/*.ts",
+    "test:integration:watch": "npm run test:integration -- --watch --reporter=min",
+    "get-version": "yq e -oy .version package.json",
+    "lint": "npm run lint:api && npm run lint:src",
+    "lint:src": "eslint src/",
+    "lint:src:fix": "eslint --fix src/",
+    "lint:api": "npx spectral lint api.yml -v -r node_modules/@auditmation/util-spectral-config/rules/.oas3.strict.spectral.yml",
+    "lint:api:bundled": "npx spectral lint module-avigilon-alta-access.yml -v -r node_modules/@auditmation/util-spectral-config/rules/.oas3.strict.spectral.yml",
+    "nx:publish": "../../../../../scripts/publish.sh",
+    "prepublishtest": "../../../../../scripts/prepublish.sh",
+    "prepublishOnly": "npm run build && npm run docs",
+    "postpublish": "curl -i -u $NPM_USER:$WORKFLOW_DISPATCH_TOKEN -X POST -H \"Accept: application/vnd.github.v3+json\" https://api.github.com/repos/auditlogic/module/actions/workflows/$WORKFLOW_ID/dispatches -d '{\"ref\":\"master\", \"inputs\":{\"module\":\"access\", \"tag\":\"'$(yq e -oy .name package.json)@$(yq e -oy .version package.json)'\", \"message\":\"'\"$MESSAGE\"'\"}}'"
+  },
+  "author": "ctamas@zerobias.com",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zerobias-org/module",
+    "directory": "/package/avigilon/alta/access"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": [
+    "module-avigilon-alta-access.yml",
+    "connectionProfile.yml",
+    "dist",
+    "generated/api/manifest.json",
+    "docs/",
+    "CHANGELOG.md",
+    "USERGUIDE.md",
+    "test-results.json"
+  ],
+  "auditmation": {
+    "package": "avigilon.alta.access.module",
+    "dataloader-version": "0.5.4",
+    "import-artifact": "module"
+  },
+  "dependencies": {
+    "@auditmation/hub-core": "^4.4.52",
+    "@auditmation/util-logger": "^4.0.9"
+  },
+  "peerDependencies": {
+    "@auditmation/types-core": "^4.8.3",
+    "@auditmation/types-core-js": "^4.9.11"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-cli": "^4.0.4",
+    "@auditmation/eslint-config": "^1.1.17",
+    "@auditmation/util-codegen": "^5.5.22",
+    "@auditmation/util-hub-module-utils": "^1.0.0",
+    "@auditmation/util-spectral-config": "^0.4.11",
+    "@types/chai": "^4.3.4",
+    "@types/mocha": "^10.0.1",
+    "@types/node": "^18.15.3",
+    "chai": "^4.3.7",
+    "concat-md": "^0.5.1",
+    "mocha": "^10.2.0",
+    "redoc-cli": "^0.13.21",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.9.5"
+  }
+}

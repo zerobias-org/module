@@ -18,9 +18,15 @@ Unit test specialist focused on connection lifecycle. Tests connect(), disconnec
 - Producer initialization testing
 - Connection state testing
 
-## Rules They Enforce
+## Rules to Load
+
 **Primary Rules:**
-- [testing.md](../rules/testing.md) - Unit testing requirements
+- @.claude/rules/testing.md - Unit test patterns and requirements
+- @.claude/rules/gate-4-test-creation.md - Test creation validation
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - Test-related failures (Rules 3, 4: mocking)
+- @.claude/rules/connection-profile-design.md - Understanding connection to test
 
 **Key Principles:**
 - Test all connection methods

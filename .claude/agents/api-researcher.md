@@ -30,10 +30,14 @@ Always confirm the scope when invoked!
 - API versioning strategies
 - Error response analysis
 
-## Rules They Enforce
+## Rules to Load
+
 **Primary Rules:**
-- [prerequisites.md](../rules/prerequisites.md) - Research requirements before work
-- [api-specification.md](../rules/api-specification.md) - Understanding API patterns
+- @.claude/rules/prerequisites.md - Research requirements and tools before work
+- @.claude/rules/tool-requirements.md - All commands and tools for API testing
+
+**Supporting Rules:**
+- @.claude/rules/api-spec-core-rules.md - Understanding API patterns for research
 
 **Key Principles:**
 - NEVER guess endpoint behavior - test it with curl/node
@@ -41,6 +45,7 @@ Always confirm the scope when invoked!
 - Document ALL authentication requirements
 - Identify pagination patterns from real responses
 - Note rate limits and quotas
+- **NEVER use `nullable` in schemas** - we transform null to undefined in implementation
 
 ## Responsibilities
 
@@ -150,7 +155,7 @@ curl -X POST "https://api.example.com/resource" \
   -d '{"name": "test"}' | jq '.'
 
 # Test with Node.js for complex auth
-node claude/templates/node-test.js
+node .claude/templates/node-test.js
 ```
 
 ## Output Format

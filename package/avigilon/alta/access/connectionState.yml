@@ -1,0 +1,87 @@
+type: object
+description: >-
+  State object for Avigilon Alta Access connections. Stores the JWT bearer token, refresh token,
+  organization information, and token scopes obtained from the OAuth2 password grant flow.
+  The access token expires after 14 days and must be refreshed using the refresh token.
+allOf:
+  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+  - type: object
+    required:
+      - accessToken
+      - organizationId
+    properties:
+      tokenType:
+        type: string
+        default: Bearer
+        description: The type of token (always Bearer for JWT)
+        example: Bearer
+      accessToken:
+        type: string  
+        description: JWT bearer token obtained from login
+        format: password
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      refreshToken:
+        type: string  
+        description: Refresh token used to obtain a new access token when expired
+        format: password
+        example: refresh_token_here
+      organizationId:
+        type: number
+        description: Primary organization ID obtained from login response. Required for most API operations.
+        example: 1067
+      identityId:
+        type: number
+        description: Identity ID of the authenticated user
+        example: 12345
+      tokenScopeList:
+        type: array
+        description: Array of token scopes with organization and user context
+        items:
+          type: object
+          properties:
+            org:
+              type: object
+              description: Organization information
+              properties:
+                id:
+                  type: number
+                  description: Organization ID
+                name:
+                  type: string
+                  description: Organization name
+                opal:
+                  type: string
+                  description: Organization unique identifier
+                isUnified:
+                  type: boolean
+                  description: Whether organization is unified
+            user:
+              type: object
+              description: User information
+              properties:
+                id:
+                  type: number
+                  description: User ID
+                opal:
+                  type: string
+                  description: User unique identifier
+            scope:
+              type: array
+              description: Array of permission scopes (e.g., o1067-user:r, o1067-user:w)
+              items:
+                type: string
+      expiresAt:
+        type: string
+        format: date-time
+        description: ISO 8601 timestamp when the access token expires
+        example: '2025-10-22T10:30:00.000Z'
+      createdAt:
+        type: string
+        format: date-time
+        description: ISO 8601 timestamp when the token was created
+        example: '2025-10-08T10:30:00.000Z'
+      url:
+        type: string
+        format: url
+        description: API base URL
+        example: https://api.openpath.com

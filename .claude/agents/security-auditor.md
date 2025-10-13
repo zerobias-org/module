@@ -16,6 +16,25 @@ model: inherit
 - Compliance requirements
 - Rate limiting and throttling
 
+## Rules to Load
+
+**Critical Rules:**
+- @.claude/rules/security.md - All security patterns and credential rules (CRITICAL - core responsibility)
+- @.claude/rules/connection-profile-design.md - Secure credential handling patterns
+
+**Supporting Rules:**
+- @.claude/rules/implementation.md - Secure coding practices (Rule #2: No env vars)
+- @.claude/rules/api-spec-core-rules.md - Rule #9 (No connection context in parameters)
+- @.claude/rules/error-handling.md - No credentials in error messages
+
+**Key Principles:**
+- NEVER commit credentials to git
+- ALWAYS use HTTPS for API calls
+- NO secrets in logs or error messages
+- Credentials from .env or .connectionProfile.json only
+- Rate limiting handled properly
+- OAuth flows implemented securely
+
 ## Responsibilities
 - Analyze authentication requirements
 - Design secure credential handling

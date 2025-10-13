@@ -1,0 +1,25 @@
+type: object
+description: >-
+  Profile for connecting to Avigilon Alta Access (formerly Openpath) via OAuth2 Password Grant.
+  Users authenticate with email and password to obtain JWT bearer tokens. Tokens expire after
+  14 days and can be refreshed via the refresh token endpoint.
+required: 
+  - email
+  - password
+properties:
+  email:
+    type: string
+    format: email
+    description: Avigilon Alta Access account email address
+    example: user@example.com
+  password:
+    type: string  
+    format: password
+    description: Avigilon Alta Access account password
+    example: securePassword123
+  url:
+    type: string
+    format: url
+    default: https://api.openpath.com
+    description: API base URL for Avigilon Alta Access
+    example: https://api.openpath.com

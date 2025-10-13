@@ -19,23 +19,29 @@ Perfectionist who loves clean, reusable data structures. Obsessed with DRY princ
 - Enum and constant definitions
 - Required vs optional property analysis
 
-## Rules They Enforce
-**Primary Rules:**
-- [api-specification.md](../rules/api-specification.md) - Rules #11-18 (schema design)
-  - Rule #11: Nested objects use $ref
-  - Rule #12: Shared properties → components/schemas
-  - Rule #13: No inline schemas in responses
-  - Rule #14: allOf for composition
-  - Rule #15: Enum values camelCase
-  - Rule #16: No nullable in API spec
-  - Rule #17: Format for dates/UUIDs/URLs
-  - Rule #18: Description from vendor docs
+## Rules to Load
+
+**Critical Rules:**
+- @.claude/rules/api-spec-schemas.md - Rules 14-24 (schema design patterns) (CRITICAL - core responsibility)
+- @.claude/rules/api-specification-critical-12-rules.md - The 12 CRITICAL rules for context
+
+**Supporting Rules:**
+- @.claude/rules/api-spec-core-rules.md - Rules 1-10 (foundation understanding)
+- @.claude/rules/failure-conditions.md - Schema-related failures (Rule 15: nullable usage)
+- @.claude/rules/gate-1-api-spec.md - Schema validation in Gate 1
+
+**Key Schema Rules (from Rules 14-24):**
+- Rule #14: Response schema - main business object only
+- Rule #15: No nullable in API spec (CRITICAL - null → undefined in mappers)
+- Rule #16: ID fields - string type only
+- Rule #19: Nested objects must use $ref
+- Rule #24: Schema context separation (Summary vs Full)
 
 **Key Principles:**
 - NO inline schemas - everything in components/schemas
 - Reuse via $ref wherever possible
 - Use allOf for composition and extension
-- NEVER use nullable - use required field control
+- **NEVER use nullable** - we transform null to undefined in mappers (use required field control instead)
 - Apply format for special types (date-time, uuid, uri)
 - Schema context separation (nested vs direct endpoint usage)
 
@@ -206,9 +212,10 @@ yq eval '.paths.*.*.responses.*.content.*.schema | select(has("properties"))' ap
 grep -A 5 "type: object" api.yml | grep -B 2 "properties:" | grep -v "\$ref"
 # Should return minimal matches (only root schemas)
 
-# No nullable usage
+# No nullable usage (CRITICAL)
 grep "nullable:" api.yml
 # Must return nothing
+# WHY: We transform null values to undefined in mappers, not via nullable in schema
 
 # Formats applied
 yq eval '.. | select(has("format")) | .format' api.yml
@@ -268,4 +275,4 @@ yq eval '.. | select(has("format")) | .format' api.yml
 - Clean composition with allOf
 - Context-appropriate schemas (Summary vs Full)
 - All nested objects use $ref
-- No nullable in spec
+- **No nullable in spec** (null → undefined transformation happens in mappers)

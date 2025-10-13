@@ -30,7 +30,7 @@
 
 ## Key Activities
 
-### 1. Product Discovery
+### 1. Product Discovery (Module Creation)
 ```markdown
 1. List product bundles to find matching product:
    npm view @zerobias-org/product-bundle --json
@@ -42,20 +42,38 @@
    - If multiple matches: Ask user to clarify
    - If not found: Stop and wait for user
 
-3. Extract product information:
+3. Extract module identifier from product package name:
+   - Product: @scope/product-vendor-suite-service → Module: vendor-suite-service
+   - Product: @scope/product-vendor-service → Module: vendor-service
+
+4. Create memory folder structure:
+   mkdir -p .claude/.localmemory/create-{module-identifier}/_work
+   cd .claude/.localmemory/create-{module-identifier}/_work
+
+5. Install product package in _work directory:
+   npm install @zerobias-org/product-{vendor}{-suite?}-{product}
+   # OR
+   npm install @auditlogic/product-{vendor}{-suite?}-{product}
+
+6. Extract product information (EXCLUDE Operations):
    # Priority 1: Read index.yml
    cat node_modules/{product-package}/index.yml
-   # Priority 2: Extract from catalog.yml
+   # Priority 2: Extract ONLY Product section from catalog.yml
    yq '.Product' node_modules/{product-package}/catalog.yml
+   # Note: DO NOT extract .Operations - saved for operation addition phase
 
-4. Search official documentation
-5. Explore product UI/UX
-6. Research common use cases
-7. Identify resource hierarchy
-8. Document in _work/product-model.md
+7. Document findings in _work/product-model.md
+   - Product name and description
+   - Main resources/entities
+   - Authentication method
+   - Base URL
+   - DO NOT list operations (minimal scope)
 ```
 
-### 2. API Analysis Process
+### 2. API Analysis Process (Operation Addition - NOT for Module Creation)
+**Note:** For module creation, this is SKIPPED (minimal scope).
+This comprehensive analysis is for operation addition phase.
+
 - Use AI agent for comprehensive documentation analysis
 - Create complete Mermaid entity relationship diagrams
 - Map ALL data entities including system entities
@@ -74,15 +92,21 @@
 - Choose user-friendly naming
 
 ### 4. Operation Prioritization
-Essential operations (for minimal module):
-- List primary resource without parameters
-- Get current user/context
-- Basic connectivity test
+
+**Module Creation (MINIMAL):**
+- Connection/authentication ONLY
+- Let @operation-analyst select the SINGLE best operation
+- Do NOT prioritize all operations yet
+
+**Operation Addition (COMPREHENSIVE):**
+Essential operations:
+- Core CRUD for each resource type
+- Relationship operations
 
 Additional operations (added incrementally):
-- CRUD for each resource type
-- Relationship operations
 - Advanced queries and filters
+- Batch operations
+- Special actions
 
 ## Quality Standards
 - **Zero tolerance for**:

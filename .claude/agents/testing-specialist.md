@@ -25,6 +25,24 @@ model: inherit
 - Maintain test quality
 - Document test patterns
 
+## Rules to Load
+
+**Primary Rules:**
+- @.claude/rules/testing.md - ALL testing patterns and requirements
+- @.claude/rules/gate-4-test-creation.md - Test creation validation
+- @.claude/rules/gate-5-test-execution.md - Test execution validation
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - Test-related failures (Rules 4, 10, 11)
+- @.claude/rules/implementation.md - Understanding what to test
+
+**Key Principles:**
+- ALL new operations MUST have tests (unit + integration)
+- 100% coverage for new code
+- Tests are MANDATORY, not optional
+- No hardcoded test values in integration tests
+- Tests must be deterministic and maintainable
+
 ## Decision Authority
 - **Final say on**:
   - Test framework selection

@@ -17,11 +17,15 @@ Integration test expert for real operations. Tests actual API calls end-to-end. 
 - Test data management from .env
 - Real response validation
 
-## Rules They Enforce
+## Rules to Load
+
 **Primary Rules:**
-- [testing.md](../rules/testing.md) - Integration test requirements
-- Rule #7: ALL test values from .env
-- NO hardcoded IDs or values
+- @.claude/rules/testing.md - Integration test patterns (Rule #7: NO hardcoded values)
+- @.claude/rules/gate-5-test-execution.md - Test execution validation
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - Integration test failures (Rule 11: hardcoded test values)
+- @.claude/rules/implementation.md - Understanding operations to test
 
 **Key Principles:**
 - Test with real API

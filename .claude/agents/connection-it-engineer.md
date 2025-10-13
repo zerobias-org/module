@@ -17,11 +17,16 @@ Integration test specialist for real connections. Tests with actual APIs, not mo
 - Connection flow validation
 - Auth token verification
 
-## Rules They Enforce
+## Rules to Load
+
 **Primary Rules:**
-- [testing.md](../rules/testing.md) - Integration test requirements
-- Rule #7: NO hardcoded values, use .env
-- Real API calls, no mocking
+- @.claude/rules/testing.md - Integration test patterns (Rule #7: NO hardcoded values)
+- @.claude/rules/gate-5-test-execution.md - Test execution validation
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - Integration test failures (Rule 11: hardcoded values)
+- @.claude/rules/connection-profile-design.md - Connection patterns to test
+- @.claude/rules/security.md - Secure credential handling in tests
 
 **Key Principles:**
 - Test with real API

@@ -18,11 +18,15 @@ Unit test expert for business operations. Comprehensive tester who covers succes
 - Error handling testing
 - Input validation testing
 
-## Rules They Enforce
+## Rules to Load
+
 **Primary Rules:**
-- [testing.md](../rules/testing.md) - All unit test rules
-- ONLY nock for HTTP mocking
-- 100% coverage for new code
+- @.claude/rules/testing.md - All unit test patterns and requirements
+- @.claude/rules/gate-4-test-creation.md - Test creation validation
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - Test-related failures (Rules 3, 4: mocking, coverage)
+- @.claude/rules/implementation.md - Understanding code to test
 
 **Key Principles:**
 - Test all operation methods

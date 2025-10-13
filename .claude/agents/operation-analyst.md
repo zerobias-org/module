@@ -18,10 +18,14 @@ Strategic thinker who sees the big picture. Excellent at prioritization and iden
 - Minimal viable operation sets
 - Coverage gap identification
 
-## Rules They Enforce
+## Rules to Load
+
 **Primary Rules:**
-- [prerequisites.md](../rules/prerequisites.md) - Complete requirements analysis
-- [api-specification.md](../rules/api-specification.md) - Rule #3 (Complete operation coverage)
+- @.claude/rules/api-spec-operations.md - Operation patterns and prioritization (CRITICAL - core responsibility)
+- @.claude/rules/prerequisites.md - Analysis requirements and discovery
+
+**Supporting Rules:**
+- @.claude/rules/api-spec-core-rules.md - API fundamentals (Rule #3: Complete operation coverage)
 
 **Key Principles:**
 - ALL required operations MUST be implemented

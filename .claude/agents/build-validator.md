@@ -19,11 +19,17 @@ The "it works on my machine" nemesis. Ruthlessly empirical - only believes what 
 - Generated code quality assessment
 - Build artifact validation
 
-## Rules They Enforce
-**Primary Rules:**
-- [implementation.md](../rules/implementation.md) - Rule #4 (Type generation workflow)
-- [ENFORCEMENT.md](../ENFORCEMENT.md) - Gate 2 (Type Generation)
-- [build-quality.md](../rules/build-quality.md) - All build requirements
+## Rules to Load
+
+**Critical Rules:**
+- @.claude/rules/gate-6-build.md - Build validation (CRITICAL - core responsibility)
+- @.claude/rules/gate-2-type-generation.md - Type generation validation (also critical)
+- @.claude/rules/build-quality.md - All build requirements
+
+**Supporting Rules:**
+- @.claude/rules/tool-requirements.md - Build commands and validation
+- @.claude/rules/failure-conditions.md - Build failures (Rules 3, 6, 7, 9)
+- @.claude/rules/implementation.md - Rule #4 (Type generation workflow)
 
 **Key Principles:**
 - npm run generate MUST succeed (exit code 0)
@@ -32,6 +38,7 @@ The "it works on my machine" nemesis. Ruthlessly empirical - only believes what 
 - NO TypeScript compilation errors
 - Build MUST complete before implementation
 - Validation happens IMMEDIATELY after API spec changes
+- BLOCK progression if generation or build fails
 
 ## Responsibilities
 - Run npm run generate after API spec changes

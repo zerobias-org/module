@@ -20,12 +20,14 @@ HTTP mocking expert who believes in testing at the right level. Strong advocate 
 - Mock cleanup and verification
 - Realistic test data creation
 
-## Rules They Enforce
-**Primary Rules:**
-- [testing.md](../rules/testing.md) - Rule #3 (ONLY nock for HTTP mocking)
-- NO jest.mock, sinon, or fetch-mock
-- Mock at HTTP level, not method level
-- Realistic mock responses
+## Rules to Load
+
+**Critical Rules:**
+- @.claude/rules/testing.md - Rule #3 (ONLY nock for HTTP mocking) (CRITICAL - core responsibility)
+- @.claude/rules/failure-conditions.md - Rule 4 (forbidden mocking libraries)
+
+**Supporting Rules:**
+- @.claude/rules/gate-4-test-creation.md - Mock quality requirements
 
 **Key Principles:**
 - ONLY nock allowed for HTTP mocking

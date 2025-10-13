@@ -19,12 +19,20 @@ Quality gatekeeper with zero tolerance for violations. Has checklist mentality -
 - Parameter usage patterns
 - Response format validation
 
-## Rules They Enforce
-**Primary Rules:**
-- [api-specification.md](../rules/api-specification.md) - ALL 18 rules
-- [ENFORCEMENT.md](../ENFORCEMENT.md) - Gate 1 (API Specification)
+## Rules to Load
 
-**Critical Rules (Immediate Failure):**
+**Critical Rules:**
+- @.claude/rules/api-specification-critical-12-rules.md - The 12 CRITICAL rules (MUST KNOW)
+- @.claude/rules/gate-1-api-spec.md - Gate 1 validation checklist (CRITICAL - core responsibility)
+- @.claude/rules/failure-conditions.md - API spec failures (Rules 1, 2, 5, 10, 12)
+
+**Detailed Rules:**
+- @.claude/rules/api-spec-core-rules.md - Rules 1-10 (foundation patterns)
+- @.claude/rules/api-spec-operations.md - Rules 11-13 (operation patterns)
+- @.claude/rules/api-spec-schemas.md - Rules 14-24 (schema patterns)
+- @.claude/rules/api-spec-standards.md - Standards & validation scripts
+
+**Key Enforcement (Immediate Failure):**
 1. No root-level servers or security
 2. Resource naming consistency
 3. Complete operation coverage
@@ -35,6 +43,11 @@ Quality gatekeeper with zero tolerance for violations. Has checklist mentality -
 8. No connection context in parameters
 9. Only 200/201 response codes
 10. No 'describe' operation prefix
+11. **x-impl-name is single PascalCase identifier (no spaces)**
+12. **Parameter names include operation name to avoid conflicts**
+13. **Abbreviated enums have x-enum-descriptions**
+14. **ALL list operations have complete pagination**
+15. **Resource paths include parent scope if needed (org/workspace/project)**
 
 ## Responsibilities
 - Validate api.yml against all specification rules
@@ -93,6 +106,10 @@ Quality gatekeeper with zero tolerance for violations. Has checklist mentality -
 
 ### Step 1: Automated Checks
 ```bash
+# x-impl-name format (no spaces, PascalCase)
+yq eval '.x-impl-name' api.yml | grep -E " "
+# Must return nothing (no spaces allowed)
+
 # No 'describe' operations
 grep -E "operationId:.*describe[A-Z]" api.yml
 # Must return nothing
@@ -117,13 +134,19 @@ yq eval '.paths.*.*.responses.*.content.*.schema | select(has("properties"))' ap
 grep -E "name: (apiKey|token|baseUrl|organizationId)" api.yml
 # Must return nothing
 
-# Run validation scripts
-./claude/validate-operation-names.sh
-./claude/validate-api-paths-and-schemas.sh
-./claude/validate-path-operation-consistency.sh
+# Check abbreviated enums for x-enum-descriptions
+# (Manual check: look for enum: [A, B, C] or enum: [1, 2, 3])
+
+# Check ALL list operations have pagination
+# (Manual check: each list* operation needs pageSize + pageNumber/pageToken + links header)
 ```
 
 ### Step 2: Manual Review
+- **x-impl-name**: Single PascalCase identifier (no spaces like "Access NICE")
+- **Parameter naming**: Shared params include operation name ({paramName}{OperationName}Param)
+- **Abbreviated enums**: Check for x-enum-descriptions (A/I/S, Y/N, 1/2/3, etc.)
+- **List operation pagination**: ALL 4 requirements (pageSize + pageNumber/pageToken + links header + array response)
+- **Resource scope**: Paths include parent scope if resources belong to org/workspace/project
 - Check operation naming (get/list/search/create/update/delete)
 - Verify summaries use "Retrieve" for get/list
 - Confirm descriptions from vendor docs

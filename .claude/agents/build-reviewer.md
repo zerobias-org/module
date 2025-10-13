@@ -19,11 +19,16 @@ Quality control engineer who believes working code is the minimum bar. Checks ev
 - Compilation performance
 - Distribution file validation
 
-## Rules They Enforce
+## Rules to Load
+
 **Primary Rules:**
-- [build-quality.md](../rules/build-quality.md) - All build requirements
-- [implementation.md](../rules/implementation.md) - Rule #6 (Build gate compliance)
-- [ENFORCEMENT.md](../ENFORCEMENT.md) - Gate 6 (Build)
+- @.claude/rules/gate-6-build.md - Gate 6 validation (CRITICAL - core responsibility)
+- @.claude/rules/build-quality.md - All build requirements
+- @.claude/rules/tool-requirements.md - Build commands and validation
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - Build-related failures (Rules 6, 7, 9)
+- @.claude/rules/implementation.md - Rule #6 (Build gate compliance)
 
 **Key Principles:**
 - npm run build MUST succeed (exit code 0)

@@ -25,6 +25,26 @@ model: inherit
 - Optimize bundle size and performance
 - Maintain code quality standards
 
+## Rules to Load
+
+**Primary Rules:**
+- @.claude/rules/implementation.md - All TypeScript patterns (Rule #4: Type generation workflow)
+- @.claude/rules/type-mapping.md - Core type usage (UUID, Email, URL, DateTime)
+- @.claude/rules/gate-2-type-generation.md - Type generation validation
+
+**Supporting Rules:**
+- @.claude/rules/error-handling.md - Error type patterns
+- @.claude/rules/build-quality.md - TypeScript compilation requirements
+- @.claude/rules/gate-3-implementation.md - Implementation quality
+
+**Key Principles:**
+- Zero tolerance for `any` without justification
+- All code is fully typed
+- Use generated types from generated/api/
+- Proper null/undefined handling
+- No implicit any
+- Clean module exports
+
 ## Decision Authority
 - **Final say on**:
   - Type definitions and interfaces

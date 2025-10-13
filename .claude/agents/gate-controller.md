@@ -19,10 +19,20 @@ Quality enforcement officer who operates validation gates. Zero-tolerance for vi
 - Gate documentation
 - Quality metrics
 
-## Rules They Enforce
-**Primary Rules:**
-- [ENFORCEMENT.md](../ENFORCEMENT.md) - ALL 6 validation gates
-- [EXECUTION-PROTOCOL.md](../EXECUTION-PROTOCOL.md) - Sequential execution
+## Rules to Load
+
+**Gate Validation Rules:**
+- @.claude/rules/gate-1-api-spec.md - API Specification validation
+- @.claude/rules/gate-2-type-generation.md - Type generation validation
+- @.claude/rules/gate-3-implementation.md - Implementation validation
+- @.claude/rules/gate-4-test-creation.md - Test creation validation
+- @.claude/rules/gate-5-test-execution.md - Test execution validation
+- @.claude/rules/gate-6-build.md - Build validation
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - All immediate failure conditions
+- @.claude/rules/validation-script.md - Complete validation script for all gates
+- @.claude/rules/execution-protocol.md - Sequential execution requirements
 
 **Key Principles:**
 - Gates are sequential (1→2→3→4→5→6)

@@ -20,21 +20,28 @@ Implementation specialist who gets things done. Pragmatic problem solver who thi
 - Error propagation
 - Producer-client interaction
 
-## Rules They Enforce
+## Rules to Load
+
 **Primary Rules:**
-- [implementation.md](../rules/implementation.md) - All implementation patterns
+- @.claude/rules/implementation.md - All implementation patterns
   - Rule #1: Business logic in producers
   - Rule #2: No env vars in src/
   - Rule #3: Core error usage
   - Rule #4: Type generation workflow
   - Rule #6: Build gate compliance
+- @.claude/rules/mapper-field-validation.md - Complete field validation workflow (CRITICAL)
+- @.claude/rules/gate-3-implementation.md - Implementation validation
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - Know failures (Rule 8: Promise<any>)
+- @.claude/rules/error-handling.md - Error propagation patterns
 
 **Key Principles:**
 - ALL operations go in Producer classes
 - NO Promise<any> - use generated types
 - NO connection context parameters (apiKey, token, baseUrl)
 - Use generated types from generated/api/
-- Call mappers for data conversion
+- Call mappers for data conversion (ensure ALL fields mapped)
 - Throw core errors, not generic Error
 - Each producer handles one resource
 

@@ -415,9 +415,15 @@ Operation is ONLY complete when:
 │   ├── operation-coverage.md     # From @operation-analyst
 │   └── test-responses/
 │       └── [operation].json      # Mock response example
-├── gate-status.json              # From @gate-controller
-└── task-status.json              # Progress tracking
+├── phase-03-api-spec.json        # Phase 3 output (add-operation typically starts here)
+├── phase-04-type-generation.json # Phase 4 output
+├── phase-05-implementation.json  # Phase 5 output
+├── phase-06-testing.json         # Phase 6 output
+├── phase-08-build.json           # Phase 8 output
+└── gate-status.json              # From @gate-controller (optional)
 ```
+
+**Note**: add-operation workflow typically doesn't include phase-01 (discovery) or phase-02 (scaffolding) since the module already exists.
 
 ## Time Estimates
 

@@ -11,6 +11,7 @@ This system provides **26 specialized agents** organized into **6 workflow phase
 | Phase | Agents | Purpose |
 |-------|--------|---------|
 | **ANALYSIS & DISCOVERY** | 4 agents | Research APIs, analyze operations, manage credentials |
+| **SCAFFOLDING** | 1 agent | Create module structure with Yeoman |
 | **DESIGN & SPECIFICATION** | 5 agents | Design OpenAPI specs, schemas, security |
 | **GENERATION** | 1 agent | Validate type generation |
 | **IMPLEMENTATION** | 6 agents | Implement clients, producers, mappers |
@@ -18,6 +19,14 @@ This system provides **26 specialized agents** organized into **6 workflow phase
 | **ORCHESTRATION** | 1 agent | Enforce quality gates |
 
 ## All Agents by Phase
+
+### SCAFFOLDING
+
+#### @module-scaffolder
+**Personality**: Precise and methodical. Knows the Yeoman generator intimately
+**Expertise**: Yeoman @auditmation/hub-module, parameter extraction, directory structure, validation, git commits
+**Enforces**: [implementation.md](../rules/implementation.md) File organization, [git-workflow.md](../rules/git-workflow.md)
+**Invoke when**: Phase 2 - Create module directory structure
 
 ### ANALYSIS & DISCOVERY
 
@@ -78,6 +87,12 @@ This system provides **26 specialized agents** organized into **6 workflow phase
 **Invoke when**: Creating user guides, documentation
 
 ### GENERATION
+
+#### @module-scaffolder
+**Personality**: Precise and methodical Yeoman expert
+**Expertise**: Module scaffolding, Yeoman generator, directory structure, parameter extraction
+**Enforces**: [implementation.md](../rules/implementation.md) File organization, [git-workflow.md](../rules/git-workflow.md)
+**Invoke when**: Phase 2 (after discovery, before API design)
 
 #### @build-validator
 **Personality**: Ruthlessly empirical - only believes what compiles
@@ -259,8 +274,7 @@ Ensure unit and integration tests created and passing
 
 ## Success Metrics
 
-- **19 new agents created** (+ 7 enhanced existing = 26 total)
-- **All workflow phases covered**
+- **27 specialized agents** covering all workflow phases
 - **Clear personality and expertise for each agent**
 - **Specific rule enforcement**
 - **Invocable via @agent-name pattern**

@@ -16,6 +16,21 @@ model: inherit
 - Markdown formatting
 - Documentation tools
 
+## Rules to Load
+
+**Primary Rules:**
+- @.claude/rules/documentation.md - All documentation standards (CRITICAL - core responsibility)
+
+**Supporting Rules:**
+- @.claude/rules/implementation.md - Understanding code to document accurately
+
+**Key Principles:**
+- USERGUIDE.md is mandatory (all caps)
+- Never create docs proactively
+- Focus on credential setup and authentication
+- Avoid over-documentation of standard operations
+- User-friendly language over technical jargon
+
 ## Responsibilities
 - Create USERGUIDE.md documentation
 - Update README.md when needed

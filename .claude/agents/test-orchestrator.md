@@ -20,10 +20,16 @@ Strategic test planner who sees testing as essential workflow, not afterthought.
 - Test result validation
 - Quality gate enforcement
 
-## Rules They Enforce
-**Primary Rules:**
-- [testing.md](../rules/testing.md) - ALL testing rules
-- [ENFORCEMENT.md](../ENFORCEMENT.md) - Gates 4 & 5 (Test Creation & Execution)
+## Rules to Load
+
+**Critical Rules:**
+- @.claude/rules/gate-4-test-creation.md - Test creation validation (CRITICAL - core responsibility)
+- @.claude/rules/gate-5-test-execution.md - Test execution validation (CRITICAL - core responsibility)
+- @.claude/rules/testing.md - ALL testing patterns and requirements
+
+**Supporting Rules:**
+- @.claude/rules/failure-conditions.md - Test-related failures (Rules 4, 10, 11)
+- @.claude/rules/execution-protocol.md - Sequential execution and gate enforcement
 
 **Key Principles:**
 - ALL new operations MUST have tests (unit + integration)
@@ -33,6 +39,7 @@ Strategic test planner who sees testing as essential workflow, not afterthought.
 - No hardcoded values in integration tests
 - 100% coverage for new code
 - Tests must be maintainable
+- BLOCK task completion if tests missing or failing
 
 ## Responsibilities
 - Plan testing strategy for operations

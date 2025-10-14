@@ -29,25 +29,25 @@ import {
 } from '../generated/model';
 
 export function mapUserIdentity(raw: any): UserIdentity {
-  const result = new UserIdentity(
-    raw.id || 0, // id is required but might not be in raw data, default to 0
-    new Email(raw.email || 'unknown@example.com'), // Convert string email to Email object
-    raw.firstName || '', // Required field
-    raw.lastName || '', // Required field
-    raw.mobilePhone || raw.phoneNumber, // Map mobilePhone to phoneNumber
-    raw.avatarUrl,
-    raw.middleName,
-    raw.suffix,
-    raw.preferredName,
-    raw.pronouns,
-    raw.dateOfBirth ? new Date(raw.dateOfBirth) : undefined,
-    raw.emergencyContactName,
-    raw.emergencyContactPhone,
-    raw.homeAddress,
-    raw.companyName,
-    raw.workAddress
-  );
-  return result;
+  const output: UserIdentity = {
+    id: raw.id || 0, // id is required but might not be in raw data, default to 0
+    email: new Email(raw.email || 'unknown@example.com'), // Convert string email to Email object
+    firstName: raw.firstName || '', // Required field
+    lastName: raw.lastName || '', // Required field
+    phoneNumber: raw.mobilePhone || raw.phoneNumber, // Map mobilePhone to phoneNumber
+    ...(raw.avatarUrl && { avatarUrl: raw.avatarUrl }),
+    ...(raw.middleName && { middleName: raw.middleName }),
+    ...(raw.suffix && { suffix: raw.suffix }),
+    ...(raw.preferredName && { preferredName: raw.preferredName }),
+    ...(raw.pronouns && { pronouns: raw.pronouns }),
+    ...(raw.dateOfBirth && { dateOfBirth: new Date(raw.dateOfBirth) }),
+    ...(raw.emergencyContactName && { emergencyContactName: raw.emergencyContactName }),
+    ...(raw.emergencyContactPhone && { emergencyContactPhone: raw.emergencyContactPhone }),
+    ...(raw.homeAddress && { homeAddress: raw.homeAddress }),
+    ...(raw.companyName && { companyName: raw.companyName }),
+    ...(raw.workAddress && { workAddress: raw.workAddress }),
+  };
+  return output;
 }
 
 /**
@@ -172,7 +172,7 @@ export function mapGroup(raw: any): Group {
  * Maps raw API group data to GroupInfo interface (extended Group with additional fields)
  */
 export function mapGroupInfo(groupData: Group, raw: any): GroupInfo {
-  return {
+  const output: GroupInfo = {
     ...groupData,
     ...(raw.organizationId && { organizationId: raw.organizationId }),
     ...(raw.parentGroupId && { parentGroupId: raw.parentGroupId }),
@@ -180,6 +180,7 @@ export function mapGroupInfo(groupData: Group, raw: any): GroupInfo {
     ...(raw.accessRules && { accessRules: raw.accessRules }),
     ...(raw.customFields && { customFields: raw.customFields }),
   };
+  return output;
 }
 
 /**
@@ -234,20 +235,21 @@ export function mapAcu(raw: any): Acu {
  * Maps raw API ACU data to AcuInfo interface (extended Acu with additional fields)
  */
 export function mapAcuInfo(acuData: Acu, raw: any): AcuInfo {
-  return {
+  const output: AcuInfo = {
     ...acuData,
     ...(raw.organizationId && { organizationId: raw.organizationId }),
     ...(raw.siteId && { siteId: raw.siteId }),
     ...(raw.portCount && { portCount: raw.portCount }),
     ...(raw.lastHeartbeat && { lastHeartbeat: new Date(raw.lastHeartbeat) }),
   };
+  return output;
 }
 
 /**
  * Maps raw API role data to Role interface
  */
 export function mapRole(raw: any): Role {
-  return {
+  const output: Role = {
     id: raw.id,
     name: raw.name,
     ...(raw.description && { description: raw.description }),
@@ -255,36 +257,38 @@ export function mapRole(raw: any): Role {
     ...(raw.createdAt && { createdAt: map(Date, raw.createdAt) }),
     ...(raw.updatedAt && { updatedAt: map(Date, raw.updatedAt) }),
   };
+  return output;
 }
 
 /**
  * Maps raw API site data to Site interface
  */
 export function mapSite(raw: any): Site {
-  return new Site(
-    raw.id,
-    raw.name,
-    raw.opal,
-    raw.address,
-    raw.address2,
-    raw.city,
-    raw.state,
-    raw.zip,
-    raw.country,
-    raw.phone,
-    raw.language,
-    raw.zoneCount,
-    raw.userCount,
-    raw.createdAt ? map(Date, raw.createdAt) : undefined,
-    raw.updatedAt ? map(Date, raw.updatedAt) : undefined
-  );
+  const output: Site = {
+    id: raw.id,
+    name: raw.name,
+    ...(raw.opal && { opal: raw.opal }),
+    ...(raw.address && { address: raw.address }),
+    ...(raw.address2 && { address2: raw.address2 }),
+    ...(raw.city && { city: raw.city }),
+    ...(raw.state && { state: raw.state }),
+    ...(raw.zip && { zip: raw.zip }),
+    ...(raw.country && { country: raw.country }),
+    ...(raw.phone && { phone: raw.phone }),
+    ...(raw.language && { language: raw.language }),
+    ...(raw.zoneCount !== undefined && { zoneCount: raw.zoneCount }),
+    ...(raw.userCount !== undefined && { userCount: raw.userCount }),
+    ...(raw.createdAt && { createdAt: map(Date, raw.createdAt) }),
+    ...(raw.updatedAt && { updatedAt: map(Date, raw.updatedAt) }),
+  };
+  return output;
 }
 
 /**
  * Maps raw API entry data to Entry interface
  */
 export function mapEntry(raw: any): Entry {
-  return {
+  const output: Entry = {
     id: raw.id,
     ...(raw.type && { type: toEnum(Entry.TypeEnum, raw.type) }),
     ...(raw.userId && { userId: raw.userId }),
@@ -293,24 +297,26 @@ export function mapEntry(raw: any): Entry {
     ...(raw.granted && { granted: raw.granted }),
     ...(raw.reason && { reason: raw.reason }),
   };
+  return output;
 }
 
 // Internal helper function for nested object mapping
 function mapPortConfiguration(raw: any): any {
   if (!raw) return undefined;
-  return {
+  const output = {
     ...(raw.debounceTime && { debounceTime: raw.debounceTime }),
     ...(raw.pollingRate && { pollingRate: raw.pollingRate }),
     ...(raw.enabled && { enabled: raw.enabled }),
     ...(raw.customSettings && { customSettings: raw.customSettings }),
   };
+  return output;
 }
 
 /**
  * Maps raw API port data to Port interface
  */
 export function mapPort(raw: any): Port {
-  return {
+  const output: Port = {
     id: raw.id,
     name: raw.name,
     ...(raw.type && { type: toEnum(Port.TypeEnum, raw.type) }),
@@ -318,6 +324,7 @@ export function mapPort(raw: any): Port {
     ...(raw.description && { description: raw.description }),
     ...(raw.configuration && { configuration: mapPortConfiguration(raw.configuration) }),
   };
+  return output;
 }
 
 /**
@@ -330,43 +337,56 @@ export function mapTokenProperties(raw: any): TokenProperties {
   // Extract scope array from tokenScopeList
   const scope = raw.tokenScopeList?.[0]?.scope;
 
-  return new TokenProperties(
-    organizationId,
-    raw.identityId,
-    map(Date, raw.createdAt),
-    map(Date, raw.expiresAt),
-    scope,
-    raw.tokenType,
-    raw.jti,
-    raw.iat,
-    raw.exp
-  );
+  const output: TokenProperties = {
+    ...(organizationId !== undefined && { organizationId: organizationId }),
+    ...(raw.identityId !== undefined && { identityId: raw.identityId }),
+    ...(raw.createdAt && { issuedAt: map(Date, raw.createdAt) }),
+    ...(raw.expiresAt && { expiresAt: map(Date, raw.expiresAt) }),
+    ...(scope && { scope: scope }),
+    ...(raw.tokenType && { tokenType: raw.tokenType }),
+    ...(raw.jti && { jti: raw.jti }),
+    ...(raw.iat !== undefined && { iat: raw.iat }),
+    ...(raw.exp !== undefined && { exp: raw.exp }),
+  };
+  return output;
 }
 
 // Helper functions for Zone mapping
 function mapZoneEntryAcu(raw: any): ZoneEntryAcu | undefined {
   if (!raw) return undefined;
-  return new ZoneEntryAcu(raw.id);
+  const output: ZoneEntryAcu = {
+    id: raw.id,
+  };
+  return output;
 }
 
 function mapZoneEntry(raw: any): ZoneEntry | undefined {
   if (!raw) return undefined;
-  return new ZoneEntry(
-    raw.id,
-    raw.name,
-    raw.wirelessLock,
-    mapZoneEntryAcu(raw.acu)
-  );
+  const output: ZoneEntry = {
+    id: raw.id,
+    name: raw.name,
+    ...(raw.wirelessLock !== undefined && { wirelessLock: raw.wirelessLock }),
+    ...(raw.acu && { acu: mapZoneEntryAcu(raw.acu) }),
+  };
+  return output;
 }
 
 function mapZoneSiteRef(raw: any): ZoneSiteRef | undefined {
   if (!raw) return undefined;
-  return new ZoneSiteRef(raw.id, raw.name);
+  const output: ZoneSiteRef = {
+    id: raw.id,
+    name: raw.name,
+  };
+  return output;
 }
 
 function mapOrganizationRef(raw: any): OrganizationRef | undefined {
   if (!raw) return undefined;
-  return new OrganizationRef(raw.id, raw.name);
+  const output: OrganizationRef = {
+    id: raw.id,
+    name: raw.name,
+  };
+  return output;
 }
 
 /**
@@ -374,78 +394,106 @@ function mapOrganizationRef(raw: any): OrganizationRef | undefined {
  * Flattens the response from {data: [...], meta: {...}} to just the zones array
  */
 export function mapZone(raw: any): Zone {
-  return new Zone(
-    raw.id,
-    raw.name,
-    raw.opal,
-    raw.description,
-    raw.apbResetIcalText,
-    raw.apbExpirationSeconds,
-    raw.apbUseContactSensor,
-    raw.apbAllowSharedOrgReset,
-    raw.entryCount,
-    raw.offlineEntryCount,
-    raw.userCount,
-    raw.groupCount,
-    mapOrganizationRef(raw.org),
-    mapZoneSiteRef(raw.site),
-    raw.zoneShares,
-    raw.entries?.map(mapZoneEntry),
-    raw.apbAreas,
-    raw.createdAt ? map(Date, raw.createdAt) : undefined,
-    raw.updatedAt ? map(Date, raw.updatedAt) : undefined
-  );
+  const output: Zone = {
+    id: raw.id,
+    name: raw.name,
+    ...(raw.opal && { opal: raw.opal }),
+    ...(raw.description && { description: raw.description }),
+    ...(raw.apbResetIcalText && { apbResetIcalText: raw.apbResetIcalText }),
+    ...(raw.apbExpirationSeconds !== undefined && { apbExpirationSeconds: raw.apbExpirationSeconds }),
+    ...(raw.apbUseContactSensor !== undefined && { apbUseContactSensor: raw.apbUseContactSensor }),
+    ...(raw.apbAllowSharedOrgReset !== undefined && { apbAllowSharedOrgReset: raw.apbAllowSharedOrgReset }),
+    ...(raw.entryCount !== undefined && { entryCount: raw.entryCount }),
+    ...(raw.offlineEntryCount !== undefined && { offlineEntryCount: raw.offlineEntryCount }),
+    ...(raw.userCount !== undefined && { userCount: raw.userCount }),
+    ...(raw.groupCount !== undefined && { groupCount: raw.groupCount }),
+    ...(raw.org && { org: mapOrganizationRef(raw.org) }),
+    ...(raw.site && { site: mapZoneSiteRef(raw.site) }),
+    ...(raw.zoneShares && { zoneShares: raw.zoneShares }),
+    ...(raw.entries && { entries: raw.entries.map(mapZoneEntry) }),
+    ...(raw.apbAreas && { apbAreas: raw.apbAreas }),
+    ...(raw.createdAt && { createdAt: map(Date, raw.createdAt) }),
+    ...(raw.updatedAt && { updatedAt: map(Date, raw.updatedAt) }),
+  };
+  return output;
 }
 
 // Helper functions for EntryDetails mapping
 function mapVideoProvider(raw: any): VideoProvider | undefined {
   if (!raw) return undefined;
-  return new VideoProvider(raw.id, raw.videoProviderTypeId);
+  const output: VideoProvider = {
+    id: raw.id,
+    ...(raw.videoProviderTypeId && { videoProviderTypeId: raw.videoProviderTypeId }),
+  };
+  return output;
 }
 
 function mapEntryCamera(raw: any): EntryCamera | undefined {
   if (!raw) return undefined;
-  return new EntryCamera(
-    raw.id,
-    raw.name,
-    raw.nameExt,
-    raw.idExt,
-    raw.supportsSnapshot,
-    raw.supportsDeeplink,
-    raw.supportsMotionSnapshot,
-    raw.supportsFaceCrop,
-    raw.supportsFaceDetection,
-    raw.supportsPeopleDetection,
-    raw.supportsMotionRecap,
-    raw.supportsLivestream,
-    raw.videoProviderId,
-    mapVideoProvider(raw.videoProvider)
-  );
+  const output: EntryCamera = {
+    id: raw.id,
+    name: raw.name,
+    ...(raw.nameExt && { nameExt: raw.nameExt }),
+    ...(raw.idExt && { idExt: raw.idExt }),
+    ...(raw.supportsSnapshot !== undefined && { supportsSnapshot: raw.supportsSnapshot }),
+    ...(raw.supportsDeeplink !== undefined && { supportsDeeplink: raw.supportsDeeplink }),
+    ...(raw.supportsMotionSnapshot !== undefined && { supportsMotionSnapshot: raw.supportsMotionSnapshot }),
+    ...(raw.supportsFaceCrop !== undefined && { supportsFaceCrop: raw.supportsFaceCrop }),
+    ...(raw.supportsFaceDetection !== undefined && { supportsFaceDetection: raw.supportsFaceDetection }),
+    ...(raw.supportsPeopleDetection !== undefined && { supportsPeopleDetection: raw.supportsPeopleDetection }),
+    ...(raw.supportsMotionRecap !== undefined && { supportsMotionRecap: raw.supportsMotionRecap }),
+    ...(raw.supportsLivestream !== undefined && { supportsLivestream: raw.supportsLivestream }),
+    ...(raw.videoProviderId && { videoProviderId: raw.videoProviderId }),
+    ...(raw.videoProvider && { videoProvider: mapVideoProvider(raw.videoProvider) }),
+  };
+  return output;
 }
 
 function mapEntrySchedule(raw: any): EntrySchedule | undefined {
   if (!raw) return undefined;
-  return new EntrySchedule(raw.id, raw.name);
+  const output: EntrySchedule = {
+    id: raw.id,
+    name: raw.name,
+  };
+  return output;
 }
 
 function mapEntryState(raw: any): EntryState | undefined {
   if (!raw) return undefined;
-  return new EntryState(raw.id, raw.name);
+  const output: EntryState = {
+    id: raw.id,
+    name: raw.name,
+  };
+  return output;
 }
 
 function mapEntryAcu(raw: any): EntryAcu | undefined {
   if (!raw) return undefined;
-  return new EntryAcu(raw.id, raw.name, raw.isGatewayMode);
+  const output: EntryAcu = {
+    id: raw.id,
+    name: raw.name,
+    ...(raw.isGatewayMode !== undefined && { isGatewayMode: raw.isGatewayMode }),
+  };
+  return output;
 }
 
 function mapEntryZoneSite(raw: any): EntryZoneSite | undefined {
   if (!raw) return undefined;
-  return new EntryZoneSite(raw.id, raw.name);
+  const output: EntryZoneSite = {
+    id: raw.id,
+    name: raw.name,
+  };
+  return output;
 }
 
 function mapEntryZone(raw: any): EntryZone | undefined {
   if (!raw) return undefined;
-  return new EntryZone(raw.id, raw.name, mapEntryZoneSite(raw.site));
+  const output: EntryZone = {
+    id: raw.id,
+    name: raw.name,
+    ...(raw.site && { site: mapEntryZoneSite(raw.site) }),
+  };
+  return output;
 }
 
 /**
@@ -453,25 +501,28 @@ function mapEntryZone(raw: any): EntryZone | undefined {
  * Based on the actual API response structure from /orgs/{organizationId}/entries
  */
 export function mapEntryDetails(raw: any): EntryDetails {
-  return new EntryDetails(
-    raw.id,
-    raw.name,
-    raw.opal,
-    raw.pincode,
-    raw.isPincodeEnabled,
-    raw.color,
-    raw.isMusterPoint,
-    raw.notes,
-    raw.externalUuid,
-    raw.isReaderless,
-    raw.isIntercomEntry,
-    raw.createdAt ? map(Date, raw.createdAt) : undefined,
-    raw.updatedAt ? map(Date, raw.updatedAt) : undefined,
-    mapEntryZone(raw.zone),
-    mapEntryAcu(raw.acu),
-    raw.wirelessLock,
-    mapEntryState(raw.entryState),
-    mapEntrySchedule(raw.schedule),
-    raw.cameras?.map(mapEntryCamera)
-  );
+  const output: EntryDetails = {
+    id: raw.id,
+    name: raw.name,
+    ...(raw.opal && { opal: raw.opal }),
+    ...(raw.pincode !== undefined && { pincode: raw.pincode }),
+    ...(raw.isPincodeEnabled !== undefined && { isPincodeEnabled: raw.isPincodeEnabled }),
+    ...(raw.color && { color: raw.color }),
+    ...(raw.isMusterPoint !== undefined && { isMusterPoint: raw.isMusterPoint }),
+    ...(raw.notes !== undefined && { notes: raw.notes }),
+    ...(raw.externalUuid !== undefined && { externalUuid: raw.externalUuid }),
+    ...(raw.isReaderless !== undefined && { isReaderless: raw.isReaderless }),
+    ...(raw.effectiveLocationRestriction && { effectiveLocationRestriction: raw.effectiveLocationRestriction }),
+    ...(raw.org && { org: mapOrganizationRef(raw.org) }),
+    ...(raw.shadow && { shadow: raw.shadow }),
+    ...(raw.createdAt && { createdAt: map(Date, raw.createdAt) }),
+    ...(raw.updatedAt && { updatedAt: map(Date, raw.updatedAt) }),
+    ...(raw.zone && { zone: mapEntryZone(raw.zone) }),
+    ...(raw.acu && { acu: mapEntryAcu(raw.acu) }),
+    ...(raw.wirelessLock !== undefined && { wirelessLock: raw.wirelessLock }),
+    ...(raw.entryState && { entryState: mapEntryState(raw.entryState) }),
+    ...(raw.schedule && { schedule: mapEntrySchedule(raw.schedule) }),
+    ...(raw.cameras && { cameras: raw.cameras.map(mapEntryCamera) }),
+  };
+  return output;
 }

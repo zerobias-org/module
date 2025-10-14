@@ -22,7 +22,7 @@ import {
 describe('AcuProducerApiImpl', () => {
   let client: AvigilonAltaAccessClient;
   let producer: AcuProducerApiImpl;
-  const baseUrl = 'https://helium.prod.openpath.com';
+  const baseUrl = 'https://api.openpath.com';
   const testEmail = process.env.AVIGILON_EMAIL || 'test@example.com';
   const testPassword = process.env.AVIGILON_PASSWORD || 'testpass';
   const orgId = 'test-org-123';

@@ -81,11 +81,19 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
         if (entry.isReaderless !== undefined) {
           expect(entry.isReaderless).to.be.a('boolean');
         }
-        
-        if (entry.isIntercomEntry !== undefined) {
-          expect(entry.isIntercomEntry).to.be.a('boolean');
+
+        if (entry.effectiveLocationRestriction !== undefined) {
+          expect(entry.effectiveLocationRestriction).to.be.an('object');
         }
-        
+
+        if (entry.org) {
+          expect(entry.org).to.have.property('id');
+        }
+
+        if (entry.shadow !== undefined) {
+          expect(entry.shadow).to.be.an('object');
+        }
+
         if (entry.createdAt) {
           expect(entry.createdAt).to.be.instanceOf(Date);
         }
@@ -198,7 +206,9 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
         if (entry.notes !== undefined) expect(entry.notes).to.satisfy((val: any) => val === null || typeof val === 'string');
         if (entry.externalUuid !== undefined) expect(entry.externalUuid).to.satisfy((val: any) => val === null || typeof val === 'string');
         if (entry.isReaderless !== undefined) expect(entry.isReaderless).to.be.a('boolean');
-        if (entry.isIntercomEntry !== undefined) expect(entry.isIntercomEntry).to.be.a('boolean');
+        if (entry.effectiveLocationRestriction !== undefined) expect(entry.effectiveLocationRestriction).to.be.an('object');
+        if (entry.org) expect(entry.org).to.have.property('id');
+        if (entry.shadow !== undefined) expect(entry.shadow).to.be.an('object');
         if (entry.createdAt) expect(entry.createdAt).to.be.instanceOf(Date);
         if (entry.updatedAt) expect(entry.updatedAt).to.be.instanceOf(Date);
         if (entry.wirelessLock !== undefined) expect(entry.wirelessLock).to.satisfy((val: any) => val === null || typeof val === 'object');

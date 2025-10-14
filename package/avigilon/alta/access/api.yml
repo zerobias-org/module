@@ -163,6 +163,14 @@ components:
           type: string
           format: date-time
           description: Status last updated timestamp
+        pictureUrl:
+          type: string
+          format: uri
+          description: URL to user's profile picture
+        pictureFullSizeUrl:
+          type: string
+          format: uri
+          description: URL to user's full-size profile picture
         userCustomFields:
           type: array
           items:
@@ -340,6 +348,20 @@ components:
           $ref: '#/components/schemas/OrganizationRef'
         ownedByOrg:
           $ref: '#/components/schemas/OrganizationRef'
+        acuPorts:
+          type: array
+          items:
+            type: object
+          description: Array of ACU ports (also available via dedicated listPorts endpoint)
+        acuShadowState:
+          type: object
+          description: ACU shadow state with firmware and version information
+        meson:
+          type: object
+          description: Meson task information
+        shadow:
+          type: object
+          description: AWS IoT shadow state
         createdAt:
           type: string
           format: date-time
@@ -1008,9 +1030,14 @@ components:
         isReaderless:
           type: boolean
           description: Whether this is a readerless entry
-        isIntercomEntry:
-          type: boolean
-          description: Whether this is an intercom entry
+        effectiveLocationRestriction:
+          type: object
+          description: Effective location restriction for this entry
+        org:
+          $ref: '#/components/schemas/OrganizationRef'
+        shadow:
+          type: object
+          description: Entry shadow state
         createdAt:
           type: string
           format: date-time

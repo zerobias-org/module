@@ -16,7 +16,7 @@ export class AvigilonAltaAccessClient {
 
   private connected = false;
 
-  private baseUrl = 'https://helium.prod.openpath.com';
+  private baseUrl = 'https://api.openpath.com';
 
   private accessToken: string | null = null;
 

@@ -22,7 +22,7 @@ import { mockAuthenticatedRequest, cleanNock, loadFixture } from '../utils/nock-
 describe('AccessImpl', () => {
   let accessImpl: AccessImpl;
   let client: AvigilonAltaAccessClient;
-  const baseUrl = 'https://helium.prod.openpath.com';
+  const baseUrl = 'https://api.openpath.com';
   const testEmail = process.env.AVIGILON_EMAIL || 'test@example.com';
   const testPassword = process.env.AVIGILON_PASSWORD || 'testpass123';
 
@@ -312,6 +312,21 @@ describe('AccessImpl', () => {
         expect(groupApi1).to.equal(groupApi2);
       });
     });
+
+    describe('getEntryApi', () => {
+      it('should return EntryApi instance', () => {
+        const entryApi = accessImpl.getEntryApi();
+        // Test that it's the wrapped EntryProducerApiImpl
+        expect(entryApi).to.be.an('object');
+        expect(entryApi).to.have.property('list');
+      });
+
+      it('should return same instance on multiple calls', () => {
+        const entryApi1 = accessImpl.getEntryApi();
+        const entryApi2 = accessImpl.getEntryApi();
+        expect(entryApi1).to.equal(entryApi2);
+      });
+    });
   });
 
   describe('Error Propagation', () => {
@@ -350,11 +365,12 @@ describe('AccessImpl', () => {
         });
 
       await accessImpl.connect(profile);
-      
+
       // Test that producers can be created without throwing
       expect(() => accessImpl.getUserApi()).to.not.throw();
       expect(() => accessImpl.getGroupApi()).to.not.throw();
       expect(() => accessImpl.getAcuApi()).to.not.throw();
+      expect(() => accessImpl.getEntryApi()).to.not.throw();
     });
   });
 });

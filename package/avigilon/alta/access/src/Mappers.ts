@@ -338,11 +338,11 @@ export function mapTokenProperties(raw: any): TokenProperties {
   const scope = raw.tokenScopeList?.[0]?.scope;
 
   const output: TokenProperties = {
-    ...(organizationId !== undefined && { organizationId: organizationId }),
+    ...(organizationId !== undefined && { organizationId }),
     ...(raw.identityId !== undefined && { identityId: raw.identityId }),
     ...(raw.createdAt && { issuedAt: map(Date, raw.createdAt) }),
     ...(raw.expiresAt && { expiresAt: map(Date, raw.expiresAt) }),
-    ...(scope && { scope: scope }),
+    ...(scope && { scope }),
     ...(raw.tokenType && { tokenType: raw.tokenType }),
     ...(raw.jti && { jti: raw.jti }),
     ...(raw.iat !== undefined && { iat: raw.iat }),
@@ -354,9 +354,7 @@ export function mapTokenProperties(raw: any): TokenProperties {
 // Helper functions for Zone mapping
 function mapZoneEntryAcu(raw: any): ZoneEntryAcu | undefined {
   if (!raw) return undefined;
-  const output: ZoneEntryAcu = {
-    id: raw.id,
-  };
+  const output: ZoneEntryAcu = { id: raw.id };
   return output;
 }
 

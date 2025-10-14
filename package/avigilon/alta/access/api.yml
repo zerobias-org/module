@@ -165,11 +165,11 @@ components:
           description: Status last updated timestamp
         pictureUrl:
           type: string
-          format: uri
+          format: url
           description: URL to user's profile picture
         pictureFullSizeUrl:
           type: string
-          format: uri
+          format: url
           description: URL to user's full-size profile picture
         userCustomFields:
           type: array
@@ -587,11 +587,11 @@ components:
       properties:
         startTime:
           type: string
-          format: time
+          format: date-time
           description: Start time for access (HH:MM format)
         endTime:
           type: string
-          format: time
+          format: date-time
           description: End time for access (HH:MM format)
         daysOfWeek:
           type: array
@@ -631,14 +631,14 @@ components:
               description: Whether DHCP is enabled
             staticIp:
               type: string
-              format: ip
+              format: ipAddress
               description: Static IP address if DHCP is disabled
             subnetMask:
               type: string
               description: Subnet mask
             gateway:
               type: string
-              format: ip
+              format: ipAddress
               description: Gateway IP address
     PortConfiguration:
       type: object

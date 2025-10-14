@@ -12,9 +12,9 @@ export class AcuProducerApiImpl implements AcuProducerApi {
     this.httpClient = client.getHttpClient();
   }
 
-  async get(organizationId: string, acuId: number): Promise<AcuInfo> {
+  async get(organizationId: string, acuId: string): Promise<AcuInfo> {
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/acus/${acuId.toString()}`
+      `/orgs/${organizationId}/acus/${acuId}`
     );
 
     // Individual ACU response is directly in response.data, not nested in data.data like list responses
@@ -30,7 +30,7 @@ export class AcuProducerApiImpl implements AcuProducerApi {
   async listPorts(
     results: PagedResults<Port>,
     organizationId: string,
-    acuId: number
+    acuId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
 
@@ -43,7 +43,7 @@ export class AcuProducerApiImpl implements AcuProducerApi {
     }
 
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/acus/${acuId.toString()}/ports`,
+      `/orgs/${organizationId}/acus/${acuId}/ports`,
       { params }
     );
 

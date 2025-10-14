@@ -155,7 +155,7 @@ describe('GroupProducerApiImpl', () => {
 
   describe('Group Retrieval Operations', () => {
     it('should retrieve a specific group by ID', async () => {
-      const groupId = 537268;
+      const groupId = "123";
       // Create mock raw API response data in the format the mapper expects
       const mockGroupData = {
         id: groupId,
@@ -186,7 +186,7 @@ describe('GroupProducerApiImpl', () => {
     });
 
     it('should handle non-existent group ID gracefully', async () => {
-      const groupId = 999999;
+      const groupId = "123";
       
       const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
         .get(`/orgs/${orgId}/groups/${groupId}`)
@@ -205,7 +205,7 @@ describe('GroupProducerApiImpl', () => {
 
   describe('Group Data Validation', () => {
     it('should validate group response schema', async () => {
-      const groupId = 537268;
+      const groupId = "123";
       // Create mock raw API response data in the format the mapper expects
       const mockGroupData = {
         id: 537268,
@@ -285,7 +285,7 @@ describe('GroupProducerApiImpl', () => {
 
   describe('listUsers()', () => {
     it('should list users for group with default pagination', async () => {
-      const groupId = 537268;
+      const groupId = "123";
       const fixtureData = loadFixture('templates/group-users-list-success.json');
       
       const scope = mockPaginatedResponse(
@@ -306,7 +306,7 @@ describe('GroupProducerApiImpl', () => {
     });
 
     it('should handle group not found when listing users', async () => {
-      const groupId = 999;
+      const groupId = "123";
 
       const scope = mockErrorResponse(
         mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
@@ -331,7 +331,7 @@ describe('GroupProducerApiImpl', () => {
 
   describe('listEntries()', () => {
     it('should list entries for group with default pagination', async () => {
-      const groupId = 537268;
+      const groupId = "123";
       const fixtureData = loadFixture('templates/group-entries-list-success.json');
       
       const scope = mockPaginatedResponse(
@@ -352,7 +352,7 @@ describe('GroupProducerApiImpl', () => {
     });
 
     it('should handle group not found when listing entries', async () => {
-      const groupId = 999;
+      const groupId = "123";
 
       const scope = mockErrorResponse(
         mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
@@ -403,7 +403,7 @@ describe('GroupProducerApiImpl', () => {
         .replyWithError('Network error');
 
       try {
-        await producer.get(orgId, 123);
+        await producer.get(orgId, "123");
         expect.fail('Expected network error to be thrown');
       } catch (error) {
         expect(error).to.be.instanceOf(UnexpectedError);

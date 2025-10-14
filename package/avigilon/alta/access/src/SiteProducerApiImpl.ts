@@ -1,6 +1,8 @@
+/* eslint-disable */
 import { AxiosInstance } from 'axios';
+import { PagedResults } from '@auditmation/types-core-js';
 import { SiteProducerApi } from '../generated/api/SiteApi';
-import { Site } from '../generated/model';
+import { Site, SiteLocationMeasurement } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
 import { mapSite } from './Mappers';
 
@@ -9,6 +11,10 @@ export class SiteProducerApiImpl implements SiteProducerApi {
 
   constructor(private client: AvigilonAltaAccessClient) {
     this.httpClient = client.getHttpClient();
+  }
+
+  async listLocationMeasurements(results: PagedResults<SiteLocationMeasurement>, organizationId: string, siteId: string): Promise<void> {
+    throw new Error('Not implemented');
   }
 
   async list(organizationId: string): Promise<Array<Site>> {

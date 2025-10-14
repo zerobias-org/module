@@ -3,16 +3,34 @@
 import {
   AccessConnector,
   AcuApi,
+  AuditApi,
   AuthApi,
+  CredentialApi,
+  CredentialActionApi,
   EntryApi,
+  EntryStateApi,
   GroupApi,
+  IdentityProviderApi,
+  RoleApi,
+  ScheduleApi,
+  ScopeApi,
+  SharedUserApi,
   SiteApi,
   UserApi,
   ZoneApi,
   wrapAcuProducer,
+  wrapAuditProducer,
   wrapAuthProducer,
+  wrapCredentialProducer,
+  wrapCredentialActionProducer,
   wrapEntryProducer,
+  wrapEntryStateProducer,
   wrapGroupProducer,
+  wrapIdentityProviderProducer,
+  wrapRoleProducer,
+  wrapScheduleProducer,
+  wrapScopeProducer,
+  wrapSharedUserProducer,
   wrapSiteProducer,
   wrapUserProducer,
   wrapZoneProducer
@@ -28,9 +46,18 @@ import {
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
 import { UserProducerApiImpl } from './UserProducerApiImpl';
 import { AcuProducerApiImpl } from './AcuProducerApiImpl';
+import { AuditProducerApiImpl } from './AuditProducerApiImpl';
 import { AuthProducerApiImpl } from './AuthProducerApiImpl';
+import { CredentialProducerApiImpl } from './CredentialProducerApiImpl';
+import { CredentialActionProducerApiImpl } from './CredentialActionProducerApiImpl';
 import { EntryProducerApiImpl } from './EntryProducerApiImpl';
+import { EntryStateProducerApiImpl } from './EntryStateProducerApiImpl';
 import { GroupProducerApiImpl } from './GroupProducerApiImpl';
+import { IdentityProviderProducerApiImpl } from './IdentityProviderProducerApiImpl';
+import { RoleProducerApiImpl } from './RoleProducerApiImpl';
+import { ScheduleProducerApiImpl } from './ScheduleProducerApiImpl';
+import { ScopeProducerApiImpl } from './ScopeProducerApiImpl';
+import { SharedUserProducerApiImpl } from './SharedUserProducerApiImpl';
 import { SiteProducerApiImpl } from './SiteProducerApiImpl';
 import { ZoneProducerApiImpl } from './ZoneProducerApiImpl';
 import { ConnectionState } from '../generated/model';
@@ -40,9 +67,18 @@ export class AccessImpl implements AccessConnector {
   private client: AvigilonAltaAccessClient;
   private userApiProducer?: UserApi;
   private acuApiProducer?: AcuApi;
+  private auditApiProducer?: AuditApi;
   private authApiProducer?: AuthApi;
+  private credentialApiProducer?: CredentialApi;
+  private credentialActionApiProducer?: CredentialActionApi;
   private entryApiProducer?: EntryApi;
+  private entryStateApiProducer?: EntryStateApi;
   private groupApiProducer?: GroupApi;
+  private identityProviderApiProducer?: IdentityProviderApi;
+  private roleApiProducer?: RoleApi;
+  private scheduleApiProducer?: ScheduleApi;
+  private scopeApiProducer?: ScopeApi;
+  private sharedUserApiProducer?: SharedUserApi;
   private siteApiProducer?: SiteApi;
   private zoneApiProducer?: ZoneApi;
 
@@ -137,5 +173,77 @@ export class AccessImpl implements AccessConnector {
       this.zoneApiProducer = wrapZoneProducer(producer);
     }
     return this.zoneApiProducer;
+  }
+
+  getAuditApi(): AuditApi {
+    if (!this.auditApiProducer) {
+      const producer = new AuditProducerApiImpl(this.client);
+      this.auditApiProducer = wrapAuditProducer(producer);
+    }
+    return this.auditApiProducer;
+  }
+
+  getCredentialApi(): CredentialApi {
+    if (!this.credentialApiProducer) {
+      const producer = new CredentialProducerApiImpl(this.client);
+      this.credentialApiProducer = wrapCredentialProducer(producer);
+    }
+    return this.credentialApiProducer;
+  }
+
+  getCredentialActionApi(): CredentialActionApi {
+    if (!this.credentialActionApiProducer) {
+      const producer = new CredentialActionProducerApiImpl(this.client);
+      this.credentialActionApiProducer = wrapCredentialActionProducer(producer);
+    }
+    return this.credentialActionApiProducer;
+  }
+
+  getEntryStateApi(): EntryStateApi {
+    if (!this.entryStateApiProducer) {
+      const producer = new EntryStateProducerApiImpl(this.client);
+      this.entryStateApiProducer = wrapEntryStateProducer(producer);
+    }
+    return this.entryStateApiProducer;
+  }
+
+  getIdentityProviderApi(): IdentityProviderApi {
+    if (!this.identityProviderApiProducer) {
+      const producer = new IdentityProviderProducerApiImpl(this.client);
+      this.identityProviderApiProducer = wrapIdentityProviderProducer(producer);
+    }
+    return this.identityProviderApiProducer;
+  }
+
+  getRoleApi(): RoleApi {
+    if (!this.roleApiProducer) {
+      const producer = new RoleProducerApiImpl(this.client);
+      this.roleApiProducer = wrapRoleProducer(producer);
+    }
+    return this.roleApiProducer;
+  }
+
+  getScheduleApi(): ScheduleApi {
+    if (!this.scheduleApiProducer) {
+      const producer = new ScheduleProducerApiImpl(this.client);
+      this.scheduleApiProducer = wrapScheduleProducer(producer);
+    }
+    return this.scheduleApiProducer;
+  }
+
+  getScopeApi(): ScopeApi {
+    if (!this.scopeApiProducer) {
+      const producer = new ScopeProducerApiImpl(this.client);
+      this.scopeApiProducer = wrapScopeProducer(producer);
+    }
+    return this.scopeApiProducer;
+  }
+
+  getSharedUserApi(): SharedUserApi {
+    if (!this.sharedUserApiProducer) {
+      const producer = new SharedUserProducerApiImpl(this.client);
+      this.sharedUserApiProducer = wrapSharedUserProducer(producer);
+    }
+    return this.sharedUserApiProducer;
   }
 }

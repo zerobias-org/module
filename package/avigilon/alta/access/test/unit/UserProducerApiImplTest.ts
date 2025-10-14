@@ -171,7 +171,7 @@ describe('UserProducerApiImpl', () => {
 
   describe('User Retrieval Operations', () => {
     it('should retrieve a specific user by ID', async () => {
-      const userId = 123;
+      const userId = "user-123";
       // Create mock raw API response data in the format the mapper expects
       const mockUserData = {
         id: userId,
@@ -209,7 +209,7 @@ describe('UserProducerApiImpl', () => {
     });
 
     it('should handle non-existent user ID gracefully', async () => {
-      const userId = 999999;
+      const userId = "user-123";
       
       const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
         .get(`/orgs/${orgId}/users/${userId}`)
@@ -228,7 +228,7 @@ describe('UserProducerApiImpl', () => {
 
   describe('User Data Validation', () => {
     it('should validate user response schema', async () => {
-      const userId = 123;
+      const userId = "user-123";
       // Create mock raw API response data in the format the mapper expects
       const mockUserData = {
         id: 22509982,
@@ -307,7 +307,7 @@ describe('UserProducerApiImpl', () => {
 
   describe('listRoles()', () => {
     it('should list roles for user with default pagination', async () => {
-      const userId = 123;
+      const userId = "user-123";
       const fixtureData = loadFixture('templates/user-roles-list-success.json');
       
       const scope = mockPaginatedResponse(
@@ -328,7 +328,7 @@ describe('UserProducerApiImpl', () => {
     });
 
     it('should handle user not found when listing roles', async () => {
-      const userId = 999;
+      const userId = "user-123";
 
       const scope = mockErrorResponse(
         mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
@@ -353,7 +353,7 @@ describe('UserProducerApiImpl', () => {
 
   describe('listSites()', () => {
     it('should list sites for user with default pagination', async () => {
-      const userId = 123;
+      const userId = "user-123";
       const fixtureData = loadFixture('templates/user-sites-list-success.json');
       
       const scope = mockPaginatedResponse(
@@ -374,7 +374,7 @@ describe('UserProducerApiImpl', () => {
     });
 
     it('should handle user not found when listing sites', async () => {
-      const userId = 999;
+      const userId = "user-123";
 
       const scope = mockErrorResponse(
         mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
@@ -425,7 +425,7 @@ describe('UserProducerApiImpl', () => {
         .replyWithError('Network error');
 
       try {
-        await producer.get(orgId, 123);
+        await producer.get(orgId, "123");
         expect.fail('Expected network error to be thrown');
       } catch (error) {
         expect(error).to.be.instanceOf(UnexpectedError);

@@ -136,8 +136,8 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
 
     it('should handle non-existent user ID gracefully', async function () {
 
-      // Use a clearly non-existent ID - must be valid UUID format
-      const nonExistentId = 12312432452331;
+      // Use a clearly non-existent ID - use string format
+      const nonExistentId = '12312432452331';
 
       try {
         const user = await userApi.get(testConfig.organizationId, nonExistentId);

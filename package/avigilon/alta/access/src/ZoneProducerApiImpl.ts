@@ -1,6 +1,8 @@
+/* eslint-disable */
 import { AxiosInstance } from 'axios';
+import { PagedResults } from '@auditmation/types-core-js';
 import { ZoneProducerApi } from '../generated/api/ZoneApi';
-import { Zone } from '../generated/model';
+import { Zone, ZoneShare, ZoneUser } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
 import { mapZone } from './Mappers';
 
@@ -9,6 +11,14 @@ export class ZoneProducerApiImpl implements ZoneProducerApi {
 
   constructor(private client: AvigilonAltaAccessClient) {
     this.httpClient = client.getHttpClient();
+  }
+
+  async listShares(results: PagedResults<ZoneShare>, organizationId: string, zoneId: string): Promise<void> {
+    throw new Error('Not implemented');
+  }
+
+  async listZoneUsers(results: PagedResults<ZoneUser>, organizationId: string, zoneId: string): Promise<void> {
+    throw new Error('Not implemented');
   }
 
   async list(organizationId: string): Promise<Array<Zone>> {

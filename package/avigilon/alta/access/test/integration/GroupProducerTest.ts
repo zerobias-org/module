@@ -126,9 +126,9 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
 
     it('should handle non-existent group ID gracefully', async function () {
 
-      // Use a clearly non-existent numeric ID
-      const nonExistentId = 999999999;
-      
+      // Use a clearly non-existent string ID
+      const nonExistentId = '999999999';
+
       try {
         const group = await groupApi.get(testConfig.organizationId, nonExistentId);
         logger.debug(`groupApi.get('${nonExistentId}')`, JSON.stringify(group, null, 2));

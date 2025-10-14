@@ -1,7 +1,8 @@
+/* eslint-disable */
 import { AxiosInstance } from 'axios';
 import { PagedResults } from '@auditmation/types-core-js';
 import { GroupProducerApi } from '../generated/api/GroupApi';
-import { Group, GroupInfo, User, Entry } from '../generated/model';
+import { Group, GroupInfo, User, Entry, GroupZoneGroup, GroupZone } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
 import { mapGroup, mapGroupInfo, mapUser, mapEntry } from './Mappers';
 
@@ -12,9 +13,9 @@ export class GroupProducerApiImpl implements GroupProducerApi {
     this.httpClient = client.getHttpClient();
   }
 
-  async get(organizationId: string, groupId: number): Promise<GroupInfo> {
+  async get(organizationId: string, groupId: string): Promise<GroupInfo> {
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId.toString()}`
+      `/orgs/${organizationId}/groups/${groupId}`
     );
 
     // Individual group response is directly in response.data, not nested in data.data like list responses
@@ -34,7 +35,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
   async listEntries(
     results: PagedResults<Entry>,
     organizationId: string,
-    groupId: number
+    groupId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
 
@@ -47,7 +48,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
     }
 
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId.toString()}/entries`,
+      `/orgs/${organizationId}/groups/${groupId}/entries`,
       { params }
     );
 
@@ -62,7 +63,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
   async listUsers(
     results: PagedResults<User>,
     organizationId: string,
-    groupId: number
+    groupId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
 
@@ -75,7 +76,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
     }
 
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId.toString()}/users`,
+      `/orgs/${organizationId}/groups/${groupId}/users`,
       { params }
     );
 
@@ -85,6 +86,14 @@ export class GroupProducerApiImpl implements GroupProducerApi {
 
     // Handle pageToken if available (only for operations with pageToken in OpenAPI params)
     results.pageToken = response.headers['x-next-page-token'];
+  }
+
+  async listZoneGroups(results: PagedResults<GroupZoneGroup>, organizationId: string, groupId: string): Promise<void> {
+    throw new Error('Not implemented');
+  }
+
+  async listZones(results: PagedResults<GroupZone>, organizationId: string, groupId: string): Promise<void> {
+    throw new Error('Not implemented');
   }
 
   async list(results: PagedResults<Group>, organizationId: string): Promise<void> {

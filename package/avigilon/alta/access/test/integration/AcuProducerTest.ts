@@ -134,9 +134,9 @@ describe('Avigilon Alta Access - ACU Producer Tests', function () {
 
     it('should handle non-existent ACU ID gracefully', async function () {
 
-      // Use a clearly non-existent numeric ID
-      const nonExistentId = 999999999;
-      
+      // Use a clearly non-existent string ID
+      const nonExistentId = '999999999';
+
       try {
         const acu = await acuApi.get(testConfig.organizationId, nonExistentId);
         logger.debug(`acuApi.get('${nonExistentId}')`, JSON.stringify(acu, null, 2));

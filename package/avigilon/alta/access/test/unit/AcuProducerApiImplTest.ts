@@ -156,7 +156,7 @@ describe('AcuProducerApiImpl', () => {
 
   describe('ACU Retrieval Operations', () => {
     it('should retrieve a specific ACU by ID', async () => {
-      const acuId = 183568;
+      const acuId = "123";
       // Create mock raw API response data in the format the mapper expects
       const mockAcuData = {
         id: acuId,
@@ -187,7 +187,7 @@ describe('AcuProducerApiImpl', () => {
     });
 
     it('should handle non-existent ACU ID gracefully', async () => {
-      const acuId = 999999;
+      const acuId = "123";
       
       const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
         .get(`/orgs/${orgId}/acus/${acuId}`)
@@ -206,7 +206,7 @@ describe('AcuProducerApiImpl', () => {
 
   describe('ACU Data Validation', () => {
     it('should validate ACU response schema', async () => {
-      const acuId = 183568;
+      const acuId = "123";
       // Create mock raw API response data in the format the mapper expects
       const mockAcuData = {
         id: 183568,
@@ -285,7 +285,7 @@ describe('AcuProducerApiImpl', () => {
 
   describe('listPorts()', () => {
     it('should list ports for ACU with default pagination', async () => {
-      const acuId = 183568;
+      const acuId = "123";
       const fixtureData = loadFixture('templates/acu-ports-list-success.json');
       
       const scope = mockPaginatedResponse(
@@ -306,7 +306,7 @@ describe('AcuProducerApiImpl', () => {
     });
 
     it('should handle ACU not found when listing ports', async () => {
-      const acuId = 999;
+      const acuId = "123";
 
       const scope = mockErrorResponse(
         mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
@@ -357,7 +357,7 @@ describe('AcuProducerApiImpl', () => {
         .replyWithError('Network error');
 
       try {
-        await producer.get(orgId, 123);
+        await producer.get(orgId, "123");
         expect.fail('Expected network error to be thrown');
       } catch (error) {
         expect(error).to.be.instanceOf(UnexpectedError);

@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   x-product-infos:
     - $ref: "./node_modules/@zerobias-org/product-avigilon-alta-access/catalog.yml#/Product"
-  version: 0.2.1
+  version: 0.3.0
   title: '@zerobias-org/module-avigilon-alta-access'
   description: Avigilon Alta Access
   x-impl-name: Access
@@ -1243,7 +1243,6 @@ components:
         videoProviderTypeId:
           type: integer
           description: Video provider type identifier
-
     # Reference schemas for nested objects
     ZoneRef:
       type: object
@@ -1256,7 +1255,6 @@ components:
         name:
           type: string
           description: Name of the zone
-
     SiteRef:
       type: object
       required:
@@ -1268,7 +1266,6 @@ components:
         name:
           type: string
           description: Name of the site
-
     GroupRef:
       type: object
       required:
@@ -1280,7 +1277,6 @@ components:
         name:
           type: string
           description: Name of the group
-
     MfaCredentialTypeRef:
       type: object
       required:
@@ -1295,7 +1291,6 @@ components:
         modelName:
           type: string
           description: Model name of the MFA credential type
-
     TotpSoftDeviceRef:
       type: object
       required:
@@ -1304,7 +1299,6 @@ components:
         id:
           type: string
           description: Unique identifier for the TOTP soft device
-
     ScheduleRef:
       type: object
       required:
@@ -1326,7 +1320,6 @@ components:
           type: string
           format: date-time
           description: Timestamp when schedule was last updated
-
     CardFieldsRef:
       type: object
       properties:
@@ -1362,7 +1355,6 @@ components:
           type: string
           pattern: '^[0-9]+$'
           description: OEM field value
-
     DeviceRef:
       type: object
       required:
@@ -1380,7 +1372,6 @@ components:
         name:
           type: string
           description: Name of the device
-
     PortNumberRef:
       type: object
       properties:
@@ -1404,7 +1395,6 @@ components:
         virtualPortNum:
           type: integer
           description: Virtual port number
-
     IdentityProviderTypeRef:
       type: object
       required:
@@ -1419,7 +1409,6 @@ components:
         code:
           type: string
           description: Code of the identity provider type
-
     IdentityProviderSyncTypeRef:
       type: object
       required:
@@ -1434,7 +1423,6 @@ components:
         code:
           type: string
           description: Code of the sync type
-
     AuthStrategyTypeRef:
       type: object
       required:
@@ -1449,7 +1437,6 @@ components:
         code:
           type: string
           description: Code of the auth strategy type
-
     NamespaceTypeRef:
       type: object
       required:
@@ -1464,7 +1451,6 @@ components:
         modelName:
           type: string
           description: Model name of the namespace type
-
     IdentityProviderSimpleRef:
       type: object
       required:
@@ -1492,7 +1478,6 @@ components:
           $ref: '#/components/schemas/IdentityProviderTypeRef'
         org:
           $ref: '#/components/schemas/OrganizationRef'
-
     NamespaceRef:
       type: object
       required:
@@ -1510,7 +1495,6 @@ components:
           $ref: '#/components/schemas/OrganizationRef'
         identityProvider:
           $ref: '#/components/schemas/IdentityProviderSimpleRef'
-
     RoleRef:
       type: object
       required:
@@ -1528,7 +1512,6 @@ components:
         isMfaRequired:
           type: boolean
           description: Whether MFA is required
-
     UserIotCertRef:
       type: object
       required:
@@ -1543,7 +1526,6 @@ components:
         certOpal:
           type: string
           description: Certificate OPAL identifier
-
     MobileCredentialRef:
       type: object
       required:
@@ -1577,7 +1559,6 @@ components:
         userIotCert:
           allOf:
             - $ref: '#/components/schemas/UserIotCertRef'
-
     EventActionRef:
       type: object
       properties:
@@ -1592,7 +1573,6 @@ components:
             - unlock
             - lock
           description: Event action command to be executed
-
     TriggerMethodRef:
       type: object
       required:
@@ -1612,7 +1592,6 @@ components:
           description: Request type code
         credentialType:
           $ref: '#/components/schemas/CredentialType'
-
     ApiKeyRef:
       type: object
       properties:
@@ -1623,7 +1602,6 @@ components:
         url:
           type: string
           description: API URL
-
     SamlConfigRef:
       type: object
       required:
@@ -1650,7 +1628,6 @@ components:
         assertionUrl:
           type: string
           description: Assertion URL
-
     OidcConfigRef:
       type: object
       properties:
@@ -1660,7 +1637,6 @@ components:
         subdomain:
           type: string
           description: OIDC subdomain
-
     ClientAuthRef:
       type: object
       properties:
@@ -1676,7 +1652,6 @@ components:
         url:
           type: string
           description: Authentication URL
-
     BasicAuthRef:
       type: object
       properties:
@@ -1689,7 +1664,6 @@ components:
         groupsUrl:
           type: string
           description: Groups URL
-
     LocationMeasurementSourceTypeRef:
       type: object
       required:
@@ -1704,7 +1678,6 @@ components:
         code:
           type: string
           description: Code of the location measurement source type
-
     Nickname:
       type: object
       properties:
@@ -1713,7 +1686,6 @@ components:
           minLength: 1
           maxLength: 100
           description: Nickname value
-
     CustomFieldTypeRef:
       type: object
       required:
@@ -1725,7 +1697,6 @@ components:
         name:
           type: string
           description: Name of the custom field type
-
     CustomFieldRef:
       type: object
       required:
@@ -1739,7 +1710,6 @@ components:
           description: Name of the custom field
         customFieldType:
           $ref: '#/components/schemas/CustomFieldTypeRef'
-
     UserCustomFieldRef:
       type: object
       required:
@@ -1753,7 +1723,6 @@ components:
           description: Value of the custom field
         customField:
           $ref: '#/components/schemas/CustomFieldRef'
-
     ScheduleEntryRef:
       type: object
       required:
@@ -1765,7 +1734,6 @@ components:
         name:
           type: string
           description: Name of the entry
-
     ActivityEventEntry:
       type: object
       required:
@@ -1781,7 +1749,6 @@ components:
           $ref: '#/components/schemas/ZoneRef'
         site:
           $ref: '#/components/schemas/SiteRef'
-
     FirstAuthInfo:
       type: object
       properties:
@@ -1842,7 +1809,6 @@ components:
         userIdpName:
           type: string
           description: Identity provider name
-
     ScimMappingCondition:
       type: object
       properties:
@@ -1852,7 +1818,6 @@ components:
         value:
           type: string
           description: Condition value
-
     ScimMappingDestination:
       type: object
       properties:
@@ -1871,7 +1836,6 @@ components:
           items:
             type: string
           description: List of video user group IDs
-
     ScimMapping:
       type: object
       properties:
@@ -1882,7 +1846,6 @@ components:
           description: List of SCIM mapping conditions
         destinations:
           $ref: '#/components/schemas/ScimMappingDestination'
-
     ScimAttributeMappingRule:
       type: object
       properties:
@@ -1894,7 +1857,6 @@ components:
           items:
             $ref: '#/components/schemas/ScimMapping'
           description: List of SCIM mappings
-
     ScimAttributeMapping:
       type: object
       properties:
@@ -1903,7 +1865,6 @@ components:
           items:
             $ref: '#/components/schemas/ScimAttributeMappingRule'
           description: List of SCIM attribute mapping rules
-
     ScimAccessTokenRef:
       type: object
       required:
@@ -1912,7 +1873,6 @@ components:
         id:
           type: string
           description: Unique identifier for the SCIM access token
-
     ScopeRef:
       type: object
       required:
@@ -1933,7 +1893,6 @@ components:
         parentScopeId:
           type: string
           description: Parent scope ID if this is a child scope
-
     CardFormatField:
       type: object
       properties:
@@ -1949,7 +1908,6 @@ components:
         rightmostBit:
           type: integer
           description: Position of the rightmost bit
-
     CardFormatParityBit:
       type: object
       required:
@@ -1969,7 +1927,6 @@ components:
             - 0
             - 1
           description: Value to set if match condition is met
-
     CardFormatFixedBit:
       type: object
       required:
@@ -1984,7 +1941,6 @@ components:
             - 0
             - 1
           description: Fixed value of the bit
-
     CardFormatDescription:
       type: object
       required:
@@ -2011,7 +1967,6 @@ components:
         reverseBitOrder:
           type: boolean
           description: Whether bit order is reversed
-
     PictureDetails:
       type: object
       properties:
@@ -2024,7 +1979,6 @@ components:
         url:
           type: string
           description: URL to access the picture
-
     UserScheduleIdentity:
       type: object
       required:
@@ -2051,7 +2005,6 @@ components:
         email:
           type: string
           description: Email address
-
     UserScheduleUser:
       type: object
       required:
@@ -2070,7 +2023,6 @@ components:
           items:
             $ref: '#/components/schemas/SiteRef'
           description: List of sites the user has access to
-
     UserScheduleScheduleRef:
       type: object
       required:
@@ -2082,7 +2034,6 @@ components:
         name:
           type: string
           description: Name of the schedule
-
     MfaCredentialDetails:
       type: object
       required:
@@ -2109,7 +2060,6 @@ components:
           $ref: '#/components/schemas/MfaCredentialTypeRef'
         totpSoftDevice:
           $ref: '#/components/schemas/TotpSoftDeviceRef'
-
     IdentityUser:
       type: object
       required:
@@ -2142,7 +2092,6 @@ components:
           description: Timestamp when updated
         org:
           $ref: '#/components/schemas/OrganizationRef'
-
     IdentityProviderDetails:
       type: object
       required:
@@ -2170,7 +2119,6 @@ components:
           $ref: '#/components/schemas/IdentityProviderTypeRef'
         org:
           $ref: '#/components/schemas/OrganizationRef'
-
     IdentityNamespace:
       type: object
       required:
@@ -2188,7 +2136,6 @@ components:
           $ref: '#/components/schemas/OrganizationRef'
         identityProvider:
           $ref: '#/components/schemas/IdentityProviderDetails'
-
     RoleDetails:
       type: object
       required:
@@ -2206,7 +2153,6 @@ components:
         isMfaRequired:
           type: boolean
           description: Whether MFA is required
-
     ScheduleUserIdentity:
       type: object
       required:
@@ -2278,7 +2224,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/IdentityUser'
-
     ScheduleZoneUser:
       type: object
       required:
@@ -2310,7 +2255,6 @@ components:
               description: Access end date
             identity:
               $ref: '#/components/schemas/ScheduleUserIdentity'
-
     ScheduleZoneGroup:
       type: object
       properties:
@@ -2318,7 +2262,6 @@ components:
           $ref: '#/components/schemas/ZoneRef'
         group:
           $ref: '#/components/schemas/GroupRef'
-
     OrgIdentityProvider:
       type: object
       required:
@@ -2334,7 +2277,6 @@ components:
           $ref: '#/components/schemas/IdentityProviderTypeRef'
         org:
           $ref: '#/components/schemas/OrganizationRef'
-
     OrgIdentityNamespace:
       type: object
       required:
@@ -2352,7 +2294,6 @@ components:
           $ref: '#/components/schemas/OrganizationRef'
         identityProvider:
           $ref: '#/components/schemas/OrgIdentityProvider'
-
     OrgIdentityUser:
       type: object
       required:
@@ -2385,7 +2326,6 @@ components:
           description: Timestamp when user was last updated
         org:
           $ref: '#/components/schemas/OrganizationRef'
-
     OrganizationDetails:
       type: object
       required:
@@ -2400,7 +2340,6 @@ components:
         name:
           type: string
           description: Name of the organization
-
     MfaCredential:
       type: object
       required:
@@ -2427,7 +2366,6 @@ components:
           $ref: '#/components/schemas/MfaCredentialTypeRef'
         totpSoftDevice:
           $ref: '#/components/schemas/TotpSoftDeviceRef'
-
     UserPicture:
       type: object
       required:
@@ -2449,7 +2387,6 @@ components:
           description: Timestamp when user picture was last updated
         picture:
           $ref: '#/components/schemas/PictureDetails'
-
     ZoneUser:
       type: object
       properties:
@@ -2458,7 +2395,6 @@ components:
         schedule:
           allOf:
             - $ref: '#/components/schemas/ScheduleRef'
-
     Credential:
       type: object
       required:
@@ -2481,7 +2417,6 @@ components:
           $ref: '#/components/schemas/MobileCredentialRef'
         eventAction:
           $ref: '#/components/schemas/EventActionRef'
-
     ActivityEvent:
       type: object
       required:
@@ -2674,7 +2609,6 @@ components:
           items:
             $ref: '#/components/schemas/FirstAuthInfo'
           description: First authentication information
-
     UserSchedule:
       type: object
       properties:
@@ -2685,7 +2619,6 @@ components:
           items:
             $ref: '#/components/schemas/UserScheduleScheduleRef'
           description: List of schedules assigned to the user
-
     EntryStateDetails:
       type: object
       required:
@@ -2740,7 +2673,6 @@ components:
         uniqueTriggerMethodCount:
           type: integer
           description: Number of unique trigger methods
-
     GroupZone:
       type: object
       required:
@@ -2752,7 +2684,6 @@ components:
         name:
           type: string
           description: Name of the group zone
-
     GroupZoneGroup:
       type: object
       properties:
@@ -2761,7 +2692,6 @@ components:
         schedule:
           allOf:
             - $ref: '#/components/schemas/ScheduleRef'
-
     IdentityProviderType:
       type: object
       required:
@@ -2787,7 +2717,6 @@ components:
           items:
             $ref: '#/components/schemas/AuthStrategyTypeRef'
           description: List of supported authentication strategy types
-
     IdentityProvider:
       type: object
       required:
@@ -2914,7 +2843,6 @@ components:
           items:
             $ref: '#/components/schemas/ScimAccessTokenRef'
           description: List of SCIM access tokens
-
     IdentityProviderGroup:
       type: object
       properties:
@@ -2930,7 +2858,6 @@ components:
         email:
           type: string
           description: Email associated with the identity provider group
-
     IdentityProviderGroupRelation:
       type: object
       properties:
@@ -2949,11 +2876,9 @@ components:
         videoGroupIdExt:
           type: string
           description: External video group ID
-
     RoleScopeId:
       type: string
       description: Unique identifier for a role scope
-
     ScheduleType:
       type: object
       required:
@@ -2965,7 +2890,6 @@ components:
         name:
           type: string
           description: Name of the schedule type
-
     Schedule:
       type: object
       required:
@@ -3002,7 +2926,6 @@ components:
           type: string
           format: date-time
           description: Timestamp when schedule was last updated
-
     ScheduleEvent:
       type: object
       required:
@@ -3031,7 +2954,6 @@ components:
         name:
           type: string
           description: Name of the schedule event
-
     ScopeResource:
       type: object
       required:
@@ -3051,7 +2973,6 @@ components:
           items:
             $ref: '#/components/schemas/ScopeRef'
           description: List of scopes associated with this resource
-
     CredentialType:
       type: object
       required:
@@ -3069,7 +2990,6 @@ components:
         modelName:
           type: string
           description: Model name of the credential type
-
     CredentialActionType:
       type: object
       required:
@@ -3084,7 +3004,6 @@ components:
         command:
           type: string
           description: Command associated with the credential action type
-
     CredentialAction:
       type: object
       required:
@@ -3095,7 +3014,6 @@ components:
           description: Unique identifier for the credential action
         credential:
           $ref: '#/components/schemas/Credential'
-
     CardFormat:
       type: object
       required:
@@ -3118,7 +3036,6 @@ components:
           description: Number of bits in the card format
         description:
           $ref: '#/components/schemas/CardFormatDescription'
-
     SharedUser:
       type: object
       required:
@@ -3163,7 +3080,6 @@ components:
           items:
             $ref: '#/components/schemas/SiteRef'
           description: List of sites the shared user has access to
-
     OrgIdentity:
       type: object
       required:
@@ -3239,12 +3155,10 @@ components:
           items:
             $ref: '#/components/schemas/OrgIdentityUser'
           description: List of users associated with this identity
-
     AuditLog:
       type: object
       description: Audit log entry
       properties: {}
-
     ZoneShare:
       type: object
       properties:
@@ -3256,7 +3170,6 @@ components:
             id:
               type: string
               description: Unique identifier for the organization
-
     SiteLocationMeasurement:
       type: object
       required:

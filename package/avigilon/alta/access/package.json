@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-avigilon-alta-access",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Avigilon Alta Access",
   "moduleId": "17feded8-8e28-4b45-8960-d4b1f0cbe4a8",
   "main": "dist/src/index.js",

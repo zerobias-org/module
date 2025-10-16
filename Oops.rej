@@ -1,0 +1,9 @@
+@@ -456,7 +456,7 @@
+  */
+ export function mapEntryDetails(raw: any): EntryDetails {
+   return new EntryDetails(
+-    raw.id,
++    String(raw.id),
+     raw.name,
+     raw.opal,
+     raw.pincode,

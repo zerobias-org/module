@@ -7,7 +7,8 @@ import { EntryDetails } from '../../generated/model';
 import {
   Email,
   NotConnectedError,
-  UnexpectedError
+  UnexpectedError,
+  PagedResults
 } from '@auditmation/types-core-js';
 import {
   mockAuthenticatedRequest,
@@ -133,24 +134,22 @@ describe('EntryProducerApiImpl', () => {
           totalCount: 2
         });
 
-      const results = await producer.list(orgId);
+      const results = new PagedResults<EntryDetails>();
+      await producer.list(results, orgId);
 
-      // Verify we get a flat array, not wrapped
-      expect(results).to.be.an('array');
-      expect(results).to.not.have.property('data');
-      expect(results).to.not.have.property('meta');
-      expect(results).to.not.have.property('totalCount');
+      // Verify we get items
+      expect(results.items).to.be.an('array');
 
       // Verify we have entries
-      expect(results).to.have.length(2);
+      expect(results.items).to.have.length(2);
 
       // Verify first entry structure
-      expect(results[0]).to.have.property('id');
-      expect(results[0]).to.have.property('name');
-      expect(results[0].id).to.be.a('number');
-      expect(results[0].name).to.be.a('string');
-      expect(results[0].id).to.equal(1001);
-      expect(results[0].name).to.equal('Main Entrance');
+      expect(results.items[0]).to.have.property('id');
+      expect(results.items[0]).to.have.property('name');
+      expect(results.items[0].id).to.be.a('number');
+      expect(results.items[0].name).to.be.a('string');
+      expect(results.items[0].id).to.equal(1001);
+      expect(results.items[0].name).to.equal('Main Entrance');
 
       scope.done();
     });
@@ -163,10 +162,11 @@ describe('EntryProducerApiImpl', () => {
           totalCount: 0
         });
 
-      const results = await producer.list(orgId);
+      const results = new PagedResults<EntryDetails>();
+      await producer.list(results, orgId);
 
-      expect(results).to.be.an('array');
-      expect(results).to.have.length(0);
+      expect(results.items).to.be.an('array');
+      expect(results.items).to.have.length(0);
       scope.done();
     });
   });
@@ -232,10 +232,11 @@ describe('EntryProducerApiImpl', () => {
           totalCount: 1
         });
 
-      const results = await producer.list(orgId);
+      const results = new PagedResults<EntryDetails>();
+      await producer.list(results, orgId);
 
-      expect(results).to.have.length(1);
-      const entry = results[0];
+      expect(results.items).to.have.length(1);
+      const entry = results.items[0];
 
       // Validate required fields
       expect(entry).to.have.property('id');
@@ -296,11 +297,12 @@ describe('EntryProducerApiImpl', () => {
           totalCount: 1
         });
 
-      const results = await producer.list(orgId);
+      const results = new PagedResults<EntryDetails>();
+      await producer.list(results, orgId);
 
-      expect(results).to.have.length(1);
-      expect(results[0].id).to.equal(1001);
-      expect(results[0].name).to.equal('Simple Door');
+      expect(results.items).to.have.length(1);
+      expect(results.items[0].id).to.equal(1001);
+      expect(results.items[0].name).to.equal('Simple Door');
 
       scope.done();
     });
@@ -322,10 +324,11 @@ describe('EntryProducerApiImpl', () => {
           totalCount: 1
         });
 
-      const results = await producer.list(orgId);
+      const results = new PagedResults<EntryDetails>();
+      await producer.list(results, orgId);
 
-      expect(results).to.have.length(1);
-      const entry = results[0];
+      expect(results.items).to.have.length(1);
+      const entry = results.items[0];
 
       // These fields can be null
       expect(entry.pincode).to.satisfy((val: any) => val === null || val === undefined || typeof val === 'string');
@@ -356,17 +359,14 @@ describe('EntryProducerApiImpl', () => {
           filteredCount: 2
         });
 
-      const results = await producer.list(orgId);
+      const results = new PagedResults<EntryDetails>();
+      await producer.list(results, orgId);
 
-      // Verify we get a flat array, not wrapped
-      expect(results).to.be.an('array');
-      expect(results).to.not.have.property('data');
-      expect(results).to.not.have.property('meta');
-      expect(results).to.not.have.property('totalCount');
-      expect(results).to.not.have.property('filteredCount');
+      // Verify we get items
+      expect(results.items).to.be.an('array');
 
       // Verify array contents
-      expect(results).to.have.length(2);
+      expect(results.items).to.have.length(2);
 
       scope.done();
     });
@@ -379,10 +379,11 @@ describe('EntryProducerApiImpl', () => {
           // Missing 'data' array
         });
 
-      const results = await producer.list(orgId);
+      const results = new PagedResults<EntryDetails>();
+      await producer.list(results, orgId);
 
-      expect(results).to.be.an('array');
-      expect(results).to.have.length(0);
+      expect(results.items).to.be.an('array');
+      expect(results.items).to.have.length(0);
       scope.done();
     });
 
@@ -394,10 +395,11 @@ describe('EntryProducerApiImpl', () => {
           totalCount: 0
         });
 
-      const results = await producer.list(orgId);
+      const results = new PagedResults<EntryDetails>();
+      await producer.list(results, orgId);
 
-      expect(results).to.be.an('array');
-      expect(results).to.have.length(0);
+      expect(results.items).to.be.an('array');
+      expect(results.items).to.have.length(0);
       scope.done();
     });
   });
@@ -413,7 +415,8 @@ describe('EntryProducerApiImpl', () => {
       );
 
       try {
-        await producer.list(orgId);
+        const results = new PagedResults<EntryDetails>();
+        await producer.list(results, orgId);
         expect.fail('Expected UnexpectedError to be thrown');
       } catch (error) {
         expect(error).to.be.instanceOf(UnexpectedError);
@@ -428,7 +431,8 @@ describe('EntryProducerApiImpl', () => {
         .replyWithError('Network error');
 
       try {
-        await producer.list(orgId);
+        const results = new PagedResults<EntryDetails>();
+        await producer.list(results, orgId);
         expect.fail('Expected network error to be thrown');
       } catch (error) {
         expect(error).to.be.instanceOf(UnexpectedError);
@@ -447,7 +451,8 @@ describe('EntryProducerApiImpl', () => {
       );
 
       try {
-        await producer.list(orgId);
+        const results = new PagedResults<EntryDetails>();
+        await producer.list(results, orgId);
         expect.fail('Expected RateLimitExceededError to be thrown');
       } catch (error) {
         expect((error as any).constructor.name).to.equal('RateLimitExceededError');
@@ -466,7 +471,8 @@ describe('EntryProducerApiImpl', () => {
       );
 
       try {
-        await producer.list(orgId);
+        const results = new PagedResults<EntryDetails>();
+        await producer.list(results, orgId);
         expect.fail('Expected error to be thrown');
       } catch (error) {
         // Should throw some kind of authentication error
@@ -493,10 +499,11 @@ describe('EntryProducerApiImpl', () => {
           totalCount: 1
         });
 
-      const results = await producer.list(orgId);
+      const results = new PagedResults<EntryDetails>();
+      await producer.list(results, orgId);
 
-      expect(results).to.have.length(1);
-      const entry = results[0];
+      expect(results.items).to.have.length(1);
+      const entry = results.items[0];
 
       if (entry.createdAt) {
         expect(entry.createdAt).to.be.instanceOf(Date);

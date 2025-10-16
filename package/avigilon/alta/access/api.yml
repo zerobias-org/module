@@ -61,6 +61,7 @@ components:
             read:users: Read access to user information
             read:groups: Read access to group information
             read:sites: Read access to site information
+            read:zones: Read access to zone information
             read:user-roles: Read access to user role assignments
             read:user-sites: Read access to user site associations
             read:group-users: Read access to group user memberships
@@ -332,7 +333,7 @@ components:
           description: Unique identifier for the entry
         type:
           type: string
-          enum: [accessPermission, doorPermission, zonePermission]
+          enum: [access_permission, door_permission, zone_permission]
           description: Type of entry/permission
         name:
           type: string
@@ -392,12 +393,12 @@ components:
       properties:
         startTime:
           type: string
-          format: time
-          description: Start time for access (HH:MM format)
+          format: date-time
+          description: Start time for access
         endTime:
           type: string
-          format: time
-          description: End time for access (HH:MM format)
+          format: date-time
+          description: End time for access
         daysOfWeek:
           type: array
           items:
@@ -414,6 +415,7 @@ components:
           description: End date for the time restriction
     OrganizationRef:
       type: object
+      description: Reference to an organization
       required:
         - id
         - name
@@ -426,6 +428,7 @@ components:
           description: Organization name
     UserIdentity:
       type: object
+      description: User identity information
       required:
         - id
         - email
@@ -621,6 +624,7 @@ components:
           description: Timestamp when zone was last updated
     ZoneSiteRef:
       type: object
+      description: Reference to a site within a zone
       required:
         - id
         - name
@@ -650,6 +654,7 @@ components:
           $ref: '#/components/schemas/ZoneEntryAcu'
     ZoneEntryAcu:
       type: object
+      description: ACU (Access Control Unit) associated with a zone entry
       required:
         - id
       properties:
@@ -756,6 +761,7 @@ components:
           description: Cameras associated with the entry
     EntryZone:
       type: object
+      description: Zone information associated with an entry
       required:
         - id
         - name
@@ -770,6 +776,7 @@ components:
           $ref: '#/components/schemas/EntryZoneSite'
     EntryZoneSite:
       type: object
+      description: Site information associated with an entry zone
       required:
         - id
         - name
@@ -782,6 +789,7 @@ components:
           description: Site name
     EntryAcu:
       type: object
+      description: ACU (Access Control Unit) associated with an entry
       required:
         - id
         - name
@@ -797,6 +805,7 @@ components:
           description: Whether ACU is in gateway mode
     EntryState:
       type: object
+      description: State information for an entry
       required:
         - id
         - name
@@ -809,6 +818,7 @@ components:
           description: Entry state name
     EntrySchedule:
       type: object
+      description: Schedule information for an entry
       required:
         - id
         - name
@@ -868,6 +878,7 @@ components:
           $ref: '#/components/schemas/VideoProvider'
     VideoProvider:
       type: object
+      description: Video provider information for camera integration
       required:
         - id
         - videoProviderTypeId

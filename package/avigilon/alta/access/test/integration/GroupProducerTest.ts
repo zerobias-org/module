@@ -45,9 +45,9 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
           
           // Validate common group fields that should exist
           if (firstGroup.id) {
-            // ID should be numeric
-            expect(firstGroup.id).to.be.a('number');
-            expect(firstGroup.id).to.be.greaterThan(0);
+            // ID should be a string
+            expect(firstGroup.id).to.be.a('string');
+            expect(firstGroup.id).to.not.be.empty;
           }
           
           if (firstGroup.createdAt && firstGroup.createdAt instanceof Date) {
@@ -95,9 +95,9 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       
       const groupId = groups[0].id;
       expect(groupId).to.not.be.undefined;
-      
-      // Use numeric ID directly
-      expect(groupId).to.be.a('number');
+
+      // Use string ID directly
+      expect(groupId).to.be.a('string');
       
       const group = await groupApi.get(testConfig.organizationId, groupId);
       
@@ -110,10 +110,10 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       // Validate group properties
       if (group.id) {
         expect(group.id).to.equal(groupId);
-        
-        // ID should be numeric
-        expect(group.id).to.be.a('number');
-        expect(group.id).to.be.greaterThan(0);
+
+        // ID should be a string
+        expect(group.id).to.be.a('string');
+        expect(group.id).to.not.be.empty;
       }
       
       if (group.createdAt && group.createdAt instanceof Date) {
@@ -128,7 +128,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
 
       // Use a clearly non-existent string ID
       const nonExistentId = '999999999';
-
+      
       try {
         const group = await groupApi.get(testConfig.organizationId, nonExistentId);
         logger.debug(`groupApi.get('${nonExistentId}')`, JSON.stringify(group, null, 2));
@@ -163,29 +163,196 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
     });
   });
 
+  describe('Group Child Operations', function () {
+
+    it('should list group users with default pagination', async function () {
+
+      // First get a valid group ID from the list operation
+      const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
+      const groups = groupsResult.items;
+
+      if (!groups || !Array.isArray(groups) || groups.length === 0) {
+        throw new Error('No groups available for testing');
+      }
+
+      const groupId = groups[0].id;
+      expect(groupId).to.not.be.undefined;
+      expect(groupId).to.be.a('string');
+
+      // Test listUsers operation
+      const usersResult = await groupApi.listUsers(testConfig.organizationId, groupId);
+
+      logger.debug(`groupApi.listUsers('${groupId}')`, JSON.stringify(usersResult, null, 2));
+
+      expect(usersResult).to.not.be.null;
+      expect(usersResult).to.not.be.undefined;
+
+      // Validate structure
+      expect(usersResult.items).to.be.an('array');
+
+      // If users exist in the group, validate the first one
+      if (usersResult.items && usersResult.items.length > 0) {
+        const firstUser = usersResult.items[0];
+        expect(firstUser).to.be.an('object');
+
+        // Validate common user fields
+        if (firstUser.id) {
+          expect(firstUser.id).to.be.a('string');
+          expect(firstUser.id).to.not.be.empty;
+        }
+
+        if (firstUser.createdAt && firstUser.createdAt instanceof Date) {
+          validateCoreTypes.isDate(firstUser.createdAt);
+        }
+      }
+
+      // Validate count property exists
+      if (usersResult.count !== undefined) {
+        expect(usersResult.count).to.be.a('number');
+        expect(usersResult.count).to.be.at.least(0);
+      }
+
+      // Save fixture
+      await saveFixture('group-users-list.json', usersResult);
+    });
+
+    it('should list group users with custom pagination', async function () {
+
+      // First get a valid group ID from the list operation
+      const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
+      const groups = groupsResult.items;
+
+      if (!groups || !Array.isArray(groups) || groups.length === 0) {
+        throw new Error('No groups available for testing');
+      }
+
+      const groupId = groups[0].id;
+      expect(groupId).to.not.be.undefined;
+
+      // Test listUsers with pagination
+      const usersResult = await groupApi.listUsers(testConfig.organizationId, groupId, 1, 5);
+
+      logger.debug(`groupApi.listUsers('${groupId}', 1, 5)`, JSON.stringify(usersResult, null, 2));
+
+      expect(usersResult).to.not.be.null;
+      expect(usersResult).to.not.be.undefined;
+      expect(usersResult.items).to.be.an('array');
+
+      // Should return at most 5 users
+      if (usersResult.items) {
+        expect(usersResult.items.length).to.be.at.most(5);
+      }
+
+      // Save fixture
+      await saveFixture('group-users-list-paginated.json', usersResult);
+    });
+
+    it('should list group entries with default pagination', async function () {
+
+      // First get a valid group ID from the list operation
+      const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
+      const groups = groupsResult.items;
+
+      if (!groups || !Array.isArray(groups) || groups.length === 0) {
+        throw new Error('No groups available for testing');
+      }
+
+      const groupId = groups[0].id;
+      expect(groupId).to.not.be.undefined;
+      expect(groupId).to.be.a('string');
+
+      // Test listEntries operation
+      const entriesResult = await groupApi.listEntries(testConfig.organizationId, groupId);
+
+      logger.debug(`groupApi.listEntries('${groupId}')`, JSON.stringify(entriesResult, null, 2));
+
+      expect(entriesResult).to.not.be.null;
+      expect(entriesResult).to.not.be.undefined;
+
+      // Validate structure
+      expect(entriesResult.items).to.be.an('array');
+
+      // If entries exist for the group, validate the first one
+      if (entriesResult.items && entriesResult.items.length > 0) {
+        const firstEntry = entriesResult.items[0];
+        expect(firstEntry).to.be.an('object');
+
+        // Validate common entry fields
+        if (firstEntry.id) {
+          expect(firstEntry.id).to.be.a('string');
+          expect(firstEntry.id).to.not.be.empty;
+        }
+
+        if (firstEntry.createdAt && firstEntry.createdAt instanceof Date) {
+          validateCoreTypes.isDate(firstEntry.createdAt);
+        }
+      }
+
+      // Validate count property exists
+      if (entriesResult.count !== undefined) {
+        expect(entriesResult.count).to.be.a('number');
+        expect(entriesResult.count).to.be.at.least(0);
+      }
+
+      // Save fixture
+      await saveFixture('group-entries-list.json', entriesResult);
+    });
+
+    it('should list group entries with custom pagination', async function () {
+
+      // First get a valid group ID from the list operation
+      const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
+      const groups = groupsResult.items;
+
+      if (!groups || !Array.isArray(groups) || groups.length === 0) {
+        throw new Error('No groups available for testing');
+      }
+
+      const groupId = groups[0].id;
+      expect(groupId).to.not.be.undefined;
+
+      // Test listEntries with pagination
+      const entriesResult = await groupApi.listEntries(testConfig.organizationId, groupId, 1, 5);
+
+      logger.debug(`groupApi.listEntries('${groupId}', 1, 5)`, JSON.stringify(entriesResult, null, 2));
+
+      expect(entriesResult).to.not.be.null;
+      expect(entriesResult).to.not.be.undefined;
+      expect(entriesResult.items).to.be.an('array');
+
+      // Should return at most 5 entries
+      if (entriesResult.items) {
+        expect(entriesResult.items.length).to.be.at.most(5);
+      }
+
+      // Save fixture
+      await saveFixture('group-entries-list-paginated.json', entriesResult);
+    });
+  });
+
   describe('Group Data Validation', function () {
-    
+
     it('should validate group response schema', async function () {
 
       const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
       const groups = groupsResult.items;
-      
+
       if (!groups || !Array.isArray(groups) || groups.length === 0) {
         throw new Error('No groups available for testing');
       }
-      
+
       const group = groups[0];
       logger.debug('Validating group schema', JSON.stringify(group, null, 2));
-      
+
       expect(group).to.be.an('object');
-      
+
       // Basic validation - check for expected structure
       // Note: Actual fields depend on the API response structure
-      
+
       // Most group APIs should have some form of identifier
       const hasIdentifier = group.id || group.name;
       expect(hasIdentifier).to.not.be.undefined;
-      
+
       // Save schema validation fixture
       await saveFixture('group-schema-validation.json', {
         group: group,

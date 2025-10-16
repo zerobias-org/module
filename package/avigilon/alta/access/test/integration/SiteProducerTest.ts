@@ -28,22 +28,23 @@ describe('Avigilon Alta Access - Site Producer Tests', () => {
       const tokenProperties = await authApi.getTokenProperties();
       const organizationId = tokenProperties.organizationId!.toString();
 
-      const sites = await siteApi.list(organizationId);
+      const sitesResult = await siteApi.list(organizationId);
 
 
-      // Validate the response is a flat array
-      expect(sites).to.be.an('array');
-      
+      // Validate the response is PagedResults
+      expect(sitesResult).to.not.be.null;
+      expect(sitesResult.items).to.be.an('array');
+
       // If we have sites, validate their structure
-      if (sites.length > 0) {
-        const site = sites[0];
+      if (sitesResult.items.length > 0) {
+        const site = sitesResult.items[0];
         
         // Required fields
         expect(site).to.have.property('id');
         expect(site).to.have.property('name');
-        expect(site.id).to.be.a('number');
+        expect(site.id).to.be.a('string');
         expect(site.name).to.be.a('string');
-        expect(site.id).to.be.greaterThan(0);
+        expect(site.id.length).to.be.greaterThan(0);
         expect(site.name.length).to.be.greaterThan(0);
         
         // Optional fields validation (if present)
@@ -101,17 +102,17 @@ describe('Avigilon Alta Access - Site Producer Tests', () => {
       const tokenProperties = await authApi.getTokenProperties();
       const organizationId = tokenProperties.organizationId!.toString();
 
-      const sites = await siteApi.list(organizationId);
+      const sitesResult = await siteApi.list(organizationId);
 
-      expect(sites).to.be.an('array');
-      
+      expect(sitesResult.items).to.be.an('array');
+
       // Each site should have consistent structure
-      sites.forEach(site => {
+      for (const site of sitesResult.items) {
         expect(site).to.have.property('id');
         expect(site).to.have.property('name');
-        expect(site.id).to.be.a('number');
+        expect(site.id).to.be.a('string');
         expect(site.name).to.be.a('string');
-      });
+      }
     });
 
     it('should validate site data types', async function () {
@@ -124,15 +125,15 @@ describe('Avigilon Alta Access - Site Producer Tests', () => {
       const tokenProperties = await authApi.getTokenProperties();
       const organizationId = tokenProperties.organizationId!.toString();
 
-      const sites = await siteApi.list(organizationId);
+      const sitesResult = await siteApi.list(organizationId);
 
-      expect(sites).to.be.an('array');
-      
-      if (sites.length > 0) {
-        const site = sites[0];
-        
+      expect(sitesResult.items).to.be.an('array');
+
+      if (sitesResult.items.length > 0) {
+        const site = sitesResult.items[0];
+
         // Validate all possible data types
-        expect(site.id).to.be.a('number');
+        expect(site.id).to.be.a('string');
         expect(site.name).to.be.a('string');
         
         if (site.opal) expect(site.opal).to.be.a('string');

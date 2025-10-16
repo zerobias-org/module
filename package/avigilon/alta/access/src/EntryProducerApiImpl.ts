@@ -1,8 +1,7 @@
-/* eslint-disable */
 import { AxiosInstance } from 'axios';
 import { PagedResults } from '@auditmation/types-core-js';
 import { EntryProducerApi } from '../generated/api/EntryApi';
-import { EntryDetails, Entry, ActivityEvent, EntryCamera, UserSchedule, User } from '../generated/model';
+import { EntryDetails } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
 import { mapEntryDetails } from './Mappers';
 
@@ -13,31 +12,24 @@ export class EntryProducerApiImpl implements EntryProducerApi {
     this.httpClient = client.getHttpClient();
   }
 
-  async get(organizationId: string, entryId: string): Promise<EntryDetails> {
-    throw new Error('Not implemented');
-  }
+  async list(results: PagedResults<EntryDetails>, organizationId: string): Promise<void> {
+    const params: Record<string, number> = {};
 
-  async getActivity(organizationId: string, entryId: string, startDate?: Date, endDate?: Date): Promise<Array<ActivityEvent>> {
-    throw new Error('Not implemented');
-  }
+    // Convert pageNumber/pageSize to offset/limit
+    if (results.pageNumber && results.pageSize) {
+      params.offset = (results.pageNumber - 1) * results.pageSize;
+      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
+    } else {
+      params.offset = 0;
+    }
 
-  async listCameras(results: PagedResults<EntryCamera>, organizationId: string, entryId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
+    const response = await this.httpClient.get(`/orgs/${organizationId}/entries`, { params });
 
-  async listUserSchedules(results: PagedResults<UserSchedule>, organizationId: string, entryId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
+    // Apply mappers and set pagination info from response structure
+    results.items = response.data.data ? response.data.data.map(mapEntryDetails) : [];
+    results.count = response.data.totalCount || 0;
 
-  async listUsers(results: PagedResults<User>, organizationId: string, entryId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
-
-  async list(organizationId: string): Promise<Array<EntryDetails>> {
-    const response = await this.httpClient.get(`/orgs/${organizationId}/entries`);
-
-    // Extract the data array from the response (flattening it, dropping metadata and pagination)
-    const entriesData = response.data.data || [];
-    return entriesData.map(mapEntryDetails);
+    // Handle pageToken if available
+    results.pageToken = response.headers['x-next-page-token'];
   }
 }

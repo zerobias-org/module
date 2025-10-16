@@ -27,8 +27,8 @@ describe('Avigilon Alta Access - Auth Producer Tests', () => {
 
       // Validate the key properties we care about
       expect(tokenProperties).to.be.an('object');
-      expect(tokenProperties.organizationId).to.be.a('number');
-      expect(tokenProperties.identityId).to.be.a('number');
+      expect(tokenProperties.organizationId).to.be.a('string');
+      expect(tokenProperties.identityId).to.be.a('string');
       
       if (tokenProperties.expiresAt) {
         expect(tokenProperties.expiresAt).to.be.instanceOf(Date);
@@ -42,9 +42,9 @@ describe('Avigilon Alta Access - Auth Producer Tests', () => {
         expect(tokenProperties.scope.length).to.be.greaterThan(0);
       }
 
-      // Validate organization ID is reasonable
-      expect(tokenProperties.organizationId!).to.be.greaterThan(0);
-      expect(tokenProperties.identityId!).to.be.greaterThan(0);
+      // Validate organization ID and identity ID are non-empty strings
+      expect(tokenProperties.organizationId).to.have.length.greaterThan(0);
+      expect(tokenProperties.identityId).to.have.length.greaterThan(0);
     });
 
     it('should have valid token properties structure', async function () {

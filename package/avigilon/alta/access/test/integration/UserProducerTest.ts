@@ -136,8 +136,8 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
 
     it('should handle non-existent user ID gracefully', async function () {
 
-      // Use a clearly non-existent ID - use string format
-      const nonExistentId = '12312432452331';
+      // Use a clearly non-existent ID
+      const nonExistentId = '99999999'; // Use a numeric ID that doesn't exist
 
       try {
         const user = await userApi.get(testConfig.organizationId, nonExistentId);
@@ -170,6 +170,154 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
           timestamp: new Date().toISOString()
         });
       }
+    });
+  });
+
+  describe('User Roles Operations', function () {
+
+    it('should list user roles with default pagination', async function () {
+
+      // First get a valid user ID
+      const usersResult = await userApi.list(testConfig.organizationId, 1, 1);
+      const users = usersResult.items;
+
+      if (!users || !Array.isArray(users) || users.length === 0) {
+        throw new Error('No users available for testing');
+      }
+
+      const userId = users[0].id;
+      expect(userId).to.not.be.undefined;
+
+      // List roles for the user
+      const rolesResult = await userApi.listRoles(testConfig.organizationId, userId);
+
+      logger.debug(`userApi.listRoles('${userId}')`, JSON.stringify(rolesResult, null, 2));
+
+      expect(rolesResult).to.not.be.null;
+      expect(rolesResult).to.not.be.undefined;
+
+      // Validate structure
+      expect(rolesResult.items).to.be.an('array');
+      expect(rolesResult.count).to.be.a('number');
+
+      // If roles exist, validate the first one
+      if (rolesResult.items && rolesResult.items.length > 0) {
+        const firstRole = rolesResult.items[0];
+        expect(firstRole).to.be.an('object');
+
+        // Validate common role fields
+        if (firstRole.id) {
+          expect(firstRole.id).to.be.a('string');
+        }
+
+        if (firstRole.name) {
+          expect(firstRole.name).to.be.a('string');
+        }
+      }
+
+      // Save fixture
+      await saveFixture('user-roles-list.json', rolesResult);
+    });
+
+    it('should list user roles with custom pagination', async function () {
+
+      // First get a valid user ID
+      const usersResult = await userApi.list(testConfig.organizationId, 1, 1);
+      const users = usersResult.items;
+
+      if (!users || !Array.isArray(users) || users.length === 0) {
+        throw new Error('No users available for testing');
+      }
+
+      const userId = users[0].id;
+
+      // List roles with custom pagination
+      const rolesResult = await userApi.listRoles(testConfig.organizationId, userId, 1, 3);
+
+      logger.debug(`userApi.listRoles('${userId}', 1, 3)`, JSON.stringify(rolesResult, null, 2));
+
+      expect(rolesResult).to.not.be.null;
+      expect(rolesResult.items).to.be.an('array');
+
+      // Should return at most 3 roles
+      expect(rolesResult.items.length).to.be.at.most(3);
+
+      // Save fixture
+      await saveFixture('user-roles-list-paginated.json', rolesResult);
+    });
+  });
+
+  describe('User Sites Operations', function () {
+
+    it('should list user sites with default pagination', async function () {
+
+      // First get a valid user ID
+      const usersResult = await userApi.list(testConfig.organizationId, 1, 1);
+      const users = usersResult.items;
+
+      if (!users || !Array.isArray(users) || users.length === 0) {
+        throw new Error('No users available for testing');
+      }
+
+      const userId = users[0].id;
+      expect(userId).to.not.be.undefined;
+
+      // List sites for the user
+      const sitesResult = await userApi.listSites(testConfig.organizationId, userId);
+
+      logger.debug(`userApi.listSites('${userId}')`, JSON.stringify(sitesResult, null, 2));
+
+      expect(sitesResult).to.not.be.null;
+      expect(sitesResult).to.not.be.undefined;
+
+      // Validate structure
+      expect(sitesResult.items).to.be.an('array');
+      expect(sitesResult.count).to.be.a('number');
+
+      // If sites exist, validate the first one
+      if (sitesResult.items && sitesResult.items.length > 0) {
+        const firstSite = sitesResult.items[0];
+        expect(firstSite).to.be.an('object');
+
+        // Validate common site fields
+        if (firstSite.id) {
+          expect(firstSite.id).to.be.a('string');
+        }
+
+        if (firstSite.name) {
+          expect(firstSite.name).to.be.a('string');
+        }
+      }
+
+      // Save fixture
+      await saveFixture('user-sites-list.json', sitesResult);
+    });
+
+    it('should list user sites with custom pagination', async function () {
+
+      // First get a valid user ID
+      const usersResult = await userApi.list(testConfig.organizationId, 1, 1);
+      const users = usersResult.items;
+
+      if (!users || !Array.isArray(users) || users.length === 0) {
+        throw new Error('No users available for testing');
+      }
+
+      const userId = users[0].id;
+
+      // List sites with custom pagination
+      const sitesResult = await userApi.listSites(testConfig.organizationId, userId, 1, 3);
+
+      logger.debug(`userApi.listSites('${userId}', 1, 3)`, JSON.stringify(sitesResult, null, 2));
+
+      expect(sitesResult).to.not.be.null;
+      expect(sitesResult.items).to.be.an('array');
+
+      // Should return at most 3 sites
+      expect(sitesResult.items.length).to.be.at.most(3);
+
+      // Save fixture
+      await saveFixture('user-sites-list-paginated.json', sitesResult);
     });
   });
 

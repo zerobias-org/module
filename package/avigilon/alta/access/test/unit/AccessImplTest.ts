@@ -5,7 +5,6 @@ import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
 import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
 import { UserProducerApiImpl } from '../../src/UserProducerApiImpl';
 import { GroupProducerApiImpl } from '../../src/GroupProducerApiImpl';
-import { AcuProducerApiImpl } from '../../src/AcuProducerApiImpl';
 import { 
   InvalidCredentialsError,
   UnexpectedError,
@@ -22,7 +21,7 @@ import { mockAuthenticatedRequest, cleanNock, loadFixture } from '../utils/nock-
 describe('AccessImpl', () => {
   let accessImpl: AccessImpl;
   let client: AvigilonAltaAccessClient;
-  const baseUrl = 'https://api.openpath.com';
+  const baseUrl = 'https://helium.prod.openpath.com';
   const testEmail = process.env.AVIGILON_EMAIL || 'test@example.com';
   const testPassword = process.env.AVIGILON_PASSWORD || 'testpass123';
 
@@ -199,8 +198,8 @@ describe('AccessImpl', () => {
       });
 
       it('should return Maybe for known operations', async () => {
-        const operations = ['users.get', 'groups.list', 'acus.get'];
-        
+        const operations = ['users.get', 'groups.list'];
+
         for (const operation of operations) {
           const result = await accessImpl.isSupported(operation);
           expect(result).to.equal(OperationSupportStatus.Maybe);
@@ -266,22 +265,6 @@ describe('AccessImpl', () => {
       });
     });
 
-    describe('getAcuApi', () => {
-      it('should return AcuApi instance', () => {
-        const acuApi = accessImpl.getAcuApi();
-        // Test that it's the wrapped AcuProducerApiImpl
-        expect(acuApi).to.be.an('object');
-        expect(acuApi).to.have.property('list');
-        expect(acuApi).to.have.property('get');
-      });
-
-      it('should return same instance on multiple calls', () => {
-        const acuApi1 = accessImpl.getAcuApi();
-        const acuApi2 = accessImpl.getAcuApi();
-        expect(acuApi1).to.equal(acuApi2);
-      });
-    });
-
     describe('getAuthApi', () => {
       it('should return AuthApi instance', () => {
         const authApi = accessImpl.getAuthApi();
@@ -310,21 +293,6 @@ describe('AccessImpl', () => {
         const groupApi1 = accessImpl.getGroupApi();
         const groupApi2 = accessImpl.getGroupApi();
         expect(groupApi1).to.equal(groupApi2);
-      });
-    });
-
-    describe('getEntryApi', () => {
-      it('should return EntryApi instance', () => {
-        const entryApi = accessImpl.getEntryApi();
-        // Test that it's the wrapped EntryProducerApiImpl
-        expect(entryApi).to.be.an('object');
-        expect(entryApi).to.have.property('list');
-      });
-
-      it('should return same instance on multiple calls', () => {
-        const entryApi1 = accessImpl.getEntryApi();
-        const entryApi2 = accessImpl.getEntryApi();
-        expect(entryApi1).to.equal(entryApi2);
       });
     });
   });
@@ -365,12 +333,10 @@ describe('AccessImpl', () => {
         });
 
       await accessImpl.connect(profile);
-
+      
       // Test that producers can be created without throwing
       expect(() => accessImpl.getUserApi()).to.not.throw();
       expect(() => accessImpl.getGroupApi()).to.not.throw();
-      expect(() => accessImpl.getAcuApi()).to.not.throw();
-      expect(() => accessImpl.getEntryApi()).to.not.throw();
     });
   });
 });

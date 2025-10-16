@@ -15,20 +15,16 @@ const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
 /**
  * Debug logging utility for integration tests
  * Only logs when LOG_LEVEL=debug
- * @param operation - Operation name (e.g., 'listEntries', 'getUser')
- * @param params - Parameters passed to the operation
- * @param response - Response from the operation (will be sanitized)
  */
 export function debugLog(operation: string, params: any, response?: any): void {
   if (process.env.LOG_LEVEL === 'debug') {
-    logger.debug(`🔧 OPERATION: ${operation}`);
+    logger.debug('Operation: ' + operation);
     if (params) {
-      logger.debug(`📥 PARAMS: ${JSON.stringify(params, null, 2)}`);
+      logger.debug('Params: ' + JSON.stringify(params, null, 2));
     }
     if (response) {
-      // Sanitize response to remove sensitive data
       const sanitized = sanitizeResponse(response);
-      logger.debug(`📤 RESPONSE: ${JSON.stringify(sanitized, null, 2)}`);
+      logger.debug('Response: ' + JSON.stringify(sanitized, null, 2));
     }
   }
 }
@@ -38,11 +34,15 @@ export function debugLog(operation: string, params: any, response?: any): void {
 const EMAIL = process.env.AVIGILON_EMAIL;
 const PASSWORD = process.env.AVIGILON_PASSWORD;
 const TOTP_CODE = process.env.AVIGILON_TOTP_CODE; // Optional
-const ORGANIZATION_ID = process.env.AVIGILON_ORG_ID || 'test-org-123';
+const ORGANIZATION_ID = process.env.AVIGILON_ORG_ID;
+
+// Validate that organization ID is set
+if (!ORGANIZATION_ID) {
+  throw new Error('AVIGILON_ORG_ID must be set in .env file');
+}
 
 /**
  * Creates and configures an Avigilon Alta Access module instance for testing
- * @returns Promise<AccessImpl> - Configured module instance
  */
 export async function prepareApi(): Promise<AccessImpl> {
   const access = newAccess();
@@ -69,7 +69,6 @@ export async function prepareApi(): Promise<AccessImpl> {
 
 /**
  * Checks if integration test credentials are available
- * @returns boolean - True if credentials are available
  */
 export function hasCredentials(): boolean {
   return !!(EMAIL && PASSWORD);
@@ -77,8 +76,6 @@ export function hasCredentials(): boolean {
 
 /**
  * Sanitizes sensitive data from API responses for fixture storage
- * @param data - Raw API response data
- * @returns Sanitized data safe for storage
  */
 export function sanitizeResponse(data: any): any {
   if (!data) return data;
@@ -117,9 +114,6 @@ export function sanitizeResponse(data: any): any {
 
 /**
  * Saves sanitized API response as fixture file
- * Only saves when SAVE_FIXTURES environment variable is set to 'true'
- * @param filename - Name of the fixture file
- * @param data - API response data to save
  */
 export async function saveFixture(filename: string, data: any): Promise<void> {
   // Only save fixtures when explicitly requested
@@ -141,7 +135,7 @@ export async function saveFixture(filename: string, data: any): Promise<void> {
   const filepath = path.join(fixtureDir, filename);
   fs.writeFileSync(filepath, JSON.stringify(sanitized, null, 2));
 
-  logger.debug(`Saved fixture: ${filename}`);
+  logger.debug('Saved fixture: ' + filename);
 }
 
 /**
@@ -164,4 +158,3 @@ export const testConfig = {
   delay: parseInt(process.env.INTEGRATION_DELAY || '1000'),
   organizationId: ORGANIZATION_ID
 };
-

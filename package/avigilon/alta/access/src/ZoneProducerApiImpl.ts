@@ -1,8 +1,7 @@
-/* eslint-disable */
 import { AxiosInstance } from 'axios';
 import { PagedResults } from '@auditmation/types-core-js';
 import { ZoneProducerApi } from '../generated/api/ZoneApi';
-import { Zone, ZoneShare, ZoneUser } from '../generated/model';
+import { Zone } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
 import { mapZone } from './Mappers';
 
@@ -13,20 +12,24 @@ export class ZoneProducerApiImpl implements ZoneProducerApi {
     this.httpClient = client.getHttpClient();
   }
 
-  async listShares(results: PagedResults<ZoneShare>, organizationId: string, zoneId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
+  async list(results: PagedResults<Zone>, organizationId: string): Promise<void> {
+    const params: Record<string, number> = {};
 
-  async listZoneUsers(results: PagedResults<ZoneUser>, organizationId: string, zoneId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
+    // Convert pageNumber/pageSize to offset/limit
+    if (results.pageNumber && results.pageSize) {
+      params.offset = (results.pageNumber - 1) * results.pageSize;
+      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
+    } else {
+      params.offset = 0;
+    }
 
-  async list(organizationId: string): Promise<Array<Zone>> {
-    const response = await this.httpClient.get(`/orgs/${organizationId}/zones`);
+    const response = await this.httpClient.get(`/orgs/${organizationId}/zones`, { params });
 
-    // Extract the data array from the response and map each zone
-    // This flattens the response from {data: [...], meta: {...}} to just the zones array
-    const zonesData = response.data.data || [];
-    return zonesData.map(mapZone);
+    // Apply mappers and set pagination info from response structure
+    results.items = response.data.data ? response.data.data.map(mapZone) : [];
+    results.count = response.data.totalCount || 0;
+
+    // Handle pageToken if available
+    results.pageToken = response.headers['x-next-page-token'];
   }
 }

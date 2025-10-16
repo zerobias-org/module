@@ -1,8 +1,7 @@
-/* eslint-disable */
 import { AxiosInstance } from 'axios';
 import { PagedResults } from '@auditmation/types-core-js';
 import { UserProducerApi } from '../generated/api/UserApi';
-import { User, UserInfo, Role, Site, ActivityEvent, Credential, Entry, Group, MfaCredential, UserPicture, ZoneUser, Zone } from '../generated/model';
+import { User, UserInfo, Role, Site } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
 import { mapUser, mapUserInfo, mapRole, mapSite } from './Mappers';
 
@@ -18,42 +17,10 @@ export class UserProducerApiImpl implements UserProducerApi {
       `/orgs/${organizationId}/users/${userId}`
     );
 
-    // Individual user response is directly in response.data, not nested in data.data like list responses
-    const rawData = response.data;
+    // Individual user response could be in response.data.data OR response.data
+    const rawData = response.data.data || response.data;
 
     return mapUserInfo(rawData);
-  }
-
-  async getActivity(organizationId: string, userId: string, startDate?: Date, endDate?: Date): Promise<Array<ActivityEvent>> {
-    throw new Error('Not implemented');
-  }
-
-  async listCredentials(results: PagedResults<Credential>, organizationId: string, userId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
-
-  async listEntries(results: PagedResults<Entry>, organizationId: string, userId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
-
-  async listGroups(results: PagedResults<Group>, organizationId: string, userId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
-
-  async listMfaCredentials(results: PagedResults<MfaCredential>, organizationId: string, userId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
-
-  async listPictures(results: PagedResults<UserPicture>, organizationId: string, userId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
-
-  async listZoneUsers(results: PagedResults<ZoneUser>, organizationId: string, userId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
-
-  async listZones(results: PagedResults<Zone>, organizationId: string, userId: string): Promise<void> {
-    throw new Error('Not implemented');
   }
 
   async listRoles(

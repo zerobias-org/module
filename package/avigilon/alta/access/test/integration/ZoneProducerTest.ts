@@ -28,22 +28,22 @@ describe('Avigilon Alta Access - Zone Producer Tests', () => {
       const tokenProperties = await authApi.getTokenProperties();
       const organizationId = tokenProperties.organizationId!.toString();
 
-      const zones = await zoneApi.list(organizationId);
+      const zonesResult = await zoneApi.list(organizationId);
 
 
       // Validate the response is a flat array
-      expect(zones).to.be.an('array');
+      expect(zonesResult.items).to.be.an('array');
       
       // If we have zones, validate their structure
-      if (zones.length > 0) {
-        const zone = zones[0];
+      if (zonesResult.items.length > 0) {
+        const zone = zonesResult.items[0];
         
         // Required fields
         expect(zone).to.have.property('id');
         expect(zone).to.have.property('name');
-        expect(zone.id).to.be.a('number');
+        expect(zone.id).to.be.a('string');
         expect(zone.name).to.be.a('string');
-        expect(zone.id).to.be.greaterThan(0);
+        expect(zone.id).to.not.be.empty;
         expect(zone.name.length).to.be.greaterThan(0);
         
         // Optional fields validation (if present)
@@ -100,14 +100,14 @@ describe('Avigilon Alta Access - Zone Producer Tests', () => {
         if (zone.org) {
           expect(zone.org).to.have.property('id');
           expect(zone.org).to.have.property('name');
-          expect(zone.org.id).to.be.a('number');
+          expect(zone.org.id).to.be.a('string');
           expect(zone.org.name).to.be.a('string');
         }
         
         if (zone.site) {
           expect(zone.site).to.have.property('id');
           expect(zone.site).to.have.property('name');
-          expect(zone.site.id).to.be.a('number');
+          expect(zone.site.id).to.be.a('string');
           expect(zone.site.name).to.be.a('string');
         }
         
@@ -120,12 +120,12 @@ describe('Avigilon Alta Access - Zone Producer Tests', () => {
           zone.entries.forEach(entry => {
             expect(entry).to.have.property('id');
             expect(entry).to.have.property('name');
-            expect(entry.id).to.be.a('number');
+            expect(entry.id).to.be.a('string');
             expect(entry.name).to.be.a('string');
             
             if (entry.acu) {
               expect(entry.acu).to.have.property('id');
-              expect(entry.acu.id).to.be.a('number');
+              expect(entry.acu.id).to.be.a('string');
             }
           });
         }
@@ -154,17 +154,17 @@ describe('Avigilon Alta Access - Zone Producer Tests', () => {
       const tokenProperties = await authApi.getTokenProperties();
       const organizationId = tokenProperties.organizationId!.toString();
 
-      const zones = await zoneApi.list(organizationId);
+      const zonesResult = await zoneApi.list(organizationId);
 
-      expect(zones).to.be.an('array');
+      expect(zonesResult.items).to.be.an('array');
       
       // Each zone should have consistent structure
-      zones.forEach(zone => {
+      for (const zone of zonesResult.items) {
         expect(zone).to.have.property('id');
         expect(zone).to.have.property('name');
-        expect(zone.id).to.be.a('number');
+        expect(zone.id).to.be.a('string');
         expect(zone.name).to.be.a('string');
-      });
+      }
     });
 
     it('should validate zone data types', async function () {
@@ -177,15 +177,15 @@ describe('Avigilon Alta Access - Zone Producer Tests', () => {
       const tokenProperties = await authApi.getTokenProperties();
       const organizationId = tokenProperties.organizationId!.toString();
 
-      const zones = await zoneApi.list(organizationId);
+      const zonesResult = await zoneApi.list(organizationId);
 
-      expect(zones).to.be.an('array');
+      expect(zonesResult.items).to.be.an('array');
       
-      if (zones.length > 0) {
-        const zone = zones[0];
+      if (zonesResult.items.length > 0) {
+        const zone = zonesResult.items[0];
         
         // Validate all possible data types
-        expect(zone.id).to.be.a('number');
+        expect(zone.id).to.be.a('string');
         expect(zone.name).to.be.a('string');
         
         if (zone.opal) expect(zone.opal).to.be.a('string');

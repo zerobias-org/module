@@ -11,7 +11,7 @@ describe('AuthProducerApiImpl', () => {
   let authProducer: AuthProducerApiImpl;
   let client: AvigilonAltaAccessClient;
   
-  const baseUrl = 'https://api.openpath.com';
+  const baseUrl = 'https://helium.prod.openpath.com';
   const mockToken = 'mock-token-123';
 
   beforeEach(async () => {

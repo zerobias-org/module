@@ -1,8 +1,7 @@
-/* eslint-disable */
 import { AxiosInstance } from 'axios';
 import { PagedResults } from '@auditmation/types-core-js';
 import { GroupProducerApi } from '../generated/api/GroupApi';
-import { Group, GroupInfo, User, Entry, GroupZoneGroup, GroupZone } from '../generated/model';
+import { Group, GroupInfo, User, Entry } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
 import { mapGroup, mapGroupInfo, mapUser, mapEntry } from './Mappers';
 
@@ -18,8 +17,8 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       `/orgs/${organizationId}/groups/${groupId}`
     );
 
-    // Individual group response is directly in response.data, not nested in data.data like list responses
-    const rawGroupData = response.data;
+    // Individual group response could be in response.data.data OR response.data
+    const rawGroupData = response.data.data || response.data;
 
     if (!rawGroupData) {
       throw new Error(`Group with ID ${groupId} not found`);
@@ -86,14 +85,6 @@ export class GroupProducerApiImpl implements GroupProducerApi {
 
     // Handle pageToken if available (only for operations with pageToken in OpenAPI params)
     results.pageToken = response.headers['x-next-page-token'];
-  }
-
-  async listZoneGroups(results: PagedResults<GroupZoneGroup>, organizationId: string, groupId: string): Promise<void> {
-    throw new Error('Not implemented');
-  }
-
-  async listZones(results: PagedResults<GroupZone>, organizationId: string, groupId: string): Promise<void> {
-    throw new Error('Not implemented');
   }
 
   async list(results: PagedResults<Group>, organizationId: string): Promise<void> {

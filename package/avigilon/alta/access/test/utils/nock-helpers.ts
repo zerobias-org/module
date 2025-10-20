@@ -2,9 +2,6 @@ import nock from 'nock';
 import fs from 'fs';
 import path from 'path';
 
-/**
- * Mock authenticated request with proper headers
- */
 export function mockAuthenticatedRequest(baseUrl: string, token: string) {
   return nock(baseUrl)
     .matchHeader('authorization', `Bearer ${token}`)
@@ -12,170 +9,151 @@ export function mockAuthenticatedRequest(baseUrl: string, token: string) {
     .matchHeader('content-type', 'application/json');
 }
 
-/**
- * Mock paginated API response
- */
 export function mockPaginatedResponse(
   scope: nock.Scope,
   method: string,
-  path: string,
-  query: Record<string, any>,
-  items: any[],
+  urlPath: string,
+  query: Record<string, unknown>,
+  items: unknown[],
   totalCount: number
 ) {
   const httpMethod = method.toLowerCase();
   let interceptor;
-  
+
   switch (httpMethod) {
     case 'get':
-      interceptor = scope.get(path);
+      interceptor = scope.get(urlPath);
       break;
     case 'post':
-      interceptor = scope.post(path);
+      interceptor = scope.post(urlPath);
       break;
     case 'put':
-      interceptor = scope.put(path);
+      interceptor = scope.put(urlPath);
       break;
     case 'delete':
-      interceptor = scope.delete(path);
+      interceptor = scope.delete(urlPath);
       break;
     default:
       throw new Error(`Unsupported HTTP method: ${method}`);
   }
-  
+
   return interceptor
     .query(query)
     .reply(200, {
       data: items,
       totalCount,
       count: items.length,
-      pageCount: Math.ceil(totalCount / (query.limit || items.length)),
-      pageNumber: Math.floor(query.offset / (query.limit || items.length)) + 1,
-      pageSize: query.limit || items.length
+      pageCount: Math.ceil(totalCount / ((query.limit as number) || items.length)),
+      pageNumber: Math.floor((query.offset as number) / ((query.limit as number) || items.length)) + 1,
+      pageSize: (query.limit as number) || items.length,
     });
 }
 
-/**
- * Mock single object response
- */
 export function mockSingleResponse(
   scope: nock.Scope,
   method: string,
-  path: string,
-  responseData: any
+  urlPath: string,
+  responseData: unknown
 ) {
   const httpMethod = method.toLowerCase();
   let interceptor;
-  
+
   switch (httpMethod) {
     case 'get':
-      interceptor = scope.get(path);
+      interceptor = scope.get(urlPath);
       break;
     case 'post':
-      interceptor = scope.post(path);
+      interceptor = scope.post(urlPath);
       break;
     case 'put':
-      interceptor = scope.put(path);
+      interceptor = scope.put(urlPath);
       break;
     case 'delete':
-      interceptor = scope.delete(path);
+      interceptor = scope.delete(urlPath);
       break;
     default:
       throw new Error(`Unsupported HTTP method: ${method}`);
   }
-  
+
   return interceptor.reply(200, responseData);
 }
 
-/**
- * Mock error response
- */
 export function mockErrorResponse(
   scope: nock.Scope,
   method: string,
-  path: string,
-  query: Record<string, any>,
+  urlPath: string,
+  query: Record<string, unknown>,
   statusCode: number,
   errorMessage?: string
 ) {
   const errorBody = {
     error: errorMessage || `HTTP ${statusCode} Error`,
     statusCode,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 
   const httpMethod = method.toLowerCase();
   let interceptor;
-  
+
   switch (httpMethod) {
     case 'get':
-      interceptor = scope.get(path);
+      interceptor = scope.get(urlPath);
       break;
     case 'post':
-      interceptor = scope.post(path);
+      interceptor = scope.post(urlPath);
       break;
     case 'put':
-      interceptor = scope.put(path);
+      interceptor = scope.put(urlPath);
       break;
     case 'delete':
-      interceptor = scope.delete(path);
+      interceptor = scope.delete(urlPath);
       break;
     default:
       throw new Error(`Unsupported HTTP method: ${method}`);
   }
-  
+
   return interceptor
     .query(query)
     .reply(statusCode, errorBody);
 }
 
-/**
- * Load fixture data from JSON files
- */
-export function loadFixture(fixturePath: string): any {
+export function loadFixture(fixturePath: string): { data: unknown[]; totalCount: number } {
   const fullPath = path.join(__dirname, '../fixtures', fixturePath);
-  
+
   if (!fs.existsSync(fullPath)) {
     throw new Error(`Fixture file not found: ${fullPath}`);
   }
-  
-  const content = fs.readFileSync(fullPath, 'utf8');
-  return JSON.parse(content);
+
+  const fileContent = fs.readFileSync(fullPath, 'utf8');
+  return JSON.parse(fileContent) as { data: unknown[]; totalCount: number };
 }
 
-/**
- * Setup nock from fixture data
- */
 export function setupNockFromFixture(
   baseUrl: string,
   token: string,
   fixturePath: string,
   method: string,
-  path: string,
-  query?: Record<string, any>
+  urlPath: string,
+  query?: Record<string, unknown>
 ): nock.Scope {
   const fixtureData = loadFixture(fixturePath);
   const scope = mockAuthenticatedRequest(baseUrl, token);
-  
+
   if (Array.isArray(fixtureData)) {
     // Handle paginated response
     return mockPaginatedResponse(
       scope,
       method,
-      path,
+      urlPath,
       query || {},
       fixtureData,
       fixtureData.length
     );
-  } else {
-    // Handle single object response
-    return mockSingleResponse(scope, method, path, fixtureData);
   }
+  // Handle single object response
+  return mockSingleResponse(scope, method, urlPath, fixtureData);
 }
 
-/**
- * Clean up all nock mocks
- */
 export function cleanNock(): void {
   nock.cleanAll();
 }

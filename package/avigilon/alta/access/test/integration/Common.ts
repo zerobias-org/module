@@ -1,59 +1,84 @@
 import * as dotenv from 'dotenv';
 import { expect } from 'chai';
+import fs from 'fs';
+import path from 'path';
+import { getLogger } from '@auditmation/util-logger';
+import { Email, URL, UUID, IpAddress } from '@auditmation/types-core-js';
 import { newAccess, AccessImpl } from '../../src';
 import { ConnectionProfile } from '../../generated/model';
-import { getLogger } from '@auditmation/util-logger';
-
-// Core types for assertions
-import { Email, URL, UUID, IpAddress } from '@auditmation/types-core-js';
 
 // Load environment variables
 dotenv.config();
 
 const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
 
-/**
- * Debug logging utility for integration tests
- * Only logs when LOG_LEVEL=debug
- */
-export function debugLog(operation: string, params: any, response?: any): void {
-  if (process.env.LOG_LEVEL === 'debug') {
-    logger.debug('Operation: ' + operation);
-    if (params) {
-      logger.debug('Params: ' + JSON.stringify(params, null, 2));
-    }
-    if (response) {
-      const sanitized = sanitizeResponse(response);
-      logger.debug('Response: ' + JSON.stringify(sanitized, null, 2));
-    }
-  }
-}
-
-
 // Environment variables for Avigilon Alta Access API
 const EMAIL = process.env.AVIGILON_EMAIL;
 const PASSWORD = process.env.AVIGILON_PASSWORD;
-const TOTP_CODE = process.env.AVIGILON_TOTP_CODE; // Optional
+const TOTP_CODE = process.env.AVIGILON_TOTP_CODE;
 const ORGANIZATION_ID = process.env.AVIGILON_ORG_ID;
 
-// Validate that organization ID is set
 if (!ORGANIZATION_ID) {
   throw new Error('AVIGILON_ORG_ID must be set in .env file');
 }
 
-/**
- * Creates and configures an Avigilon Alta Access module instance for testing
- */
+function sanitizeObject(obj: unknown): unknown {
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeObject);
+  }
+  if (obj && typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    const sensitiveFields = ['api_key', 'token', 'password', 'secret', 'email', 'phone'];
+
+    for (const [key, value] of Object.entries(obj)) {
+      const lowerKey = key.toLowerCase();
+      if (sensitiveFields.some((field) => lowerKey.includes(field))) {
+        if (lowerKey.includes('email')) {
+          result[key] = 'user@example.com';
+        } else if (lowerKey.includes('phone')) {
+          result[key] = '+1-555-0123';
+        } else {
+          result[key] = '[REDACTED]';
+        }
+      } else {
+        result[key] = sanitizeObject(value);
+      }
+    }
+    return result;
+  }
+  return obj;
+}
+
+export function sanitizeResponse(data: unknown): unknown {
+  if (!data) return data;
+  const sanitized = JSON.parse(JSON.stringify(data));
+  return sanitizeObject(sanitized);
+}
+
+export function debugLog(operation: string, params: unknown, response?: unknown): void {
+  if (process.env.LOG_LEVEL === 'debug') {
+    logger.debug(`Operation: ${operation}`);
+    if (params) {
+      logger.debug(`Params: ${JSON.stringify(params, null, 2)}`);
+    }
+    if (response) {
+      const sanitized = sanitizeResponse(response);
+      logger.debug(`Response: ${JSON.stringify(sanitized, null, 2)}`);
+    }
+  }
+}
+
 export async function prepareApi(): Promise<AccessImpl> {
   const access = newAccess();
 
   if (!EMAIL || !PASSWORD) {
-    throw new Error('Integration tests require AVIGILON_EMAIL and AVIGILON_PASSWORD environment variables. Check .env file or copy from .env.example');
+    throw new Error(
+      'Integration tests require AVIGILON_EMAIL and AVIGILON_PASSWORD environment variables. '
+      + 'Check .env file or copy from .env.example'
+    );
   }
 
-  // Create connection profile for Avigilon Alta Access
   const profile = new ConnectionProfile(new Email(EMAIL), PASSWORD, TOTP_CODE);
-
   logger.debug('Connecting to Avigilon Alta Access API', { email: EMAIL });
 
   try {
@@ -67,94 +92,38 @@ export async function prepareApi(): Promise<AccessImpl> {
   return access;
 }
 
-/**
- * Checks if integration test credentials are available
- */
 export function hasCredentials(): boolean {
   return !!(EMAIL && PASSWORD);
 }
 
-/**
- * Sanitizes sensitive data from API responses for fixture storage
- */
-export function sanitizeResponse(data: any): any {
-  if (!data) return data;
-
-  const sanitized = JSON.parse(JSON.stringify(data));
-
-  // Remove or mask sensitive fields
-  const sensitiveFields = ['api_key', 'token', 'password', 'secret', 'email', 'phone'];
-
-  function sanitizeObject(obj: any): any {
-    if (Array.isArray(obj)) {
-      return obj.map(sanitizeObject);
-    } else if (obj && typeof obj === 'object') {
-      const result: any = {};
-      for (const [key, value] of Object.entries(obj)) {
-        const lowerKey = key.toLowerCase();
-        if (sensitiveFields.some(field => lowerKey.includes(field))) {
-          if (lowerKey.includes('email')) {
-            result[key] = 'user@example.com';
-          } else if (lowerKey.includes('phone')) {
-            result[key] = '+1-555-0123';
-          } else {
-            result[key] = '[REDACTED]';
-          }
-        } else {
-          result[key] = sanitizeObject(value);
-        }
-      }
-      return result;
-    }
-    return obj;
-  }
-
-  return sanitizeObject(sanitized);
-}
-
-/**
- * Saves sanitized API response as fixture file
- */
-export async function saveFixture(filename: string, data: any): Promise<void> {
-  // Only save fixtures when explicitly requested
+export async function saveFixture(filename: string, data: unknown): Promise<void> {
   if (process.env.SAVE_FIXTURES !== 'true') {
     return;
   }
 
-  const fs = require('fs');
-  const path = require('path');
-
   const sanitized = sanitizeResponse(data);
   const fixtureDir = path.join(__dirname, '../fixtures/integration');
 
-  // Ensure directory exists
   if (!fs.existsSync(fixtureDir)) {
     fs.mkdirSync(fixtureDir, { recursive: true });
   }
 
   const filepath = path.join(fixtureDir, filename);
   fs.writeFileSync(filepath, JSON.stringify(sanitized, null, 2));
-
-  logger.debug('Saved fixture: ' + filename);
+  logger.debug(`Saved fixture: ${filename}`);
 }
 
-/**
- * Test helper to validate core type instances
- */
 export const validateCoreTypes = {
-  isEmail: (value: any) => expect(value).to.be.instanceof(Email),
-  isURL: (value: any) => expect(value).to.be.instanceof(URL),
-  isUUID: (value: any) => expect(value).to.be.instanceof(UUID),
-  isIpAddress: (value: any) => expect(value).to.be.instanceof(IpAddress),
-  isDate: (value: any) => expect(value).to.be.instanceof(Date)
+  isEmail: (value: unknown) => expect(value).to.be.instanceof(Email),
+  isURL: (value: unknown) => expect(value).to.be.instanceof(URL),
+  isUUID: (value: unknown) => expect(value).to.be.instanceof(UUID),
+  isIpAddress: (value: unknown) => expect(value).to.be.instanceof(IpAddress),
+  isDate: (value: unknown) => expect(value).to.be.instanceof(Date),
 };
 
-/**
- * Common test configuration
- */
 export const testConfig = {
-  timeout: parseInt(process.env.INTEGRATION_TIMEOUT || '30000'),
-  retries: parseInt(process.env.INTEGRATION_RETRIES || '2'),
-  delay: parseInt(process.env.INTEGRATION_DELAY || '1000'),
-  organizationId: ORGANIZATION_ID
+  timeout: parseInt(process.env.INTEGRATION_TIMEOUT || '30000', 10),
+  retries: parseInt(process.env.INTEGRATION_RETRIES || '2', 10),
+  delay: parseInt(process.env.INTEGRATION_DELAY || '1000', 10),
+  organizationId: ORGANIZATION_ID,
 };

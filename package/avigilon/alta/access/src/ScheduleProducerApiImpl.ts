@@ -1,41 +1,24 @@
+import { getLogger } from '@auditmation/util-logger';
 import { AxiosInstance } from 'axios';
 import { PagedResults, UnexpectedError } from '@auditmation/types-core-js';
-import { ZoneProducerApi } from '../generated/api/ZoneApi';
-import { Zone, ZoneShare, ZoneZoneUser } from '../generated/model';
+import { ScheduleProducerApi } from '../generated/api/ScheduleApi';
+import { ScheduleType, Schedule, ScheduleEvent } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toZone, toZoneShare, toZoneZoneUser } from './Mappers';
+import { toScheduleTypeExported, toScheduleExported, toScheduleEvent } from './Mappers';
 
-export class ZoneProducerApiImpl implements ZoneProducerApi {
+export class ScheduleProducerApiImpl implements ScheduleProducerApi {
   private readonly httpClient: AxiosInstance;
+
+  private readonly logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
 
   constructor(client: AvigilonAltaAccessClient) {
     this.httpClient = client.getHttpClient();
   }
 
-  async list(results: PagedResults<Zone>, organizationId: string): Promise<void> {
-    const params: Record<string, number> = {};
-
-    if (results.pageNumber && results.pageSize) {
-      params.offset = (results.pageNumber - 1) * results.pageSize;
-      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
-    } else {
-      params.offset = 0;
-    }
-
-    const response = await this.httpClient.get(`/orgs/${organizationId}/zones`, { params });
-
-    if (!response.data || !Array.isArray(response.data.data)) {
-      throw new UnexpectedError('Invalid response format: expected data array');
-    }
-
-    results.items = response.data.data.map(toZone);
-    results.count = response.data.totalCount || 0;
-  }
-
-  async listZoneShares(
-    results: PagedResults<ZoneShare>,
+  async listScheduleEvents(
+    results: PagedResults<ScheduleEvent>,
     organizationId: string,
-    zoneId: string
+    scheduleId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
 
@@ -47,7 +30,7 @@ export class ZoneProducerApiImpl implements ZoneProducerApi {
     }
 
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/zones/${zoneId}/zoneShares`,
+      `/orgs/${organizationId}/schedules/${scheduleId}/events`,
       { params }
     );
 
@@ -55,14 +38,13 @@ export class ZoneProducerApiImpl implements ZoneProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toZoneShare);
+    results.items = response.data.data.map(toScheduleEvent);
     results.count = response.data.totalCount || 0;
   }
 
-  async listZoneUsers(
-    results: PagedResults<ZoneZoneUser>,
-    organizationId: string,
-    zoneId: string
+  async listScheduleTypes(
+    results: PagedResults<ScheduleType>,
+    organizationId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
 
@@ -74,7 +56,7 @@ export class ZoneProducerApiImpl implements ZoneProducerApi {
     }
 
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/zones/${zoneId}/zoneUsers`,
+      `/orgs/${organizationId}/scheduleTypes`,
       { params }
     );
 
@@ -82,7 +64,35 @@ export class ZoneProducerApiImpl implements ZoneProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toZoneZoneUser);
+    // Apply mappers and set pagination info from response structure
+    results.items = response.data.data.map(toScheduleTypeExported);
+    results.count = response.data.totalCount || 0;
+  }
+
+  async listSchedules(
+    results: PagedResults<Schedule>,
+    organizationId: string
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
+    if (results.pageNumber && results.pageSize) {
+      params.offset = (results.pageNumber - 1) * results.pageSize;
+      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
+    } else {
+      params.offset = 0;
+    }
+
+    const response = await this.httpClient.get(
+      `/orgs/${organizationId}/schedules`,
+      { params }
+    );
+
+    if (!response.data || !Array.isArray(response.data.data)) {
+      throw new UnexpectedError('Invalid response format: expected data array');
+    }
+
+    // Apply mappers and set pagination info from response structure
+    results.items = response.data.data.map(toScheduleExported);
     results.count = response.data.totalCount || 0;
   }
 }

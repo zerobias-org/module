@@ -3,24 +3,26 @@
     {
       "id": 22509982,
       "identity": {
+        "id": "identity-22509982",
         "email": "user@example.com",
         "firstName": "Jane",
         "lastName": "Doe",
         "mobilePhone": "+1-555-0123"
       },
-      "status": "A",
+      "status": "a",
       "createdAt": "2024-12-18T17:27:10.000Z",
       "updatedAt": "2024-12-18T17:27:10.000Z"
     },
     {
       "id": 20032735,
       "identity": {
-        "email": "user2@example.com", 
+        "id": "identity-20032735",
+        "email": "user2@example.com",
         "firstName": "John",
         "lastName": "Smith",
         "mobilePhone": "+1-555-0124"
       },
-      "status": "A",
+      "status": "a",
       "createdAt": "2024-08-27T17:22:39.000Z",
       "updatedAt": "2024-10-14T13:40:57.000Z"
     }

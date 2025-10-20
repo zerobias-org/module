@@ -1,19 +1,24 @@
 import { AxiosInstance } from 'axios';
 import { PagedResults, UnexpectedError } from '@auditmation/types-core-js';
-import { SiteProducerApi } from '../generated/api/SiteApi';
-import { Site } from '../generated/model';
+import { AuditProducerApi } from '../generated/api/AuditApi';
+import { AuditLogEntry } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toSite } from './Mappers';
+import { toAuditLogEntry } from './Mappers';
 
-export class SiteProducerApiImpl implements SiteProducerApi {
+export class AuditProducerApiImpl implements AuditProducerApi {
   private readonly httpClient: AxiosInstance;
 
   constructor(client: AvigilonAltaAccessClient) {
     this.httpClient = client.getHttpClient();
   }
 
-  async list(results: PagedResults<Site>, organizationId: string): Promise<void> {
-    const params: Record<string, number> = {};
+  async listAuditLogs(
+    results: PagedResults<AuditLogEntry>,
+    organizationId: string,
+    filter?: string,
+    options?: string
+  ): Promise<void> {
+    const params: Record<string, string | number> = {};
 
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
@@ -22,13 +27,22 @@ export class SiteProducerApiImpl implements SiteProducerApi {
       params.offset = 0;
     }
 
-    const response = await this.httpClient.get(`/orgs/${organizationId}/sites`, { params });
+    if (filter) {
+      params.filter = filter;
+    }
+
+    if (options) {
+      params.options = options;
+    }
+
+    const url = `/orgs/${organizationId}/reports/auditLogs/ui`;
+    const response = await this.httpClient.get(url, { params });
 
     if (!response.data || !Array.isArray(response.data.data)) {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toSite);
+    results.items = response.data.data.map(toAuditLogEntry);
     results.count = response.data.totalCount || 0;
   }
 }

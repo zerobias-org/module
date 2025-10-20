@@ -1,21 +1,20 @@
 import { AxiosInstance } from 'axios';
-import { PagedResults } from '@auditmation/types-core-js';
+import { PagedResults, NoSuchObjectError, UnexpectedError } from '@auditmation/types-core-js';
 import { EntryProducerApi } from '../generated/api/EntryApi';
-import { EntryDetails } from '../generated/model';
+import { Entry, EntryInfo, EntryActivityEvent, EntryCamera, EntryStateInfo, EntryUserSchedule, EntryUser } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { mapEntryDetails } from './Mappers';
+import { toEntry, toEntryInfo, toEntryActivityEvent, toEntryCamera, toEntryStateInfo, toEntryUserSchedule, toEntryUser } from './Mappers';
 
 export class EntryProducerApiImpl implements EntryProducerApi {
-  private httpClient: AxiosInstance;
+  private readonly httpClient: AxiosInstance;
 
-  constructor(private client: AvigilonAltaAccessClient) {
+  constructor(client: AvigilonAltaAccessClient) {
     this.httpClient = client.getHttpClient();
   }
 
-  async list(results: PagedResults<EntryDetails>, organizationId: string): Promise<void> {
+  async list(results: PagedResults<Entry>, organizationId: string): Promise<void> {
     const params: Record<string, number> = {};
 
-    // Convert pageNumber/pageSize to offset/limit
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
       params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
@@ -25,11 +24,142 @@ export class EntryProducerApiImpl implements EntryProducerApi {
 
     const response = await this.httpClient.get(`/orgs/${organizationId}/entries`, { params });
 
-    // Apply mappers and set pagination info from response structure
-    results.items = response.data.data ? response.data.data.map(mapEntryDetails) : [];
-    results.count = response.data.totalCount || 0;
+    if (!response.data || !Array.isArray(response.data.data)) {
+      throw new UnexpectedError('Invalid response format: expected data array');
+    }
 
-    // Handle pageToken if available
-    results.pageToken = response.headers['x-next-page-token'];
+    results.items = response.data.data.map(toEntry);
+    results.count = response.data.totalCount || 0;
+  }
+
+  async get(organizationId: string, entryId: string): Promise<EntryInfo> {
+    const response = await this.httpClient.get(`/orgs/${organizationId}/entries/${entryId}`);
+
+    const rawData = response.data.data || response.data;
+
+    if (!rawData) {
+      throw new NoSuchObjectError('entry', entryId);
+    }
+
+    return toEntryInfo(rawData);
+  }
+
+  async listActivity(
+    results: PagedResults<EntryActivityEvent>,
+    organizationId: string,
+    entryId: string
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
+    if (results.pageNumber && results.pageSize) {
+      params.offset = (results.pageNumber - 1) * results.pageSize;
+      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
+    } else {
+      params.offset = 0;
+    }
+
+    const response = await this.httpClient.get(`/orgs/${organizationId}/entries/${entryId}/activity`, { params });
+
+    if (!response.data || !Array.isArray(response.data.data)) {
+      throw new UnexpectedError('Invalid response format: expected data array');
+    }
+
+    results.items = response.data.data.map(toEntryActivityEvent);
+    results.count = response.data.totalCount || 0;
+  }
+
+  async listCameras(
+    results: PagedResults<EntryCamera>,
+    organizationId: string,
+    entryId: string
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
+    if (results.pageNumber && results.pageSize) {
+      params.offset = (results.pageNumber - 1) * results.pageSize;
+      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
+    } else {
+      params.offset = 0;
+    }
+
+    const response = await this.httpClient.get(`/orgs/${organizationId}/entries/${entryId}/cameras`, { params });
+
+    if (!response.data || !Array.isArray(response.data.data)) {
+      throw new UnexpectedError('Invalid response format: expected data array');
+    }
+
+    results.items = response.data.data.map(toEntryCamera);
+    results.count = response.data.totalCount || 0;
+  }
+
+  async listEntryStates(
+    results: PagedResults<EntryStateInfo>,
+    organizationId: string
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
+    if (results.pageNumber && results.pageSize) {
+      params.offset = (results.pageNumber - 1) * results.pageSize;
+      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
+    } else {
+      params.offset = 0;
+    }
+
+    const response = await this.httpClient.get(`/orgs/${organizationId}/entryStates`, { params });
+
+    if (!response.data || !Array.isArray(response.data.data)) {
+      throw new UnexpectedError('Invalid response format: expected data array');
+    }
+
+    results.items = response.data.data.map(toEntryStateInfo);
+    results.count = response.data.totalCount || 0;
+  }
+
+  async listUserSchedules(
+    results: PagedResults<EntryUserSchedule>,
+    organizationId: string,
+    entryId: string
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
+    if (results.pageNumber && results.pageSize) {
+      params.offset = (results.pageNumber - 1) * results.pageSize;
+      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
+    } else {
+      params.offset = 0;
+    }
+
+    const response = await this.httpClient.get(`/orgs/${organizationId}/entries/${entryId}/userSchedules`, { params });
+
+    if (!response.data || !Array.isArray(response.data.data)) {
+      throw new UnexpectedError('Invalid response format: expected data array');
+    }
+
+    results.items = response.data.data.map(toEntryUserSchedule);
+    results.count = response.data.totalCount || 0;
+  }
+
+  async listUsers(
+    results: PagedResults<EntryUser>,
+    organizationId: string,
+    entryId: string
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
+    if (results.pageNumber && results.pageSize) {
+      params.offset = (results.pageNumber - 1) * results.pageSize;
+      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
+    } else {
+      params.offset = 0;
+    }
+
+    const response = await this.httpClient.get(`/orgs/${organizationId}/entries/${entryId}/users`, { params });
+
+    if (!response.data || !Array.isArray(response.data.data)) {
+      throw new UnexpectedError('Invalid response format: expected data array');
+    }
+
+    results.items = response.data.data.map(toEntryUser);
+    results.count = response.data.totalCount || 0;
   }
 }

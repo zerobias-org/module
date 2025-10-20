@@ -1,40 +1,20 @@
 import { AxiosInstance } from 'axios';
-import { PagedResults, NoSuchObjectError, UnexpectedError } from '@auditmation/types-core-js';
-import { GroupProducerApi } from '../generated/api/GroupApi';
-import { Group, GroupInfo, User, Entry, GroupZoneGroup, GroupZone } from '../generated/model';
+import { PagedResults, UnexpectedError } from '@auditmation/types-core-js';
+import { CredentialProducerApi } from '../generated/api/CredentialApi';
+import { CredentialType, OrgCredential, CredentialAction, CredentialActionType, CardFormat } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toGroup, toGroupInfo, toUser, toEntry, toGroupZoneGroup, toGroupZone } from './Mappers';
+import { toCredentialType, toOrgCredential, toCredentialAction, toCredentialActionType, toCardFormat } from './Mappers';
 
-export class GroupProducerApiImpl implements GroupProducerApi {
+export class CredentialProducerApiImpl implements CredentialProducerApi {
   private readonly httpClient: AxiosInstance;
 
   constructor(client: AvigilonAltaAccessClient) {
     this.httpClient = client.getHttpClient();
   }
 
-  async get(organizationId: string, groupId: string): Promise<GroupInfo> {
-    const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId}`
-    );
-
-    // Individual group response could be in response.data.data OR response.data
-    const rawGroupData = response.data.data || response.data;
-
-    if (!rawGroupData) {
-      throw new NoSuchObjectError('group', groupId);
-    }
-
-    // Map to Group interface and extend to GroupInfo - use exactly what API returns
-    const groupData = toGroup(rawGroupData);
-    const groupInfo = toGroupInfo(groupData, rawGroupData);
-
-    return groupInfo;
-  }
-
-  async listEntries(
-    results: PagedResults<Entry>,
-    organizationId: string,
-    groupId: string
+  async listCardFormats(
+    results: PagedResults<CardFormat>,
+    organizationId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
 
@@ -45,23 +25,21 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       params.offset = 0;
     }
 
-    const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId}/entries`,
-      { params }
-    );
+    const url = `/orgs/${organizationId}/cardFormats`;
+    const response = await this.httpClient.get(url, { params });
 
     if (!response.data || !Array.isArray(response.data.data)) {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toEntry);
+    results.items = response.data.data.map(toCardFormat);
     results.count = response.data.totalCount || 0;
   }
 
-  async listUsers(
-    results: PagedResults<User>,
+  async listCredentialActions(
+    results: PagedResults<CredentialAction>,
     organizationId: string,
-    groupId: string
+    credentialId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
 
@@ -72,43 +50,21 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       params.offset = 0;
     }
 
-    const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId}/users`,
-      { params }
-    );
+    const url = `/orgs/${organizationId}/credentials/${credentialId}/credentialActions`;
+    const response = await this.httpClient.get(url, { params });
 
     if (!response.data || !Array.isArray(response.data.data)) {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toUser);
+    // Apply mappers and set pagination info from response structure
+    results.items = response.data.data.map(toCredentialAction);
     results.count = response.data.totalCount || 0;
   }
 
-  async list(results: PagedResults<Group>, organizationId: string): Promise<void> {
-    const params: Record<string, number> = {};
-
-    if (results.pageNumber && results.pageSize) {
-      params.offset = (results.pageNumber - 1) * results.pageSize;
-      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
-    } else {
-      params.offset = 0;
-    }
-
-    const response = await this.httpClient.get(`/orgs/${organizationId}/groups`, { params });
-
-    if (!response.data || !Array.isArray(response.data.data)) {
-      throw new UnexpectedError('Invalid response format: expected data array');
-    }
-
-    results.items = response.data.data.map(toGroup);
-    results.count = response.data.totalCount || 0;
-  }
-
-  async listZoneGroups(
-    results: PagedResults<GroupZoneGroup>,
-    organizationId: string,
-    groupId: string
+  async listCredentialActionTypes(
+    results: PagedResults<CredentialActionType>,
+    organizationId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
 
@@ -119,23 +75,21 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       params.offset = 0;
     }
 
-    const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId}/zoneGroups`,
-      { params }
-    );
+    const url = `/orgs/${organizationId}/credentialActionTypes`;
+    const response = await this.httpClient.get(url, { params });
 
     if (!response.data || !Array.isArray(response.data.data)) {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toGroupZoneGroup);
+    // Apply mappers and set pagination info from response structure
+    results.items = response.data.data.map(toCredentialActionType);
     results.count = response.data.totalCount || 0;
   }
 
-  async listZones(
-    results: PagedResults<GroupZone>,
-    organizationId: string,
-    groupId: string
+  async listCredentialTypes(
+    results: PagedResults<CredentialType>,
+    organizationId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
 
@@ -146,16 +100,40 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       params.offset = 0;
     }
 
-    const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId}/zones`,
-      { params }
-    );
+    const url = `/orgs/${organizationId}/credentialTypes`;
+    const response = await this.httpClient.get(url, { params });
 
     if (!response.data || !Array.isArray(response.data.data)) {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toGroupZone);
+    // Apply mappers and set pagination info from response structure
+    results.items = response.data.data.map(toCredentialType);
+    results.count = response.data.totalCount || 0;
+  }
+
+  async listOrgCredentials(
+    results: PagedResults<OrgCredential>,
+    organizationId: string
+  ): Promise<void> {
+    const params: Record<string, number> = {};
+
+    if (results.pageNumber && results.pageSize) {
+      params.offset = (results.pageNumber - 1) * results.pageSize;
+      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
+    } else {
+      params.offset = 0;
+    }
+
+    const url = `/orgs/${organizationId}/credentials`;
+    const response = await this.httpClient.get(url, { params });
+
+    if (!response.data || !Array.isArray(response.data.data)) {
+      throw new UnexpectedError('Invalid response format: expected data array');
+    }
+
+    // Apply mappers and set pagination info from response structure
+    results.items = response.data.data.map(toOrgCredential);
     results.count = response.data.totalCount || 0;
   }
 }

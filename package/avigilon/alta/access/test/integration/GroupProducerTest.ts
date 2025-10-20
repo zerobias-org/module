@@ -1,11 +1,10 @@
 import { expect } from 'chai';
 import { describe, it, before } from 'mocha';
+import { getLogger } from '@auditmation/util-logger';
 import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common';
 import { AccessImpl, GroupApi } from '../../src';
-import { getLogger } from '@auditmation/util-logger';
 
 // Core types for assertions
-import { Email, URL, IpAddress } from '@auditmation/types-core-js';
 
 const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
 
@@ -15,158 +14,142 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
   let access: AccessImpl;
   let groupApi: GroupApi;
 
-  before(async function () {
+  before(async () => {
     access = await prepareApi();
     groupApi = access.getGroupApi();
-    
+
     expect(groupApi).to.not.be.undefined;
     logger.debug('GroupApi initialized successfully');
   });
 
-  describe('Group List Operations', function () {
-    
-    it('should list groups with default pagination', async function () {
+  describe('Group List Operations', () => {
+    it('should list groups with default pagination', async () => {
       const groupsResult = await groupApi.list(testConfig.organizationId);
-      
-      logger.debug(`groupApi.list()`, JSON.stringify(groupsResult, null, 2));
-      
+
+      logger.debug(`groupApi.list(${testConfig.organizationId})`, JSON.stringify(groupsResult, null, 2));
+
       expect(groupsResult).to.not.be.null;
       expect(groupsResult).to.not.be.undefined;
-      
-      // Validate structure
+
       const groups = groupsResult.items;
       if (groups && Array.isArray(groups)) {
         expect(groups).to.be.an('array');
-        
-        // If groups exist, validate the first one
+
         if (groups.length > 0) {
           const firstGroup = groups[0];
           expect(firstGroup).to.be.an('object');
-          
-          // Validate common group fields that should exist
+
           if (firstGroup.id) {
-            // ID should be a string
             expect(firstGroup.id).to.be.a('string');
             expect(firstGroup.id).to.not.be.empty;
           }
-          
+
           if (firstGroup.createdAt && firstGroup.createdAt instanceof Date) {
             validateCoreTypes.isDate(firstGroup.createdAt);
           }
         }
       }
-      
+
       // Save fixture
       await saveFixture('groups-list-default.json', groupsResult);
     });
 
-    it('should list groups with custom pagination', async function () {
+    it('should list groups with custom pagination', async () => {
       const groupsResult = await groupApi.list(testConfig.organizationId, 1, 5);
-      
-      logger.debug(`groupApi.list(1, 5)`, JSON.stringify(groupsResult, null, 2));
-      
+
+      logger.debug(`groupApi.list(${testConfig.organizationId}, 1, 5)`, JSON.stringify(groupsResult, null, 2));
+
       expect(groupsResult).to.not.be.null;
       expect(groupsResult).to.not.be.undefined;
-      
-      // Validate pagination constraints
+
       const groups = groupsResult.items;
       if (groups && Array.isArray(groups)) {
         expect(groups).to.be.an('array');
-        // Should return at most 5 groups
         expect(groups.length).to.be.at.most(5);
       }
-      
+
       // Save fixture
       await saveFixture('groups-list-paginated.json', groupsResult);
     });
   });
 
-  describe('Group Retrieval Operations', function () {
-    
-    it('should retrieve a specific group by ID', async function () {
-
+  describe('Group Retrieval Operations', () => {
+    it('should retrieve a specific group by ID', async () => {
       // First get a list to find a valid group ID
       const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
       const groups = groupsResult.items;
-      
+
       if (!groups || !Array.isArray(groups) || groups.length === 0) {
         throw new Error('No groups available for testing');
       }
-      
+
       const groupId = groups[0].id;
       expect(groupId).to.not.be.undefined;
 
       // Use string ID directly
       expect(groupId).to.be.a('string');
-      
+
       const group = await groupApi.get(testConfig.organizationId, groupId);
-      
-      logger.debug(`groupApi.get('${groupId}')`, JSON.stringify(group, null, 2));
-      
+
+      logger.debug(`groupApi.get(${testConfig.organizationId}, '${groupId}')`, JSON.stringify(group, null, 2));
+
       expect(group).to.not.be.null;
       expect(group).to.not.be.undefined;
       expect(group).to.be.an('object');
-      
-      // Validate group properties
+
       if (group.id) {
         expect(group.id).to.equal(groupId);
-
-        // ID should be a string
         expect(group.id).to.be.a('string');
         expect(group.id).to.not.be.empty;
       }
-      
+
       if (group.createdAt && group.createdAt instanceof Date) {
         validateCoreTypes.isDate(group.createdAt);
       }
-      
+
       // Save fixture
       await saveFixture('group-get-by-id.json', group);
     });
 
-    it('should handle non-existent group ID gracefully', async function () {
-
+    it('should handle non-existent group ID gracefully', async () => {
       // Use a clearly non-existent string ID
       const nonExistentId = '999999999';
-      
+
       try {
         const group = await groupApi.get(testConfig.organizationId, nonExistentId);
-        logger.debug(`groupApi.get('${nonExistentId}')`, JSON.stringify(group, null, 2));
-        
+        logger.debug(`groupApi.get(${testConfig.organizationId}, '${nonExistentId}')`, JSON.stringify(group, null, 2));
+
         // If no error was thrown, the result should be null or undefined
-        expect(group).to.satisfy((result: any) => result === null || result === undefined);
-        
-      } catch (error: any) {
-        logger.debug('Expected error for non-existent group', error.message);
-        
+        expect(group).to.satisfy((result: any) => (result === null || result === undefined));
+      } catch (error: unknown) {
+        const err = error as any;
+        logger.debug('Expected error for non-existent group', err.message);
+
         // Expecting a 404 or similar error
         expect(error).to.not.be.null;
-        
+
         // Common error patterns for not found
-        const errorMessage = error.message?.toLowerCase() || '';
-        const hasNotFoundIndicator = 
-          errorMessage.includes('not found') ||
-          errorMessage.includes('404') ||
-          errorMessage.includes('does not exist') ||
-          error.status === 404 ||
-          error.statusCode === 404;
-          
+        const errorMessage = err.message?.toLowerCase() || '';
+        const hasNotFoundIndicator = errorMessage.includes('not found')
+          || errorMessage.includes('404')
+          || errorMessage.includes('does not exist')
+          || err.status === 404
+          || err.statusCode === 404;
+
         expect(hasNotFoundIndicator).to.be.true;
-        
+
         // Save error fixture
         await saveFixture('group-get-not-found-error.json', {
-          error: error.message,
-          status: error.status || error.statusCode,
-          timestamp: new Date().toISOString()
+          error: err.message,
+          status: err.status || err.statusCode,
+          timestamp: new Date().toISOString(),
         });
       }
     });
   });
 
-  describe('Group Child Operations', function () {
-
-    it('should list group users with default pagination', async function () {
-
+  describe('Group Child Operations', () => {
+    it('should list group users with default pagination', async () => {
       // First get a valid group ID from the list operation
       const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
       const groups = groupsResult.items;
@@ -182,7 +165,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       // Test listUsers operation
       const usersResult = await groupApi.listUsers(testConfig.organizationId, groupId);
 
-      logger.debug(`groupApi.listUsers('${groupId}')`, JSON.stringify(usersResult, null, 2));
+      logger.debug(`groupApi.listUsers(${testConfig.organizationId}, '${groupId}')`, JSON.stringify(usersResult, null, 2));
 
       expect(usersResult).to.not.be.null;
       expect(usersResult).to.not.be.undefined;
@@ -190,7 +173,6 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       // Validate structure
       expect(usersResult.items).to.be.an('array');
 
-      // If users exist in the group, validate the first one
       if (usersResult.items && usersResult.items.length > 0) {
         const firstUser = usersResult.items[0];
         expect(firstUser).to.be.an('object');
@@ -216,8 +198,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       await saveFixture('group-users-list.json', usersResult);
     });
 
-    it('should list group users with custom pagination', async function () {
-
+    it('should list group users with custom pagination', async () => {
       // First get a valid group ID from the list operation
       const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
       const groups = groupsResult.items;
@@ -232,7 +213,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       // Test listUsers with pagination
       const usersResult = await groupApi.listUsers(testConfig.organizationId, groupId, 1, 5);
 
-      logger.debug(`groupApi.listUsers('${groupId}', 1, 5)`, JSON.stringify(usersResult, null, 2));
+      logger.debug(`groupApi.listUsers(${testConfig.organizationId}, '${groupId}', 1, 5)`, JSON.stringify(usersResult, null, 2));
 
       expect(usersResult).to.not.be.null;
       expect(usersResult).to.not.be.undefined;
@@ -247,8 +228,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       await saveFixture('group-users-list-paginated.json', usersResult);
     });
 
-    it('should list group entries with default pagination', async function () {
-
+    it('should list group entries with default pagination', async () => {
       // First get a valid group ID from the list operation
       const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
       const groups = groupsResult.items;
@@ -264,7 +244,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       // Test listEntries operation
       const entriesResult = await groupApi.listEntries(testConfig.organizationId, groupId);
 
-      logger.debug(`groupApi.listEntries('${groupId}')`, JSON.stringify(entriesResult, null, 2));
+      logger.debug(`groupApi.listEntries(${testConfig.organizationId}, '${groupId}')`, JSON.stringify(entriesResult, null, 2));
 
       expect(entriesResult).to.not.be.null;
       expect(entriesResult).to.not.be.undefined;
@@ -298,8 +278,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       await saveFixture('group-entries-list.json', entriesResult);
     });
 
-    it('should list group entries with custom pagination', async function () {
-
+    it('should list group entries with custom pagination', async () => {
       // First get a valid group ID from the list operation
       const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
       const groups = groupsResult.items;
@@ -314,7 +293,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       // Test listEntries with pagination
       const entriesResult = await groupApi.listEntries(testConfig.organizationId, groupId, 1, 5);
 
-      logger.debug(`groupApi.listEntries('${groupId}', 1, 5)`, JSON.stringify(entriesResult, null, 2));
+      logger.debug(`groupApi.listEntries(${testConfig.organizationId}, '${groupId}', 1, 5)`, JSON.stringify(entriesResult, null, 2));
 
       expect(entriesResult).to.not.be.null;
       expect(entriesResult).to.not.be.undefined;
@@ -330,10 +309,8 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
     });
   });
 
-  describe('Group Data Validation', function () {
-
-    it('should validate group response schema', async function () {
-
+  describe('Group Data Validation', () => {
+    it('should validate group response schema', async () => {
       const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
       const groups = groupsResult.items;
 
@@ -355,52 +332,49 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
 
       // Save schema validation fixture
       await saveFixture('group-schema-validation.json', {
-        group: group,
+        group,
         validation: {
           hasIdentifier: !!hasIdentifier,
           hasName: !!group.name,
           hasCreatedAt: !!group.createdAt,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       });
     });
   });
 
-  describe('Error Handling and Edge Cases', function () {
-    
-    it('should handle invalid pagination parameters', async function () {
-
+  describe('Error Handling and Edge Cases', () => {
+    it('should handle invalid pagination parameters', async () => {
       try {
         // Test with potentially invalid parameters
         const groupsResult = await groupApi.list(testConfig.organizationId, -1, -1);
-        logger.debug(`groupApi.list(-1, -1)`, JSON.stringify(groupsResult, null, 2));
-        
+        logger.debug(`groupApi.list(${testConfig.organizationId}, -1, -1)`, JSON.stringify(groupsResult, null, 2));
+
         // Should either return empty array or throw appropriate error
         if (groupsResult && groupsResult.items) {
           expect(groupsResult.items).to.be.an('array');
         }
-        
-      } catch (error: any) {
-        logger.debug('Expected error for invalid pagination', error.message);
-        
+      } catch (error: unknown) {
+        const err = error as any;
+        logger.debug('Expected error for invalid pagination', err.message);
+
         // Should get a validation error
         expect(error).to.not.be.null;
-        
+
         await saveFixture('group-list-invalid-pagination-error.json', {
-          error: error.message,
-          status: error.status || error.statusCode,
-          timestamp: new Date().toISOString()
+          error: err.message,
+          status: err.status || err.statusCode,
+          timestamp: new Date().toISOString(),
         });
       }
     });
 
-    it('should handle API rate limiting', async function () {
-
+    it('should handle API rate limiting', async () => {
       // This test would require making many requests quickly
       // For now, we'll just make a single request to verify no immediate rate limiting
       const groupsResult = await groupApi.list(testConfig.organizationId, 1, 1);
       logger.debug('Rate limiting test - single request succeeded');
-      
+
       expect(groupsResult).to.not.be.null;
     });
   });

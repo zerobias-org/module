@@ -1,11 +1,6 @@
 import { expect } from 'chai';
 import nock from 'nock';
-import { AccessImpl } from '../../src/AccessImpl';
-import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
-import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
-import { UserProducerApiImpl } from '../../src/UserProducerApiImpl';
-import { GroupProducerApiImpl } from '../../src/GroupProducerApiImpl';
-import { 
+import {
   InvalidCredentialsError,
   UnexpectedError,
   URL,
@@ -16,6 +11,11 @@ import {
   ConnectionStatus,
   OperationSupportStatus
 } from '@auditmation/hub-core';
+import { AccessImpl } from '../../src/AccessImpl';
+import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
+import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
+import { UserProducerApiImpl } from '../../src/UserProducerApiImpl';
+import { GroupProducerApiImpl } from '../../src/GroupProducerApiImpl';
 import { mockAuthenticatedRequest, cleanNock, loadFixture } from '../utils/nock-helpers';
 
 describe('AccessImpl', () => {
@@ -64,12 +64,12 @@ describe('AccessImpl', () => {
           .reply(200, {
             data: {
               token: 'mock-token-123',
-              expiresAt: new Date(Date.now() + 3600000).toISOString()
-            }
+              expiresAt: new Date(Date.now() + 3600000).toISOString(),
+            },
           });
 
         await accessImpl.connect(profile);
-        
+
         const connected = await accessImpl.isConnected();
         expect(connected).to.be.true;
       });
@@ -86,12 +86,12 @@ describe('AccessImpl', () => {
           .reply(200, {
             data: {
               token: 'mock-token-123',
-              expiresAt: new Date(Date.now() + 3600000).toISOString()
-            }
+              expiresAt: new Date(Date.now() + 3600000).toISOString(),
+            },
           });
 
         await accessImpl.connect(profile);
-        
+
         const connected = await accessImpl.isConnected();
         expect(connected).to.be.true;
       });
@@ -129,8 +129,8 @@ describe('AccessImpl', () => {
           .reply(200, {
             data: {
               token: 'mock-token-123',
-              expiresAt: new Date(Date.now() + 3600000).toISOString()
-            }
+              expiresAt: new Date(Date.now() + 3600000).toISOString(),
+            },
           });
 
         await accessImpl.connect(profile);
@@ -152,8 +152,8 @@ describe('AccessImpl', () => {
           .reply(200, {
             data: {
               token: 'mock-token-123',
-              expiresAt: new Date(Date.now() + 3600000).toISOString()
-            }
+              expiresAt: new Date(Date.now() + 3600000).toISOString(),
+            },
           });
 
         await accessImpl.connect(profile);
@@ -177,17 +177,17 @@ describe('AccessImpl', () => {
         email: new Email(testEmail),
         password: testPassword,
       };
-      
+
       // Mock login endpoint
       nock(baseUrl)
         .post('/auth/login')
         .reply(200, {
           data: {
             token: 'mock-token-123',
-            expiresAt: new Date(Date.now() + 3600000).toISOString()
-          }
+            expiresAt: new Date(Date.now() + 3600000).toISOString(),
+          },
         });
-      
+
       await accessImpl.connect(profile);
     });
 
@@ -215,14 +215,14 @@ describe('AccessImpl', () => {
     describe('metadata()', () => {
       it('should return module metadata', async () => {
         const metadata = await accessImpl.metadata();
-        
+
         expect(metadata).to.be.instanceOf(ConnectionMetadata);
         expect(metadata).to.have.property('status');
       });
 
       it('should include correct service information', async () => {
         const metadata = await accessImpl.metadata();
-        
+
         expect(metadata.status).to.equal(ConnectionStatus.Down);
       });
     });
@@ -235,17 +235,17 @@ describe('AccessImpl', () => {
         email: new Email(testEmail),
         password: testPassword,
       };
-      
+
       // Mock login endpoint
       nock(baseUrl)
         .post('/auth/login')
         .reply(200, {
           data: {
             token: 'mock-token-123',
-            expiresAt: new Date(Date.now() + 3600000).toISOString()
-          }
+            expiresAt: new Date(Date.now() + 3600000).toISOString(),
+          },
         });
-      
+
       await accessImpl.connect(profile);
     });
 
@@ -305,7 +305,7 @@ describe('AccessImpl', () => {
     it('should propagate client connection errors', async () => {
       const profile: ConnectionProfile = {
         email: new Email(testEmail),
-          password: '', // Invalid
+        password: '', // Invalid
       };
 
       try {
@@ -328,12 +328,12 @@ describe('AccessImpl', () => {
         .reply(200, {
           data: {
             token: 'mock-token-123',
-            expiresAt: new Date(Date.now() + 3600000).toISOString()
-          }
+            expiresAt: new Date(Date.now() + 3600000).toISOString(),
+          },
         });
 
       await accessImpl.connect(profile);
-      
+
       // Test that producers can be created without throwing
       expect(() => accessImpl.getUserApi()).to.not.throw();
       expect(() => accessImpl.getGroupApi()).to.not.throw();

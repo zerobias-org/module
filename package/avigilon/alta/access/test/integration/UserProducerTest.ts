@@ -1,11 +1,11 @@
 import { expect } from 'chai';
 import { describe, it, before } from 'mocha';
-import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common';
-import { AccessImpl, UserApi } from '../../src';
 import { getLogger } from '@auditmation/util-logger';
+import { UUID } from '@auditmation/types-core-js';
+import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common';
+import { AccessImpl, UserApi, RoleApi } from '../../src';
 
 // Core types for assertions
-import { Email, URL, UUID, IpAddress } from '@auditmation/types-core-js';
 
 const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
 
@@ -14,21 +14,23 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
 
   let access: AccessImpl;
   let userApi: UserApi;
+  let roleApi: RoleApi;
 
-  before(async function () {
+  before(async () => {
     access = await prepareApi();
     userApi = access.getUserApi();
+    roleApi = access.getRoleApi();
 
     expect(userApi).to.not.be.undefined;
-    logger.debug('UserApi initialized successfully');
+    expect(roleApi).to.not.be.undefined;
+    logger.debug('UserApi and RoleApi initialized successfully');
   });
 
-  describe('User List Operations', function () {
-
-    it('should list users with default pagination', async function () {
+  describe('User List Operations', () => {
+    it('should list users with default pagination', async () => {
       const usersResult = await userApi.list(testConfig.organizationId);
 
-      logger.debug(`userApi.list()`, JSON.stringify(usersResult, null, 2));
+      logger.debug(`userApi.list(${testConfig.organizationId})`, JSON.stringify(usersResult, null, 2));
 
       expect(usersResult).to.not.be.null;
       expect(usersResult).to.not.be.undefined;
@@ -46,8 +48,8 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
           // Validate common user fields that should exist
           if (firstUser.id) {
             // ID could be UUID or string - validate if it looks like UUID
-            if (typeof firstUser.id === 'string' &&
-              /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(firstUser.id)) {
+            if (typeof firstUser.id === 'string'
+              && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(firstUser.id)) {
               validateCoreTypes.isUUID(firstUser.id);
             }
           }
@@ -66,10 +68,10 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       await saveFixture('users-list-default.json', usersResult);
     });
 
-    it('should list users with custom pagination', async function () {
+    it('should list users with custom pagination', async () => {
       const usersResult = await userApi.list(testConfig.organizationId, 1, 5);
 
-      logger.debug(`userApi.list(1, 5)`, JSON.stringify(usersResult, null, 2));
+      logger.debug(`userApi.list(${testConfig.organizationId}, 1, 5)`, JSON.stringify(usersResult, null, 2));
 
       expect(usersResult).to.not.be.null;
       expect(usersResult).to.not.be.undefined;
@@ -87,14 +89,11 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
     });
   });
 
-  describe('User Retrieval Operations', function () {
-
-    it('should retrieve a specific user by ID', async function () {
-
+  describe('User Retrieval Operations', () => {
+    it('should retrieve a specific user by ID', async () => {
       // First get a list to find a valid user ID
       const usersPr = await userApi.list(testConfig.organizationId, 1, 1);
       const users = usersPr.items;
-
 
       if (!users || !Array.isArray(users) || users.length === 0) {
         throw new Error('No users available for testing');
@@ -105,7 +104,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
 
       const user = await userApi.get(testConfig.organizationId, userId);
 
-      logger.debug(`userApi.get('${userId}')`, JSON.stringify(user, null, 2));
+      logger.debug(`userApi.get(${testConfig.organizationId}, '${userId}')`, JSON.stringify(user, null, 2));
 
       expect(user).to.not.be.null;
       expect(user).to.not.be.undefined;
@@ -116,8 +115,8 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
         expect(user.id).to.equal(userId);
 
         // ID could be UUID or string - validate if it looks like UUID
-        if (typeof user.id === 'string' &&
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)) {
+        if (typeof user.id === 'string'
+          && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)) {
           validateCoreTypes.isUUID(user.id);
         }
       }
@@ -134,49 +133,45 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       await saveFixture('user-get-by-id.json', user);
     });
 
-    it('should handle non-existent user ID gracefully', async function () {
-
+    it('should handle non-existent user ID gracefully', async () => {
       // Use a clearly non-existent ID
       const nonExistentId = '99999999'; // Use a numeric ID that doesn't exist
 
       try {
         const user = await userApi.get(testConfig.organizationId, nonExistentId);
-        logger.debug(`userApi.get('${nonExistentId}')`, JSON.stringify(user, null, 2));
+        logger.debug(`userApi.get(${testConfig.organizationId}, '${nonExistentId}')`, JSON.stringify(user, null, 2));
 
         // If no error was thrown, the result should be null or undefined
-        expect(user).to.satisfy((result: any) => result === null || result === undefined);
-
-      } catch (error: any) {
-        logger.debug('Expected error for non-existent user', error.message);
+        expect(user).to.satisfy((result: any) => (result === null || result === undefined));
+      } catch (error: unknown) {
+        const err = error as any;
+        logger.debug('Expected error for non-existent user', err.message);
 
         // Expecting a 404 or similar error
         expect(error).to.not.be.null;
 
         // Common error patterns for not found
-        const errorMessage = error.message?.toLowerCase() || '';
-        const hasNotFoundIndicator =
-          errorMessage.includes('not found') ||
-          errorMessage.includes('404') ||
-          errorMessage.includes('does not exist') ||
-          error.status === 404 ||
-          error.statusCode === 404;
+        const errorMessage = err.message?.toLowerCase() || '';
+        const hasNotFoundIndicator = errorMessage.includes('not found')
+          || errorMessage.includes('404')
+          || errorMessage.includes('does not exist')
+          || err.status === 404
+          || err.statusCode === 404;
 
         expect(hasNotFoundIndicator).to.be.true;
 
         // Save error fixture
         await saveFixture('user-get-not-found-error.json', {
-          error: error.message,
-          status: error.status || error.statusCode,
-          timestamp: new Date().toISOString()
+          error: err.message,
+          status: err.status || err.statusCode,
+          timestamp: new Date().toISOString(),
         });
       }
     });
   });
 
-  describe('User Roles Operations', function () {
-
-    it('should list user roles with default pagination', async function () {
-
+  describe('User Roles Operations', () => {
+    it('should list user roles with default pagination', async () => {
       // First get a valid user ID
       const usersResult = await userApi.list(testConfig.organizationId, 1, 1);
       const users = usersResult.items;
@@ -191,7 +186,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       // List roles for the user
       const rolesResult = await userApi.listRoles(testConfig.organizationId, userId);
 
-      logger.debug(`userApi.listRoles('${userId}')`, JSON.stringify(rolesResult, null, 2));
+      logger.debug(`userApi.listRoles(${testConfig.organizationId}, '${userId}')`, JSON.stringify(rolesResult, null, 2));
 
       expect(rolesResult).to.not.be.null;
       expect(rolesResult).to.not.be.undefined;
@@ -219,8 +214,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       await saveFixture('user-roles-list.json', rolesResult);
     });
 
-    it('should list user roles with custom pagination', async function () {
-
+    it('should list user roles with custom pagination', async () => {
       // First get a valid user ID
       const usersResult = await userApi.list(testConfig.organizationId, 1, 1);
       const users = usersResult.items;
@@ -234,7 +228,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       // List roles with custom pagination
       const rolesResult = await userApi.listRoles(testConfig.organizationId, userId, 1, 3);
 
-      logger.debug(`userApi.listRoles('${userId}', 1, 3)`, JSON.stringify(rolesResult, null, 2));
+      logger.debug(`userApi.listRoles(${testConfig.organizationId}, '${userId}', 1, 3)`, JSON.stringify(rolesResult, null, 2));
 
       expect(rolesResult).to.not.be.null;
       expect(rolesResult.items).to.be.an('array');
@@ -247,10 +241,8 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
     });
   });
 
-  describe('User Sites Operations', function () {
-
-    it('should list user sites with default pagination', async function () {
-
+  describe('User Sites Operations', () => {
+    it('should list user sites with default pagination', async () => {
       // First get a valid user ID
       const usersResult = await userApi.list(testConfig.organizationId, 1, 1);
       const users = usersResult.items;
@@ -265,7 +257,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       // List sites for the user
       const sitesResult = await userApi.listSites(testConfig.organizationId, userId);
 
-      logger.debug(`userApi.listSites('${userId}')`, JSON.stringify(sitesResult, null, 2));
+      logger.debug(`userApi.listSites(${testConfig.organizationId}, '${userId}')`, JSON.stringify(sitesResult, null, 2));
 
       expect(sitesResult).to.not.be.null;
       expect(sitesResult).to.not.be.undefined;
@@ -293,8 +285,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       await saveFixture('user-sites-list.json', sitesResult);
     });
 
-    it('should list user sites with custom pagination', async function () {
-
+    it('should list user sites with custom pagination', async () => {
       // First get a valid user ID
       const usersResult = await userApi.list(testConfig.organizationId, 1, 1);
       const users = usersResult.items;
@@ -308,7 +299,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       // List sites with custom pagination
       const sitesResult = await userApi.listSites(testConfig.organizationId, userId, 1, 3);
 
-      logger.debug(`userApi.listSites('${userId}', 1, 3)`, JSON.stringify(sitesResult, null, 2));
+      logger.debug(`userApi.listSites(${testConfig.organizationId}, '${userId}', 1, 3)`, JSON.stringify(sitesResult, null, 2));
 
       expect(sitesResult).to.not.be.null;
       expect(sitesResult.items).to.be.an('array');
@@ -321,10 +312,8 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
     });
   });
 
-  describe('User Data Validation', function () {
-
-    it('should validate user response schema', async function () {
-
+  describe('User Data Validation', () => {
+    it('should validate user response schema', async () => {
       const usersResult = await userApi.list(testConfig.organizationId, 1, 1);
       const users = usersResult.items;
 
@@ -346,47 +335,44 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
 
       // Save schema validation fixture
       await saveFixture('user-schema-validation.json', {
-        user: user,
+        user,
         validation: {
           hasIdentifier: !!hasIdentifier,
-          hasEmail: !!user.identity?.email,
+          has: !!user.identity?.email,
           hasCreatedAt: !!user.createdAt,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       });
     });
   });
 
-  describe('Error Handling and Edge Cases', function () {
-
-    it('should handle invalid pagination parameters', async function () {
-
+  describe('Error Handling and Edge Cases', () => {
+    it('should handle invalid pagination parameters', async () => {
       try {
         // Test with potentially invalid parameters
         const usersResult = await userApi.list(testConfig.organizationId, -1, -1);
-        logger.debug(`userApi.list(-1, -1)`, JSON.stringify(usersResult, null, 2));
+        logger.debug(`userApi.list(${testConfig.organizationId}, -1, -1)`, JSON.stringify(usersResult, null, 2));
 
         // Should either return empty array or throw appropriate error
         if (usersResult && usersResult.items) {
           expect(usersResult.items).to.be.an('array');
         }
-
-      } catch (error: any) {
-        logger.debug('Expected error for invalid pagination', error.message);
+      } catch (error: unknown) {
+        const err = error as any;
+        logger.debug('Expected error for invalid pagination', err.message);
 
         // Should get a validation error
         expect(error).to.not.be.null;
 
         await saveFixture('user-list-invalid-pagination-error.json', {
-          error: error.message,
-          status: error.status || error.statusCode,
-          timestamp: new Date().toISOString()
+          error: err.message,
+          status: err.status || err.statusCode,
+          timestamp: new Date().toISOString(),
         });
       }
     });
 
-    it('should handle API rate limiting', async function () {
-
+    it('should handle API rate limiting', async () => {
       // This test would require making many requests quickly
       // For now, we'll just make a single request to verify no immediate rate limiting
       const usersResult = await userApi.list(testConfig.organizationId, 1, 1);

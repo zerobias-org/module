@@ -3,6 +3,7 @@
     {
       "id": 123,
       "identity": {
+        "id": "identity-123",
         "email": "test@example.com",
         "firstName": "Test",
         "lastName": "User",
@@ -13,7 +14,7 @@
           }
         }
       },
-      "status": "A",
+      "status": "a",
       "createdAt": "2023-01-01T00:00:00Z",
       "updatedAt": "2023-01-02T00:00:00Z",
       "avatarUrl": "https://example.com/avatar.jpg",
@@ -30,6 +31,7 @@
     {
       "id": 456,
       "identity": {
+        "id": "identity-456",
         "email": "test@example.com",
         "firstName": "Test",
         "lastName": "User",
@@ -39,7 +41,7 @@
           }
         }
       },
-      "status": "A",
+      "status": "a",
       "createdAt": "2023-01-05T00:00:00Z"
     }
   ],

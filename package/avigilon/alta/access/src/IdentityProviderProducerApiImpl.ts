@@ -1,43 +1,35 @@
 import { AxiosInstance } from 'axios';
 import { PagedResults, NoSuchObjectError, UnexpectedError } from '@auditmation/types-core-js';
-import { GroupProducerApi } from '../generated/api/GroupApi';
-import { Group, GroupInfo, User, Entry, GroupZoneGroup, GroupZone } from '../generated/model';
+import { IdentityProviderProducerApi } from '../generated/api/IdentityProviderApi';
+import {
+  IdentityProviderType,
+  IdentityProviderTypeInfo,
+  IdentityProvider,
+  IdentityProviderGroup,
+  IdentityProviderGroupRelation
+} from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toGroup, toGroupInfo, toUser, toEntry, toGroupZoneGroup, toGroupZone } from './Mappers';
+import {
+  toIdentityProviderType,
+  toIdentityProviderTypeInfo,
+  toIdentityProvider,
+  toIdentityProviderGroup,
+  toIdentityProviderGroupRelation
+} from './Mappers';
 
-export class GroupProducerApiImpl implements GroupProducerApi {
+export class IdentityProviderProducerApiImpl implements IdentityProviderProducerApi {
   private readonly httpClient: AxiosInstance;
 
   constructor(client: AvigilonAltaAccessClient) {
     this.httpClient = client.getHttpClient();
   }
 
-  async get(organizationId: string, groupId: string): Promise<GroupInfo> {
-    const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId}`
-    );
-
-    // Individual group response could be in response.data.data OR response.data
-    const rawGroupData = response.data.data || response.data;
-
-    if (!rawGroupData) {
-      throw new NoSuchObjectError('group', groupId);
-    }
-
-    // Map to Group interface and extend to GroupInfo - use exactly what API returns
-    const groupData = toGroup(rawGroupData);
-    const groupInfo = toGroupInfo(groupData, rawGroupData);
-
-    return groupInfo;
-  }
-
-  async listEntries(
-    results: PagedResults<Entry>,
+  async getIdentityProviderGroupRelations(
+    results: PagedResults<IdentityProviderGroupRelation>,
     organizationId: string,
-    groupId: string
+    identityProviderId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
-
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
       params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
@@ -46,7 +38,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
     }
 
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId}/entries`,
+      `/orgs/${organizationId}/identityProviders/${identityProviderId}/groupRelations`,
       { params }
     );
 
@@ -54,17 +46,33 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toEntry);
+    results.items = response.data.data.map(toIdentityProviderGroupRelation);
     results.count = response.data.totalCount || 0;
   }
 
-  async listUsers(
-    results: PagedResults<User>,
+  async getIdentityProviderType(
     organizationId: string,
-    groupId: string
+    identityProviderTypeId: string
+  ): Promise<IdentityProviderTypeInfo> {
+    const response = await this.httpClient.get(
+      `/orgs/${organizationId}/identityProviderTypes/${identityProviderTypeId}`
+    );
+
+    const rawData = response.data.data || response.data;
+
+    if (!rawData) {
+      throw new NoSuchObjectError('identityProviderType', identityProviderTypeId);
+    }
+
+    return toIdentityProviderTypeInfo(rawData);
+  }
+
+  async listIdentityProviderGroups(
+    results: PagedResults<IdentityProviderGroup>,
+    organizationId: string,
+    identityProviderId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
-
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
       params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
@@ -73,7 +81,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
     }
 
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId}/users`,
+      `/orgs/${organizationId}/identityProviders/${identityProviderId}/groups`,
       { params }
     );
 
@@ -81,37 +89,17 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toUser);
+    results.items = response.data.data.map(toIdentityProviderGroup);
     results.count = response.data.totalCount || 0;
+
+    // Handle pagination token if present
   }
 
-  async list(results: PagedResults<Group>, organizationId: string): Promise<void> {
-    const params: Record<string, number> = {};
-
-    if (results.pageNumber && results.pageSize) {
-      params.offset = (results.pageNumber - 1) * results.pageSize;
-      params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
-    } else {
-      params.offset = 0;
-    }
-
-    const response = await this.httpClient.get(`/orgs/${organizationId}/groups`, { params });
-
-    if (!response.data || !Array.isArray(response.data.data)) {
-      throw new UnexpectedError('Invalid response format: expected data array');
-    }
-
-    results.items = response.data.data.map(toGroup);
-    results.count = response.data.totalCount || 0;
-  }
-
-  async listZoneGroups(
-    results: PagedResults<GroupZoneGroup>,
-    organizationId: string,
-    groupId: string
+  async listIdentityProviderTypes(
+    results: PagedResults<IdentityProviderType>,
+    organizationId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
-
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
       params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
@@ -120,7 +108,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
     }
 
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId}/zoneGroups`,
+      `/orgs/${organizationId}/identityProviderTypes`,
       { params }
     );
 
@@ -128,17 +116,17 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toGroupZoneGroup);
+    results.items = response.data.data.map(toIdentityProviderType);
     results.count = response.data.totalCount || 0;
+
+    // Handle pagination token if present
   }
 
-  async listZones(
-    results: PagedResults<GroupZone>,
-    organizationId: string,
-    groupId: string
+  async listIdentityProviders(
+    results: PagedResults<IdentityProvider>,
+    organizationId: string
   ): Promise<void> {
     const params: Record<string, number> = {};
-
     if (results.pageNumber && results.pageSize) {
       params.offset = (results.pageNumber - 1) * results.pageSize;
       params.limit = Math.min(Math.max(results.pageSize, 1), 1000);
@@ -147,7 +135,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
     }
 
     const response = await this.httpClient.get(
-      `/orgs/${organizationId}/groups/${groupId}/zones`,
+      `/orgs/${organizationId}/identityProviders`,
       { params }
     );
 
@@ -155,7 +143,9 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toGroupZone);
+    results.items = response.data.data.map(toIdentityProvider);
     results.count = response.data.totalCount || 0;
+
+    // Handle pagination token if present
   }
 }

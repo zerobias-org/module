@@ -1,6 +1,7 @@
 {
   "id": 123,
   "identity": {
+    "id": "identity-123",
     "email": "test@example.com",
     "firstName": "Test",
     "lastName": "User",
@@ -11,7 +12,7 @@
       }
     }
   },
-  "status": "A",
+  "status": "a",
   "createdAt": "2023-01-01T00:00:00Z",
   "updatedAt": "2023-01-02T00:00:00Z",
   "avatarUrl": "https://example.com/avatar.jpg",

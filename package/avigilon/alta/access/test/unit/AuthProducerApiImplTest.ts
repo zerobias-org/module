@@ -1,16 +1,16 @@
 import { describe, it, beforeEach, afterEach } from 'mocha';
 import { expect } from 'chai';
 import nock from 'nock';
+import { Email } from '@auditmation/types-core-js';
 import { AuthProducerApiImpl } from '../../src/AuthProducerApiImpl';
 import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
 import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
-import { Email } from '@auditmation/types-core-js';
 import { mockAuthenticatedRequest, cleanNock } from '../utils/nock-helpers';
 
 describe('AuthProducerApiImpl', () => {
   let authProducer: AuthProducerApiImpl;
   let client: AvigilonAltaAccessClient;
-  
+
   const baseUrl = 'https://helium.prod.openpath.com';
   const mockToken = 'mock-token-123';
 
@@ -18,9 +18,9 @@ describe('AuthProducerApiImpl', () => {
     client = new AvigilonAltaAccessClient();
     authProducer = new AuthProducerApiImpl(client);
 
-    const profile: ConnectionProfile = { 
-      email: new Email('test@example.com'), 
-      password: 'password' 
+    const profile: ConnectionProfile = {
+      email: new Email('test@example.com'),
+      password: 'password',
     };
 
     // Mock login endpoint
@@ -29,8 +29,8 @@ describe('AuthProducerApiImpl', () => {
       .reply(200, {
         data: {
           token: mockToken,
-          expiresAt: new Date(Date.now() + 3600000).toISOString()
-        }
+          expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        },
       });
 
     await client.connect(profile);
@@ -52,24 +52,20 @@ describe('AuthProducerApiImpl', () => {
         exp: 1721044800,
         tokenScopeList: [
           {
-            org: {
-              id: 1067
-            },
-            scope: ['read:users', 'read:groups']
-          }
-        ]
+            org: { id: 1067 },
+            scope: ['read:users', 'read:groups'],
+          },
+        ],
       };
 
       const scope = mockAuthenticatedRequest(baseUrl, mockToken)
         .get(`/auth/accessTokens/${mockToken}`)
-        .reply(200, {
-          data: mockTokenProperties
-        });
+        .reply(200, { data: mockTokenProperties });
 
       const result = await authProducer.getTokenProperties();
 
-      expect(result.organizationId).to.equal(1067);
-      expect(result.identityId).to.equal(30053017);
+      expect(result.organizationId).to.equal('1067');
+      expect(result.identityId).to.equal('30053017');
       expect(result.issuedAt).to.be.instanceOf(Date);
       expect(result.expiresAt).to.be.instanceOf(Date);
       expect(result.scope).to.deep.equal(['read:users', 'read:groups']);
@@ -88,23 +84,21 @@ describe('AuthProducerApiImpl', () => {
       try {
         await disconnectedAuthProducer.getTokenProperties();
         expect.fail('Should have thrown an error');
-      } catch (error: any) {
-        expect(error.message).to.include('Not connected');
+      } catch (error: unknown) {
+        expect((error as Error).message).to.include('Not connected');
       }
     });
 
     it('should handle API errors properly', async () => {
       const scope = mockAuthenticatedRequest(baseUrl, mockToken)
         .get(`/auth/accessTokens/${mockToken}`)
-        .reply(401, {
-          error: 'Unauthorized'
-        });
+        .reply(401, { error: 'Unauthorized' });
 
       try {
         await authProducer.getTokenProperties();
         expect.fail('Should have thrown an error');
-      } catch (error: any) {
-        expect(error.message).to.include('Invalid credentials');
+      } catch (error: unknown) {
+        expect((error as Error).message).to.include('Invalid credentials');
       }
 
       scope.done();

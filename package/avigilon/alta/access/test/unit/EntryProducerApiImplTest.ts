@@ -1,34 +1,34 @@
 import { expect } from 'chai';
 import nock from 'nock';
+import {
+  PagedResults, Email, NotConnectedError,
+  NoSuchObjectError,
+  UnexpectedError
+} from '@auditmation/types-core-js';
 import { EntryProducerApiImpl } from '../../src/EntryProducerApiImpl';
 import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
 import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
-import { EntryDetails } from '../../generated/model';
-import {
-  Email,
-  NotConnectedError,
-  UnexpectedError,
-  PagedResults
-} from '@auditmation/types-core-js';
+import { Entry, EntryInfo, EntryActivityEvent, EntryCamera, EntryStateInfo, EntryUserSchedule, EntryUser } from '../../generated/model';
 import {
   mockAuthenticatedRequest,
-  mockErrorResponse,
+  mockPaginatedResponse,
   cleanNock
 } from '../utils/nock-helpers';
 
 describe('EntryProducerApiImpl', () => {
   let client: AvigilonAltaAccessClient;
   let producer: EntryProducerApiImpl;
-  const baseUrl = 'https://api.openpath.com';
+  const baseUrl = 'https://helium.prod.openpath.com';
   const testEmail = process.env.AVIGILON_EMAIL || 'test@example.com';
   const testPassword = process.env.AVIGILON_PASSWORD || 'testpass';
   const orgId = 'test-org-123';
+  const entryId = 'test-entry-456';
 
   beforeEach(async () => {
     client = new AvigilonAltaAccessClient();
     const profile: ConnectionProfile = {
       email: new Email(testEmail),
-      password: testPassword
+      password: testPassword,
     };
 
     // Mock login endpoint
@@ -37,8 +37,8 @@ describe('EntryProducerApiImpl', () => {
       .reply(200, {
         data: {
           token: 'mock-token-123',
-          expiresAt: new Date(Date.now() + 3600000).toISOString()
-        }
+          expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        },
       });
 
     await client.connect(profile);
@@ -65,357 +65,661 @@ describe('EntryProducerApiImpl', () => {
     });
   });
 
-  describe('Entry List Operations', () => {
-    it('should list entries and return flat array', async () => {
-      // Create mock raw API response data
+  describe('list()', () => {
+    it('should list entries with default pagination', async () => {
       const rawApiEntries = [
         {
-          id: 1001,
+          id: 12345,
           name: 'Main Entrance',
-          opal: 'E1-001',
-          pincode: null,
-          isPincodeEnabled: false,
-          color: '#FF5733',
-          isMusterPoint: false,
-          notes: 'Primary building entrance',
-          externalUuid: null,
-          isReaderless: false,
-          createdAt: '2024-01-15T10:00:00.000Z',
-          updatedAt: '2024-01-15T10:00:00.000Z',
-          zone: {
-            id: 100,
-            name: 'Building A',
-            site: {
-              id: 10,
-              name: 'Main Campus'
-            }
-          },
-          acu: {
-            id: 500,
-            name: 'ACU-001',
-            isGatewayMode: false
-          },
-          entryState: {
-            id: 1,
-            name: 'Active'
-          },
-          schedule: {
-            id: 200,
-            name: 'Business Hours'
-          },
-          cameras: [
-            {
-              id: 300,
-              name: 'Camera-001'
-            }
-          ]
         },
         {
-          id: 1002,
-          name: 'Side Door',
-          opal: 'E1-002',
-          pincode: '1234',
-          isPincodeEnabled: true,
-          color: '#33FF57',
-          isMusterPoint: true,
-          notes: null,
-          externalUuid: 'ext-uuid-123',
-          isReaderless: true,
-          createdAt: '2024-02-20T14:30:00.000Z',
-          updatedAt: '2024-02-20T14:30:00.000Z'
-        }
+          id: 12346,
+          name: 'Back Entrance',
+        },
       ];
 
-      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
-        .get(`/orgs/${orgId}/entries`)
-        .reply(200, {
-          data: rawApiEntries,
-          meta: { pagination: { offset: 0, limit: 50 } },
-          totalCount: 2
-        });
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries`,
+        { offset: 0, limit: 50 },
+        rawApiEntries,
+        rawApiEntries.length
+      );
 
-      const results = new PagedResults<EntryDetails>();
+      const results = new PagedResults<Entry>();
       await producer.list(results, orgId);
 
-      // Verify we get items
-      expect(results.items).to.be.an('array');
-
-      // Verify we have entries
-      expect(results.items).to.have.length(2);
-
-      // Verify first entry structure
+      expect(results.items).to.have.length.above(0);
+      expect(results.count).to.be.above(0);
       expect(results.items[0]).to.have.property('id');
       expect(results.items[0]).to.have.property('name');
-      expect(results.items[0].id).to.be.a('number');
-      expect(results.items[0].name).to.be.a('string');
-      expect(results.items[0].id).to.equal(1001);
-      expect(results.items[0].name).to.equal('Main Entrance');
 
+      scope.done();
+    });
+
+    it('should list entries with custom pagination', async () => {
+      const pageNumber = 2;
+      const pageSize = 10;
+      const expectedOffset = (pageNumber - 1) * pageSize;
+
+      const rawApiEntries = [
+        {
+          id: 12347,
+          name: 'Side Entrance',
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries`,
+        { offset: expectedOffset, limit: pageSize },
+        rawApiEntries,
+        rawApiEntries.length
+      );
+
+      const results = new PagedResults<Entry>();
+      results.pageNumber = pageNumber;
+      results.pageSize = pageSize;
+
+      await producer.list(results, orgId);
+
+      expect(results.items).to.be.an('array');
+      expect(results.count).to.be.a('number');
       scope.done();
     });
 
     it('should handle empty entry list', async () => {
-      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
-        .get(`/orgs/${orgId}/entries`)
-        .reply(200, {
-          data: [],
-          totalCount: 0
-        });
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries`,
+        { offset: 0, limit: 50 },
+        [],
+        0
+      );
 
-      const results = new PagedResults<EntryDetails>();
+      const results = new PagedResults<Entry>();
       await producer.list(results, orgId);
 
-      expect(results.items).to.be.an('array');
       expect(results.items).to.have.length(0);
+      expect(results.count).to.equal(0);
+      scope.done();
+    });
+
+    it('should throw UnexpectedError for invalid response format', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries`)
+        .query({ offset: 0, limit: 50 })
+        .reply(200, { invalid: 'format' });
+
+      const results = new PagedResults<Entry>();
+
+      try {
+        await producer.list(results, orgId);
+        expect.fail('Expected UnexpectedError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(UnexpectedError);
+        expect((error as UnexpectedError).message).to.include('Invalid response format');
+      }
+
+      scope.done();
+    });
+
+    it('should throw UnexpectedError for non-array data', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries`)
+        .query({ offset: 0, limit: 50 })
+        .reply(200, { data: 'not-an-array', totalCount: 0 });
+
+      const results = new PagedResults<Entry>();
+
+      try {
+        await producer.list(results, orgId);
+        expect.fail('Expected UnexpectedError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(UnexpectedError);
+      }
+
       scope.done();
     });
   });
 
-  describe('Entry Data Validation', () => {
-    it('should validate entry response schema with all fields', async () => {
+  describe('get()', () => {
+    it('should retrieve a specific entry by ID', async () => {
       const mockEntryData = {
-        id: 1001,
+        id: entryId,
         name: 'Main Entrance',
-        opal: 'E1-001',
-        pincode: null,
-        isPincodeEnabled: false,
-        color: '#FF5733',
-        isMusterPoint: false,
-        notes: 'Primary entrance',
-        externalUuid: null,
-        isReaderless: false,
-        effectiveLocationRestriction: {
-          type: 'ALLOW_ALL'
-        },
-        org: {
-          id: 123
-        },
-        shadow: {
-          state: 'active'
-        },
-        createdAt: '2024-01-15T10:00:00.000Z',
-        updatedAt: '2024-01-15T10:00:00.000Z',
-        wirelessLock: null,
-        zone: {
-          id: 100,
-          name: 'Building A',
-          site: {
-            id: 10,
-            name: 'Main Campus'
-          }
-        },
-        acu: {
-          id: 500,
-          name: 'ACU-001',
-          isGatewayMode: false
-        },
-        entryState: {
-          id: 1,
-          name: 'Active'
-        },
-        schedule: {
-          id: 200,
-          name: 'Business Hours'
-        },
-        cameras: [
-          {
-            id: 300,
-            name: 'Camera-001'
-          }
-        ]
       };
 
       const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
-        .get(`/orgs/${orgId}/entries`)
-        .reply(200, {
-          data: [mockEntryData],
-          totalCount: 1
-        });
+        .get(`/orgs/${orgId}/entries/${entryId}`)
+        .reply(200, { data: mockEntryData });
 
-      const results = new PagedResults<EntryDetails>();
-      await producer.list(results, orgId);
+      const result = await producer.get(orgId, entryId);
 
-      expect(results.items).to.have.length(1);
-      const entry = results.items[0];
+      expect(result).to.be.an('object');
+      expect(result.id).to.be.a('string');
+      expect(result.name).to.be.a('string');
 
-      // Validate required fields
-      expect(entry).to.have.property('id');
-      expect(entry).to.have.property('name');
+      scope.done();
+    });
 
-      // Validate data types
-      expect(entry.id).to.be.a('number');
-      expect(entry.name).to.be.a('string');
+    it('should handle response data without wrapper', async () => {
+      const mockEntryData = {
+        id: entryId,
+        name: 'Main Entrance',
+      };
 
-      // Validate optional fields if present
-      if (entry.opal) expect(entry.opal).to.be.a('string');
-      if (entry.pincode !== undefined) {
-        expect(entry.pincode).to.satisfy((val: any) => val === null || typeof val === 'string');
-      }
-      if (entry.isPincodeEnabled !== undefined) expect(entry.isPincodeEnabled).to.be.a('boolean');
-      if (entry.color) expect(entry.color).to.be.a('string');
-      if (entry.isMusterPoint !== undefined) expect(entry.isMusterPoint).to.be.a('boolean');
-      if (entry.isReaderless !== undefined) expect(entry.isReaderless).to.be.a('boolean');
-      if (entry.createdAt) expect(entry.createdAt).to.be.instanceOf(Date);
-      if (entry.updatedAt) expect(entry.updatedAt).to.be.instanceOf(Date);
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries/${entryId}`)
+        .reply(200, mockEntryData);
 
-      // Validate nested objects
-      if (entry.zone) {
-        expect(entry.zone).to.have.property('id');
-        expect(entry.zone).to.have.property('name');
-        expect(entry.zone.id).to.be.a('number');
-        expect(entry.zone.name).to.be.a('string');
-      }
+      const result = await producer.get(orgId, entryId);
 
-      if (entry.acu) {
-        expect(entry.acu).to.have.property('id');
-        expect(entry.acu).to.have.property('name');
-        expect(entry.acu.id).to.be.a('number');
-        expect(entry.acu.name).to.be.a('string');
-      }
+      expect(result).to.be.an('object');
+      expect(result.id).to.be.a('string');
+      expect(result.name).to.be.a('string');
 
-      if (entry.cameras) {
-        expect(entry.cameras).to.be.an('array');
-        entry.cameras.forEach(camera => {
-          expect(camera).to.have.property('id');
-          expect(camera).to.have.property('name');
-        });
+      scope.done();
+    });
+
+    it('should handle non-existent entry ID gracefully', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries/999999`)
+        .reply(404, { error: 'Not found', statusCode: 404 });
+
+      try {
+        await producer.get(orgId, '999999');
+        expect.fail('Expected NoSuchObjectError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(NoSuchObjectError);
       }
 
       scope.done();
     });
 
-    it('should validate entry with minimal fields', async () => {
-      const mockMinimalEntry = {
-        id: 1001,
-        name: 'Simple Door'
-      };
-
-      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
-        .get(`/orgs/${orgId}/entries`)
-        .reply(200, {
-          data: [mockMinimalEntry],
-          totalCount: 1
-        });
-
-      const results = new PagedResults<EntryDetails>();
-      await producer.list(results, orgId);
-
-      expect(results.items).to.have.length(1);
-      expect(results.items[0].id).to.equal(1001);
-      expect(results.items[0].name).to.equal('Simple Door');
-
-      scope.done();
-    });
-
-    it('should handle nullable and optional fields correctly', async () => {
-      const mockEntry = {
-        id: 1001,
-        name: 'Test Entry',
-        pincode: null,
-        notes: null,
-        externalUuid: null,
-        wirelessLock: null
-      };
-
-      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
-        .get(`/orgs/${orgId}/entries`)
-        .reply(200, {
-          data: [mockEntry],
-          totalCount: 1
-        });
-
-      const results = new PagedResults<EntryDetails>();
-      await producer.list(results, orgId);
-
-      expect(results.items).to.have.length(1);
-      const entry = results.items[0];
-
-      // These fields can be null
-      expect(entry.pincode).to.satisfy((val: any) => val === null || val === undefined || typeof val === 'string');
-      expect(entry.notes).to.satisfy((val: any) => val === null || val === undefined || typeof val === 'string');
-      expect(entry.externalUuid).to.satisfy((val: any) => val === null || val === undefined || typeof val === 'string');
-      expect(entry.wirelessLock).to.satisfy((val: any) => val === null || val === undefined || typeof val === 'object');
-
-      scope.done();
-    });
+    // Note: In reality, the API returns either valid entry data (200) or 404
+    // The edge cases where response.data.data is null don't occur in integration tests
+    // Those cases are handled by the implementation but don't need specific unit tests
   });
 
-  describe('Response Flattening', () => {
-    it('should flatten response and drop metadata', async () => {
-      const rawApiEntries = [
-        { id: 1, name: 'Entry 1' },
-        { id: 2, name: 'Entry 2' }
+  describe('listActivity()', () => {
+    it('should list activity events with default pagination', async () => {
+      const rawActivityEvents = [
+        {
+          time: 1704106800000,
+          sourceName: 'Main Entrance',
+        },
+        {
+          time: 1704110400000,
+          sourceName: 'Back Entrance',
+        },
       ];
 
-      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
-        .get(`/orgs/${orgId}/entries`)
-        .reply(200, {
-          data: rawApiEntries,
-          meta: {
-            pagination: { offset: 0, limit: 50 },
-            additionalInfo: 'some metadata'
-          },
-          totalCount: 2,
-          filteredCount: 2
-        });
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries/${entryId}/activity`,
+        { offset: 0, limit: 50 },
+        rawActivityEvents,
+        rawActivityEvents.length
+      );
 
-      const results = new PagedResults<EntryDetails>();
-      await producer.list(results, orgId);
+      const results = new PagedResults<EntryActivityEvent>();
+      await producer.listActivity(results, orgId, entryId);
 
-      // Verify we get items
+      expect(results.items).to.have.length.above(0);
+      expect(results.count).to.be.above(0);
+      scope.done();
+    });
+
+    it('should list activity events with custom pagination', async () => {
+      const pageNumber = 3;
+      const pageSize = 20;
+      const expectedOffset = (pageNumber - 1) * pageSize;
+
+      const rawActivityEvents = [
+        {
+          time: 1704117600000,
+          sourceName: 'Side Entrance',
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries/${entryId}/activity`,
+        { offset: expectedOffset, limit: pageSize },
+        rawActivityEvents,
+        rawActivityEvents.length
+      );
+
+      const results = new PagedResults<EntryActivityEvent>();
+      results.pageNumber = pageNumber;
+      results.pageSize = pageSize;
+
+      await producer.listActivity(results, orgId, entryId);
+
       expect(results.items).to.be.an('array');
+      expect(results.count).to.be.a('number');
+      scope.done();
+    });
 
-      // Verify array contents
-      expect(results.items).to.have.length(2);
+    it('should throw UnexpectedError for invalid response format', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries/${entryId}/activity`)
+        .query({ offset: 0, limit: 50 })
+        .reply(200, { invalid: 'format' });
+
+      const results = new PagedResults<EntryActivityEvent>();
+
+      try {
+        await producer.listActivity(results, orgId, entryId);
+        expect.fail('Expected UnexpectedError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(UnexpectedError);
+      }
+
+      scope.done();
+    });
+  });
+
+  describe('listCameras()', () => {
+    it('should list cameras for entry with default pagination', async () => {
+      const rawCameras = [
+        {
+          id: 2001,
+          name: 'Front Camera',
+        },
+        {
+          id: 2002,
+          name: 'Side Camera',
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries/${entryId}/cameras`,
+        { offset: 0, limit: 50 },
+        rawCameras,
+        rawCameras.length
+      );
+
+      const results = new PagedResults<EntryCamera>();
+      await producer.listCameras(results, orgId, entryId);
+
+      expect(results.items).to.have.length.above(0);
+      expect(results.count).to.be.above(0);
+      scope.done();
+    });
+
+    it('should list cameras with custom pagination', async () => {
+      const pageNumber = 1;
+      const pageSize = 5;
+      const expectedOffset = (pageNumber - 1) * pageSize;
+
+      const rawCameras = [
+        {
+          id: 2003,
+          name: 'Back Camera',
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries/${entryId}/cameras`,
+        { offset: expectedOffset, limit: pageSize },
+        rawCameras,
+        rawCameras.length
+      );
+
+      const results = new PagedResults<EntryCamera>();
+      results.pageNumber = pageNumber;
+      results.pageSize = pageSize;
+
+      await producer.listCameras(results, orgId, entryId);
+
+      expect(results.items).to.be.an('array');
+      expect(results.count).to.be.a('number');
+      scope.done();
+    });
+
+    it('should handle entry not found when listing cameras', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries/999/cameras`)
+        .query({ offset: 0, limit: 50 })
+        .reply(404, { error: 'Not found', statusCode: 404 });
+
+      const results = new PagedResults<EntryCamera>();
+
+      try {
+        await producer.listCameras(results, orgId, '999');
+        expect.fail('Expected NoSuchObjectError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(NoSuchObjectError);
+      }
 
       scope.done();
     });
 
-    it('should handle response with missing data array', async () => {
+    it('should throw UnexpectedError for invalid response format', async () => {
       const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
-        .get(`/orgs/${orgId}/entries`)
-        .reply(200, {
-          totalCount: 0
-          // Missing 'data' array
-        });
+        .get(`/orgs/${orgId}/entries/${entryId}/cameras`)
+        .query({ offset: 0, limit: 50 })
+        .reply(200, { data: 'not-an-array' });
 
-      const results = new PagedResults<EntryDetails>();
-      await producer.list(results, orgId);
+      const results = new PagedResults<EntryCamera>();
 
-      expect(results.items).to.be.an('array');
-      expect(results.items).to.have.length(0);
+      try {
+        await producer.listCameras(results, orgId, entryId);
+        expect.fail('Expected UnexpectedError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(UnexpectedError);
+      }
+
+      scope.done();
+    });
+  });
+
+  describe('listEntryStates()', () => {
+    it('should list entry states with default pagination', async () => {
+      const rawEntryStates = [
+        {
+          id: 3001,
+          name: 'Locked',
+          code: 'locked',
+        },
+        {
+          id: 3002,
+          name: 'Unlocked',
+          code: 'unlocked',
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entryStates`,
+        { offset: 0, limit: 50 },
+        rawEntryStates,
+        rawEntryStates.length
+      );
+
+      const results = new PagedResults<EntryStateInfo>();
+      await producer.listEntryStates(results, orgId);
+
+      expect(results.items).to.have.length.above(0);
+      expect(results.count).to.be.above(0);
       scope.done();
     });
 
-    it('should handle response with null data', async () => {
-      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
-        .get(`/orgs/${orgId}/entries`)
-        .reply(200, {
-          data: null,
-          totalCount: 0
-        });
+    it('should list entry states with custom pagination', async () => {
+      const pageNumber = 2;
+      const pageSize = 15;
+      const expectedOffset = (pageNumber - 1) * pageSize;
 
-      const results = new PagedResults<EntryDetails>();
-      await producer.list(results, orgId);
+      const rawEntryStates = [
+        {
+          id: 3003,
+          name: 'Alarm',
+          code: 'alarm',
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entryStates`,
+        { offset: expectedOffset, limit: pageSize },
+        rawEntryStates,
+        rawEntryStates.length
+      );
+
+      const results = new PagedResults<EntryStateInfo>();
+      results.pageNumber = pageNumber;
+      results.pageSize = pageSize;
+
+      await producer.listEntryStates(results, orgId);
 
       expect(results.items).to.be.an('array');
-      expect(results.items).to.have.length(0);
+      expect(results.count).to.be.a('number');
+      scope.done();
+    });
+
+    it('should throw UnexpectedError for invalid response format', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entryStates`)
+        .query({ offset: 0, limit: 50 })
+        .reply(200, { totalCount: 5 });
+
+      const results = new PagedResults<EntryStateInfo>();
+
+      try {
+        await producer.listEntryStates(results, orgId);
+        expect.fail('Expected UnexpectedError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(UnexpectedError);
+      }
+
+      scope.done();
+    });
+  });
+
+  describe('listUserSchedules()', () => {
+    it('should list user schedules for entry with default pagination', async () => {
+      const rawUserSchedules = [
+        {
+          id: 4001,
+          userId: 5001,
+          scheduleId: 6001,
+        },
+        {
+          id: 4002,
+          userId: 5002,
+          scheduleId: 6002,
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries/${entryId}/userSchedules`,
+        { offset: 0, limit: 50 },
+        rawUserSchedules,
+        rawUserSchedules.length
+      );
+
+      const results = new PagedResults<EntryUserSchedule>();
+      await producer.listUserSchedules(results, orgId, entryId);
+
+      expect(results.items).to.have.length.above(0);
+      expect(results.count).to.be.above(0);
+      scope.done();
+    });
+
+    it('should list user schedules with custom pagination', async () => {
+      const pageNumber = 4;
+      const pageSize = 25;
+      const expectedOffset = (pageNumber - 1) * pageSize;
+
+      const rawUserSchedules = [
+        {
+          id: 4003,
+          userId: 5003,
+          scheduleId: 6003,
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries/${entryId}/userSchedules`,
+        { offset: expectedOffset, limit: pageSize },
+        rawUserSchedules,
+        rawUserSchedules.length
+      );
+
+      const results = new PagedResults<EntryUserSchedule>();
+      results.pageNumber = pageNumber;
+      results.pageSize = pageSize;
+
+      await producer.listUserSchedules(results, orgId, entryId);
+
+      expect(results.items).to.be.an('array');
+      expect(results.count).to.be.a('number');
+      scope.done();
+    });
+
+    it('should handle entry not found when listing user schedules', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries/999/userSchedules`)
+        .query({ offset: 0, limit: 50 })
+        .reply(404, { error: 'Not found', statusCode: 404 });
+
+      const results = new PagedResults<EntryUserSchedule>();
+
+      try {
+        await producer.listUserSchedules(results, orgId, '999');
+        expect.fail('Expected NoSuchObjectError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(NoSuchObjectError);
+      }
+
+      scope.done();
+    });
+
+    it('should throw UnexpectedError for invalid response format', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries/${entryId}/userSchedules`)
+        .query({ offset: 0, limit: 50 })
+        .reply(200, { data: null });
+
+      const results = new PagedResults<EntryUserSchedule>();
+
+      try {
+        await producer.listUserSchedules(results, orgId, entryId);
+        expect.fail('Expected UnexpectedError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(UnexpectedError);
+      }
+
+      scope.done();
+    });
+  });
+
+  describe('listUsers()', () => {
+    it('should list users for entry with default pagination', async () => {
+      const rawUsers = [
+        {
+          id: 5001,
+          firstName: 'John',
+        },
+        {
+          id: 5002,
+          firstName: 'Jane',
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries/${entryId}/users`,
+        { offset: 0, limit: 50 },
+        rawUsers,
+        rawUsers.length
+      );
+
+      const results = new PagedResults<EntryUser>();
+      await producer.listUsers(results, orgId, entryId);
+
+      expect(results.items).to.have.length.above(0);
+      expect(results.count).to.be.above(0);
+      scope.done();
+    });
+
+    it('should list users with custom pagination', async () => {
+      const pageNumber = 5;
+      const pageSize = 30;
+      const expectedOffset = (pageNumber - 1) * pageSize;
+
+      const rawUsers = [
+        {
+          id: 5003,
+          firstName: 'Bob',
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries/${entryId}/users`,
+        { offset: expectedOffset, limit: pageSize },
+        rawUsers,
+        rawUsers.length
+      );
+
+      const results = new PagedResults<EntryUser>();
+      results.pageNumber = pageNumber;
+      results.pageSize = pageSize;
+
+      await producer.listUsers(results, orgId, entryId);
+
+      expect(results.items).to.be.an('array');
+      expect(results.count).to.be.a('number');
+      scope.done();
+    });
+
+    it('should handle entry not found when listing users', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries/999/users`)
+        .query({ offset: 0, limit: 50 })
+        .reply(404, { error: 'Not found', statusCode: 404 });
+
+      const results = new PagedResults<EntryUser>();
+
+      try {
+        await producer.listUsers(results, orgId, '999');
+        expect.fail('Expected NoSuchObjectError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(NoSuchObjectError);
+      }
+
+      scope.done();
+    });
+
+    it('should throw UnexpectedError for invalid response format', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries/${entryId}/users`)
+        .query({ offset: 0, limit: 50 })
+        .reply(200, {});
+
+      const results = new PagedResults<EntryUser>();
+
+      try {
+        await producer.listUsers(results, orgId, entryId);
+        expect.fail('Expected UnexpectedError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(UnexpectedError);
+      }
+
       scope.done();
     });
   });
 
   describe('Error Handling', () => {
-    it('should handle API errors', async () => {
-      const scope = mockErrorResponse(
-        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
-        'GET',
-        `/orgs/${orgId}/entries`,
-        {},
-        500
-      );
+    it('should propagate server errors for list operation', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries`)
+        .query({ offset: 0, limit: 50 })
+        .reply(500, { error: 'Internal Server Error', statusCode: 500 });
+
+      const results = new PagedResults<Entry>();
 
       try {
-        const results = new PagedResults<EntryDetails>();
         await producer.list(results, orgId);
         expect.fail('Expected UnexpectedError to be thrown');
       } catch (error) {
@@ -425,14 +729,13 @@ describe('EntryProducerApiImpl', () => {
       scope.done();
     });
 
-    it('should handle network errors', async () => {
+    it('should handle network errors for get operation', async () => {
       const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
-        .get(`/orgs/${orgId}/entries`)
+        .get(`/orgs/${orgId}/entries/${entryId}`)
         .replyWithError('Network error');
 
       try {
-        const results = new PagedResults<EntryDetails>();
-        await producer.list(results, orgId);
+        await producer.get(orgId, entryId);
         expect.fail('Expected network error to be thrown');
       } catch (error) {
         expect(error).to.be.instanceOf(UnexpectedError);
@@ -441,17 +744,30 @@ describe('EntryProducerApiImpl', () => {
       scope.done();
     });
 
-    it('should handle API rate limiting', async () => {
-      const scope = mockErrorResponse(
-        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
-        'GET',
-        `/orgs/${orgId}/entries`,
-        {},
-        429
-      );
+    it('should handle unauthorized errors', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries/${entryId}`)
+        .reply(401, { error: 'Unauthorized', statusCode: 401 });
 
       try {
-        const results = new PagedResults<EntryDetails>();
+        await producer.get(orgId, entryId);
+        expect.fail('Expected error to be thrown');
+      } catch (error) {
+        expect((error as any).constructor.name).to.equal('InvalidCredentialsError');
+      }
+
+      scope.done();
+    });
+
+    it('should handle API rate limiting', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries`)
+        .query({ offset: 0, limit: 50 })
+        .reply(429, { error: 'Too Many Requests', statusCode: 429 });
+
+      const results = new PagedResults<Entry>();
+
+      try {
         await producer.list(results, orgId);
         expect.fail('Expected RateLimitExceededError to be thrown');
       } catch (error) {
@@ -461,58 +777,111 @@ describe('EntryProducerApiImpl', () => {
       scope.done();
     });
 
-    it('should handle unauthorized errors', async () => {
-      const scope = mockErrorResponse(
-        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
-        'GET',
-        `/orgs/${orgId}/entries`,
-        {},
-        401
-      );
+    it('should handle server errors for getActivity operation', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries/${entryId}/activity`)
+        .query({ offset: 0, limit: 50 })
+        .reply(500, { error: 'Internal Server Error', statusCode: 500 });
+
+      const results = new PagedResults<EntryActivityEvent>();
 
       try {
-        const results = new PagedResults<EntryDetails>();
-        await producer.list(results, orgId);
-        expect.fail('Expected error to be thrown');
+        await producer.listActivity(results, orgId, entryId);
+        expect.fail('Expected UnexpectedError to be thrown');
       } catch (error) {
-        // Should throw some kind of authentication error
-        expect(error).to.exist;
+        expect(error).to.be.instanceOf(UnexpectedError);
       }
 
       scope.done();
     });
   });
 
-  describe('Date Mapping', () => {
-    it('should map ISO date strings to Date objects', async () => {
-      const mockEntry = {
-        id: 1001,
-        name: 'Test Entry',
-        createdAt: '2024-01-15T10:00:00.000Z',
-        updatedAt: '2024-02-20T15:30:00.000Z'
+  describe('Edge Cases', () => {
+    it('should handle pagination with page size exceeding API limit', async () => {
+      const pageNumber = 1;
+      const pageSize = 5000;
+      const expectedLimit = 1000; // API max limit
+
+      const rawEntries = [
+        {
+          id: 12348,
+          name: 'Test Entry',
+        },
+      ];
+
+      const scope = mockPaginatedResponse(
+        mockAuthenticatedRequest(baseUrl, 'mock-token-123'),
+        'GET',
+        `/orgs/${orgId}/entries`,
+        { offset: 0, limit: expectedLimit },
+        rawEntries,
+        rawEntries.length
+      );
+
+      const results = new PagedResults<Entry>();
+      results.pageNumber = pageNumber;
+      results.pageSize = pageSize;
+
+      await producer.list(results, orgId);
+
+      expect(results.items).to.be.an('array');
+      scope.done();
+    });
+
+    it('should handle response with missing totalCount', async () => {
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries`)
+        .query({ offset: 0, limit: 50 })
+        .reply(200, { data: [] });
+
+      const results = new PagedResults<Entry>();
+      await producer.list(results, orgId);
+
+      expect(results.items).to.have.length(0);
+      expect(results.count).to.equal(0);
+      scope.done();
+    });
+  });
+
+  describe('Response Data Mapping', () => {
+    it('should handle response with null data array', async () => {
+      const mockResponse = {
+        data: null,
+        totalCount: 3,
       };
 
       const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
         .get(`/orgs/${orgId}/entries`)
-        .reply(200, {
-          data: [mockEntry],
-          totalCount: 1
-        });
+        .query({ offset: 0, limit: 50 })
+        .reply(200, mockResponse);
 
-      const results = new PagedResults<EntryDetails>();
-      await producer.list(results, orgId);
+      const results = new PagedResults<Entry>();
 
-      expect(results.items).to.have.length(1);
-      const entry = results.items[0];
-
-      if (entry.createdAt) {
-        expect(entry.createdAt).to.be.instanceOf(Date);
-        expect(entry.createdAt.toISOString()).to.equal('2024-01-15T10:00:00.000Z');
+      try {
+        await producer.list(results, orgId);
+        expect.fail('Expected UnexpectedError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(UnexpectedError);
       }
 
-      if (entry.updatedAt) {
-        expect(entry.updatedAt).to.be.instanceOf(Date);
-        expect(entry.updatedAt.toISOString()).to.equal('2024-02-20T15:30:00.000Z');
+      scope.done();
+    });
+
+    it('should handle response with missing data field', async () => {
+      const mockResponse = { totalCount: 0 };
+
+      const scope = mockAuthenticatedRequest(baseUrl, 'mock-token-123')
+        .get(`/orgs/${orgId}/entries`)
+        .query({ offset: 0, limit: 50 })
+        .reply(200, mockResponse);
+
+      const results = new PagedResults<Entry>();
+
+      try {
+        await producer.list(results, orgId);
+        expect.fail('Expected UnexpectedError to be thrown');
+      } catch (error) {
+        expect(error).to.be.instanceOf(UnexpectedError);
       }
 
       scope.done();

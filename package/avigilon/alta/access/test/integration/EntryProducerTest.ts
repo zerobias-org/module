@@ -11,7 +11,7 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
     access = await prepareApi();
   });
 
-  after(async function () {
+  after(async () => {
     if (access) {
       await access.disconnect();
     }
@@ -22,7 +22,7 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
       this.timeout(10000);
 
       const entryApi = access.getEntryApi();
-      
+
       // Get organization ID from auth token
       const authApi = access.getAuthApi();
       const tokenProperties = await authApi.getTokenProperties();
@@ -32,7 +32,6 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
 
       // Debug logging (only shows when LOG_LEVEL=debug)
       debugLog('listEntries', { organizationId }, entriesResult);
-
 
       // Validate the response is PagedResults
       expect(entriesResult).to.not.be.null;
@@ -49,52 +48,52 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
         expect(entry.name).to.be.a('string');
         expect(entry.id).to.not.be.empty;
         expect(entry.name.length).to.be.greaterThan(0);
-        
+
         // Optional fields validation (if present)
         if (entry.opal) {
           expect(entry.opal).to.be.a('string');
         }
-        
+
         if (entry.pincode !== undefined) {
-          expect(entry.pincode).to.satisfy((val: any) => val === null || typeof val === 'string');
+          expect(entry.pincode).to.satisfy((val: any) => (val === null || typeof val === 'string'));
         }
-        
+
         if (entry.isPincodeEnabled !== undefined) {
           expect(entry.isPincodeEnabled).to.be.a('boolean');
         }
-        
+
         if (entry.color) {
           expect(entry.color).to.be.a('string');
         }
-        
+
         if (entry.isMusterPoint !== undefined) {
           expect(entry.isMusterPoint).to.be.a('boolean');
         }
-        
+
         if (entry.notes !== undefined) {
-          expect(entry.notes).to.satisfy((val: any) => val === null || typeof val === 'string');
+          expect(entry.notes).to.satisfy((val: any) => (val === null || typeof val === 'string'));
         }
-        
+
         if (entry.externalUuid !== undefined) {
-          expect(entry.externalUuid).to.satisfy((val: any) => val === null || typeof val === 'string');
+          expect(entry.externalUuid).to.satisfy((val: any) => (val === null || typeof val === 'string'));
         }
-        
+
         if (entry.isReaderless !== undefined) {
           expect(entry.isReaderless).to.be.a('boolean');
         }
-        
+
         if (entry.isIntercomEntry !== undefined) {
           expect(entry.isIntercomEntry).to.be.a('boolean');
         }
-        
+
         if (entry.createdAt) {
           expect(entry.createdAt).to.be.instanceOf(Date);
         }
-        
+
         if (entry.updatedAt) {
           expect(entry.updatedAt).to.be.instanceOf(Date);
         }
-        
+
         // Nested object validation
         if (entry.zone) {
           expect(entry.zone).to.have.property('id');
@@ -117,7 +116,7 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
           expect(entry.acu.name).to.be.a('string');
 
           if (entry.acu.isGatewayMode !== undefined) {
-            expect(entry.acu.isGatewayMode).to.satisfy((val: any) => val === null || typeof val === 'boolean');
+            expect(entry.acu.isGatewayMode).to.satisfy((val: any) => (val === null || typeof val === 'boolean'));
           }
         }
 
@@ -137,7 +136,7 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
 
         if (entry.cameras) {
           expect(entry.cameras).to.be.an('array');
-          entry.cameras.forEach(camera => {
+          entry.cameras.forEach((camera) => {
             expect(camera).to.have.property('id');
             expect(camera).to.have.property('name');
             expect(camera.id).to.be.a('string');
@@ -151,13 +150,16 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
       this.timeout(10000);
 
       const entryApi = access.getEntryApi();
-      
+
       // Get organization ID from auth token
       const authApi = access.getAuthApi();
       const tokenProperties = await authApi.getTokenProperties();
       const organizationId = tokenProperties.organizationId!.toString();
 
       const entriesResult = await entryApi.list(organizationId);
+
+      // Debug logging (only shows when LOG_LEVEL=debug)
+      debugLog('listEntries', { organizationId }, entriesResult);
 
       expect(entriesResult.items).to.be.an('array');
 
@@ -174,13 +176,16 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
       this.timeout(10000);
 
       const entryApi = access.getEntryApi();
-      
+
       // Get organization ID from auth token
       const authApi = access.getAuthApi();
       const tokenProperties = await authApi.getTokenProperties();
       const organizationId = tokenProperties.organizationId!.toString();
 
       const entriesResult = await entryApi.list(organizationId);
+
+      // Debug logging (only shows when LOG_LEVEL=debug)
+      debugLog('listEntries', { organizationId }, entriesResult);
 
       expect(entriesResult.items).to.be.an('array');
 
@@ -190,19 +195,19 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
         // Validate all possible data types
         expect(entry.id).to.be.a('string');
         expect(entry.name).to.be.a('string');
-        
+
         if (entry.opal) expect(entry.opal).to.be.a('string');
-        if (entry.pincode !== undefined) expect(entry.pincode).to.satisfy((val: any) => val === null || typeof val === 'string');
+        if (entry.pincode !== undefined) expect(entry.pincode).to.satisfy((val: any) => (val === null || typeof val === 'string'));
         if (entry.isPincodeEnabled !== undefined) expect(entry.isPincodeEnabled).to.be.a('boolean');
         if (entry.color) expect(entry.color).to.be.a('string');
         if (entry.isMusterPoint !== undefined) expect(entry.isMusterPoint).to.be.a('boolean');
-        if (entry.notes !== undefined) expect(entry.notes).to.satisfy((val: any) => val === null || typeof val === 'string');
-        if (entry.externalUuid !== undefined) expect(entry.externalUuid).to.satisfy((val: any) => val === null || typeof val === 'string');
+        if (entry.notes !== undefined) expect(entry.notes).to.satisfy((val: any) => (val === null || typeof val === 'string'));
+        if (entry.externalUuid !== undefined) expect(entry.externalUuid).to.satisfy((val: any) => (val === null || typeof val === 'string'));
         if (entry.isReaderless !== undefined) expect(entry.isReaderless).to.be.a('boolean');
         if (entry.isIntercomEntry !== undefined) expect(entry.isIntercomEntry).to.be.a('boolean');
         if (entry.createdAt) expect(entry.createdAt).to.be.instanceOf(Date);
         if (entry.updatedAt) expect(entry.updatedAt).to.be.instanceOf(Date);
-        if (entry.wirelessLock !== undefined) expect(entry.wirelessLock).to.satisfy((val: any) => val === null || typeof val === 'object');
+        if (entry.wirelessLock !== undefined) expect(entry.wirelessLock).to.satisfy((val: any) => (val === null || typeof val === 'object'));
         if (entry.cameras) expect(entry.cameras).to.be.an('array');
       }
     });
@@ -211,13 +216,16 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
       this.timeout(10000);
 
       const entryApi = access.getEntryApi();
-      
+
       // Get organization ID from auth token
       const authApi = access.getAuthApi();
       const tokenProperties = await authApi.getTokenProperties();
       const organizationId = tokenProperties.organizationId!.toString();
 
       const entriesResult = await entryApi.list(organizationId);
+
+      // Debug logging (only shows when LOG_LEVEL=debug)
+      debugLog('listEntries', { organizationId }, entriesResult);
 
       // Verify we get PagedResults with items array
       expect(entriesResult).to.not.be.null;

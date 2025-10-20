@@ -2,15 +2,25 @@
 // TODO - enable lint for implementation ^
 import {
   AccessConnector,
+  AuditApi,
   AuthApi,
+  CredentialApi,
   EntryApi,
   GroupApi,
+  IdentityProviderApi,
+  RoleApi,
+  ScheduleApi,
   SiteApi,
   UserApi,
   ZoneApi,
+  wrapAuditProducer,
   wrapAuthProducer,
+  wrapCredentialProducer,
   wrapEntryProducer,
   wrapGroupProducer,
+  wrapIdentityProviderProducer,
+  wrapRoleProducer,
+  wrapScheduleProducer,
   wrapSiteProducer,
   wrapUserProducer,
   wrapZoneProducer
@@ -24,22 +34,32 @@ import {
   OAuthConnectionDetails
 } from '@auditmation/hub-core';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { UserProducerApiImpl } from './UserProducerApiImpl';
+import { AuditProducerApiImpl } from './AuditProducerApiImpl';
 import { AuthProducerApiImpl } from './AuthProducerApiImpl';
+import { CredentialProducerApiImpl } from './CredentialProducerApiImpl';
 import { EntryProducerApiImpl } from './EntryProducerApiImpl';
 import { GroupProducerApiImpl } from './GroupProducerApiImpl';
+import { IdentityProviderProducerApiImpl } from './IdentityProviderProducerApiImpl';
+import { RoleProducerApiImpl } from './RoleProducerApiImpl';
+import { ScheduleProducerApiImpl } from './ScheduleProducerApiImpl';
 import { SiteProducerApiImpl } from './SiteProducerApiImpl';
+import { UserProducerApiImpl } from './UserProducerApiImpl';
 import { ZoneProducerApiImpl } from './ZoneProducerApiImpl';
 import { ConnectionState } from '../generated/model';
 import { AxiosInstance } from 'axios';
 
 export class AccessImpl implements AccessConnector {
   private client: AvigilonAltaAccessClient;
-  private userApiProducer?: UserApi;
+  private auditApiProducer?: AuditApi;
   private authApiProducer?: AuthApi;
+  private credentialApiProducer?: CredentialApi;
   private entryApiProducer?: EntryApi;
   private groupApiProducer?: GroupApi;
+  private identityProviderApiProducer?: IdentityProviderApi;
+  private roleApiProducer?: RoleApi;
+  private scheduleApiProducer?: ScheduleApi;
   private siteApiProducer?: SiteApi;
+  private userApiProducer?: UserApi;
   private zoneApiProducer?: ZoneApi;
 
   constructor() {
@@ -125,5 +145,45 @@ export class AccessImpl implements AccessConnector {
       this.zoneApiProducer = wrapZoneProducer(producer);
     }
     return this.zoneApiProducer;
+  }
+
+  getAuditApi(): AuditApi {
+    if (!this.auditApiProducer) {
+      const producer = new AuditProducerApiImpl(this.client);
+      this.auditApiProducer = wrapAuditProducer(producer);
+    }
+    return this.auditApiProducer;
+  }
+
+  getCredentialApi(): CredentialApi {
+    if (!this.credentialApiProducer) {
+      const producer = new CredentialProducerApiImpl(this.client);
+      this.credentialApiProducer = wrapCredentialProducer(producer);
+    }
+    return this.credentialApiProducer;
+  }
+
+  getIdentityProviderApi(): IdentityProviderApi {
+    if (!this.identityProviderApiProducer) {
+      const producer = new IdentityProviderProducerApiImpl(this.client);
+      this.identityProviderApiProducer = wrapIdentityProviderProducer(producer);
+    }
+    return this.identityProviderApiProducer;
+  }
+
+  getRoleApi(): RoleApi {
+    if (!this.roleApiProducer) {
+      const producer = new RoleProducerApiImpl(this.client);
+      this.roleApiProducer = wrapRoleProducer(producer);
+    }
+    return this.roleApiProducer;
+  }
+
+  getScheduleApi(): ScheduleApi {
+    if (!this.scheduleApiProducer) {
+      const producer = new ScheduleProducerApiImpl(this.client);
+      this.scheduleApiProducer = wrapScheduleProducer(producer);
+    }
+    return this.scheduleApiProducer;
   }
 }

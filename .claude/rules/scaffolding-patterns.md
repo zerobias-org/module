@@ -1,5 +1,20 @@
 # Module Scaffolding Patterns
 
+## Author Email Configuration
+
+**IMPORTANT**: The `--author` parameter should be read from the user's global CLAUDE.md configuration file:
+- **Location**: `~/.claude/CLAUDE.md`
+- **Format**: Look for the line `my work email is <email>`
+- **Usage**: Extract the email and pass it to the Yeoman generator
+- **Never hardcode**: Use the placeholder `<email-from-global-CLAUDE.md>` in documentation
+
+Example from global CLAUDE.md:
+```markdown
+- my work email is user@company.com. use this as author in my new projects
+```
+
+The module-scaffolder agent should parse this file and extract the email automatically.
+
 ## Critical Scaffolding Sequence
 
 **This sequence MUST be followed exactly:**
@@ -26,7 +41,7 @@ yo @auditmation/hub-module \
   --packageVersion '0.0.0' \
   --description '{ServiceName}' \
   --repository 'https://github.com/zerobias-org/module' \
-  --author 'ctamas@zerobias.com'
+  --author '<email-from-global-CLAUDE.md>'
 ```
 
 ### Example: Bitbucket Module
@@ -38,7 +53,7 @@ yo @auditmation/hub-module \
   --packageVersion '0.0.0' \
   --description 'Bitbucket' \
   --repository 'https://github.com/zerobias-org/module' \
-  --author 'ctamas@zerobias.com'
+  --author '<email-from-global-CLAUDE.md>'
 ```
 
 ### Parameter Rules
@@ -48,7 +63,7 @@ yo @auditmation/hub-module \
 - `--packageVersion`: Start at `0.0.0` for new modules
 - `--description`: Service display name (capitalized, e.g., 'Bitbucket', 'Jira', 'S3')
 - `--repository`: Fixed URL: `https://github.com/zerobias-org/module`
-- `--author`: User's email from global CLAUDE.md (ctamas@zerobias.com)
+- `--author`: User's email from global CLAUDE.md (`~/.claude/CLAUDE.md`)
 
 ## Metadata Sync Pattern
 
@@ -277,7 +292,7 @@ EOF
     "suite": null,
     "service": "github"
   },
-  "yeomanCommand": "yo @auditmation/hub-module --productPackage '@auditlogic/product-github-github' --modulePackage '@zerobias-org/module-github-github' --packageVersion '0.0.0' --description 'GitHub' --repository 'https://github.com/zerobias-org/module' --author 'ctamas@zerobias.com'",
+  "yeomanCommand": "yo @auditmation/hub-module --productPackage '@auditlogic/product-github-github' --modulePackage '@zerobias-org/module-github-github' --packageVersion '0.0.0' --description 'GitHub' --repository 'https://github.com/zerobias-org/module' --author '<email-from-global-CLAUDE.md>'",
   "generatedFiles": {
     "packageJson": "package/github/github/package.json",
     "apiYml": "package/github/github/api.yml",
@@ -300,7 +315,7 @@ EOF
       "details": {
         "name": "@zerobias-org/module-github-github",
         "moduleId": "github-github",
-        "author": "ctamas@zerobias.com"
+        "author": "<email-from-global-CLAUDE.md>"
       }
     },
     "3_apiYmlProductReference": {
@@ -398,10 +413,11 @@ yo @auditmation/hub-module \
   --packageVersion '0.0.0' \
   --description 'Bitbucket' \
   --repository 'https://github.com/zerobias-org/module' \
-  --author 'ctamas@zerobias.com'
+  --author '<email-from-global-CLAUDE.md>'
 
 # All parameters are required
 # Product package must be installed first (npm install @zerobias-org/product-{vendor}-{product})
+# Author email is read from ~/.claude/CLAUDE.md
 ```
 
 ### Verify Symlinks

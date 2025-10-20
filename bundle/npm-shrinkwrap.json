@@ -1,15 +1,15 @@
 {
   "name": "@zerobias-org/module-bundle",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "lockfileVersion": 2,
   "requires": true,
   "packages": {
     "": {
       "name": "@zerobias-org/module-bundle",
-      "version": "0.0.18",
+      "version": "0.0.19",
       "license": "ISC",
       "dependencies": {
-        "@zerobias-org/module-avigilon-alta-access": "0.3.0",
+        "@zerobias-org/module-avigilon-alta-access": "0.4.0",
         "@zerobias-org/module-readyplayerme-readyplayerme": "0.1.25"
       }
     },
@@ -174,9 +174,9 @@
       "integrity": "sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw=="
     },
     "node_modules/@zerobias-org/module-avigilon-alta-access": {
-      "version": "0.3.0",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.3.0.tgz",
-      "integrity": "sha512-69q9CQ9eyLNIR6Yau/XeVLCgLgcuWw8lXHY3hsTYHKc45ouqhhfy1jA6kTuPhiOLmj14z3sUJTaswbUxlZVwUg==",
+      "version": "0.4.0",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.4.0.tgz",
+      "integrity": "sha512-UOHMQHK21U2hR7onFnIFYHW+yDdVsXZN+E4WHg/Y0xXZA51YcRcDIJLoo58AO38TrfpAzgNG9NfVb+x+gN87Ug==",
       "dependencies": {
         "@auditmation/hub-core": "^4.5.19",
         "@auditmation/util-hub-module-utils": "^1.0.32",
@@ -1720,9 +1720,9 @@
       "integrity": "sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw=="
     },
     "@zerobias-org/module-avigilon-alta-access": {
-      "version": "0.3.0",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.3.0.tgz",
-      "integrity": "sha512-69q9CQ9eyLNIR6Yau/XeVLCgLgcuWw8lXHY3hsTYHKc45ouqhhfy1jA6kTuPhiOLmj14z3sUJTaswbUxlZVwUg==",
+      "version": "0.4.0",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/module-avigilon-alta-access/-/module-avigilon-alta-access-0.4.0.tgz",
+      "integrity": "sha512-UOHMQHK21U2hR7onFnIFYHW+yDdVsXZN+E4WHg/Y0xXZA51YcRcDIJLoo58AO38TrfpAzgNG9NfVb+x+gN87Ug==",
       "requires": {
         "@auditmation/hub-core": "^4.5.19",
         "@auditmation/util-hub-module-utils": "^1.0.32",

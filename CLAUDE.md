@@ -1,109 +1,54 @@
 # Claude Instructions
 
-## General Rules
+## Architecture
 
-**IMPORTANT**: When working in this repository or any of its subdirectories, always:
-- First run `pwd` to get the current repository root path
-- Store this path and use absolute paths in all commands and file operations
-- Never use relative paths to avoid "file not found" errors
-- **NEVER work independently** - always follow the task definitions in the appropriate workflow directory
-- **DO NOT create modules or perform work without following the defined tasks**
-- **READ ALL CRITICAL RULES**: Each task file contains mandatory compliance rules marked with 🚨 - violating ANY rule means task failure
-- **USE CHECKLISTS**: Complete all pre-implementation and post-implementation checklists in task files
+**Flat, two-level structure:** You → Specialized worker agents (no intermediate orchestration)
 
-This repository contains multiple types of tasks for module development. Each task type has its own dedicated documentation file.
+## Core Principles
 
-## Memory Management
+1. **NEVER work independently** - always invoke the appropriate agent
+2. **DELEGATE planning** - use `api-researcher` + `product-specialist` for analysis
+3. **COORDINATE simply** - run workflows and validation gates, but let agents do the work
 
-### Local Memory Storage
-- **Location**: `.claude/.localmemory/`
-- **Purpose**: Store task progress, intermediate results, and context between tasks
-- **Scope**: Local only - never commit these files to git
-- **Structure**: Each module request gets its own folder
+## How It Works
 
-### Module Memory Folder Naming
-Each module request creates a memory folder with this pattern:
+1. User request → Identify workflow from `.claude/commands/`
+2. Delegate planning to `api-researcher` + `product-specialist`
+3. Invoke worker agents directly based on their analysis
+4. Run validation gates sequentially
+
+## Key Delegations
+
+**Planning & Analysis:**
+- API discovery, endpoint mapping → `api-researcher`
+- Business requirements, priorities → `product-specialist`
+- Operation prioritization → Both together
+- Authentication research → `credential-manager`
+
+**Validation Gates (run sequentially):**
+1. API Spec → `api-reviewer`
+2. Type Gen → `build-validator`
+3. Implementation → Simple checks (grep)
+4. Test Creation → `ut-reviewer` + `it-reviewer`
+5. Test Execution → `npm test`
+6. Build → `build-reviewer`
+
+## Directory Structure
+
 ```
-.claude/.localmemory/{action}-{module-identifier}/
-```
-
-Where **module-identifier** follows the pattern:
-- `{vendor}-{module}` - for simple modules
-- `{vendor}-{suite}-{module}` - when suite exists
-
-**Examples**:
-- `create-github-github/`
-- `update-amazon-aws-iam/`
-- `deprecate-gitlab-gitlab/`
-
-**Important**: Memory folders are created by the first task that runs, not beforehand. If a memory folder doesn't exist for a module, it means work on that module has not been started yet.
-
-## Task Structure
-
-### Task Definitions
-- **Format**: Each task is defined in a separate markdown file
-- **Execution**: Tasks run individually and in isolation
-- **Memory**: Task status and progress stored in `.localmemory/{action}-{module-identifier}/`
-
-### Task Memory
-Each task stores its status and intermediate results in:
-```
-.claude/.localmemory/{action}-{module-identifier}/
-├── task-status.json     # Overall task progress
-├── task-01-status.json  # Individual task status
-├── task-02-status.json
-└── ...
+.claude/
+├── agents/        # Worker agent definitions
+├── commands/      # Workflow specifications
+├── rules/         # Rule files (agents load what they need)
+└── .localmemory/  # Temporary work storage (never commit)
 ```
 
-## Workflow Execution
+## Key Rules
 
-1. **Task Execution**: Run each task individually, with the first task creating the memory folder
-2. **Context Passing**: Tasks read previous results from memory files
-3. **Progress Tracking**: Each task stores its status and intermediate results
-4. **Completion**: Final artifacts are created, memory can be cleaned up
+- Flat structure - no orchestration layers
+- Each agent has exclusive responsibilities
+- Agents load rules via `@.claude/rules/`
+- Memory in `.claude/.localmemory/{workflow}-{module}/`
+- When user updates a rule, update it FIRST
 
-### Module Creation Workflow
-**🚨 CRITICAL**: When executing individual module creation tasks:
-- **SINGLE TASK EXECUTION**: Execute only the requested task, then stop and return control
-- **NO AUTO-CONTINUE**: Do not automatically proceed to subsequent tasks - wait for explicit instruction
-- **TASK COMPLETION**: After completing a task, provide a summary of the work done and stop
-- **FAILURE HANDLING**: If a task fails, stop execution and report the issue clearly
-- **RETURN CONTROL**: Always return control to the calling script after task completion or failure
-
-## Task-Specific Documentation
-
-- **[Module Creation](claude/create/CLAUDE.md)** - Process to create a module from scratch
-- **[Module Updates](claude/update/CLAUDE.md)** - Process to add operations to existing modules
-- **[Additional task types]** - More documentation files will be added as needed
-
-## Breaking Changes Policy
-
-### Update Workflow (claude/update/)
-- **NO BREAKING CHANGES ALLOWED** - All existing functionality must be preserved exactly
-- **FAIL FAST ON REGRESSIONS** - Any existing test failure stops the update process immediately
-- **BACKWARD COMPATIBILITY MANDATORY** - All existing client code must continue to work
-
-### Fix Workflow (claude/fix/ - to be created)
-- **BREAKING CHANGES PERMITTED** - May modify existing functionality to fix issues
-- **REGRESSION FIXES ALLOWED** - May change behavior to correct bugs
-- **CLIENT CODE UPDATES MAY BE REQUIRED** - Breaking changes require version bumps
-
-## Repository Structure
-
-This is a monorepo for API client modules.
-
-### Types Repository Reference
-- **Location**: `/types/` (optional submodule)
-- **Contents**: 
-  - `types-core` - Core type definitions
-  - `types-<vendor>` - Vendor-specific type definitions  
-  - `types-core-<lang>` - Core types for specific languages
-  - `types-<vendor>-<lang>` - Vendor-specific types for specific languages
-- **Usage**: Reference types when available for enhanced type safety and consistency
-- **Availability**: Not all users may have access to clone this submodule - gracefully handle absence
-
-## Next Steps
-
-- Define memory file formats and schemas
-- Specify task dependencies and execution order
-- Create task-specific documentation for each workflow type
+The agents handle everything else.

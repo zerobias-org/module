@@ -710,13 +710,13 @@ error TS2307: Cannot find module '../generated/api'
 
 **You've mastered module development when you can:**
 
-- [ ] ✅ Create a module from scratch in under 2 hours
+- [ ] ✅ Create a module from scratch passing all 6 gates
 - [ ] ✅ Pass all 6 gates on first try
 - [ ] ✅ Debug failing tests systematically
 - [ ] ✅ Design API specs that match reality
 - [ ] ✅ Write mappers handling all edge cases
 - [ ] ✅ Implement authentication for any auth type
-- [ ] ✅ Add operations to modules in 45-70 minutes
+- [ ] ✅ Add operations to modules efficiently
 - [ ] ✅ Review and fix other developers' modules
 - [ ] ✅ Explain module architecture to others
 - [ ] ✅ Contribute to module development standards
@@ -806,12 +806,12 @@ error TS2307: Cannot find module '../generated/api'
 
 ---
 
-## Certification Checklist
+## Mastery Checklist
 
-**Consider yourself certified when you can:**
+**You've mastered module development when you can:**
 
-- [ ] Create a module passing all 6 gates in under 2 hours
-- [ ] Add an operation passing all gates in under 1 hour
+- [ ] Create a complete module passing all 6 gates
+- [ ] Add operations to existing modules passing all gates
 - [ ] Debug and fix any failing gate systematically
 - [ ] Explain the architecture to a colleague
 - [ ] Review PRs and identify violations

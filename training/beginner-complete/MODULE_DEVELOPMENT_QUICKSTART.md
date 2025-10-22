@@ -2,7 +2,6 @@
 
 **For**: Developers who completed the full training
 **Purpose**: Quick reference for creating modules efficiently
-**Time**: 45-70 minutes per module (when proficient)
 
 ---
 

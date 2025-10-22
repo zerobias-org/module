@@ -55,7 +55,7 @@ Complete training course enabling junior TypeScript developers to master module 
    - 5 debugging challenges
    - 15 quiz questions with answers
    - Practice projects
-   - Certification criteria
+   - Mastery criteria
 
 8. **MODULE_DEVELOPMENT_TROUBLESHOOTING.md** (27KB)
    - 60+ issues & solutions
@@ -285,7 +285,7 @@ Complete training course enabling junior TypeScript developers to master module 
 2. Share with development team
 3. Set up training schedule
 4. Assign exercises
-5. Conduct certification assessments
+5. Conduct mastery assessments
 
 ### For Learners
 1. Read START_HERE.md
@@ -293,7 +293,7 @@ Complete training course enabling junior TypeScript developers to master module 
 3. Complete assigned chapters
 4. Do exercises
 5. Build 5+ modules
-6. Achieve certification
+6. Achieve mastery
 
 ### For Ongoing Maintenance
 1. Update as standards evolve
@@ -364,7 +364,7 @@ MODULE_DEVELOPMENT_INDEX.md
 
 ---
 
-## 🏆 Certification Program
+## 🏆 Mastery Program
 
 **Requirements:**
 - Complete all 17 chapters
@@ -384,11 +384,6 @@ MODULE_DEVELOPMENT_INDEX.md
 
 ## 📊 Success Metrics
 
-### Development Speed
-- **Beginner** (Week 2): 4-6 hours per module
-- **Intermediate** (Month 1): 2-3 hours per module
-- **Advanced** (Month 2): 1-2 hours per module
-- **Expert** (Month 3+): 45-70 minutes per operation
 
 ### Quality Metrics
 - All 6 gates passing on first attempt
@@ -460,7 +455,7 @@ MODULE_DEVELOPMENT_INDEX.md
 - [x] Code templates
 - [x] Self-assessment quizzes
 - [x] Multiple learning paths
-- [x] Certification criteria
+- [x] Mastery criteria
 
 ---
 
@@ -478,7 +473,7 @@ MODULE_DEVELOPMENT_INDEX.md
 - Learn module development systematically
 - Build production-quality modules
 - Work without AI assistance
-- Achieve certification
+- Achieve mastery
 - Contribute to development
 
 ---

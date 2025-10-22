@@ -32,7 +32,7 @@ A complete, self-contained training package for junior TypeScript developers to 
 - Pass all 6 quality gates consistently
 - Work independently without AI assistance
 - Build modules in 2-3 hours (when proficient)
-- Add operations in 45-70 minutes
+- Add operations efficiently
 - Debug and fix issues systematically
 
 ---
@@ -108,7 +108,7 @@ A complete, self-contained training package for junior TypeScript developers to 
 - Read entire Training Manual
 - Complete all 3 exercises
 - Build 3-5 practice modules
-- Achieve certification
+- Achieve mastery
 
 ### Path 2: Experienced Developer (1 week)
 - Skim foundations (Chapters 1-3)
@@ -236,13 +236,13 @@ open MODULE_DEVELOPMENT_TRAINING.md
 ### After 2 Months
 - [ ] Completed all exercises
 - [ ] Built 5+ modules
-- [ ] Creates modules in under 2 hours
+- [ ] Creates modules passing all 6 gates
 - [ ] Can mentor junior developers
 
-### Certification Ready
+### Mastery Ready
 - [ ] 10+ modules built
 - [ ] All gates pass on first try
-- [ ] Can add operations in 45-70 minutes
+- [ ] Can add operations efficiently
 - [ ] Expert-level troubleshooting
 - [ ] Contributes to standards
 
@@ -289,7 +289,7 @@ open MODULE_DEVELOPMENT_TRAINING.md
 2. Work through all 17 chapters
 3. Complete all 3 exercises
 4. Build 5+ modules for proficiency
-5. Achieve certification
+5. Achieve mastery
 
 ### As Reference Library
 1. Use Quick Start for daily work
@@ -350,13 +350,13 @@ Level 2: Intermediate (Weeks 3-4)
 └─ Debugs common issues
 
 Level 3: Advanced (Weeks 5-8)
-├─ Creates modules in under 2 hours
+├─ Creates modules passing all 6 gates
 ├─ Passes all gates on first try
 ├─ Handles complex APIs
 └─ Reviews others' code
 
 Level 4: Expert (Weeks 9-12+)
-├─ Adds operations in under 1 hour
+├─ Adds operations passing all gates
 ├─ Optimizes development process
 ├─ Mentors other developers
 └─ Contributes to standards
@@ -406,7 +406,7 @@ Level 4: Expert (Weeks 9-12+)
 👉 Use `MODULE_DEVELOPMENT_QUICKSTART.md` as reference
 
 ### Step 5: Master the Craft
-👉 Build 5+ modules, achieve certification
+👉 Build 5+ modules, achieve mastery
 
 ---
 

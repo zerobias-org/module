@@ -4,6 +4,29 @@
 
 ---
 
+## ⚠️ Training Status & Disclaimer
+
+**This training is comprehensive but still evolving!**
+
+**Currently Covered** ✅:
+- Complete 8-phase module creation workflow
+- All 6 quality gates with validation
+- The 12 Critical API Specification Rules
+- Client, Producer, and Mapper implementation
+- Unit and integration testing
+- Basic pagination patterns
+- Connection management and authentication basics
+
+**Coming Soon** 🚧:
+- API Invoker patterns
+- OAuth2 flows (detailed guides)
+- Interface design patterns
+- File handling operations
+
+**Edge Cases**: This training covers common scenarios. Some edge cases may not be documented yet. Consult .claude/rules/ or ask your repository owner for advanced topics.
+
+---
+
 ## 📚 You Have 6 Documents - Where to Start?
 
 ### 🗺️ **START HERE** → `TRAINING_README.md`
@@ -26,8 +49,6 @@ Step 2: Read MODULE_DEVELOPMENT_TRAINING.md (all 17 chapters)
 Step 3: Complete MODULE_DEVELOPMENT_EXERCISES.md (all 3 exercises)
         ↓
 Step 4: Build 3-5 practice modules using QUICKSTART.md
-        ↓
-Step 5: Achieve certification
 ```
 
 **Keep handy**: CHECKLISTS.md, TROUBLESHOOTING.md
@@ -241,7 +262,7 @@ Result: Certified Module Developer! 🎓
 
 **Time investment**: 40-60 hours
 **Career impact**: Significant skill upgrade
-**Certification**: Professional credential
+**Mastery**: Professional credential
 
 ---
 

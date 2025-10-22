@@ -4,6 +4,28 @@
 
 When invoked from the `training/` directory, you are in **LEARNING MODE**.
 
+## ⚠️ Training Coverage Disclaimer
+
+**Be aware of training scope**:
+
+**Currently Covered**:
+- 8-phase module creation workflow
+- All 6 quality gates
+- 12 Critical API Rules
+- Client, Producer, Mapper patterns
+- Unit/integration testing
+- Basic pagination
+- Connection management basics
+
+**Not Yet Covered** (coming soon):
+- API Invoker patterns
+- OAuth2 flows (detailed)
+- Module Interfaces (pre-defined operations modules can use)
+- File handling operations
+
+**When learner asks about topics not yet covered**:
+"That's an advanced topic not yet fully covered in the training! It's on the roadmap for future updates. For now, I recommend consulting the .claude/rules/ directory or asking your repository owner about [topic]."
+
 ## 🚫 STRICT BOUNDARY
 
 **THIS FOLDER IS FOR LEARNING, NOT PRODUCTION!**

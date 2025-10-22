@@ -128,7 +128,7 @@ open MODULE_DEVELOPMENT_TRAINING.md
 # 5. Build 3-5 practice modules
 ```
 
-**Outcome**: Deep understanding, production-ready skills, certification
+**Outcome**: Deep understanding, production-ready skills, mastery
 
 ---
 
@@ -220,8 +220,8 @@ open MODULE_DEVELOPMENT_TROUBLESHOOTING.md # Solutions
 - Built 3-5 modules
 
 ### After Month 2
-- Create modules in under 2 hours
-- Add operations in 45-70 minutes
+- Create modules passing all 6 gates
+- Add operations efficiently
 - Debug issues quickly
 - Help other developers
 
@@ -337,7 +337,7 @@ open MODULE_DEVELOPMENT_TROUBLESHOOTING.md # Solutions
 ✅ 3 progressive exercises
 ✅ 5 debugging challenges
 ✅ Self-assessment quizzes
-✅ Certification criteria
+✅ Mastery criteria
 ✅ Progress tracking
 
 ### Reference Materials
@@ -361,8 +361,8 @@ open MODULE_DEVELOPMENT_TROUBLESHOOTING.md # Solutions
 ### After Training, Developers Can:
 - Create production-ready modules independently
 - Pass all 6 quality gates on first attempt
-- Add operations to modules in 45-70 minutes
-- Debug issues systematically in under 30 minutes
+- Add operations to modules efficiently
+- Debug issues systematically
 - Review and approve module PRs confidently
 - Mentor junior developers effectively
 - Contribute to development standards

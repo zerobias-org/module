@@ -95,11 +95,13 @@ Each chapter includes:
 
 **Quality First:** Learn to validate your work at every step through 6 quality gates.
 
-### 1.5 Time Commitment
+### 1.5 Learning Journey
 
-**Initial Module (Learning)**: 3-4 hours
-**Subsequent Modules (Proficient)**: 45-70 minutes per operation
+**Initial Module**: Take your time to learn thoroughly
+**With Practice**: You'll become faster and more confident
 **Practice Recommendation**: Build 2-3 complete modules for proficiency
+
+**Remember**: Quality over speed - all 6 gates must pass!
 
 ### 1.6 Success Criteria
 

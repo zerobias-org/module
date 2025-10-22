@@ -39,7 +39,7 @@
 - Complete beginners to module development
 - Anyone wanting deep understanding (even experienced devs)
 - Prefer learning without AI assistance
-- Want certification-level knowledge
+- Want expert-level knowledge
 - Time to invest in thorough learning
 
 **What you get:**
@@ -109,7 +109,6 @@ MODULE_DEVELOPMENT_WITH_AI.md
 - Let AI do 90% of work
 - You review strategically
 - Quick validation script
-- 30-45 minute workflow per module
 
 **Start here:**
 ```
@@ -173,7 +172,7 @@ Day 2+: Refine AI approach with Hybrid guide
 | **Pages** | ~450 | ~40 | ~35 |
 | **Exercises** | 3 complete | Reference | Reference |
 | **Best For** | Beginners | Learners | Efficient devs |
-| **Module Time** | 2-3 hrs → 45 min | 45-70 min | 30-45 min |
+| **Module Time** | efficiently | efficiently | efficiently |
 | **Understanding** | Deep | Good | Requires base |
 
 ---
@@ -184,7 +183,7 @@ Day 2+: Refine AI approach with Hybrid guide
 - ✅ New to module development
 - ✅ Want deep understanding
 - ✅ Have 4-6 weeks available
-- ✅ Want certification
+- ✅ Want expert knowledge
 - ✅ Don't want AI dependency
 
 **Choose Hybrid AI-Assisted if:**
@@ -318,7 +317,7 @@ All training paths share:
 ### AI-Assisted with Review
 - Day 1: First module
 - Week 1: Fast development
-- Ongoing: 30-45 min per module
+- Ongoing: efficiently per module
 
 ---
 

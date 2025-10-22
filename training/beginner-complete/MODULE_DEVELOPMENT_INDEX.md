@@ -100,7 +100,7 @@
 - Challenge exercises
 - Practice projects
 - Mastery checklist
-- Certification criteria
+- Mastery criteria
 
 **Best For:**
 - Learning reinforcement
@@ -161,7 +161,7 @@
 - Build 2-3 real modules
 - Use Quick Start as primary reference
 - Reference troubleshooting guide when needed
-- Work toward certification
+- Work toward mastery
 
 ### For Experienced TypeScript Developers
 
@@ -331,8 +331,8 @@
 - Debugs issues independently
 
 ### Advanced Level (Week 8)
-- Creates modules in under 2 hours
-- Adds operations in under 1 hour
+- Creates modules passing all 6 gates
+- Adds operations passing all gates
 - Handles complex APIs confidently
 - Reviews others' code effectively
 
@@ -420,9 +420,9 @@ MODULE_DEVELOPMENT_TRAINING.md (MAIN)
 
 ---
 
-## 🎓 Certification Path
+## 🎓 Mastery Path
 
-**To be considered certified:**
+**To be considered proficient:**
 
 1. ✅ Complete all 3 exercises
 2. ✅ Build 3 production modules
@@ -434,7 +434,7 @@ MODULE_DEVELOPMENT_TRAINING.md (MAIN)
    - Debug failing gate
    - Review another developer's code
 
-**Certification Benefits:**
+**Mastery Benefits:**
 - Work independently on modules
 - Mentor junior developers
 - Lead module development projects
@@ -544,9 +544,9 @@ MODULE_DEVELOPMENT_TRAINING.md (MAIN)
 
 ### Performance Objectives
 - ✅ Create complete module in 2-3 hours
-- ✅ Add operation to existing module in 45-70 minutes
+- ✅ Add operation to existing module efficiently
 - ✅ Pass all 6 quality gates on first attempt
-- ✅ Debug issues in under 30 minutes
+- ✅ Debug issues systematically
 - ✅ Review and approve module PRs
 
 ---
@@ -573,15 +573,15 @@ MODULE_DEVELOPMENT_TRAINING.md (MAIN)
 
 ### Week 9-12: Expert
 - [ ] Build 5+ modules total
-- [ ] Create modules in under 2 hours
+- [ ] Create modules passing all 6 gates
 - [ ] Mentor others
 - [ ] Contribute to standards
 
 ---
 
-## 🏆 Certification Requirements
+## 🏆 Mastery Requirements
 
-**To receive certification:**
+**To receive mastery:**
 
 ### Requirements
 1. ✅ Complete all chapters in Training Manual
@@ -597,7 +597,7 @@ MODULE_DEVELOPMENT_TRAINING.md (MAIN)
 - [ ] Review another developer's module PR
 - [ ] Explain architecture and best practices
 
-### Certification Benefits
+### Mastery Benefits
 - ✅ Work independently on modules
 - ✅ Approve module PRs
 - ✅ Mentor junior developers

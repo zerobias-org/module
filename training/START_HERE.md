@@ -4,6 +4,31 @@
 
 ---
 
+## ⚠️ Training Status & Disclaimer
+
+**This training is comprehensive but still evolving!**
+
+**Currently Covered** ✅:
+- Complete 8-phase module creation workflow
+- All 6 quality gates with validation
+- The 12 Critical API Specification Rules
+- Client, Producer, and Mapper implementation patterns
+- Unit and integration testing strategies
+- Basic pagination (offset/limit and token-based)
+- Connection management and authentication basics
+
+**Coming Soon** 🚧:
+- API Invoker patterns (advanced request handling)
+- OAuth2 flows (detailed implementation guides)
+- Module Interfaces (pre-defined operations for file browsing, REST API, etc.)
+- File handling operations (upload/download patterns)
+
+**Edge Cases**: This training covers the most common scenarios. Some edge cases and advanced patterns may not be fully documented yet. When you encounter these, consult the .claude/rules/ directory or ask your repository owner.
+
+**Living Document**: This training is actively maintained and will be updated as new patterns emerge and standards evolve.
+
+---
+
 ## 🤖 NEW: Interactive Learning Mode!
 
 **Start Claude Code from this training/ folder for interactive learning!**
@@ -54,7 +79,7 @@ We offer **3 different training approaches**. Choose based on your experience an
 
 👉 **Choose this if**:
 - You're new to module development
-- You want certification-level expertise
+- You want expert-level expertise
 - You prefer learning without AI
 - You have time for thorough learning
 
@@ -90,13 +115,13 @@ We offer **3 different training approaches**. Choose based on your experience an
 - 5 strategic checkpoints (where YOU must review)
 - Let AI do 90% of work
 - Quick validation script
-- 30-45 minute workflow per module
+- Efficient workflow with AI assistance
 
 **Start here**: `ai-assisted-with-review/MODULE_DEVELOPMENT_AI_WORKFLOW.md`
 
 👉 **Choose this if**:
 - You have development experience
-- You want maximum efficiency
+- You want maximum efficiency with AI
 - You can validate AI output effectively
 - You need fast delivery
 
@@ -104,11 +129,11 @@ We offer **3 different training approaches**. Choose based on your experience an
 
 ## 📊 Quick Comparison
 
-| Path | Time | AI Usage | Depth | Module Speed | Best For |
-|------|------|----------|-------|--------------|----------|
-| **Beginner** | 4-6 weeks | None | Complete | 2-3 hrs → 45 min | New developers |
-| **Hybrid** | 2-3 days | Guided | Practical | 45-70 min | Learning AI use |
-| **AI-Assisted** | Hours | Heavy | Strategic | 30-45 min | Fast delivery |
+| Path | Time | AI Usage | Depth | Best For |
+|------|------|----------|-------|----------|
+| **Beginner** | 4-6 weeks | None | Complete | New developers, deep understanding |
+| **Hybrid** | 2-3 days | Guided | Practical | Learning AI collaboration |
+| **AI-Assisted** | Varies | Heavy | Strategic | Fast delivery with validation |
 
 ---
 

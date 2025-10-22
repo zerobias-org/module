@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.4.1](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@0.4.0...@zerobias-org/module-avigilon-alta-access@0.4.1) (2025-10-22)
+
+
+### Bug Fixes
+
+* **avigilon-alta-access:** enable mfa connection ([9256e19](https://github.com/zerobias-org/module-avigilon-alta-access/commit/9256e19b4a583436d4348f7bebb80bb21e2b768d))
+
+
+
+
+
 # [0.4.0](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@0.3.0...@zerobias-org/module-avigilon-alta-access@0.4.0) (2025-10-20)
 
 

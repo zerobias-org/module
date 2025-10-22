@@ -68,7 +68,20 @@ export function debugLog(operation: string, params: unknown, response?: unknown)
   }
 }
 
+// Singleton connection instance shared across all test suites (never disconnects)
+let sharedConnection: AccessImpl | null = null;
+
+/**
+ * Get the shared connection for producer tests.
+ * This connection stays alive for the entire test run.
+ */
 export async function prepareApi(): Promise<AccessImpl> {
+  // Return existing connection if it exists (trust it's still valid for test duration)
+  if (sharedConnection) {
+    logger.debug('Reusing existing shared connection to Avigilon Alta Access API');
+    return sharedConnection;
+  }
+
   const access = newAccess();
 
   if (!EMAIL || !PASSWORD) {
@@ -79,13 +92,42 @@ export async function prepareApi(): Promise<AccessImpl> {
   }
 
   const profile = new ConnectionProfile(new Email(EMAIL), PASSWORD, TOTP_CODE);
-  logger.debug('Connecting to Avigilon Alta Access API', { email: EMAIL });
+  logger.debug('Connecting to Avigilon Alta Access API (shared connection)', { email: EMAIL });
 
   try {
     await access.connect(profile);
-    logger.debug('Successfully connected to Avigilon Alta Access API');
+    logger.debug('Successfully connected to Avigilon Alta Access API (shared connection)');
+    sharedConnection = access;
   } catch (error) {
-    logger.error('Failed to connect to Avigilon Alta Access API', error);
+    logger.error('Failed to connect to Avigilon Alta Access API (shared connection)', error);
+    throw error;
+  }
+
+  return access;
+}
+
+/**
+ * Create a new independent connection for connection testing.
+ * This connection can be disconnected without affecting other tests.
+ */
+export async function prepareTestConnection(): Promise<AccessImpl> {
+  const access = newAccess();
+
+  if (!EMAIL || !PASSWORD) {
+    throw new Error(
+      'Integration tests require AVIGILON_EMAIL and AVIGILON_PASSWORD environment variables. '
+      + 'Check .env file or copy from .env.example'
+    );
+  }
+
+  const profile = new ConnectionProfile(new Email(EMAIL), PASSWORD, TOTP_CODE);
+  logger.debug('Connecting to Avigilon Alta Access API (test connection)', { email: EMAIL });
+
+  try {
+    await access.connect(profile);
+    logger.debug('Successfully connected to Avigilon Alta Access API (test connection)');
+  } catch (error) {
+    logger.error('Failed to connect to Avigilon Alta Access API (test connection)', error);
     throw error;
   }
 
@@ -94,6 +136,19 @@ export async function prepareApi(): Promise<AccessImpl> {
 
 export function hasCredentials(): boolean {
   return !!(EMAIL && PASSWORD);
+}
+
+export async function cleanupApi(): Promise<void> {
+  if (sharedConnection) {
+    try {
+      await sharedConnection.disconnect();
+      logger.debug('Disconnected from Avigilon Alta Access API');
+    } catch (error) {
+      logger.error('Error disconnecting from API', error);
+    } finally {
+      sharedConnection = null;
+    }
+  }
 }
 
 export async function saveFixture(filename: string, data: unknown): Promise<void> {

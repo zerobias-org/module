@@ -39,13 +39,13 @@ export class AvigilonAltaAccessClient {
 
     try {
       // Perform login to get access token
-      const loginData: { email: string; password: string; totp_code?: string } = {
+      const loginData: { email: string; password: string; mfa?: { totpCode: string } } = {
         email: profile.email.toString(),
         password: profile.password,
       };
 
       if (profile.totpCode) {
-        loginData.totp_code = profile.totpCode;
+        loginData.mfa = { totpCode: profile.totpCode };
       }
 
       const loginResponse = await tempClient.post('/auth/login', loginData);

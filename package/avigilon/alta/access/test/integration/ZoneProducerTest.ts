@@ -11,12 +11,6 @@ describe('Avigilon Alta Access - Zone Producer Tests', () => {
     access = await prepareApi();
   });
 
-  after(async () => {
-    if (access) {
-      await access.disconnect();
-    }
-  });
-
   describe('Zones List Operations', () => {
     it('should retrieve zones list with full details', async function () {
       this.timeout(10000);

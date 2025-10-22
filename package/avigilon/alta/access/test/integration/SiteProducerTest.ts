@@ -11,12 +11,6 @@ describe('Avigilon Alta Access - Site Producer Tests', () => {
     access = await prepareApi();
   });
 
-  after(async () => {
-    if (access) {
-      await access.disconnect();
-    }
-  });
-
   describe('Sites List Operations', () => {
     it('should retrieve sites list with full details', async function () {
       this.timeout(10000);

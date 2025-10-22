@@ -2,7 +2,7 @@ import { expect } from 'chai';
 import { describe, it, before } from 'mocha';
 import { getLogger } from '@auditmation/util-logger';
 import { Email } from '@auditmation/types-core-js';
-import { prepareApi, testConfig, saveFixture } from './Common';
+import { prepareTestConnection, testConfig, saveFixture } from './Common';
 import { AccessImpl } from '../../src';
 
 // Core types for assertions
@@ -15,7 +15,8 @@ describe('Avigilon Alta Access - Connection Tests', function () {
   let access: AccessImpl;
 
   before(async () => {
-    access = await prepareApi();
+    // Use separate test connection that can be disconnected without affecting other tests
+    access = await prepareTestConnection();
   });
 
   describe('Authentication and Connection', () => {
@@ -82,38 +83,16 @@ describe('Avigilon Alta Access - Connection Tests', function () {
       await saveFixture('operation-support.json', supportResults);
     });
 
-    it('should handle disconnection gracefully', async () => {
-      expect(access).to.not.be.undefined;
-
-      // Test disconnect
-      await access.disconnect();
-      logger.debug('access.disconnect() completed');
-
-      const isConnectedAfterDisconnect = await access.isConnected();
-      logger.debug('access.isConnected() after disconnect', JSON.stringify(isConnectedAfterDisconnect, null, 2));
-
-      // Note: Some APIs may still report as connected even after disconnect
-      // This is acceptable behavior - we just verify the disconnect doesn't throw
-      expect(isConnectedAfterDisconnect).to.be.a('boolean');
-    });
-
     it('should refresh access token successfully', async () => {
       // Get access to the underlying client
       const { client } = (access as any);
 
-      // Make sure we're connected by calling connect again (it's idempotent-ish)
-      // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
-      const { ConnectionProfile } = require('../../generated/model/ConnectionProfile');
-      // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
-      const { Email: EmailType } = require('@auditmation/types-core-js');
+      // Get the current connection state
+      const initialState = client.getConnectionState();
+      if (!initialState || !initialState.accessToken) {
+        throw new Error('Not connected - cannot test token refresh');
+      }
 
-      const profile = new ConnectionProfile(
-        new EmailType(process.env.AVIGILON_EMAIL),
-        process.env.AVIGILON_PASSWORD
-      );
-
-      // Get initial connection state from connect
-      const initialState = await client.connect(profile);
       logger.debug('Initial connection state:', {
         tokenPrefix: `${initialState.accessToken.substring(0, 20)}...`,
         expiresIn: initialState.expiresIn,
@@ -149,6 +128,21 @@ describe('Avigilon Alta Access - Connection Tests', function () {
         refreshedExpiresIn: refreshedState.expiresIn,
         timestamp: new Date().toISOString(),
       });
+    });
+
+    it('should handle disconnection gracefully', async () => {
+      expect(access).to.not.be.undefined;
+
+      // Test disconnect (safe now with separate test connection)
+      // This runs last so it doesn't affect other connection tests
+      await access.disconnect();
+      logger.debug('access.disconnect() completed');
+
+      const isConnectedAfterDisconnect = await access.isConnected();
+      logger.debug('access.isConnected() after disconnect', JSON.stringify(isConnectedAfterDisconnect, null, 2));
+
+      // Verify disconnection worked
+      expect(isConnectedAfterDisconnect).to.be.false;
     });
   });
 

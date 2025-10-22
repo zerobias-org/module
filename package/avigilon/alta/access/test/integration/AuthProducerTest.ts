@@ -11,12 +11,6 @@ describe('Avigilon Alta Access - Auth Producer Tests', () => {
     access = await prepareApi();
   });
 
-  after(async () => {
-    if (access) {
-      await access.disconnect();
-    }
-  });
-
   describe('Token Properties Operations', () => {
     it('should retrieve current token properties with full details', async function () {
       this.timeout(10000);

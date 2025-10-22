@@ -11,12 +11,6 @@ describe('Avigilon Alta Access - Entry Producer Tests', () => {
     access = await prepareApi();
   });
 
-  after(async () => {
-    if (access) {
-      await access.disconnect();
-    }
-  });
-
   describe('Entries List Operations', () => {
     it('should retrieve entries list with full details', async function () {
       this.timeout(10000);

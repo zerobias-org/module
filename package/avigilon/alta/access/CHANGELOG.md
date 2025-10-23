@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.4.2](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@0.4.1...@zerobias-org/module-avigilon-alta-access@0.4.2) (2025-10-23)
+
+
+### Bug Fixes
+
+* **avigilon-alta-access:** handle totpCode deserialization edge cases ([83538ca](https://github.com/zerobias-org/module-avigilon-alta-access/commit/83538ca7193c21a5fbfcdb7277b8257907b935ac))
+
+
+
+
+
 ## [0.4.1](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@0.4.0...@zerobias-org/module-avigilon-alta-access@0.4.1) (2025-10-22)
 
 

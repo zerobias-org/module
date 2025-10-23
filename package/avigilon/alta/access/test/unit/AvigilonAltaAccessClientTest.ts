@@ -108,6 +108,88 @@ describe('AvigilonAltaAccessClient', () => {
           expect(error).to.be.instanceOf(InvalidCredentialsError);
         }
       });
+
+      it('should not send MFA when totpCode is only whitespace', async () => {
+        const profile: ConnectionProfile = {
+          email: new Email(testEmail),
+          password: testPassword,
+          totpCode: '   ', // Only whitespace
+        };
+
+        // Mock login endpoint and verify request body doesn't contain mfa
+        nock(baseUrl)
+          .post('/auth/login', (body: any) => {
+            // Verify mfa field is not present in the request
+            expect(body).to.not.have.property('mfa');
+            expect(body.email).to.equal(testEmail);
+            expect(body.password).to.equal(testPassword);
+            return true;
+          })
+          .reply(200, {
+            data: {
+              token: 'mock-token-123',
+              expiresAt: new Date(Date.now() + 3600000).toISOString(),
+            },
+          });
+
+        await client.connect(profile);
+
+        expect(await client.isConnected()).to.be.true;
+      });
+
+      it('should send MFA when totpCode has valid value', async () => {
+        const profile: ConnectionProfile = {
+          email: new Email(testEmail),
+          password: testPassword,
+          totpCode: '123456',
+        };
+
+        // Mock login endpoint and verify request body contains mfa
+        nock(baseUrl)
+          .post('/auth/login', (body: any) => {
+            // Verify mfa field is present and correct
+            expect(body).to.have.property('mfa');
+            expect(body.mfa).to.deep.equal({ totpCode: '123456' });
+            return true;
+          })
+          .reply(200, {
+            data: {
+              token: 'mock-token-123',
+              expiresAt: new Date(Date.now() + 3600000).toISOString(),
+            },
+          });
+
+        await client.connect(profile);
+
+        expect(await client.isConnected()).to.be.true;
+      });
+
+      it('should trim and stringify numeric totpCode', async () => {
+        const profile: ConnectionProfile = {
+          email: new Email(testEmail),
+          password: testPassword,
+          totpCode: 123456 as any, // Numeric totpCode
+        };
+
+        // Mock login endpoint and verify request body contains stringified mfa
+        nock(baseUrl)
+          .post('/auth/login', (body: any) => {
+            // Verify mfa field has stringified totpCode
+            expect(body).to.have.property('mfa');
+            expect(body.mfa).to.deep.equal({ totpCode: '123456' });
+            return true;
+          })
+          .reply(200, {
+            data: {
+              token: 'mock-token-123',
+              expiresAt: new Date(Date.now() + 3600000).toISOString(),
+            },
+          });
+
+        await client.connect(profile);
+
+        expect(await client.isConnected()).to.be.true;
+      });
     });
 
     describe('isConnected()', () => {

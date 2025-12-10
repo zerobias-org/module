@@ -1,0 +1,14 @@
+type: object
+description: Bitbucket connection credentials using email and API token
+properties:
+  email:
+    type: string
+    format: email
+    description: The email address associated with your Bitbucket account
+  apiToken:
+    type: string
+    format: password
+    description: The Bitbucket API token for authentication
+required:
+  - email
+  - apiToken

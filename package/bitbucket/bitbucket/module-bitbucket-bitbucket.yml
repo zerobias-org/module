@@ -1,0 +1,227 @@
+openapi: 3.0.3
+info:
+  version: 0.0.0
+  title: '@zerobias-org/module-bitbucket-bitbucket'
+  x-impl-name: Bitbucket
+  description: Bitbucket
+tags:
+  - name: workspace
+    description: Workspace operations
+  - name: repository
+    description: Repository operations
+paths:
+  /workspaces:
+    get:
+      summary: List Workspaces
+      description: Returns a list of workspaces accessible by the authenticated user
+      operationId: listWorkspaces
+      x-method-name: list
+      tags:
+        - workspace
+      parameters:
+        - $ref: '#/components/parameters/pageNumber'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: A paginated list of workspaces
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLink'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Workspace'
+  '/repositories/{workspace}':
+    get:
+      summary: List Repositories
+      description: Returns a list of repositories in the specified workspace
+      operationId: listRepositories
+      x-method-name: list
+      tags:
+        - repository
+      parameters:
+        - $ref: '#/components/parameters/workspaceSlug'
+        - $ref: '#/components/parameters/pageNumber'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: A paginated list of repositories
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLink'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Repository'
+components:
+  headers:
+    pagedLink:
+      description: |-
+        Links for paging results. The following types of links may be provided:
+          - `first`: a link to the first page of results
+          - `prev`: a link to retrieve the previous page of results
+          - `next`: a link to retrieve the next page of results
+          - `last`: a link to retrieve the last page of results
+        Not all of these links will be provided by every API response, so consumers should not assume they will be present.
+      schema:
+        type: array
+        items:
+          type: string
+  parameters:
+    pageNumber:
+      name: pageNumber
+      in: query
+      description: The requested page. This value is 1-indexed.
+      schema:
+        type: integer
+        format: int32
+        default: 1
+    pageSize:
+      name: pageSize
+      in: query
+      description: The number of items in each page of data.
+      schema:
+        type: integer
+        format: int32
+        default: 50
+    workspaceSlug:
+      name: workspace
+      in: path
+      required: true
+      description: The workspace slug or UUID
+      schema:
+        type: string
+        example: my-workspace
+  schemas:
+    ConnectionProfile:
+      type: object
+      description: Bitbucket connection credentials using email and API token
+      properties:
+        email:
+          type: string
+          format: email
+          description: The email address associated with your Bitbucket account
+        apiToken:
+          type: string
+          format: password
+          description: The Bitbucket API token for authentication
+      required:
+        - email
+        - apiToken
+    Workspace:
+      type: object
+      properties:
+        uuid:
+          type: string
+          description: The unique identifier for the workspace
+          example: '{02b941e3-cfaa-40f9-9a58-cec53e20bdc3}'
+        name:
+          type: string
+          description: The display name of the workspace
+          example: My Workspace
+        slug:
+          type: string
+          description: The URL-friendly identifier for the workspace
+          example: my-workspace
+        isPrivate:
+          type: boolean
+          description: Whether the workspace is private
+          example: true
+        createdOn:
+          type: string
+          format: date-time
+          description: The date and time when the workspace was created
+          example: '2020-01-15T10:30:00.000000+00:00'
+        updatedOn:
+          type: string
+          format: date-time
+          description: The date and time when the workspace was last updated
+          example: '2024-06-01T14:22:00.000000+00:00'
+      required:
+        - uuid
+        - slug
+    Repository:
+      type: object
+      properties:
+        uuid:
+          type: string
+          description: The unique identifier for the repository
+          example: '{a1b2c3d4-e5f6-7890-abcd-ef1234567890}'
+        name:
+          type: string
+          description: The name of the repository
+          example: my-repo
+        fullName:
+          type: string
+          description: The full name in workspace/repo format
+          example: my-workspace/my-repo
+        slug:
+          type: string
+          description: The URL-friendly identifier for the repository
+          example: my-repo
+        description:
+          type: string
+          description: The repository description
+          example: A sample repository
+        scm:
+          type: string
+          description: The source control type (git or hg)
+          enum:
+            - git
+            - hg
+          example: git
+        isPrivate:
+          type: boolean
+          description: Whether the repository is private
+          example: true
+        createdOn:
+          type: string
+          format: date-time
+          description: The date and time when the repository was created
+          example: '2021-03-10T08:15:00.000000+00:00'
+        updatedOn:
+          type: string
+          format: date-time
+          description: The date and time when the repository was last updated
+          example: '2024-11-20T16:45:00.000000+00:00'
+        size:
+          type: integer
+          description: The size of the repository in bytes
+          example: 1048576
+        language:
+          type: string
+          description: The primary programming language
+          example: javascript
+        hasWiki:
+          type: boolean
+          description: Whether the repository has a wiki enabled
+          example: false
+        hasIssues:
+          type: boolean
+          description: Whether the repository has issues enabled
+          example: false
+        forkPolicy:
+          type: string
+          description: The fork policy for the repository
+          example: allow_forks
+        mainBranch:
+          type: string
+          description: The name of the main branch
+          example: main
+        workspaceSlug:
+          type: string
+          description: The slug of the workspace containing this repository
+          example: my-workspace
+        projectKey:
+          type: string
+          description: The key of the project this repository belongs to
+          example: PROJ
+      required:
+        - uuid
+        - slug
+        - fullName
+

@@ -1,0 +1,79 @@
+openapi: 3.0.3
+info:
+  x-product-infos:
+    - $ref: "./node_modules/@zerobias-org/product-atlassian-cloud-bitbucket/catalog.yml#/Product"
+  version: 0.0.0
+  title: '@zerobias-org/module-atlassian-cloud-bitbucket'
+  description: Atlassian Bitbucket Cloud
+  x-impl-name: Bitbucket
+tags:
+  - name: workspace
+    description: Workspace management operations
+  - name: repository
+    description: Repository management operations
+  - name: user
+    description: User management operations
+components:
+  parameters:
+    pageNumberParam:
+      $ref: "./node_modules/@auditmation/types-core/schema/pageNumberParam.yml"
+    pageSizeParam:
+      $ref: "./node_modules/@auditmation/types-core/schema/pageSizeParam.yml"
+    workspaceParam:
+      name: workspace
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The workspace slug or UUID
+  schemas:
+    # Stub schemas - to be designed in Phase 3
+    Workspace:
+      type: object
+      description: A Bitbucket workspace
+      properties:
+        uuid:
+          type: string
+          description: Unique identifier for the workspace
+        slug:
+          type: string
+          description: Human-readable workspace identifier
+        name:
+          type: string
+          description: Display name of the workspace
+        is_private:
+          type: boolean
+          description: Whether the workspace is private
+    Repository:
+      type: object
+      description: A Bitbucket repository
+      properties:
+        uuid:
+          type: string
+          description: Unique identifier for the repository
+        slug:
+          type: string
+          description: Human-readable repository identifier
+        name:
+          type: string
+          description: Display name of the repository
+        full_name:
+          type: string
+          description: Full name including workspace
+        is_private:
+          type: boolean
+          description: Whether the repository is private
+    User:
+      type: object
+      description: A Bitbucket user
+      properties:
+        uuid:
+          type: string
+          description: Unique identifier for the user
+        username:
+          type: string
+          description: Username of the user
+        display_name:
+          type: string
+          description: Display name of the user
+paths: {}

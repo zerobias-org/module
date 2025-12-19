@@ -1,0 +1,3 @@
+# Connection State - Uses standard token connection state
+# To be finalized by @credential-manager + @api-architect in Phase 3
+$ref: "./node_modules/@auditmation/types-core/schema/tokenConnectionState.yml"

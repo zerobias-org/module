@@ -1,0 +1,21 @@
+# Connection Profile - Stub
+# To be designed by @credential-manager + @api-architect in Phase 3
+#
+# This file defines the authentication credentials required for connecting
+# to Bitbucket Cloud. Based on research, Bitbucket supports:
+# - OAuth 2.0 (recommended)
+# - App Passwords
+# - Access Tokens
+#
+# The final schema will be defined during API specification phase.
+
+type: object
+description: Connection profile for Atlassian Bitbucket Cloud
+properties:
+  accessToken:
+    type: string
+    format: password
+    description: OAuth access token or App Password
+    example: "your-access-token"
+required:
+  - accessToken

@@ -9,8 +9,8 @@ export function newBitbucket(): BitbucketImpl {
 export { BitbucketImpl } from './BitbucketImpl';
 
 // Client Class Export (for advanced usage)
-// export { AtlassianCloudBitbucketClient } from './AtlassianCloudBitbucketClient';
+export { AtlassianCloudBitbucketClient } from './AtlassianCloudBitbucketClient';
 
-// Generated API and Model Exports - uncomment after code generation
-// export * from '../generated/api';
-// export * from '../generated/model';
+// Generated API and Model Exports
+export * from '../generated/api';
+export * from '../generated/model';

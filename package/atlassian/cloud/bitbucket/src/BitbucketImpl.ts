@@ -1,66 +1,75 @@
 /* eslint-disable */
 // TODO - enable lint for implementation ^
-// Stub implementation - to be completed in Phase 4 (Implementation)
-//
-// This file will implement the BitbucketConnector interface generated from api.yml
-// Core operations to implement:
-// - connect(): Authenticate with Bitbucket Cloud API
-// - listWorkspaces(): List accessible workspaces
-// - listRepositories(): List repositories in a workspace
-//
-
+import {
+  BitbucketConnector,
+  WorkspaceApi,
+  RepositoryApi,
+  wrapWorkspaceProducer,
+  wrapRepositoryProducer
+} from '../generated/api';
+import { ConnectionProfile } from '../generated/model/ConnectionProfile';
+import { ConnectionState } from '../generated/model';
 import {
   ConnectionMetadata,
   OperationSupportStatus,
   OperationSupportStatusDef,
-  ConnectionStatus,
-  OAuthConnectionDetails
+  ConnectionStatus
 } from '@auditmation/hub-core';
-
-// Placeholder - will be replaced by generated interface after code generation
-interface BitbucketConnector {
-  connect(
-    profile: any,
-    state: any | undefined,
-    metadata: ConnectionMetadata
-  ): Promise<{ status: ConnectionStatus; state: any }>;
-}
+import { AtlassianCloudBitbucketClient } from './AtlassianCloudBitbucketClient';
+import { WorkspaceProducerApiImpl } from './WorkspaceProducerApiImpl';
+import { RepositoryProducerApiImpl } from './RepositoryProducerApiImpl';
 
 export class BitbucketImpl implements BitbucketConnector {
+  private client: AtlassianCloudBitbucketClient;
+  private workspaceApiProducer?: WorkspaceApi;
+  private repositoryApiProducer?: RepositoryApi;
+
   constructor() {
-    // Initialize client and producers here after code generation
+    this.client = new AtlassianCloudBitbucketClient();
   }
 
-  /**
-   * Connect to Bitbucket Cloud API
-   * Validates credentials by calling GET /user endpoint
-   */
   async connect(
-    profile: any,
-    state: any | undefined,
-    metadata: ConnectionMetadata
-  ): Promise<{ status: ConnectionStatus; state: any }> {
-    // Stub implementation - to be completed in Phase 4
-    // Will authenticate against https://api.bitbucket.org/2.0/user
-    throw new Error('Not implemented - stub only. Complete in Phase 4 Implementation.');
+    connectionProfile: ConnectionProfile
+  ): Promise<ConnectionState> {
+    return this.client.connect(connectionProfile);
   }
 
-  /**
-   * Returns connection metadata for the module
-   */
-  getConnectionMetadataDefaults(): ConnectionMetadata {
-    return {
-      pageSize: 100,
-      pageStart: 1,
-    };
+  async refresh(
+    connectionProfile: ConnectionProfile,
+    connectionState: ConnectionState
+  ): Promise<ConnectionState> {
+    throw new Error('Method not implemented.');
   }
 
-  /**
-   * Returns the supported operations for this module
-   */
-  getOperationSupportStatus(): OperationSupportStatus {
-    return {
-      // Stub - will be populated with actual operations after api.yml is designed
-    } as OperationSupportStatus;
+  async isConnected(): Promise<boolean> {
+    return this.client.isConnected();
+  }
+
+  async disconnect(): Promise<void> {
+    await this.client.disconnect();
+  }
+
+  async isSupported(operationId: string): Promise<OperationSupportStatusDef> {
+    return OperationSupportStatus.Maybe;
+  }
+
+  async metadata(): Promise<ConnectionMetadata> {
+    return new ConnectionMetadata(ConnectionStatus.Down);
+  }
+
+  getWorkspaceApi(): WorkspaceApi {
+    if (!this.workspaceApiProducer) {
+      const producer = new WorkspaceProducerApiImpl(this.client);
+      this.workspaceApiProducer = wrapWorkspaceProducer(producer);
+    }
+    return this.workspaceApiProducer;
+  }
+
+  getRepositoryApi(): RepositoryApi {
+    if (!this.repositoryApiProducer) {
+      const producer = new RepositoryProducerApiImpl(this.client);
+      this.repositoryApiProducer = wrapRepositoryProducer(producer);
+    }
+    return this.repositoryApiProducer;
   }
 }

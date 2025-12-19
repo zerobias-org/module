@@ -66,7 +66,6 @@
     "@auditmation/hub-core": "^4.5.19",
     "@auditmation/util-hub-module-utils": "^1.0.32",
     "@auditmation/util-logger": "^4.0.9",
-    "@zerobias-org/product-atlassian-cloud-bitbucket": "^2.0.1",
     "axios": "^0.27.2"
   },
   "peerDependencies": {

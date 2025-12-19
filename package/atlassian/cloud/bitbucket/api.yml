@@ -1,8 +1,6 @@
 openapi: 3.0.3
 info:
-  x-product-infos:
-    - $ref: "./node_modules/@zerobias-org/product-atlassian-cloud-bitbucket/catalog.yml#/Product"
-  version: 0.0.0
+  version: 0.1.0
   title: '@zerobias-org/module-atlassian-cloud-bitbucket'
   description: Atlassian Bitbucket Cloud
   x-impl-name: Bitbucket
@@ -11,14 +9,8 @@ tags:
     description: Workspace management operations
   - name: repository
     description: Repository management operations
-  - name: user
-    description: User management operations
 components:
   parameters:
-    pageNumberParam:
-      $ref: "./node_modules/@auditmation/types-core/schema/pageNumberParam.yml"
-    pageSizeParam:
-      $ref: "./node_modules/@auditmation/types-core/schema/pageSizeParam.yml"
     workspaceParam:
       name: workspace
       in: path
@@ -26,54 +18,383 @@ components:
       schema:
         type: string
       description: The workspace slug or UUID
+    pageNumberParam:
+      $ref: "./node_modules/@auditmation/types-core/schema/pageNumberParam.yml"
+    pageSizeParam:
+      $ref: "./node_modules/@auditmation/types-core/schema/pageSizeParam.yml"
+  headers:
+    pagedLinkHeader:
+      $ref: "./node_modules/@auditmation/types-core/schema/pagedLinkHeader.yml"
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: Basic authentication using Atlassian email and API token
   schemas:
-    # Stub schemas - to be designed in Phase 3
+    ConnectionProfile:
+      $ref: "./connectionProfile.yml"
+    ConnectionState:
+      $ref: "./connectionState.yml"
     Workspace:
       type: object
-      description: A Bitbucket workspace
+      description: A Bitbucket workspace representing a team or organization
+      required:
+        - uuid
+        - slug
+        - name
       properties:
+        type:
+          type: string
+          description: Object type identifier
         uuid:
           type: string
           description: Unique identifier for the workspace
         slug:
           type: string
-          description: Human-readable workspace identifier
+          description: Human-readable workspace identifier used in URLs
         name:
           type: string
           description: Display name of the workspace
-        is_private:
+        isPrivate:
           type: boolean
           description: Whether the workspace is private
+        isPrivacyEnforced:
+          type: boolean
+          description: Whether privacy is enforced for this workspace
+        forkingMode:
+          type: string
+          description: Forking policy mode for repositories in this workspace
+          enum:
+            - allow_forks
+            - no_public_forks
+            - no_forks
+          x-enum-descriptions:
+            - Allow all forks
+            - Allow private forks only
+            - No forking allowed
+        createdOn:
+          type: string
+          format: date-time
+          description: Timestamp when the workspace was created
+        updatedOn:
+          type: string
+          format: date-time
+          description: Timestamp when the workspace was last updated
+        links:
+          $ref: '#/components/schemas/WorkspaceLinks'
+    WorkspaceLinks:
+      type: object
+      description: Links associated with a workspace
+      properties:
+        self:
+          $ref: '#/components/schemas/Link'
+        html:
+          $ref: '#/components/schemas/Link'
+        avatar:
+          $ref: '#/components/schemas/Link'
+        members:
+          $ref: '#/components/schemas/Link'
+        owners:
+          $ref: '#/components/schemas/Link'
+        projects:
+          $ref: '#/components/schemas/Link'
+        repositories:
+          $ref: '#/components/schemas/Link'
+        snippets:
+          $ref: '#/components/schemas/Link'
     Repository:
       type: object
-      description: A Bitbucket repository
+      description: A Bitbucket repository containing source code
+      required:
+        - uuid
+        - slug
+        - name
+        - fullName
       properties:
+        type:
+          type: string
+          description: Object type identifier
         uuid:
           type: string
           description: Unique identifier for the repository
         slug:
           type: string
-          description: Human-readable repository identifier
+          description: Human-readable repository identifier used in URLs
         name:
           type: string
           description: Display name of the repository
-        full_name:
+        fullName:
           type: string
-          description: Full name including workspace
-        is_private:
+          description: Full name including workspace (workspace/repo-slug)
+        description:
+          type: string
+          description: Repository description
+        scm:
+          type: string
+          description: Source control management type
+          enum:
+            - git
+            - hg
+          x-enum-descriptions:
+            - Git repository
+            - Mercurial repository
+        isPrivate:
           type: boolean
           description: Whether the repository is private
-    User:
+        language:
+          type: string
+          description: Primary programming language of the repository
+        size:
+          type: integer
+          description: Size of the repository in bytes
+        hasIssues:
+          type: boolean
+          description: Whether the repository has issues enabled
+        hasWiki:
+          type: boolean
+          description: Whether the repository has wiki enabled
+        forkPolicy:
+          type: string
+          description: Fork policy for this repository
+          enum:
+            - allow_forks
+            - no_public_forks
+            - no_forks
+          x-enum-descriptions:
+            - Allow all forks
+            - Allow private forks only
+            - No forking allowed
+        createdOn:
+          type: string
+          format: date-time
+          description: Timestamp when the repository was created
+        updatedOn:
+          type: string
+          format: date-time
+          description: Timestamp when the repository was last updated
+        owner:
+          $ref: '#/components/schemas/Account'
+        project:
+          $ref: '#/components/schemas/Project'
+        mainbranch:
+          $ref: '#/components/schemas/Branch'
+        links:
+          $ref: '#/components/schemas/RepositoryLinks'
+    RepositoryLinks:
       type: object
-      description: A Bitbucket user
+      description: Links associated with a repository
       properties:
+        self:
+          $ref: '#/components/schemas/Link'
+        html:
+          $ref: '#/components/schemas/Link'
+        avatar:
+          $ref: '#/components/schemas/Link'
+        clone:
+          type: array
+          items:
+            $ref: '#/components/schemas/CloneLink'
+          description: Clone URLs for the repository
+        commits:
+          $ref: '#/components/schemas/Link'
+        branches:
+          $ref: '#/components/schemas/Link'
+        tags:
+          $ref: '#/components/schemas/Link'
+        pullrequests:
+          $ref: '#/components/schemas/Link'
+        forks:
+          $ref: '#/components/schemas/Link'
+        downloads:
+          $ref: '#/components/schemas/Link'
+        watchers:
+          $ref: '#/components/schemas/Link'
+        source:
+          $ref: '#/components/schemas/Link'
+    Link:
+      type: object
+      description: A hypermedia link
+      properties:
+        href:
+          type: string
+          description: URL of the linked resource
+    CloneLink:
+      type: object
+      description: A clone URL with protocol name
+      properties:
+        href:
+          type: string
+          description: Clone URL
+        name:
+          type: string
+          description: Clone protocol name (https, ssh)
+    Account:
+      type: object
+      description: A Bitbucket account (user or team)
+      properties:
+        type:
+          type: string
+          description: Account type identifier
         uuid:
           type: string
-          description: Unique identifier for the user
+          description: Unique identifier for the account
         username:
           type: string
-          description: Username of the user
-        display_name:
+          description: Username of the account
+        displayName:
           type: string
-          description: Display name of the user
-paths: {}
+          description: Display name of the account
+        nickname:
+          type: string
+          description: Nickname of the account
+        accountId:
+          type: string
+          description: Atlassian account ID
+        links:
+          $ref: '#/components/schemas/AccountLinks'
+    AccountLinks:
+      type: object
+      description: Links associated with an account
+      properties:
+        self:
+          $ref: '#/components/schemas/Link'
+        html:
+          $ref: '#/components/schemas/Link'
+        avatar:
+          $ref: '#/components/schemas/Link'
+    Project:
+      type: object
+      description: A Bitbucket project for organizing repositories
+      properties:
+        type:
+          type: string
+          description: Object type identifier
+        uuid:
+          type: string
+          description: Unique identifier for the project
+        key:
+          type: string
+          description: Project key (short identifier)
+        name:
+          type: string
+          description: Display name of the project
+        links:
+          $ref: '#/components/schemas/ProjectLinks'
+    ProjectLinks:
+      type: object
+      description: Links associated with a project
+      properties:
+        self:
+          $ref: '#/components/schemas/Link'
+        html:
+          $ref: '#/components/schemas/Link'
+        avatar:
+          $ref: '#/components/schemas/Link'
+    Branch:
+      type: object
+      description: A repository branch
+      properties:
+        type:
+          type: string
+          description: Object type identifier
+        name:
+          type: string
+          description: Branch name
+paths:
+  /workspaces:
+    get:
+      tags:
+        - workspace
+      summary: Retrieves all workspaces accessible by the authenticated user
+      operationId: listWorkspaces
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: role
+          in: query
+          description: Filter by role (owner, collaborator, member)
+          schema:
+            type: string
+            enum:
+              - owner
+              - collaborator
+              - member
+            x-enum-descriptions:
+              - Workspace owner role
+              - Workspace collaborator role
+              - Workspace member role
+        - name: q
+          in: query
+          description: Query string to filter workspaces
+          schema:
+            type: string
+        - name: orderBy
+          in: query
+          description: Field to sort by
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of workspaces
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Workspace'
+      security:
+        - basicAuth: []
+  /workspaces/{workspace}/repositories:
+    get:
+      tags:
+        - repository
+      summary: Retrieves all repositories in the specified workspace
+      operationId: listRepositories
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/workspaceParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: role
+          in: query
+          description: Filter by role (owner, admin, contributor, member)
+          schema:
+            type: string
+            enum:
+              - owner
+              - admin
+              - contributor
+              - member
+            x-enum-descriptions:
+              - Repository owner role
+              - Repository admin role
+              - Repository contributor role
+              - Repository member role
+        - name: q
+          in: query
+          description: Query string to filter repositories
+          schema:
+            type: string
+        - name: orderBy
+          in: query
+          description: Field to sort by
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of repositories
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Repository'
+      security:
+        - basicAuth: []

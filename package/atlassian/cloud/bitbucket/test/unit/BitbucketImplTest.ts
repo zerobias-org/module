@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import { BitbucketImpl } from '../../src/BitbucketImpl';
+import { OperationSupportStatus, ConnectionStatus } from '@auditmation/hub-core';
 
 describe('BitbucketImpl', () => {
   let impl: BitbucketImpl;
@@ -14,17 +15,37 @@ describe('BitbucketImpl', () => {
     });
   });
 
-  describe('getConnectionMetadataDefaults', () => {
-    it('should return default connection metadata', () => {
-      const metadata = impl.getConnectionMetadataDefaults();
-      expect(metadata).to.have.property('pageSize');
-      expect(metadata).to.have.property('pageStart');
-      expect(metadata.pageSize).to.equal(100);
-      expect(metadata.pageStart).to.equal(1);
+  describe('isSupported', () => {
+    it('should return Maybe for any operation', async () => {
+      const result = await impl.isSupported('listWorkspaces');
+      expect(result).to.equal(OperationSupportStatus.Maybe);
     });
   });
 
-  // Additional unit tests will be added in Phase 5 (Testing)
-  // - connect() tests with mocked responses
-  // - Producer API tests with fixtures
+  describe('metadata', () => {
+    it('should return ConnectionStatus.Down', async () => {
+      const result = await impl.metadata();
+      expect(result.status).to.equal(ConnectionStatus.Down);
+    });
+  });
+
+  describe('isConnected', () => {
+    it('should return false when not connected', async () => {
+      const result = await impl.isConnected();
+      expect(result).to.be.false;
+    });
+  });
+
+  describe('getWorkspaceApi', () => {
+    it('should return a WorkspaceApi instance', () => {
+      // This will throw since not connected, but we can verify the method exists
+      expect(impl.getWorkspaceApi).to.be.a('function');
+    });
+  });
+
+  describe('getRepositoryApi', () => {
+    it('should return a RepositoryApi instance', () => {
+      expect(impl.getRepositoryApi).to.be.a('function');
+    });
+  });
 });

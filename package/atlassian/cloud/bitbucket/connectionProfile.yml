@@ -1,21 +1,34 @@
-# Connection Profile - Stub
-# To be designed by @credential-manager + @api-architect in Phase 3
+# Connection Profile for Atlassian Bitbucket Cloud
 #
-# This file defines the authentication credentials required for connecting
-# to Bitbucket Cloud. Based on research, Bitbucket supports:
-# - OAuth 2.0 (recommended)
-# - App Passwords
-# - Access Tokens
+# Authentication Method: HTTP Basic Authentication
+# - Username: Atlassian account email
+# - Password: API token (ATATT3x* format)
+# - Pattern: Authorization: Basic base64(email:apiToken)
 #
-# The final schema will be defined during API specification phase.
+# Design Decision: Custom profile (not extending core profile)
+# - basicConnection.yml requires 'uri' (unnecessary - Bitbucket has fixed base URL)
+# - tokenProfile.yml lacks 'email' field
+# - Clean fit: email + apiToken for Basic Auth
+#
+# API Token Creation:
+# 1. Log into https://bitbucket.org/
+# 2. Go to Personal Settings > App passwords
+# 3. Create app password with required scopes
+# 4. Use the generated token (ATATT3x* format) as apiToken
 
 type: object
 description: Connection profile for Atlassian Bitbucket Cloud
 properties:
-  accessToken:
+  email:
+    type: string
+    format: email
+    description: The Atlassian account email address to use for authentication
+    example: user@example.com
+  apiToken:
     type: string
     format: password
-    description: OAuth access token or App Password
-    example: "your-access-token"
+    description: The Bitbucket App Password (API token) for authentication
+    example: ATATT3xFfGF0T_example_token_here
 required:
-  - accessToken
+  - email
+  - apiToken

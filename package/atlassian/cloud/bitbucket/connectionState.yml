@@ -1,3 +1,10 @@
-# Connection State - Uses standard token connection state
-# To be finalized by @credential-manager + @api-architect in Phase 3
+# Connection State for Atlassian Bitbucket Cloud
+#
+# Uses standard token connection state which provides:
+# - accessToken: The base64-encoded Basic Auth credential (base64(email:apiToken))
+# - expiresIn: Token expiry time in seconds (from baseConnectionState.yml)
+#
+# The accessToken stores the encoded Basic Auth header value, which is used
+# in subsequent API requests as: Authorization: Basic {accessToken}
+
 $ref: "./node_modules/@auditmation/types-core/schema/tokenConnectionState.yml"

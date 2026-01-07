@@ -1,0 +1,1236 @@
+openapi: 3.0.3
+info:
+  x-product-infos:
+    - $ref: './node_modules/@zerobias-org/product-zerobias-zerobias/catalog.yml#/Product'
+  x-impl-name: DynamicDataProducer
+  version: 1.1.2
+  title: '@zerobias-org/module-interface-dataproducer'
+  description: Dynamic Data Producer Interface
+paths:
+  # Object Operations
+  /objects:
+    get:
+      tags:
+        - objects
+      summary: Get root object
+      description: Returns the root object with id and name of '/'
+      operationId: getRootObject
+      responses:
+        '200':
+          description: Root object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Object'
+  /objects/{objectId}:
+    get:
+      tags:
+        - objects
+      summary: Get object by ID
+      description: Retrieve a specific object by its unique identifier
+      operationId: getObject
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+      responses:
+        '200':
+          description: Object details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Object'
+  /objects/{objectId}/children:
+    post:
+      tags:
+        - objects
+      summary: Create child object
+      description: Creates a new object as a child of the specified parent container
+      operationId: createChildObject
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+      requestBody:
+        required: true
+        description: Child object properties (id is optional and will be generated if not provided)
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateObjectRequest'
+      responses:
+        '201':
+          description: Child object created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Object'
+    get:
+      tags:
+        - objects
+      summary: Get child objects
+      description: Returns paged results of objects that are children of the specified object
+      operationId: getChildren
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - $ref: '#/components/parameters/pageTokenParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/sortByParam'
+        - $ref: '#/components/parameters/sortDirParam'
+        - name: type
+          in: query
+          required: false
+          description: Optional object class filter
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ObjectClass'
+        - name: tags
+          in: query
+          required: false
+          description: Optional tags filter - returns objects containing any of the specified tags
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: List of child objects
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+            count:
+              $ref: '#/components/headers/pageCountHeader'
+            pageToken:
+              $ref: '#/components/headers/pageTokenHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Object'
+    put:
+      tags:
+        - objects
+      summary: Update object
+      description: Updates object metadata and properties
+      operationId: updateObject
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - name: If-Match
+          in: header
+          description: ETag for optimistic concurrency control
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateObjectRequest'
+      responses:
+        '200':
+          description: Object updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Object'
+    delete:
+      tags:
+        - objects
+      summary: Delete object
+      description: Deletes an object and optionally its children
+      operationId: deleteObject
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - name: recursive
+          in: query
+          description: Delete children recursively (containers only)
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Object deleted
+  /objects/{objectId}/search:
+    get:
+      tags:
+        - objects
+      summary: Search objects
+      description: Performs keyword search or filtered search within object hierarchy. Either keywords or filter must be provided, but not both.
+      operationId: objectSearch
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - $ref: '#/components/parameters/pageTokenParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/sortByParam'
+        - $ref: '#/components/parameters/sortDirParam'
+        - $ref: '#/components/parameters/propertiesParam'
+        - $ref: '#/components/parameters/scopeParam'
+        - name: keywords
+          in: query
+          required: false
+          description: Search keywords (mutually exclusive with filter)
+          schema:
+            type: array
+            items:
+              type: string
+        - name: filter
+          in: query
+          required: false
+          description: RFC4515 structured filter expression (mutually exclusive with keywords)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Search results
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+            count:
+              $ref: '#/components/headers/pageCountHeader'
+            pageToken:
+              $ref: '#/components/headers/pageTokenHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Object'
+  /objects/{objectId}/searchChildren:
+    get:
+      tags:
+        - objects
+      summary: Search child objects with filtering and property selection
+      description: |
+        Advanced search and filtering of child objects within a container.
+        Supports RFC4515 filters for child object metadata and dot notation property selection.
+
+        Differences from /children:
+        - /children: Simple listing with basic type/tag filters
+        - /searchChildren: Advanced RFC4515 filtering + property projection
+      operationId: searchChildObjects
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - $ref: '#/components/parameters/pageTokenParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/sortByParam'
+        - $ref: '#/components/parameters/sortDirParam'
+        - $ref: '#/components/parameters/propertiesParam'
+        - name: filter
+          in: query
+          required: false
+          description: RFC4515 filter expression for child object properties
+          schema:
+            type: string
+          example: "(&(objectClass=document)(tags=*important*)(modified>=2023-01-01))"
+        - $ref: '#/components/parameters/scopeParam'
+        - name: includeCount
+          in: query
+          required: false
+          description: Include total count in response headers (may be expensive)
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Filtered child objects with property selection applied
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+            count:
+              $ref: '#/components/headers/pageCountHeader'
+            pageToken:
+              $ref: '#/components/headers/pageTokenHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Object'
+  # Collection Operations
+  /objects/{objectId}/collection/elements:
+    get:
+      tags:
+        - collections
+      summary: Get collection elements
+      description: Returns paged collection data for collection objects
+      operationId: getCollectionElements
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - $ref: '#/components/parameters/pageTokenParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/sortByParam'
+        - $ref: '#/components/parameters/sortDirParam'
+        - $ref: '#/components/parameters/propertiesParam'
+      responses:
+        '200':
+          description: Collection elements
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+            count:
+              $ref: '#/components/headers/pageCountHeader'
+            pageToken:
+              $ref: '#/components/headers/pageTokenHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+    post:
+      tags:
+        - collections
+      summary: Add collection element
+      description: Adds a new element to the collection (requires collection schema with primary key properties)
+      operationId: addCollectionElement
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '201':
+          description: Element added
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /objects/{objectId}/collection/bulk:
+    post:
+      tags:
+        - collections
+      summary: Execute bulk operations on collection
+      description: Perform multiple create/update/delete operations in a single request
+      operationId: executeBulkOperations
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkOperationRequest'
+      responses:
+        '200':
+          description: Bulk operation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkOperationResponse'
+  /objects/{objectId}/collection/elements/{elementKey}:
+    get:
+      tags:
+        - collections
+      summary: Get collection element by key
+      description: Retrieves a specific collection element by its primary key
+      operationId: getCollectionElement
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - name: elementKey
+          in: path
+          required: true
+          description: Primary key value(s) separated by commas for composite keys
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Collection element
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    put:
+      tags:
+        - collections
+      summary: Update collection element
+      description: Updates a specific collection element by its primary key
+      operationId: updateCollectionElement
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - name: elementKey
+          in: path
+          required: true
+          description: Primary key value(s) separated by commas for composite keys
+          schema:
+            type: string
+        - name: If-Match
+          in: header
+          description: ETag for optimistic concurrency control
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Element updated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    delete:
+      tags:
+        - collections
+      summary: Delete collection element
+      description: Deletes a specific collection element by its primary key
+      operationId: deleteCollectionElement
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - name: elementKey
+          in: path
+          required: true
+          description: Primary key value(s) separated by commas for composite keys
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Element deleted
+  /objects/{objectId}/collection/search:
+    get:
+      tags:
+        - collections
+      summary: Search collection elements
+      description: Filtered search within collection data
+      operationId: searchCollectionElements
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - $ref: '#/components/parameters/pageTokenParam'
+        - $ref: '#/components/parameters/pageNumberParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - name: filter
+          in: query
+          required: false
+          description: RFC4515 structured filter expression
+          schema:
+            type: string
+        - $ref: '#/components/parameters/sortByParam'
+        - $ref: '#/components/parameters/sortDirParam'
+        - $ref: '#/components/parameters/propertiesParam'
+      responses:
+        '200':
+          description: Filtered collection elements
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+            count:
+              $ref: '#/components/headers/pageCountHeader'
+            pageToken:
+              $ref: '#/components/headers/pageTokenHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+  # Function Operations
+  /objects/{objectId}/invoke:
+    post:
+      tags:
+        - functions
+      summary: Invoke function
+      description: Execute function with input parameters
+      operationId: invokeFunction
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+      requestBody:
+        required: false
+        description: Function input parameters (must conform to inputSchema if specified)
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Function execution result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  # Binary Operations - Content Upload/Update
+  /objects/{objectId}/upload:
+    post:
+      tags:
+        - binary
+      summary: Upload binary content
+      description: Uploads or replaces binary content for binary objects
+      operationId: uploadBinaryContent
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+      requestBody:
+        required: true
+        content:
+          '*/*':
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: Content uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Object'
+  # Document Operations
+  /objects/{objectId}/document:
+    get:
+      tags:
+        - documents
+      summary: Get document data
+      description: Returns JSON document for document objects
+      operationId: getDocumentData
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+      responses:
+        '200':
+          description: Document data
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    put:
+      tags:
+        - documents
+      summary: Update document data
+      description: Updates JSON document content for document objects
+      operationId: updateDocumentData
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+        - name: If-Match
+          in: header
+          description: ETag for optimistic concurrency control
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Document updated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  # Binary Operations
+  /objects/{objectId}/download:
+    get:
+      tags:
+        - binary
+      summary: Download binary content
+      description: Download binary content with streaming and resumable support
+      operationId: downloadBinary
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+      responses:
+        '200':
+          description: Binary file download
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: Partial content (range request)
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+  # Enhanced Function Operations
+  /objects/{objectId}/validate:
+    post:
+      tags:
+        - functions
+      summary: Validate function input
+      description: Validate input parameters against function schema without execution
+      operationId: validateFunctionInput
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateFunctionInputRequest'
+      responses:
+        '200':
+          description: Validation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResult'
+  /objects/{objectId}/rest:
+    post:
+      tags:
+        - functions
+      summary: Execute raw REST request
+      description: Execute low-level REST request (function objects with httpMethod only)
+      operationId: executeRestRequest
+      parameters:
+        - $ref: '#/components/parameters/objectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestRequest'
+      responses:
+        '200':
+          description: REST response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestResponse'
+  # Schema Operations
+  /schemas/{schemaId}:
+    get:
+      tags:
+        - schemas
+      summary: Get schema by ID
+      description: Retrieve schema metadata and structure
+      operationId: getSchema
+      parameters:
+        - name: schemaId
+          in: path
+          required: true
+          description: Unique schema identifier
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Schema details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Schema'
+components:
+  parameters:
+    objectId:
+      name: objectId
+      in: path
+      required: true
+      description: Unique object identifier
+      schema:
+        type: string
+    pageTokenParam:
+      name: pageToken
+      in: query
+      description: |
+        Opaque cursor for cursor-based pagination. When provided, pageNumber is ignored.
+        Use the token from the previous response's pageToken header to get the next page.
+      schema:
+        type: string
+    pageNumberParam:
+      name: pageNumber
+      in: query
+      description: The requested page (1-indexed). Ignored when pageToken is provided.
+      schema:
+        type: integer
+        format: int32
+        default: 1
+        minimum: 1
+    pageSizeParam:
+      name: pageSize
+      in: query
+      description: The number of items in each page
+      schema:
+        type: integer
+        format: int32
+        default: 100
+        minimum: 1
+        maximum: 1000
+    propertiesParam:
+      name: properties
+      in: query
+      description: |
+        Dot notation property selection array. Controls which properties are returned in results.
+
+        Examples:
+        - ["email"] - Return only email field (fuzzy matches e-mail, email_address, etc.)
+        - ["contact.phone", "contact.email"] - Return contact object with only phone and email
+        - ["contact"] - Return entire contact object
+        - [] or omitted - Return all properties (default)
+
+        Fuzzy matching applies to field names (email matches e-mail, email_address, emailAddress).
+        For nested objects, specify full dot path to include only specific sub-properties.
+      schema:
+        type: array
+        items:
+          type: string
+      style: form
+      explode: false
+    sortByParam:
+      $ref: './node_modules/@zerobias-org/types-core/schema/sortByParam.yml'
+    sortDirParam:
+      $ref: './node_modules/@zerobias-org/types-core/schema/sortDirParam.yml'
+    scopeParam:
+      name: scope
+      in: query
+      required: false
+      description: Search scope depth
+      schema:
+        $ref: '#/components/schemas/SearchScope'
+  headers:
+    pageCountHeader:
+      description: The total count of elements in the result set
+      schema:
+        type: integer
+        format: int64
+    pageTokenHeader:
+      description: Opaque cursor token for fetching the next page. Absence indicates last page.
+      schema:
+        type: string
+    pagedLinkHeader:
+      description: Links for paging results (first, prev, next, last)
+      schema:
+        type: array
+        items:
+          type: string
+  responses:
+    NoSuchObjectError:
+      description: Object not found
+      content:
+        application/json:
+          schema:
+            $ref: './node_modules/@zerobias-org/types-core/schema/errors/noSuchObjectError.yml'
+    UnsupportedOperationError:
+      description: Operation not supported by this object type
+      content:
+        application/json:
+          schema:
+            $ref: './node_modules/@zerobias-org/types-core/schema/errors/illegalArgumentError.yml'
+  schemas:
+    Object:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: Immutable primary key (unique identifier)
+        name:
+          type: string
+          description: Human-readable name
+        description:
+          type: string
+          description: Optional description
+        path:
+          type: array
+          items:
+            type: string
+          description: Documentary path array from root to object
+        thumbnail:
+          type: string
+          format: uri
+          description: Public URL or data URI for visual representation
+        tags:
+          type: array
+          items:
+            type: string
+          description: Optional organizational tags
+        created:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        modified:
+          type: string
+          format: date-time
+          description: Last modification timestamp
+        etag:
+          type: string
+          description: Entity tag for optimistic concurrency control
+        versionId:
+          type: string
+          description: Version identifier for object versioning
+        objectClass:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectClass'
+          description: Capability indicators
+        # Container properties
+        # Collection properties
+        collectionSchema:
+          type: string
+          description: Schema ID for collection elements (collection objects only)
+        collectionSize:
+          type: integer
+          format: int64
+          description: Number of elements in collection (collection objects only)
+        # Function properties
+        inputSchema:
+          type: string
+          description: Schema ID for function inputs (function objects only)
+        outputSchema:
+          type: string
+          description: Schema ID for function outputs (function objects only)
+        throws:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of HTTP error codes to error Schema IDs (function objects only)
+        # Document properties
+        documentSchema:
+          type: string
+          description: Schema ID for document structure (document objects only)
+        # Binary properties
+        mimeType:
+          type: string
+          description: MIME type of binary content (binary objects only)
+        fileName:
+          type: string
+          description: Original filename (binary objects only)
+        size:
+          type: integer
+          format: int64
+          description: Content size in bytes (binary objects only)
+        # HTTP properties (function objects only)
+        httpMethod:
+          type: string
+          enum: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS]
+          description: HTTP method for REST operations (function objects only)
+        httpPath:
+          type: string
+          description: HTTP path template for REST operations (function objects only)
+        httpHeaders:
+          type: object
+          additionalProperties:
+            type: string
+          description: Default HTTP headers for REST operations (function objects only)
+        timeout:
+          type: integer
+          description: Default timeout in milliseconds (function objects only)
+        retryPolicy:
+          type: object
+          properties:
+            maxRetries:
+              type: integer
+              default: 3
+            backoffStrategy:
+              type: string
+              enum: [exponential, linear, fixed]
+              default: exponential
+            retryableErrors:
+              type: array
+              items:
+                type: string
+          description: Retry configuration (function objects only)
+    ObjectClass:
+      type: string
+      description: Object capability indicator
+      enum:
+        - container
+        - collection
+        - function
+        - document
+        - binary
+    SearchScope:
+      type: string
+      description: Search scope depth for hierarchical searches
+      enum:
+        - one_level
+        - subtree
+      default: one_level
+    Schema:
+      type: object
+      required:
+        - id
+        - dataTypes
+        - properties
+      properties:
+        id:
+          type: string
+          description: Unique, immutable schema identifier
+        dataTypes:
+          type: array
+          items:
+            $ref: './node_modules/@zerobias-org/types-core/schema/type.yml'
+          description: Array of DataType entities used by this schema
+        properties:
+          type: array
+          items:
+            $ref: '#/components/schemas/Property'
+          description: Array of property definitions
+    Property:
+      type: object
+      required:
+        - name
+        - dataType
+      properties:
+        name:
+          type: string
+          description: JavaScript-compatible property name
+        description:
+          type: string
+          description: Optional property description
+        required:
+          type: boolean
+          default: false
+          description: Whether property is required
+        multi:
+          type: boolean
+          default: false
+          description: Whether property accepts multiple values
+        primaryKey:
+          type: boolean
+          default: false
+          description: Whether property is part of the primary key
+        dataType:
+          type: string
+          description: Name of DataType entity
+        format:
+          type: string
+          description: Format specification for data display/input (e.g., date format, number format)
+        references:
+          type: object
+          properties:
+            schemaId:
+              type: string
+              description: Referenced schema ID
+            propertyName:
+              type: string
+              description: Referenced property name
+          description: Schema and property reference for relationships
+    RestRequest:
+      type: object
+      required:
+        - method
+        - path
+      properties:
+        method:
+          type: string
+          enum: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS]
+          description: HTTP method
+        path:
+          type: string
+          description: The relative path to call
+        headers:
+          type: object
+          description: The headers to send with the request
+          additionalProperties:
+            type: string
+        body:
+          description: The body to send with the request
+          additionalProperties: true
+        params:
+          type: object
+          description: The query parameters to send with the request
+          additionalProperties:
+            type: string
+        timeout:
+          type: integer
+          description: Request timeout in milliseconds
+        retries:
+          type: integer
+          description: Number of retries
+        followRedirects:
+          type: boolean
+          description: Follow HTTP redirects
+          default: true
+    RestResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: integer
+          description: The HTTP status code
+        headers:
+          type: object
+          description: The headers returned by the server
+          additionalProperties:
+            type: string
+        body:
+          description: The body returned by the server
+          additionalProperties: true
+        timing:
+          type: object
+          description: Request timing information
+          properties:
+            total:
+              type: integer
+              description: Total request time in milliseconds
+            dns:
+              type: integer
+              description: DNS resolution time
+            connect:
+              type: integer
+              description: Connection establishment time
+            ttfb:
+              type: integer
+              description: Time to first byte
+    EnhancedFunctionResponse:
+      type: object
+      properties:
+        data:
+          description: Response data
+          additionalProperties: true
+        schema:
+          $ref: '#/components/schemas/Schema'
+          description: Response schema (if dynamic)
+        context:
+          type: object
+          description: Execution metadata
+          properties:
+            requestId:
+              type: string
+              description: Unique request identifier
+            timestamp:
+              type: string
+              format: date-time
+              description: Execution timestamp
+            duration:
+              type: integer
+              description: Execution time in milliseconds
+            retryCount:
+              type: integer
+              description: Number of retries attempted
+            cached:
+              type: boolean
+              description: Whether response was cached
+            warnings:
+              type: array
+              items:
+                type: string
+              description: Non-fatal warnings
+        links:
+          type: object
+          description: HATEOAS-style navigation links
+          properties:
+            self:
+              type: string
+              format: uri
+              description: Link to this operation
+            related:
+              type: array
+              items:
+                type: object
+                properties:
+                  rel:
+                    type: string
+                    description: Relationship type
+                  href:
+                    type: string
+                    format: uri
+                    description: Related operation link
+    ValidationResult:
+      type: object
+      properties:
+        valid:
+          type: boolean
+          description: Whether input is valid
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+                description: Path to invalid field
+              message:
+                type: string
+                description: Error message
+              code:
+                type: string
+                description: Error code
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+                description: Path to field with warning
+              message:
+                type: string
+                description: Warning message
+    ValidateFunctionInputRequest:
+      type: object
+      properties:
+        input:
+          description: Input to validate
+          additionalProperties: true
+        strict:
+          type: boolean
+          description: Strict validation mode
+          default: false
+    BulkOperation:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum: [create, update, delete]
+          description: Operation type
+        key:
+          type: string
+          description: Element key (for update/delete)
+        data:
+          description: Data for operation
+          additionalProperties: true
+    BulkOperationRequest:
+      type: object
+      required:
+        - operations
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/BulkOperation'
+        atomic:
+          type: boolean
+          description: All or nothing execution
+          default: false
+        continueOnError:
+          type: boolean
+          description: Continue processing on errors
+          default: true
+    BulkOperationResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              success:
+                type: boolean
+              data:
+                description: Result data (if successful)
+                additionalProperties: true
+              error:
+                description: Error information (if failed)
+                additionalProperties: true
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            succeeded:
+              type: integer
+            failed:
+              type: integer
+    CreateObjectRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Optional object ID (will be generated if not provided)
+        name:
+          type: string
+          description: Human-readable name
+        description:
+          type: string
+          description: Optional description
+        thumbnail:
+          type: string
+          format: uri
+          description: Public URL or data URI for visual representation
+        tags:
+          type: array
+          items:
+            type: string
+          description: Optional organizational tags
+        objectClass:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectClass'
+          description: Capability indicators
+        # Collection properties
+        collectionSchema:
+          type: string
+          description: Schema ID for collection elements (collection objects only)
+        # Function properties  
+        inputSchema:
+          type: string
+          description: Schema ID for function inputs (function objects only)
+        outputSchema:
+          type: string
+          description: Schema ID for function outputs (function objects only)
+        throws:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of HTTP error codes to error Schema IDs (function objects only)
+        # Document properties
+        documentSchema:
+          type: string
+          description: Schema ID for document structure (document objects only)
+        # Binary properties
+        mimeType:
+          type: string
+          description: MIME type of binary content (binary objects only)
+        fileName:
+          type: string
+          description: Original filename (binary objects only)
+      required:
+        - name
+        - objectClass
+    UpdateObjectRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Human-readable name
+        description:
+          type: string
+          description: Optional description
+        thumbnail:
+          type: string
+          format: uri
+          description: Public URL or data URI for visual representation
+        tags:
+          type: array
+          items:
+            type: string
+          description: Optional organizational tags
+        # Collection properties
+        collectionSchema:
+          type: string
+          description: Schema ID for collection elements (collection objects only)
+        # Function properties
+        inputSchema:
+          type: string
+          description: Schema ID for function inputs (function objects only)
+        outputSchema:
+          type: string
+          description: Schema ID for function outputs (function objects only)
+        throws:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of HTTP error codes to error Schema IDs (function objects only)
+        # Document properties
+        documentSchema:
+          type: string
+          description: Schema ID for document structure (document objects only)
+        # Binary properties
+        mimeType:
+          type: string
+          description: MIME type of binary content (binary objects only)
+        fileName:
+          type: string
+          description: Original filename (binary objects only)

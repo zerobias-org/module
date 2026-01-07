@@ -1,0 +1,21 @@
+# Redocly configuration for OpenAPI validation
+# More permissive rules for interface definitions
+
+apis:
+  main:
+    root: ./api.yml
+
+extends:
+  - minimal
+
+rules:
+  # Disable strict rules that don't apply to interface definitions
+  no-empty-servers: off
+  security-defined: off
+  operation-4xx-response: off
+  no-unused-components: off
+
+  # Keep important structural rules
+  struct: error
+  no-unresolved-refs: error
+  no-invalid-media-type-examples: error

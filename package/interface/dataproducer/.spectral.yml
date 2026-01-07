@@ -1,0 +1,6 @@
+extends: "./node_modules/@zerobias-org/util-spectral-config/rules/.oas3.strict.spectral.yml"
+overrides:
+  - files:
+      - '*.yml#/enum'
+    rules:
+      enumsMustBeSnakeCase: off

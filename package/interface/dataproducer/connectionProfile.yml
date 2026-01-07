@@ -1,0 +1,20 @@
+type: object
+description: >-
+  Profile for connecting to Auditmation Platform. Either API Key or JWT must be present, depending on how the module is expected to connect.
+required: 
+  - url
+properties:
+  url:
+    type: string
+    format: url
+    description: Organization domain
+  orgId:
+    type: string
+    format: uuid
+    description: Id for the organization
+  apiKey:
+    type: string  
+    description: Personal access token, an OAuth token, an installation access token or a JSON Web Token
+  jwt:
+    type: string  
+    description: a JSON Web Token

@@ -1,5 +1,5 @@
 # Redocly configuration for OpenAPI validation
-# More permissive rules for interface definitions
+# Replaces Spectral for unified linting
 
 apis:
   main:
@@ -15,7 +15,12 @@ rules:
   operation-4xx-response: off
   no-unused-components: off
 
-  # Keep important structural rules
+  # Structural rules
   struct: error
   no-unresolved-refs: error
   no-invalid-media-type-examples: error
+
+  # Style rules (previously in Spectral)
+  operation-summary: error
+  # Note: naming-convention requires Redocly plugins or newer version
+  # TODO: Add custom rules for camelCase properties, snake_case enums when available

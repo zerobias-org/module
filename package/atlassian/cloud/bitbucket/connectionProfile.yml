@@ -1,0 +1,22 @@
+# Connection Profile for Bitbucket Cloud
+#
+# Authentication: HTTP Basic Auth
+# - username: Atlassian account email address
+# - password: Bitbucket API token (App Password)
+# - uri: Bitbucket API base URL (https://api.bitbucket.org/2.0)
+#
+# IMPORTANT: workspace is NOT a connection parameter
+# Workspace belongs in operation parameters to allow connection reuse across all workspaces
+#
+# How to get credentials:
+# 1. Email: Your Atlassian account email
+# 2. API Token: Generate at https://bitbucket.org/account/settings/app-passwords/
+#    - Select appropriate permissions for your use case
+#    - Common permissions: repositories (read/write), pull requests, issues
+#
+# Environment variables for testing:
+# - BITBUCKET_EMAIL: Your Atlassian account email
+# - BITBUCKET_API_TOKEN: Generated app password
+# - BITBUCKET_WORKSPACE: Workspace slug (used in operation parameters, not connection)
+
+$ref: './node_modules/@auditmation/types-core/schema/basicConnection.yml'

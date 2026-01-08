@@ -1,0 +1,2 @@
+# Stub - will be designed in Phase 3 by @credential-manager + @api-architect
+$ref: "./node_modules/@auditmation/types-core/schema/tokenConnectionState.yml"

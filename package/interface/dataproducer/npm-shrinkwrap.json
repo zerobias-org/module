@@ -20,7 +20,7 @@
         "@types/node": "^16.11.7",
         "@zerobias-org/eslint-config": "^1.0.8",
         "@zerobias-org/util-codegen": "^2.0.3",
-        "@zerobias-org/util-spectral-config": "^1.0.4",
+        "@zerobias-org/util-spectral-config": "^1.0.5",
         "chai": "^4.2.0",
         "concat-md": "^0.5.1",
         "mocha": "^11.7.5",
@@ -2764,9 +2764,9 @@
       }
     },
     "node_modules/@zerobias-org/types-format-spectral-ruleset": {
-      "version": "1.0.23",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/types-format-spectral-ruleset/-/types-format-spectral-ruleset-1.0.23.tgz",
-      "integrity": "sha512-uEPf80cW4WTVpP9ZCrRDhJk+2ek0sqY7wrYXrSvzHV2aC4FAtiCeg8YoR8a+thnSsnIigNzidg+lMMy6I0S31Q==",
+      "version": "1.0.24",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/types-format-spectral-ruleset/-/types-format-spectral-ruleset-1.0.24.tgz",
+      "integrity": "sha512-FlQ6UYb5W8Fh+E5wUSXVs73MK34oVJmrnvyUfMF3NulAsugzTqTrN9I6oCseRz4xdwGeyrnhubYexH849ILcgA==",
       "dev": true,
       "license": "ISC",
       "dependencies": {
@@ -2855,16 +2855,16 @@
       }
     },
     "node_modules/@zerobias-org/util-spectral-config": {
-      "version": "1.0.4",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/util-spectral-config/-/util-spectral-config-1.0.4.tgz",
-      "integrity": "sha512-q9yueS5VgcTgFMHI80guQ0GwfPNixJvUupFEorf1Gdq4cX7CtAPHe+Qx+iCtfH0zSXZi0h3UmvRNq1AbB0Gz2A==",
+      "version": "1.0.5",
+      "resolved": "https://pkg.zerobias.org/@zerobias-org/util-spectral-config/-/util-spectral-config-1.0.5.tgz",
+      "integrity": "sha512-HkwHKjVqlYbAmW40Pdl7x9X4FqbxlxiwWiBJyV+iH7UPRGaDE285xzi4mSPxs0u/J9P1HQu6FOOMi8uHSe8iCg==",
       "dev": true,
       "license": "ISC",
       "dependencies": {
         "@stoplight/json-ref-resolver": "3.1.6",
         "@stoplight/spectral-cli": "6.15.0",
         "@zerobias-org/eslint-config": "^1.0.8",
-        "@zerobias-org/types-format-spectral-ruleset": "^1.0.0"
+        "@zerobias-org/types-format-spectral-ruleset": "^1.0.24"
       },
       "engines": {
         "node": ">=22.0.0",

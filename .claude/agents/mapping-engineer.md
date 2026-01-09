@@ -1,8 +1,6 @@
 ---
-name: mapping-engineer
-description: Data mapping and transformation between API and core types
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: comment-style-guide, core-error-handling, gate-3-implementation, implementation-standards, mapper-validation, data-mapping, mapper-runtime-checks, producer-implementation, core-type-mapping
 ---
 
 # Mapping Engineer

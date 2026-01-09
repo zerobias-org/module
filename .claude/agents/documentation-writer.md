@@ -1,8 +1,6 @@
 ---
-name: documentation-writer
-description: Technical documentation and user guide creation
-tools: Read, Write, Edit, Grep, Glob
-model: inherit
+
+skills: documentation-standards, implementation-standards, readme-standards
 ---
 
 # Documentation Writer Persona

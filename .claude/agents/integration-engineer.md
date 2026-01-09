@@ -1,8 +1,6 @@
 ---
-name: integration-engineer
-description: API integration patterns and error handling
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: comment-style-guide, connection-schema-design, core-error-handling, failure-criteria, gate-3-implementation, http-client-patterns, implementation-standards, http-mocking, security-standards
 ---
 
 # Integration Engineer

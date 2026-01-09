@@ -1,8 +1,6 @@
 ---
-name: security-auditor
-description: Security patterns and authentication flow specialist
-tools: Read, Write, Edit, Grep, Glob
-model: inherit
+
+skills: openapi-foundations, connection-schema-design, core-error-handling, implementation-standards, security-standards
 ---
 
 # Security Auditor Persona

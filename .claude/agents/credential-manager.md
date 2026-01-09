@@ -1,8 +1,6 @@
 ---
-name: credential-manager
-description: Manages credentials and authentication configuration for testing
-tools: Read, Grep, Glob, WebFetch, WebSearch, Bash
-model: inherit
+
+skills: connection-schema-design, environment-configuration, workflow-execution-protocol, security-standards, development-tools
 ---
 
 # Credential Manager

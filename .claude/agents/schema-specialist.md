@@ -1,8 +1,6 @@
 ---
-name: schema-specialist
-description: JSON schema design and data modeling specialist
-tools: Read, Write, Edit, Grep, Glob
-model: inherit
+
+skills: openapi-foundations, openapi-schemas, failure-criteria, gate-1-api-specification, core-type-mapping
 ---
 
 # Schema Specialist

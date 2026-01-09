@@ -1,8 +1,6 @@
 ---
-name: it-reviewer
-description: Integration test review and validation
-tools: Read, Grep, Glob, Bash
-model: inherit
+
+skills: comment-style-guide, failure-criteria, gate-4b-integration-tests, gate-5-test-execution, integration-testing, testing-principles
 ---
 
 # IT Reviewer

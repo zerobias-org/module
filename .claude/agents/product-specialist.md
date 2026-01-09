@@ -1,8 +1,6 @@
 ---
-name: product-specialist
-description: Deep understanding of SaaS products and their APIs for domain modeling
-tools: Read, Grep, Glob, WebFetch, WebSearch, Bash
-model: inherit
+
+skills: openapi-foundations, tool-prerequisites, development-tools
 ---
 
 # Product Specialist Persona

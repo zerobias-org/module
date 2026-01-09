@@ -1,8 +1,6 @@
 ---
-name: connection-ut-engineer
-description: Connection unit test implementation
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: connection-schema-design, failure-criteria, gate-4a-unit-tests, testing-principles, unit-testing
 ---
 
 # Connection UT Engineer

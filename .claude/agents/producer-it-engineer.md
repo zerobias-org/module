@@ -1,8 +1,6 @@
 ---
-name: producer-it-engineer
-description: Producer integration test implementation
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: comment-style-guide, failure-criteria, gate-4b-integration-tests, gate-5-test-execution, implementation-standards, integration-testing, testing-principles
 ---
 
 # Producer IT Engineer

@@ -1,12 +1,11 @@
-name: Pull Request
-
+name: Pull Request Targeted to Dev Branch
 on:
-  pull_request:
+  pull_request_target:
     types:
-      - opened
-      - reopened
       - synchronize
       - labeled
+    branches:
+      - dev
 
 permissions:
   contents: write
@@ -16,7 +15,8 @@ permissions:
 
 jobs:
   pull-request:
-    uses: zerobias-org/devops/.github/workflows/pull-request-reusable.yml@main
+    if: github.repository == 'zerobias-org/module'
+    uses: zerobias-org/devops/.github/workflows/pull-request-target-reusable.yml@main
     secrets: inherit
     with:
       run-integration-tests: 'true'

@@ -1,8 +1,6 @@
 ---
-name: build-validator
-description: Build process validation and dependency verification
-tools: Read, Grep, Glob, Bash
-model: inherit
+
+skills: build-standards, failure-criteria, gate-6-build, gate-2-type-generation, implementation-standards, development-tools
 ---
 
 # Build Validator

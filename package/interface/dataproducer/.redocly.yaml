@@ -1,0 +1,26 @@
+# Redocly configuration for OpenAPI validation
+# Replaces Spectral for unified linting
+
+apis:
+  main:
+    root: ./api.yml
+
+extends:
+  - minimal
+
+rules:
+  # Disable strict rules that don't apply to interface definitions
+  no-empty-servers: off
+  security-defined: off
+  operation-4xx-response: off
+  no-unused-components: off
+
+  # Structural rules
+  struct: error
+  no-unresolved-refs: error
+  no-invalid-media-type-examples: error
+
+  # Style rules (previously in Spectral)
+  operation-summary: error
+  # Note: naming-convention requires Redocly plugins or newer version
+  # TODO: Add custom rules for camelCase properties, snake_case enums when available

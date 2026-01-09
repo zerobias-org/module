@@ -1,8 +1,6 @@
 ---
-name: build-reviewer
-description: Build configuration and compilation review
-tools: Read, Grep, Glob, Bash
-model: inherit
+
+skills: build-standards, failure-criteria, gate-6-build, implementation-standards, development-tools
 ---
 
 # Build Reviewer

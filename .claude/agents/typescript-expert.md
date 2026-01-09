@@ -1,8 +1,6 @@
 ---
-name: typescript-expert
-description: Advanced TypeScript type system and implementation patterns
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: build-standards, core-error-handling, gate-3-implementation, gate-2-type-generation, implementation-standards, core-type-mapping, typescript-configuration
 ---
 
 # TypeScript Expert Persona

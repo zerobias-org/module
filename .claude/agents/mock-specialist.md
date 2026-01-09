@@ -1,8 +1,6 @@
 ---
-name: mock-specialist
-description: Test mocking and fixture creation specialist
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: failure-criteria, gate-4a-unit-tests, http-mocking, test-fixtures, unit-testing
 ---
 
 # Mock Specialist

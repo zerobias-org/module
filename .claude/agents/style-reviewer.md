@@ -1,8 +1,6 @@
 ---
-name: style-reviewer
-description: Code style and formatting compliance review
-tools: Read, Grep, Glob, Bash
-model: inherit
+
+skills: build-standards, comment-style-guide, failure-criteria, implementation-standards
 ---
 
 # Style Reviewer

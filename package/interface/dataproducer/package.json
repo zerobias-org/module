@@ -73,7 +73,7 @@
     "@types/mocha": "^9.1.0",
     "@types/node": "^16.11.7",
     "@zerobias-org/eslint-config": "^1.0.8",
-    "@zerobias-org/util-codegen": "^2.0.3",
+    "@zerobias-org/util-codegen": "^2.0.10",
     "@zerobias-org/util-spectral-config": "^1.0.5",
     "chai": "^4.2.0",
     "concat-md": "^0.5.1",

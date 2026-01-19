@@ -59,8 +59,8 @@
     "import-artifact": "module"
   },
   "dependencies": {
-    "@zerobias-org/logger": "^2.0.10",
-    "@zerobias-org/product-zerobias-zerobias": "^2.0.1",
+    "@zerobias-org/logger": "latest",
+    "@zerobias-org/product-zerobias-zerobias": "latest",
     "@zerobias-org/suite-zerobias-interface": "latest"
   },
   "peerDependencies": {

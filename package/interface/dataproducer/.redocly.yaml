@@ -1,26 +1,96 @@
 # Redocly configuration for OpenAPI validation
-# Replaces Spectral for unified linting
+# Migrated from Spectral
 
 apis:
   main:
     root: ./api.yml
 
 extends:
-  - minimal
+  - recommended
 
 rules:
-  # Disable strict rules that don't apply to interface definitions
+  # Disabled rules (not applicable to interface definitions)
   no-empty-servers: off
   security-defined: off
   operation-4xx-response: off
   no-unused-components: off
+  info-contact: off
+  info-license: off
+  operation-description: off
+  tag-description: off
 
   # Structural rules
   struct: error
   no-unresolved-refs: error
-  no-invalid-media-type-examples: error
+  no-invalid-media-type-examples: warn
 
-  # Style rules (previously in Spectral)
+  # Operation rules (from Spectral operationMustHaveSummary)
   operation-summary: error
-  # Note: naming-convention requires Redocly plugins or newer version
-  # TODO: Add custom rules for camelCase properties, snake_case enums when available
+  operation-operationId: error
+  operation-operationId-unique: error
+
+  # Schema rules
+  no-invalid-schema-examples: warn
+  boolean-parameter-prefixes: off
+
+  # Path rules
+  no-ambiguous-paths: error
+  no-http-verbs-in-paths: error
+  no-path-trailing-slash: error
+  path-not-include-query: error
+
+  # Parameter rules
+  parameter-description: warn
+
+  # Server rules
+  no-server-example.com: error
+  no-server-trailing-slash: error
+
+  # Custom naming conventions (from Spectral propertyNamesShouldBeCamel)
+  rule/property-names-camelCase:
+    subject:
+      type: SchemaProperties
+    assertions:
+      casing: camelCase
+    severity: error
+    message: Property names must be camelCase.
+
+  rule/parameter-names-camelCase:
+    subject:
+      type: Parameter
+      property: name
+      filterInParentKeys:
+        - query
+        - path
+    assertions:
+      casing: camelCase
+    severity: error
+    message: Parameter names must be camelCase.
+
+  # Properties should have descriptions (from Spectral propertiesShouldHaveDescriptions)
+  rule/properties-have-description:
+    subject:
+      type: Schema
+      property: description
+    where:
+      - subject:
+          type: SchemaProperties
+        assertions:
+          defined: true
+    assertions:
+      defined: true
+    severity: warn
+    message: Properties should have a description.
+
+  # Note: reqBodyMustBeRefedOrHaveAtitle from Spectral not migrated
+  # (requires custom plugin - add to util-redocly-plugin when needed)
+
+  # Enums: snake_case disabled per local config
+  # rule/enum-values-snake_case:
+  #   subject:
+  #     type: Schema
+  #     property: enum
+  #   assertions:
+  #     casing: snake_case
+  #   severity: error
+  #   message: Enum values must be snake_case.

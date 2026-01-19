@@ -828,14 +828,17 @@ components:
             maxRetries:
               type: integer
               default: 3
+              description: Maximum number of retry attempts
             backoffStrategy:
               type: string
               enum: [exponential, linear, fixed]
               default: exponential
+              description: Strategy for calculating delay between retries
             retryableErrors:
               type: array
               items:
                 type: string
+              description: List of error codes that trigger a retry
           description: Retry configuration (function objects only)
     ObjectClass:
       type: string
@@ -855,6 +858,7 @@ components:
       default: one_level
     Schema:
       type: object
+      description: Metadata describing data structure and relationships
       required:
         - id
         - dataTypes
@@ -1025,6 +1029,7 @@ components:
               description: Link to this operation
             related:
               type: array
+              description: Links to related operations
               items:
                 type: object
                 properties:
@@ -1043,6 +1048,7 @@ components:
           description: Whether input is valid
         errors:
           type: array
+          description: List of validation errors
           items:
             type: object
             properties:
@@ -1057,6 +1063,7 @@ components:
                 description: Error code
         warnings:
           type: array
+          description: List of validation warnings
           items:
             type: object
             properties:
@@ -1098,6 +1105,7 @@ components:
       properties:
         operations:
           type: array
+          description: List of operations to execute
           items:
             $ref: '#/components/schemas/BulkOperation'
         atomic:
@@ -1113,11 +1121,13 @@ components:
       properties:
         results:
           type: array
+          description: Individual operation results
           items:
             type: object
             properties:
               success:
                 type: boolean
+                description: Whether the operation succeeded
               data:
                 description: Result data (if successful)
                 additionalProperties: true
@@ -1126,13 +1136,17 @@ components:
                 additionalProperties: true
         summary:
           type: object
+          description: Aggregated execution summary
           properties:
             total:
               type: integer
+              description: Total number of operations
             succeeded:
               type: integer
+              description: Number of successful operations
             failed:
               type: integer
+              description: Number of failed operations
     CreateObjectRequest:
       type: object
       properties:

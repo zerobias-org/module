@@ -20,7 +20,6 @@
         "@types/node": "^25.0.9",
         "@zerobias-org/eslint-config": "^1.0.15",
         "@zerobias-org/util-codegen": "^2.0.11",
-        "@zerobias-org/util-spectral-config": "^1.0.12",
         "chai": "^4.2.0",
         "concat-md": "^0.5.1",
         "mocha": "^11.7.5",
@@ -2968,27 +2967,6 @@
         "@zerobias-org/vendor-zerobias": "latest"
       }
     },
-    "node_modules/@zerobias-org/types-amazon": {
-      "version": "1.0.7",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/types-amazon/-/types-amazon-1.0.7.tgz",
-      "integrity": "sha512-uvZ2mEzXPIiCT05dVYPtpAzHymvlZ2mZ7kCNo4FN+QZm3NDsGqJAjbCeOVrXKX1SqAePRPaCRGham8KMEbDhZQ==",
-      "dev": true,
-      "license": "ISC"
-    },
-    "node_modules/@zerobias-org/types-amazon-js": {
-      "version": "1.0.22",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/types-amazon-js/-/types-amazon-js-1.0.22.tgz",
-      "integrity": "sha512-CN5yGyRQdhA8jC+SDx4h/BF4qSrzj+PnFCQj4j6eYNZ7AZmOCSd3atSUPETvY5MvIkLf7ncFh/rBONCa88ce9w==",
-      "dev": true,
-      "license": "ISC",
-      "dependencies": {
-        "@zerobias-org/types-amazon": "^1.0.7",
-        "@zerobias-org/types-core-js": "^1.2.4"
-      },
-      "engines": {
-        "node": ">=22.0.0"
-      }
-    },
     "node_modules/@zerobias-org/types-core": {
       "version": "1.0.13",
       "resolved": "https://pkg.zerobias.org/@zerobias-org/types-core/-/types-core-1.0.13.tgz",
@@ -4158,64 +4136,6 @@
         "node": ">=10"
       }
     },
-    "node_modules/@zerobias-org/types-format-spectral-ruleset": {
-      "version": "1.0.24",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/types-format-spectral-ruleset/-/types-format-spectral-ruleset-1.0.24.tgz",
-      "integrity": "sha512-FlQ6UYb5W8Fh+E5wUSXVs73MK34oVJmrnvyUfMF3NulAsugzTqTrN9I6oCseRz4xdwGeyrnhubYexH849ILcgA==",
-      "dev": true,
-      "license": "ISC",
-      "dependencies": {
-        "@zerobias-org/types-amazon-js": "^1.0.22",
-        "@zerobias-org/types-core-js": "^1.2.4",
-        "@zerobias-org/types-google-js": "^1.0.22",
-        "@zerobias-org/types-microsoft-js": "^1.0.21"
-      }
-    },
-    "node_modules/@zerobias-org/types-google": {
-      "version": "1.0.10",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/types-google/-/types-google-1.0.10.tgz",
-      "integrity": "sha512-ip4Yl7/8Kluw/0g29Q6QPJs+DBO83xTMRI2IiNkEl7/AF9cGmIrFRWJMNtpGEnfuac5BzHLyopEge4biP9QVOQ==",
-      "dev": true,
-      "license": "ISC",
-      "dependencies": {
-        "@zerobias-org/types-core": "^1.0.10"
-      }
-    },
-    "node_modules/@zerobias-org/types-google-js": {
-      "version": "1.0.22",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/types-google-js/-/types-google-js-1.0.22.tgz",
-      "integrity": "sha512-yMp40pTbxsWQrrvDTqv07GxvcDepl2nHtu9/o7A//2V89wqnlDiq+530hP9GYe6AyIwt9RfrN4qtVz3QLiK+sQ==",
-      "dev": true,
-      "license": "ISC",
-      "dependencies": {
-        "@zerobias-org/types-core-js": "^1.2.4",
-        "@zerobias-org/types-google": "^1.0.10"
-      },
-      "engines": {
-        "node": ">=22.0.0"
-      }
-    },
-    "node_modules/@zerobias-org/types-microsoft": {
-      "version": "1.0.7",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/types-microsoft/-/types-microsoft-1.0.7.tgz",
-      "integrity": "sha512-68Qx1V6vnpIGyvyHvWkkrokLoz/UEnZqQ/pB96l2/MJKAfMP2DzKDS+8/iXQiCnuD6uGhIzDL1FphZQuflSMXg==",
-      "dev": true,
-      "license": "ISC"
-    },
-    "node_modules/@zerobias-org/types-microsoft-js": {
-      "version": "1.0.21",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/types-microsoft-js/-/types-microsoft-js-1.0.21.tgz",
-      "integrity": "sha512-ic7hPXFVTmDXsY1RiHP5VSW5V8Qa8BYboQRAK1Ks2blf8AGfFmwBIdeNGc7cqvsaGBoboxgzCRhm7bvcsRo9ZA==",
-      "dev": true,
-      "license": "ISC",
-      "dependencies": {
-        "@zerobias-org/types-core-js": "^1.2.4",
-        "@zerobias-org/types-microsoft": "^1.0.7"
-      },
-      "engines": {
-        "node": ">=22.0.0"
-      }
-    },
     "node_modules/@zerobias-org/util-codegen": {
       "version": "2.0.11",
       "resolved": "https://pkg.zerobias.org/@zerobias-org/util-codegen/-/util-codegen-2.0.11.tgz",
@@ -4251,22 +4171,6 @@
         "mocha": "^11.7.5",
         "rimraf": "^6.1.0",
         "typescript": "^5.9.3"
-      },
-      "engines": {
-        "node": ">=22.0.0",
-        "npm": ">=10.0.0"
-      }
-    },
-    "node_modules/@zerobias-org/util-spectral-config": {
-      "version": "1.0.12",
-      "resolved": "https://pkg.zerobias.org/@zerobias-org/util-spectral-config/-/util-spectral-config-1.0.12.tgz",
-      "integrity": "sha512-3xdvtyRBi31mZImOYleZhCTKx4qnYhOCyry8Sl5+fpAr4A5DZkJH3vMhkWu6yuK9upOlPcp3efZhWcWEBYFcAg==",
-      "dev": true,
-      "license": "ISC",
-      "dependencies": {
-        "@zerobias-org/devops-tools": "^1.0.11",
-        "@zerobias-org/eslint-config": "^1.0.6",
-        "@zerobias-org/types-format-spectral-ruleset": "^1.0.24"
       },
       "engines": {
         "node": ">=22.0.0",

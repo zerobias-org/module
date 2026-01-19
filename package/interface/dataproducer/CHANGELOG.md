@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.1.0-rc.0](https://github.com/zerobias-org/module/compare/@zerobias-org/module-interface-dataproducer@1.0.1-rc.2...@zerobias-org/module-interface-dataproducer@1.1.0-rc.0) (2026-01-19)
+
+
+### Features
+
+* migrate to ESM with TypeScript 5.7 and tsx ([741a5e1](https://github.com/zerobias-org/module/commit/741a5e1de158bfae40c83a28bdcbdd2d67151b08))
+
+
+
+
+
 ## [1.0.1-rc.2](https://github.com/zerobias-org/module/compare/@zerobias-org/module-interface-dataproducer@1.0.1-rc.1...@zerobias-org/module-interface-dataproducer@1.0.1-rc.2) (2026-01-19)
 
 **Note:** Version bump only for package @zerobias-org/module-interface-dataproducer

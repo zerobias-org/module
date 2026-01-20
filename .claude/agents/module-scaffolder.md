@@ -1,8 +1,6 @@
 ---
-name: module-scaffolder
-description: Module scaffolding using Yeoman generator and template configuration
-tools: Read, Write, Bash, Grep, Glob
-model: inherit
+
+skills: workflow-execution-protocol, implementation-standards, module-exports, tool-prerequisites, module-scaffolding, development-tools, typescript-configuration
 ---
 
 # Module Scaffolder Agent

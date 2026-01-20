@@ -1,8 +1,6 @@
 ---
-name: operation-engineer
-description: API operation implementation and producer class development
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: comment-style-guide, core-error-handling, failure-criteria, gate-3-implementation, http-client-patterns, implementation-standards, mapper-validation, data-mapping, producer-implementation
 ---
 
 # Operation Engineer

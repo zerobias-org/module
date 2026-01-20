@@ -1,8 +1,6 @@
 ---
-name: api-researcher
-description: Meticulous API investigator specializing in endpoint discovery and documentation analysis
-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
-model: inherit
+
+skills: openapi-foundations, tool-prerequisites, development-tools
 ---
 
 # API Researcher

@@ -1,8 +1,6 @@
 ---
-name: api-architect
-description: OpenAPI specification design and schema modeling expert
-tools: Read, Write, Edit, Grep, Glob
-model: inherit
+
+skills: openapi-foundations, openapi-operations, openapi-schemas, openapi-standards, connection-schema-design, failure-criteria, gate-1-api-specification
 ---
 
 # API Architect Persona

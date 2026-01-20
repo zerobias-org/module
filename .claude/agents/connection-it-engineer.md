@@ -1,8 +1,6 @@
 ---
-name: connection-it-engineer
-description: Connection integration test implementation
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: connection-schema-design, environment-configuration, failure-criteria, gate-4b-integration-tests, gate-5-test-execution, integration-testing, security-standards, testing-principles
 ---
 
 # Connection IT Engineer

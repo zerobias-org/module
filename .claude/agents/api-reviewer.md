@@ -1,8 +1,6 @@
 ---
-name: api-reviewer
-description: Reviews API specifications for consistency and best practices
-tools: Read, Write, Edit, Grep, Glob
-model: inherit
+
+skills: spectral-linting, openapi-foundations, openapi-operations, openapi-schemas, openapi-standards, failure-criteria, gate-1-api-specification
 ---
 
 # API Reviewer

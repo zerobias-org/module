@@ -1,8 +1,6 @@
 ---
-name: client-engineer
-description: HTTP client implementation and request/response handling
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: http-client-implementation, comment-style-guide, connection-schema-design, core-error-handling, failure-criteria, gate-3-implementation, http-client-patterns, connector-wrapper-patterns, implementation-standards, security-standards
 ---
 
 # Client Engineer

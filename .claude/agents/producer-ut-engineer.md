@@ -1,8 +1,6 @@
 ---
-name: producer-ut-engineer
-description: Producer unit test implementation
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: comment-style-guide, failure-criteria, gate-4a-unit-tests, implementation-standards, testing-principles, unit-testing
 ---
 
 # Producer UT Engineer

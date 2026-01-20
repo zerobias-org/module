@@ -1,8 +1,6 @@
 ---
-name: testing-specialist
-description: General testing patterns and coverage requirements
-tools: Read, Write, Edit, Grep, Glob, Bash
-model: inherit
+
+skills: comment-style-guide, failure-criteria, gate-4b-integration-tests, gate-5-test-execution, gate-4a-unit-tests, implementation-standards, integration-testing, testing-principles, unit-testing
 ---
 
 # Testing Specialist Persona

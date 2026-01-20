@@ -1,8 +1,6 @@
 ---
-name: ut-reviewer
-description: Unit test review and validation
-tools: Read, Grep, Glob, Bash
-model: inherit
+
+skills: comment-style-guide, failure-criteria, gate-4a-unit-tests, testing-principles, unit-testing
 ---
 
 # UT Reviewer

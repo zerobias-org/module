@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   publish:
-    uses: zerobias-org/devops/.github/nx-workflows/publish-reusable.yml@main
+    uses: zerobias-org/devops/.github/workflows/publish-reusable-nx.yml@main
     secrets: inherit
     with:
       skip-publish-announcement: 'false'

@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
-      - uses: zerobias-org/devops/actions/setup-node@main
+      - uses: zerobias-org/devops/nx-actions/setup-node@main
       - name: Import Secrets
         uses: hashicorp/vault-action@v2.4.3
         with:

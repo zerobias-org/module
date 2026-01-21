@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
-      - uses: zerobias-org/devops/actions/setup-node@main
+      - uses: zerobias-org/devops/nx-actions/setup-node@main
       - name: Import Secrets
         uses: hashicorp/vault-action@v2.4.3
         with:
@@ -55,12 +55,11 @@ jobs:
           aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile tools
           aws configure set aws_session_token $AWS_SESSION_TOKEN --profile tools
 
-      - name: publish API client
-        uses: zerobias-org/devops/actions/publish-api-client@main
+      - name: publish SDK client
+        uses: zerobias-org/devops/nx-actions/publish-module-sdk@main
         with:
           package: '${{ matrix.package.name }}'
           apiName: '${{ matrix.package.apiName }}'
           apiPath: '${{ matrix.package.apiPath }}'
           publishToken: ${{ secrets.GITHUB_TOKEN }}
-          publishOnly: 'true'
 

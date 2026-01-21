@@ -56,6 +56,7 @@ jobs:
           aws configure set aws_session_token $AWS_SESSION_TOKEN --profile tools
 
       - name: publish SDK client
+        id: publish-sdk
         uses: zerobias-org/devops/nx-actions/publish-module-sdk@main
         with:
           package: '${{ matrix.package.name }}'
@@ -63,5 +64,25 @@ jobs:
           apiPath: '${{ matrix.package.apiPath }}'
           publishToken: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Release Announcement
-        uses: zerobias-org/devops/nx-actions/release-announcement@main
+      - name: Slack Notification
+        if: steps.publish-sdk.outputs.published == 'true'
+        uses: rtCamp/action-slack-notify@master
+        env:
+          SLACK_COLOR: good
+          SLACK_WEBHOOK: ${{ env.SLACK_RELEASES_WEBHOOK }}
+          SLACK_ICON_EMOJI: ':package:'
+          MSG_MINIMAL: 'true'
+          SLACK_TITLE: ':package: SDK client published :tada:'
+          SLACK_MESSAGE: '${{ steps.publish-sdk.outputs.packageId }}'
+          SLACK_FOOTER: ''
+
+      - name: Slack Notification on failure
+        uses: rtCamp/action-slack-notify@master
+        if: failure()
+        env:
+          SLACK_WEBHOOK: ${{ env.SLACK_DEVOPS_NOTIFICATIONS }}
+          SLACK_ICON_EMOJI: ":fire:"
+          MSG_MINIMAL: 'true'
+          SLACK_TITLE: ":fire: ${{ github.repository }} SDK publish failed"
+          SLACK_MESSAGE: "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SLACK_COLOR: danger

@@ -26,7 +26,8 @@
     "lint:fix": "nx run-many -t lint:src:fix",
     "reset": "npm run clean:full && npm install && npm run build:full",
     "test": "nx affected -t test",
-    "test:full": "nx run-many -t test"
+    "test:full": "nx run-many -t test",
+    "nx:publish": "lerna list --since HEAD~1 --json | jq -r '.[].location' | xargs -I {} bash -c 'cd {} && publish'"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com/"
@@ -43,9 +44,9 @@
   "homepage": "https://github.com/zerobias-org/module#readme",
   "overrides": {
     "@zerobias-org/types-core-js": "^1.2.9",
-    "tar": "7.5.6",
     "@rollup/plugin-commonjs": "^28.0.0",
-    "diff": "^8.0.3"
+    "diff": "^8.0.3",
+    "tar": "^7.5.6"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.3.1",

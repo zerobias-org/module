@@ -174,8 +174,7 @@ export async function configureServer() {
     
     // get the method to execute
     const apiParts = method.split('.');
-    const apiGetter = connection[`get${apiParts[0]}` as keyof typeof connection] as () => any;
-    const api = apiGetter();
+    const api = (connection as any)[`get${apiParts[0]}`]();
     const meth = api[apiParts[1]];
 
     const args: Array<unknown> = [];

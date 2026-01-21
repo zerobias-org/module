@@ -75,7 +75,30 @@ fi;
 echo "Publishing images since $SINCE"
 SINCE=${1:-"HEAD~1"}
 
-PAYLOAD=$(npx lerna list --since $SINCE --json | jq -rc '{"event_type": "image-publish", "client_payload": { "packages": [.[] | .name + "@" + .version] }}')
+# Filter out packages whose versions already exist in the registry
+PACKAGES_JSON=$(npx lerna list --since $SINCE --json)
+FILTERED_PACKAGES="[]"
+for row in $(echo "$PACKAGES_JSON" | jq -r '.[] | @base64'); do
+  _jq() {
+    echo ${row} | base64 --decode | jq -r ${1}
+  }
+  PKG_NAME=$(_jq '.name')
+  PKG_VERSION=$(_jq '.version')
+  # Check if this version exists in the registry
+  if npm view "${PKG_NAME}@${PKG_VERSION}" version 2>/dev/null | grep -q "$PKG_VERSION"; then
+    echo "Skipping $PKG_NAME@$PKG_VERSION - already published"
+  else
+    echo "Including $PKG_NAME@$PKG_VERSION - needs publishing"
+    FILTERED_PACKAGES=$(echo "$FILTERED_PACKAGES" | jq --argjson pkg "$(echo ${row} | base64 --decode)" '. + [$pkg]')
+  fi
+done
+
+if [ "$(echo "$FILTERED_PACKAGES" | jq 'length')" -eq 0 ]; then
+  echo "No new packages to publish, skipping dispatch events"
+  exit 0
+fi
+
+PAYLOAD=$(echo "$FILTERED_PACKAGES" | jq -rc '{"event_type": "image-publish", "client_payload": { "packages": [.[] | .name + "@" + .version] }}')
 curl -X POST \
 	-vvv \
 	--fail \
@@ -84,7 +107,7 @@ curl -X POST \
 	-H "Content-type: application/json" https://api.github.com/repos/zerobias-org/module/dispatches \
 	-d ''"$PAYLOAD"''
 
-PAYLOAD=$(npx lerna list --since $SINCE --json | jq -rc '{"event_type": "generate-kb", "client_payload": { "code_prefix": "ct", "title_prefix": "Connect to", "packages": [.[] | .name + "@" + .version] }}')
+PAYLOAD=$(echo "$FILTERED_PACKAGES" | jq -rc '{"event_type": "generate-kb", "client_payload": { "code_prefix": "ct", "title_prefix": "Connect to", "packages": [.[] | .name + "@" + .version] }}')
 curl -X POST \
 	-vvv \
 	--fail \
@@ -93,7 +116,7 @@ curl -X POST \
 	-H "Content-type: application/json" https://api.github.com/repos/zerobias-org/kb/dispatches \
 	-d ''"$PAYLOAD"''
 
-PAYLOAD=$(npx lerna list --since $SINCE --json | jq -rc '{"event_type": "client-publish", "client_payload": { "packages": [.[] | { "name": (.name + "@" + .version), "version": .version, "apiName": (.name | split("-") | .[-1] ), "apiPath": (.name | split("-") | .[-1] ) } ] }}')
+PAYLOAD=$(echo "$FILTERED_PACKAGES" | jq -rc '{"event_type": "client-publish", "client_payload": { "packages": [.[] | { "name": (.name + "@" + .version), "version": .version, "apiName": (.name | split("-") | .[-1] ), "apiPath": (.name | split("-") | .[-1] ) } ] }}')
 curl -X POST \
 	-vvv \
 	--fail \

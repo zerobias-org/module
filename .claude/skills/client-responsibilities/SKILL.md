@@ -69,7 +69,7 @@ class ServiceClient {
 ```yaml
 # ✅ CORRECT - Using core state (recommended)
 # connectionState.yml
-$ref: './node_modules/@auditmation/types-core/schema/oauthTokenState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
 # Includes: tokenType, accessToken, refreshToken, expiresIn, scope, url
 # Already extends baseConnectionState.yml (which provides expiresIn)
 ```
@@ -79,7 +79,7 @@ $ref: './node_modules/@auditmation/types-core/schema/oauthTokenState.yml'
 # connectionState.yml
 type: object
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'  # Provides expiresIn
+  - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'  # Provides expiresIn
   - type: object
     required:
       - accessToken
@@ -237,7 +237,7 @@ async refresh(): Promise<ConnectionState> {
 ## Use Core Connection Profiles and States
 
 ### 🚨 CRITICAL RULE
-- **MANDATORY**: Use existing core schemas from `@auditmation/types-core/schema` when they match
+- **MANDATORY**: Use existing core schemas from `@zerobias-org/types-core/schema` when they match
 - **FORBIDDEN**: Creating custom connectionProfile.yml or connectionState.yml when core schema exists
 
 ### Available Core Connection Profiles
@@ -245,7 +245,7 @@ async refresh(): Promise<ConnectionState> {
 ```yaml
 # ✅ CORRECT - Token/API Key authentication
 # connectionProfile.yml
-$ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
 
 # Fields: apiToken (required), url (optional)
 # Use when: API uses a single token/key for authentication
@@ -254,7 +254,7 @@ $ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
 ```yaml
 # ✅ CORRECT - OAuth Client Credentials
 # connectionProfile.yml
-$ref: './node_modules/@auditmation/types-core/schema/oauthClientProfile.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/oauthClientProfile.yml'
 
 # Fields: client_id (required), client_secret (required), url (optional)
 # Use when: OAuth client credentials grant (RFC 6749 section 4.4)
@@ -263,7 +263,7 @@ $ref: './node_modules/@auditmation/types-core/schema/oauthClientProfile.yml'
 ```yaml
 # ✅ CORRECT - OAuth Token-based
 # connectionProfile.yml
-$ref: './node_modules/@auditmation/types-core/schema/oauthTokenProfile.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenProfile.yml'
 
 # Fields: tokenType (default: bearer), accessToken (required), url (optional)
 # Use when: Pre-obtained OAuth token authentication
@@ -272,7 +272,7 @@ $ref: './node_modules/@auditmation/types-core/schema/oauthTokenProfile.yml'
 ```yaml
 # ✅ CORRECT - Username/Password authentication (Basic Auth pattern)
 # connectionProfile.yml
-$ref: './node_modules/@auditmation/types-core/schema/basicConnection.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/basicConnection.yml'
 
 # Fields: uri (required, URL), username (required), password (required)
 # Use when: API uses username/password or email/password authentication
@@ -284,7 +284,7 @@ $ref: './node_modules/@auditmation/types-core/schema/basicConnection.yml'
 # connectionProfile.yml
 type: object
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/basicConnection.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/basicConnection.yml'
   - type: object
     properties:
       username:
@@ -301,7 +301,7 @@ allOf:
 ```yaml
 # ✅ CORRECT - Simple token state
 # connectionState.yml
-$ref: './node_modules/@auditmation/types-core/schema/tokenConnectionState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenConnectionState.yml'
 
 # Fields: accessToken, expiresIn (from baseConnectionState)
 # Use when: Only need to persist access token with expiration
@@ -311,7 +311,7 @@ $ref: './node_modules/@auditmation/types-core/schema/tokenConnectionState.yml'
 ```yaml
 # ✅ CORRECT - Full OAuth state
 # connectionState.yml
-$ref: './node_modules/@auditmation/types-core/schema/oauthTokenState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
 
 # Fields: tokenType, accessToken, refreshToken, expiresIn (from base), scope, url
 # Use when: OAuth authorization code flow with refresh capability

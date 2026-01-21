@@ -17,7 +17,7 @@ This guide provides the mapping between OpenAPI string formats and their corresp
 - **String Conversion**: All types support `.toString()` method and template literal interpolation
 - **Import Sources**: Import types from the specified packages, not from Node.js built-ins
 
-## AWS Types (@auditmation/types-amazon-js)
+## AWS Types (@zerobias-org/types-amazon-js)
 
 | String Format | TypeScript Type | Usage Example |
 |---------------|------------------|---------------|
@@ -31,7 +31,7 @@ This guide provides the mapping between OpenAPI string formats and their corresp
 | `awsAccessPolicyStatementEffect` | `AwsAccessPolicyStatementEffect` | `toEnum(AwsAccessPolicyStatementEffect, value)` |
 | `awsAccessPolicyStatementOperator` | `AwsAccessPolicyStatementOperator` | `toEnum(AwsAccessPolicyStatementOperator, value)` |
 
-## Microsoft Azure Types (@auditmation/types-microsoft-js)
+## Microsoft Azure Types (@zerobias-org/types-microsoft-js)
 
 | String Format | TypeScript Type | Usage Example |
 |---------------|------------------|---------------|
@@ -46,7 +46,7 @@ This guide provides the mapping between OpenAPI string formats and their corresp
 | `azureResourceIdentity` | `AzureResourceIdentity` | `new AzureResourceIdentity(value)` |
 | `azureResourceIdentityType` | `AzureResourceIdentityType` | `toEnum(AzureResourceIdentityType, value)` |
 
-## Google Cloud Types (@auditmation/types-google-js)
+## Google Cloud Types (@zerobias-org/types-google-js)
 
 | String Format | TypeScript Type | Usage Example |
 |---------------|------------------|---------------|
@@ -58,7 +58,7 @@ This guide provides the mapping between OpenAPI string formats and their corresp
 | `gcpAccessPolicyBindingCondition` | `GcpAccessPolicyBindingCondition` | `new GcpAccessPolicyBindingCondition(value)` |
 | `gcpAccessPolicyVersion` | `GcpAccessPolicyVersion` | `toEnum(GcpAccessPolicyVersion, value)` |
 
-## Core Types (@auditmation/types-core-js)
+## Core Types (@zerobias-org/types-core-js)
 
 ### Binary/Encoding
 
@@ -169,16 +169,16 @@ This guide provides the mapping between OpenAPI string formats and their corresp
 
 | Format | Package | Type | Constructor Pattern |
 |--------|---------|------|-------------------|
-| `uuid` | @auditmation/types-core-js | UUID | `map(UUID, value)` |
-| `email` | @auditmation/types-core-js | Email | `map(Email, value)` |
-| `url` | @auditmation/types-core-js | URL | `map(URL, value)` |
+| `uuid` | @zerobias-org/types-core-js | UUID | `map(UUID, value)` |
+| `email` | @zerobias-org/types-core-js | Email | `map(Email, value)` |
+| `url` | @zerobias-org/types-core-js | URL | `map(URL, value)` |
 | `date-time` | Native | Date | `map(Date, value)` |
-| `ipAddress` | @auditmation/types-core-js | IpAddress | `map(IpAddress, value)` |
-| `phoneNumber` | @auditmation/types-core-js | PhoneNumber | `map(PhoneNumber, value)` |
-| `arn` | @auditmation/types-amazon-js | Arn | `map(Arn, value)` |
-| `cidr` | @auditmation/types-core-js | Cidr | `map(Cidr, value)` |
-| `duration` | @auditmation/types-core-js | Duration | `map(Duration, value)` |
-| `base64` | @auditmation/types-core-js | Byte | `map(Byte, value)` |
+| `ipAddress` | @zerobias-org/types-core-js | IpAddress | `map(IpAddress, value)` |
+| `phoneNumber` | @zerobias-org/types-core-js | PhoneNumber | `map(PhoneNumber, value)` |
+| `arn` | @zerobias-org/types-amazon-js | Arn | `map(Arn, value)` |
+| `cidr` | @zerobias-org/types-core-js | Cidr | `map(Cidr, value)` |
+| `duration` | @zerobias-org/types-core-js | Duration | `map(Duration, value)` |
+| `base64` | @zerobias-org/types-core-js | Byte | `map(Byte, value)` |
 
 ## Usage Patterns by Task
 
@@ -199,8 +199,8 @@ properties:
 
 ### Task 7: Implementation (Mappers)
 ```typescript
-import { map, toEnum } from '@auditmation/util-hub-module-utils';
-import { UUID, Email, URL } from '@auditmation/types-core-js';  // NEVER from Node.js!
+import { map, toEnum } from '@zerobias-org/util-hub-module-utils';
+import { UUID, Email, URL } from '@zerobias-org/types-core-js';  // NEVER from Node.js!
 
 export function toUserInfo(raw: any): UserInfo {
   return {
@@ -215,7 +215,7 @@ export function toUserInfo(raw: any): UserInfo {
 
 ### Task 8 & 9: Testing
 ```typescript
-import { UUID, Email } from '@auditmation/types-core-js';
+import { UUID, Email } from '@zerobias-org/types-core-js';
 
 it('should return user with correct types', () => {
   const user = await getUser('123');
@@ -249,13 +249,13 @@ JSON.stringify({ email });  // {"email":"user@example.com"}
 ```json
 {
   "dependencies": {
-    "@auditmation/types-core-js": "*",
-    "@auditmation/util-hub-module-utils": "*"
+    "@zerobias-org/types-core-js": "*",
+    "@zerobias-org/util-hub-module-utils": "*"
   },
   "devDependencies": {
-    "@auditmation/types-amazon-js": "*",  // If using AWS
-    "@auditmation/types-microsoft-js": "*",  // If using Azure
-    "@auditmation/types-google-js": "*"  // If using GCP
+    "@zerobias-org/types-amazon-js": "*",  // If using AWS
+    "@zerobias-org/types-microsoft-js": "*",  // If using Azure
+    "@zerobias-org/types-google-js": "*"  // If using GCP
   }
 }
 ```
@@ -270,7 +270,7 @@ import { URL } from 'node:url';  // WRONG!
 
 ### ✅ CORRECT - Using core types
 ```typescript
-import { URL } from '@auditmation/types-core-js';  // CORRECT!
+import { URL } from '@zerobias-org/types-core-js';  // CORRECT!
 ```
 
 ### ❌ WRONG - Direct enum instantiation
@@ -348,8 +348,8 @@ properties:
 
 ### Task 7: Data Transformation
 ```typescript
-import { Email, URL, UUID } from '@auditmation/types-core-js';
-import { map } from '@auditmation/util-hub-module-utils';
+import { Email, URL, UUID } from '@zerobias-org/types-core-js';
+import { map } from '@zerobias-org/util-hub-module-utils';
 
 function mapUser(raw: any): User {
   return {
@@ -362,7 +362,7 @@ function mapUser(raw: any): User {
 
 ### Task 8 & 9: Test Assertions
 ```typescript
-import { Email, URL, UUID } from '@auditmation/types-core-js';
+import { Email, URL, UUID } from '@zerobias-org/types-core-js';
 
 // Test assertions
 expect(user.id).to.be.instanceof(UUID);
@@ -387,21 +387,21 @@ const log = `Processing user ${uuid}`;
 **🚨 CRITICAL**: Always import from the specified packages:
 
 ```typescript
-// Core types - ALWAYS import from @auditmation/types-core-js
-import { URL, UUID, Email, IpAddress } from '@auditmation/types-core-js';
+// Core types - ALWAYS import from @zerobias-org/types-core-js
+import { URL, UUID, Email, IpAddress } from '@zerobias-org/types-core-js';
 
 // AWS types
-import { Arn, AwsService } from '@auditmation/types-amazon-js';
+import { Arn, AwsService } from '@zerobias-org/types-amazon-js';
 
 // Azure types  
-import { AzureVmSize, AzureResource } from '@auditmation/types-microsoft-js';
+import { AzureVmSize, AzureResource } from '@zerobias-org/types-microsoft-js';
 
 // Google Cloud types
-import { GcpAccessPolicy } from '@auditmation/types-google-js';
+import { GcpAccessPolicy } from '@zerobias-org/types-google-js';
 
 // NEVER import URL from Node.js built-ins
 // ❌ import { URL } from 'url';  // WRONG
-// ✅ import { URL } from '@auditmation/types-core-js';  // CORRECT
+// ✅ import { URL } from '@zerobias-org/types-core-js';  // CORRECT
 ```
 
 ## Validation and Error Handling

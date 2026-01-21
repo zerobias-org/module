@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 // TODO - enable lint for implementation ^
 import {
   AccessConnector,
@@ -24,28 +24,28 @@ import {
   wrapSiteProducer,
   wrapUserProducer,
   wrapZoneProducer
-} from '../generated/api';
-import { ConnectionProfile } from '../generated/model/ConnectionProfile';
+} from '../generated/api/index.js';
+import { ConnectionProfile } from '../generated/model/ConnectionProfile.js';
 import {
   ConnectionMetadata,
   OperationSupportStatus,
   OperationSupportStatusDef,
   ConnectionStatus,
-  OAuthConnectionDetails
-} from '@auditmation/hub-core';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { AuditProducerApiImpl } from './AuditProducerApiImpl';
-import { AuthProducerApiImpl } from './AuthProducerApiImpl';
-import { CredentialProducerApiImpl } from './CredentialProducerApiImpl';
-import { EntryProducerApiImpl } from './EntryProducerApiImpl';
-import { GroupProducerApiImpl } from './GroupProducerApiImpl';
-import { IdentityProviderProducerApiImpl } from './IdentityProviderProducerApiImpl';
-import { RoleProducerApiImpl } from './RoleProducerApiImpl';
-import { ScheduleProducerApiImpl } from './ScheduleProducerApiImpl';
-import { SiteProducerApiImpl } from './SiteProducerApiImpl';
-import { UserProducerApiImpl } from './UserProducerApiImpl';
-import { ZoneProducerApiImpl } from './ZoneProducerApiImpl';
-import { ConnectionState } from '../generated/model';
+  OauthConnectionDetails
+} from '@zerobias-org/types-core-js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
+import { AuditProducerApiImpl } from './AuditProducerApiImpl.js';
+import { AuthProducerApiImpl } from './AuthProducerApiImpl.js';
+import { CredentialProducerApiImpl } from './CredentialProducerApiImpl.js';
+import { EntryProducerApiImpl } from './EntryProducerApiImpl.js';
+import { GroupProducerApiImpl } from './GroupProducerApiImpl.js';
+import { IdentityProviderProducerApiImpl } from './IdentityProviderProducerApiImpl.js';
+import { RoleProducerApiImpl } from './RoleProducerApiImpl.js';
+import { ScheduleProducerApiImpl } from './ScheduleProducerApiImpl.js';
+import { SiteProducerApiImpl } from './SiteProducerApiImpl.js';
+import { UserProducerApiImpl } from './UserProducerApiImpl.js';
+import { ZoneProducerApiImpl } from './ZoneProducerApiImpl.js';
+import { ConnectionState } from '../generated/model/index.js';
 import { AxiosInstance } from 'axios';
 
 export class AccessImpl implements AccessConnector {

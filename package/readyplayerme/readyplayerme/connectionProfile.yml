@@ -1,1 +1,14 @@
-$ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+type: object
+required: 
+  - apiToken
+properties:
+  apiToken:
+    type: string  
+    description: Personal access token, an OAuth token, an installation access token or a JSON Web Token
+    format: password
+    example: AYjcyMzY3ZDhiNmJkNTY
+  url:
+    type: string
+    format: url
+    description: Organization domain
+    example: https://vendorapi.com

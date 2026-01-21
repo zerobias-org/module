@@ -36,7 +36,7 @@ Mappers   = Transform ONLY (API response → typed objects)
 
 ```typescript
 import axios, { AxiosInstance } from 'axios';
-import { Email, DateTime } from '@auditmation/types-core-js';
+import { Email, DateTime } from '@zerobias-org/types-core-js';
 import { handleAxiosError } from './util';
 import {
   ConnectionProfile,
@@ -191,7 +191,7 @@ import {
   RateLimitExceededError,
   UnexpectedError,
   InvalidStateError
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 
 /**
  * Handle axios errors and convert to core error types
@@ -314,8 +314,8 @@ function toSnakeCase(str: string): string {
 #### 7.5.1 Create Mappers.ts
 
 ```typescript
-import { map } from '@auditmation/util-hub-module-utils';
-import { UUID, Email, DateTime } from '@auditmation/types-core-js';
+import { map } from '@zerobias-org/util-hub-module-utils';
+import { UUID, Email, DateTime } from '@zerobias-org/types-core-js';
 import { User } from '../generated/api';
 import { ensureProperties, optional } from './util';
 
@@ -473,7 +473,7 @@ status: toEnum(UserStatus, raw.status) // Default: snake_case
 **Example: UserProducer.ts**
 
 ```typescript
-import { PagedResults } from '@auditmation/types-core-js';
+import { PagedResults } from '@zerobias-org/types-core-js';
 import { User } from '../generated/api';
 import { GitHubClient } from './GitHubClient';
 import { toUser } from './Mappers';
@@ -654,7 +654,7 @@ import {
   ConnectionStatus,
   OperationSupportStatus,
   AccessApi
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 import { GitHubClient } from './GitHubClient';
 import { UserProducer } from './UserProducer';
 import type {

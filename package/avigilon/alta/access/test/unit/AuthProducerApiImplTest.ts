@@ -1,11 +1,11 @@
 import { describe, it, beforeEach, afterEach } from 'mocha';
 import { expect } from 'chai';
 import nock from 'nock';
-import { Email } from '@auditmation/types-core-js';
-import { AuthProducerApiImpl } from '../../src/AuthProducerApiImpl';
-import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
-import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
-import { mockAuthenticatedRequest, cleanNock } from '../utils/nock-helpers';
+import { Email } from '@zerobias-org/types-core-js';
+import { AuthProducerApiImpl } from '../../src/AuthProducerApiImpl.js';
+import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient.js';
+import { ConnectionProfile } from '../../generated/model/ConnectionProfile.js';
+import { mockAuthenticatedRequest, cleanNock } from '../utils/nock-helpers.js';
 
 describe('AuthProducerApiImpl', () => {
   let authProducer: AuthProducerApiImpl;

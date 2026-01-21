@@ -1,8 +1,8 @@
-import { NotConnectedError, NoSuchObjectError } from '@auditmation/types-core-js';
-import { AuthProducerApi } from '../generated/api';
-import { TokenProperties } from '../generated/model';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toTokenProperties } from './Mappers';
+import { NotConnectedError, NoSuchObjectError } from '@zerobias-org/types-core-js';
+import { AuthProducerApi } from '../generated/api/index.js';
+import { TokenProperties } from '../generated/model/index.js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
+import { toTokenProperties } from './Mappers.js';
 
 export class AuthProducerApiImpl implements AuthProducerApi {
   private readonly client: AvigilonAltaAccessClient;

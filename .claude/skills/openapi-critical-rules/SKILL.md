@@ -306,7 +306,7 @@ paths:
   /users:
     get:
       parameters:
-        - $ref: './node_modules/@auditmation/types-core/schema/pageTokenParam.yml'
+        - $ref: './node_modules/@zerobias-org/types-core/schema/pageTokenParam.yml'
         - name: pageSize
           in: query
           schema:

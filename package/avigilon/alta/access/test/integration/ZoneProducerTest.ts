@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'mocha';
 import { expect } from 'chai';
-import { prepareApi, debugLog } from './Common';
-import { AccessImpl } from '../../src/AccessImpl';
+import { prepareApi, debugLog } from './Common.js';
+import { AccessImpl } from '../../src/AccessImpl.js';
 
 describe('Avigilon Alta Access - Zone Producer Tests', () => {
   let access: AccessImpl;

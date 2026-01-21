@@ -1,12 +1,14 @@
 import { expect } from 'chai';
+import stringify from 'safe-stable-stringify';
 import { describe, it, before } from 'mocha';
-import { getLogger } from '@auditmation/util-logger';
-import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common';
-import { AccessImpl, AuditApi } from '../../src';
+import { LoggerEngine } from '@zerobias-org/logger';
+import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common.js';
+import { AccessImpl } from '../../src/index.js';
+import type { AuditApi } from '../../src/index.js';
 
 // Core types for assertions
 
-const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+const logger = LoggerEngine.root();
 
 describe('Avigilon Alta Access - Audit Producer Tests', function () {
   this.timeout(testConfig.timeout);
@@ -26,7 +28,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
     it('should list audit logs with default pagination', async () => {
       const auditLogsResult = await auditApi.listAuditLogs(testConfig.organizationId);
 
-      logger.debug(`auditApi.listAuditLogs(${testConfig.organizationId})`, JSON.stringify(auditLogsResult, null, 2));
+      logger.debug(`auditApi.listAuditLogs(${testConfig.organizationId}): ${stringify(auditLogsResult, null, 2)}`)
 
       expect(auditLogsResult).to.not.be.null;
       expect(auditLogsResult).to.not.be.undefined;
@@ -114,7 +116,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
         10 // pageSize
       );
 
-      logger.debug(`auditApi.listAuditLogs(${testConfig.organizationId}, undefined, undefined, 1, 10)`, JSON.stringify(auditLogsResult, null, 2));
+      logger.debug(`auditApi.listAuditLogs(${testConfig.organizationId}, undefined, undefined, 1, 10): ${stringify(auditLogsResult, null, 2)}`)
 
       expect(auditLogsResult).to.not.be.null;
       expect(auditLogsResult).to.not.be.undefined;
@@ -140,7 +142,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
         5 // pageSize
       );
 
-      logger.debug(`auditApi.listAuditLogs(${testConfig.organizationId}, undefined, undefined, 2, 5)`, JSON.stringify(auditLogsResult, null, 2));
+      logger.debug(`auditApi.listAuditLogs(${testConfig.organizationId}, undefined, undefined, 2, 5): ${stringify(auditLogsResult, null, 2)}`)
 
       expect(auditLogsResult).to.not.be.null;
       expect(auditLogsResult).to.not.be.undefined;
@@ -165,7 +167,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
         100 // pageSize (larger page)
       );
 
-      logger.debug(`auditApi.listAuditLogs(${testConfig.organizationId}, undefined, undefined, 1, 100)`, JSON.stringify(auditLogsResult, null, 2));
+      logger.debug(`auditApi.listAuditLogs(${testConfig.organizationId}, undefined, undefined, 1, 100): ${stringify(auditLogsResult, null, 2)}`)
 
       expect(auditLogsResult).to.not.be.null;
       expect(auditLogsResult.items).to.be.an('array');
@@ -196,7 +198,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
         20
       );
 
-      logger.debug(`auditApi.listAuditLogs with filter: ${filter}`, JSON.stringify(auditLogsResult, null, 2));
+      logger.debug(`auditApi.listAuditLogs with filter: ${filter}: ${stringify(auditLogsResult, null, 2)}`)
 
       expect(auditLogsResult).to.not.be.null;
       expect(auditLogsResult.items).to.be.an('array');
@@ -232,7 +234,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
           20
         );
 
-        logger.debug('auditApi.listAuditLogs with category filter', JSON.stringify(auditLogsResult, null, 2));
+        logger.debug(`auditApi.listAuditLogs with category filter ${stringify(auditLogsResult, null, 2)}`);
 
         expect(auditLogsResult).to.not.be.null;
         expect(auditLogsResult.items).to.be.an('array');
@@ -248,7 +250,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
       } catch (error: unknown) {
         // Some filters might not be supported - log and skip
         const err = error as Error;
-        logger.debug('Filter not supported or no results', err.message);
+        logger.debug(`Filter not supported or no results: ${stringify(err.message)}`);
 
         // Still a valid test outcome
         expect(error).to.not.be.null;
@@ -268,7 +270,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
           20
         );
 
-        logger.debug('auditApi.listAuditLogs with search options', JSON.stringify(auditLogsResult, null, 2));
+        logger.debug(`auditApi.listAuditLogs with search options: ${stringify(auditLogsResult, null, 2)}`);
 
         expect(auditLogsResult).to.not.be.null;
         expect(auditLogsResult.items).to.be.an('array');
@@ -278,7 +280,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
       } catch (error: unknown) {
         // Options might not be supported in all cases - log and skip
         const err = error as Error;
-        logger.debug('Search options not supported or invalid', err.message);
+        logger.debug(`Search options not supported or invalid: ${stringify(err.message)}`);
 
         // Still a valid test outcome
         expect(error).to.not.be.null;
@@ -300,7 +302,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
           15
         );
 
-        logger.debug('auditApi.listAuditLogs with filter and options', JSON.stringify(auditLogsResult, null, 2));
+        logger.debug(`auditApi.listAuditLogs with filter and options: ${stringify(auditLogsResult, null, 2)}`);
 
         expect(auditLogsResult).to.not.be.null;
         expect(auditLogsResult.items).to.be.an('array');
@@ -309,7 +311,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
         await saveFixture('audit-logs-list-filtered-with-options.json', auditLogsResult);
       } catch (error: unknown) {
         const err = error as Error;
-        logger.debug('Combined filter and options not supported', err.message);
+        logger.debug(`Combined filter and options not supported: ${stringify(err.message)}`);
         expect(error).to.not.be.null;
       }
     });
@@ -325,7 +327,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
       }
 
       const log = auditLogsResult.items[0];
-      logger.debug('Validating audit log structure', JSON.stringify(log, null, 2));
+      logger.debug(`Validating audit log structure: ${stringify(log, null, 2)}`);
 
       expect(log).to.be.an('object');
 
@@ -373,7 +375,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
       const logWithActor = auditLogsResult.items.find((log) => log.actorId || log.actorName || log.actorEmail);
 
       if (logWithActor) {
-        logger.debug('Validating actor information', JSON.stringify(logWithActor, null, 2));
+        logger.debug(`Validating actor information: ${stringify(logWithActor, null, 2)}`);
 
         if (logWithActor.actorId) {
           expect(logWithActor.actorId).to.be.a('string');
@@ -407,7 +409,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
       const logWithTarget = auditLogsResult.items.find((log) => log.targetId || log.targetName || log.targetType);
 
       if (logWithTarget) {
-        logger.debug('Validating target information', JSON.stringify(logWithTarget, null, 2));
+        logger.debug(`Validating target information: ${stringify(logWithTarget, null, 2)}`);
 
         if (logWithTarget.targetId) {
           expect(logWithTarget.targetId).to.be.a('string');
@@ -471,7 +473,7 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
         10
       );
 
-      logger.debug('Empty results test', JSON.stringify(auditLogsResult, null, 2));
+      logger.debug(`Empty results test: ${stringify(auditLogsResult, null, 2)}`);
 
       expect(auditLogsResult).to.not.be.null;
       expect(auditLogsResult.items).to.be.an('array');
@@ -487,18 +489,18 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
 
       try {
         const auditLogsResult = await auditApi.listAuditLogs(invalidOrgId);
-        logger.debug('Invalid org ID result', JSON.stringify(auditLogsResult, null, 2));
+        logger.debug(`Invalid org ID result: ${stringify(auditLogsResult, null, 2)}`);
 
         // If no error thrown, should return empty results
         expect(auditLogsResult.items).to.be.an('array');
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for invalid organization ID', err.message);
+        logger.debug(`Expected error for invalid organization ID: ${stringify(err.message)}`);
 
         expect(error).to.not.be.null;
 
         // Log the error for debugging
-        logger.debug('Invalid org error:', JSON.stringify(error, null, 2));
+        logger.debug(`Invalid org error:: ${stringify(error, null, 2)}`);
 
         // Common error patterns for invalid organization
         const errorMessage = err.message?.toLowerCase() || '';
@@ -536,13 +538,13 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
           invalidFilter
         );
 
-        logger.debug('Invalid filter result', JSON.stringify(auditLogsResult, null, 2));
+        logger.debug(`Invalid filter result: ${stringify(auditLogsResult, null, 2)}`);
 
         // API might return empty results or throw error
         expect(auditLogsResult).to.not.be.null;
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for invalid filter', err.message);
+        logger.debug(`Expected error for invalid filter: ${stringify(err.message)}`);
 
         expect(error).to.not.be.null;
 
@@ -613,8 +615,8 @@ describe('Avigilon Alta Access - Audit Producer Tests', function () {
         pageSize
       );
 
-      logger.debug('Page 1 count:', page1.items.length);
-      logger.debug('Page 2 count:', page2.items.length);
+      logger.debug(`Page 1 count:: ${stringify(page1.items.length)}`);
+      logger.debug(`Page 2 count:: ${stringify(page2.items.length)}`);
 
       expect(page1.items).to.be.an('array');
       expect(page2.items).to.be.an('array');

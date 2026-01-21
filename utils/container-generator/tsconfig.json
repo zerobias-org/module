@@ -1,23 +1,19 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "noImplicitAny": false,
-    "suppressImplicitAnyIndexErrors": true,
-    "esModuleInterop": true,
-    "target": "ES5",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
     "strict": true,
-    "moduleResolution": "node",
+    "noImplicitAny": false,
     "removeComments": true,
     "sourceMap": true,
-    "noLib": false,
-    "allowJs": true,
     "declaration": true,
-    "lib": ["es6", "es5"],
+    "lib": ["ES2022"],
     "outDir": "dist",
     "typeRoots": [
-        "node_modules/@types"
+      "node_modules/@types"
     ],
-    "resolveJsonModule": true
+    "skipLibCheck": true
   },
   "include": [
     "src/**/*",

@@ -1,9 +1,9 @@
 import { AxiosInstance } from 'axios';
-import { PagedResults, NoSuchObjectError, UnexpectedError } from '@auditmation/types-core-js';
-import { GroupProducerApi } from '../generated/api/GroupApi';
-import { Group, GroupInfo, User, Entry, GroupZoneGroup, GroupZone } from '../generated/model';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toGroup, toGroupInfo, toUser, toEntry, toGroupZoneGroup, toGroupZone } from './Mappers';
+import { PagedResults, NoSuchObjectError, UnexpectedError } from '@zerobias-org/types-core-js';
+import { GroupProducerApi } from '../generated/api/GroupApi.js';
+import { Group, GroupInfo, User, Entry, GroupZoneGroup, GroupZone } from '../generated/model/index.js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
+import { toGroup, toGroupInfo, toUser, toEntry, toGroupZoneGroup, toGroupZone } from './Mappers.js';
 
 export class GroupProducerApiImpl implements GroupProducerApi {
   private readonly httpClient: AxiosInstance;
@@ -54,7 +54,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toEntry);
+    results.items = response.data.data.map((item) => toEntry(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -81,7 +81,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toUser);
+    results.items = response.data.data.map((item) => toUser(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -101,7 +101,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toGroup);
+    results.items = response.data.data.map((item) => toGroup(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -128,7 +128,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toGroupZoneGroup);
+    results.items = response.data.data.map((item) => toGroupZoneGroup(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -155,7 +155,7 @@ export class GroupProducerApiImpl implements GroupProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toGroupZone);
+    results.items = response.data.data.map((item) => toGroupZone(item));
     results.count = response.data.totalCount || 0;
   }
 }

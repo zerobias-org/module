@@ -134,9 +134,9 @@ export const TEST_WEBHOOK_ID = process.env.TEST_WEBHOOK_ID || '';
 ### Standard Pattern:
 
 ```typescript
-import { getLogger } from '@auditmation/util-logger';
+import { LoggerEngine } from '@zerobias-org/logger';
 
-const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+const logger = LoggerEngine.root();
 
 describe('User Producer Tests', function() {
   // ... setup ...
@@ -156,7 +156,7 @@ describe('User Producer Tests', function() {
 ### Debug Log Requirements:
 
 **Every operation test MUST:**
-1. ✅ Import logger from `@auditmation/util-logger`
+1. ✅ Import logger from `@zerobias-org/logger`
 2. ✅ Create logger instance with LOG_LEVEL from environment
 3. ✅ Log operation parameters and result AFTER operation call
 4. ✅ Use descriptive log message showing operation name and parameters

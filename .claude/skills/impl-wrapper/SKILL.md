@@ -69,7 +69,7 @@ import {
   OperationSupportStatus,
   OperationSupportStatusDef,
   ConnectionStatus
-} from '@auditmation/hub-core';
+} from '@zerobias-org/types-core-js';
 import { <Service>Client } from './<Service>Client';
 import { <Resource>ProducerApiImpl } from './<Resource>ProducerApiImpl';
 import { ConnectionState } from '../generated/model';
@@ -143,7 +143,7 @@ import {
   InvalidCredentialsError,
   UnauthorizedError,
   NotConnectedError
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 import { ConnectionProfile } from '../generated/model/ConnectionProfile';
 import { ConnectionState } from '../generated/model';
 

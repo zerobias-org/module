@@ -1,7 +1,7 @@
-/* eslint-disable */
-import { toEnum, map } from '@auditmation/util-hub-module-utils';
-import { URL, Email } from '@auditmation/types-core-js';
-import { mapWith, ensureProperties, optional } from './util';
+ 
+import { toEnum, map } from '@zerobias-org/util-hub-module-utils';
+import { URL, Email } from '@zerobias-org/types-core-js';
+import { mapWith, ensureProperties, optional } from './util.js';
 import {
   User,
   UserInfo,
@@ -79,7 +79,7 @@ import {
   SharedUser,
   UserCredential,
   UserZoneUser
-} from '../generated/model';
+} from '../generated/model/index.js';
 
 // ============================================================================
 // HELPER FUNCTIONS (NON-EXPORTED) - Declared before exported mappers

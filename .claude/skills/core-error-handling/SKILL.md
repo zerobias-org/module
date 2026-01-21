@@ -7,12 +7,12 @@ description: Core error types and HTTP status code mapping patterns
 
 ## Overview
 
-All modules **MUST** use core errors from `@auditmation/types-core-js` instead of generic TypeScript `Error` class. This guide provides the correct constructor patterns for each error type.
+All modules **MUST** use core errors from `@zerobias-org/types-core-js` instead of generic TypeScript `Error` class. This guide provides the correct constructor patterns for each error type.
 
 ## 🚨 CRITICAL RULES
 
 1. **NEVER use generic `Error` class** - Always use core errors
-2. **Import from `@auditmation/types-core-js`** - All core errors are available from the main package
+2. **Import from `@zerobias-org/types-core-js`** - All core errors are available from the main package
 3. **Follow exact constructor signatures** - Each error has specific required and optional parameters
 4. **Timestamp is usually optional** - Most errors auto-generate timestamps if not provided
 
@@ -23,7 +23,7 @@ All modules **MUST** use core errors from `@auditmation/types-core-js` instead o
 #### InvalidCredentialsError
 Use for authentication failures (401 errors):
 ```typescript
-import { InvalidCredentialsError } from '@auditmation/types-core-js';
+import { InvalidCredentialsError } from '@zerobias-org/types-core-js';
 
 // Basic usage (timestamp auto-generated)
 throw new InvalidCredentialsError();
@@ -35,7 +35,7 @@ throw new InvalidCredentialsError(new Date());
 #### UnauthorizedError  
 Use for authorization failures (403 errors):
 ```typescript
-import { UnauthorizedError } from '@auditmation/types-core-js';
+import { UnauthorizedError } from '@zerobias-org/types-core-js';
 
 // Basic usage (timestamp auto-generated)
 throw new UnauthorizedError();
@@ -49,7 +49,7 @@ throw new UnauthorizedError(new Date());
 #### InvalidInputError
 Use for bad request data (400/422 errors):
 ```typescript
-import { InvalidInputError } from '@auditmation/types-core-js';
+import { InvalidInputError } from '@zerobias-org/types-core-js';
 
 // Required: type and value
 throw new InvalidInputError('username', 'invalid@value');
@@ -66,7 +66,7 @@ throw new InvalidInputError('id', '123abc', [], new Date());
 #### NoSuchObjectError
 Use for resource not found (404 errors):
 ```typescript
-import { NoSuchObjectError } from '@auditmation/types-core-js';
+import { NoSuchObjectError } from '@zerobias-org/types-core-js';
 
 // Required: type and id
 throw new NoSuchObjectError('user', 'john_doe');
@@ -81,7 +81,7 @@ throw new NoSuchObjectError('repository', 'my-repo', new Date());
 #### RateLimitExceededError
 Use for rate limit exceeded (429 errors):
 ```typescript
-import { RateLimitExceededError } from '@auditmation/types-core-js';
+import { RateLimitExceededError } from '@zerobias-org/types-core-js';
 
 // Basic usage
 throw new RateLimitExceededError();
@@ -98,7 +98,7 @@ throw new RateLimitExceededError(new Date());
 #### UnexpectedError
 Use for server errors (500+ errors) and unexpected cases:
 ```typescript
-import { UnexpectedError } from '@auditmation/types-core-js';
+import { UnexpectedError } from '@zerobias-org/types-core-js';
 
 // Required: message
 throw new UnexpectedError('Database connection failed');
@@ -132,7 +132,7 @@ import {
   InvalidInputError,
   RateLimitExceededError,
   UnexpectedError,
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 
 private handleApiError(error: any): never {
   const status = error.status || error.response?.status || 500;
@@ -262,7 +262,7 @@ import {
   RateLimitExceededError,
   UnexpectedError,
   // Add other errors as needed
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 ```
 
 ## Complete Error Handling Utility Function
@@ -280,7 +280,7 @@ import {
   ConflictError,
   TimeoutError,
   ForbiddenError
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 
 export function handleAxiosError(error: any): never {
   // Log for debugging

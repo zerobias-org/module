@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'mocha';
 import { expect } from 'chai';
-import { prepareApi } from './Common';
-import { AccessImpl } from '../../src/AccessImpl';
+import { prepareApi } from './Common.js';
+import { AccessImpl } from '../../src/AccessImpl.js';
 
 describe('Avigilon Alta Access - Auth Producer Tests', () => {
   let access: AccessImpl;

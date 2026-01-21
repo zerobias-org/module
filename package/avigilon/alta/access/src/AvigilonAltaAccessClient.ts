@@ -7,9 +7,9 @@ import {
   RateLimitExceededError,
   UnexpectedError,
   NotConnectedError
-} from '@auditmation/types-core-js';
-import { ConnectionProfile } from '../generated/model/ConnectionProfile';
-import { ConnectionState } from '../generated/model';
+} from '@zerobias-org/types-core-js';
+import { ConnectionProfile } from '../generated/model/ConnectionProfile.js';
+import { ConnectionState } from '../generated/model/index.js';
 
 export class AvigilonAltaAccessClient {
   private httpClient: AxiosInstance | null = null;
@@ -30,7 +30,7 @@ export class AvigilonAltaAccessClient {
     // Create temporary client for login
     const tempClient = axios.create({
       baseURL: this.baseUrl,
-      timeout: 30000,
+      timeout: 30_000,
       headers: {
         accept: 'application/json',
         'content-type': 'application/json',
@@ -64,7 +64,7 @@ export class AvigilonAltaAccessClient {
       // Create authenticated client
       this.httpClient = axios.create({
         baseURL: this.baseUrl,
-        timeout: 30000,
+        timeout: 30_000,
         headers: {
           Authorization: `Bearer ${this.accessToken}`,
           'Content-Type': 'application/json',
@@ -160,7 +160,7 @@ export class AvigilonAltaAccessClient {
       this.tokenExpiresAt = new Date(expiresAt);
 
       // Update the Authorization header in the existing HTTP client
-      // eslint-disable-next-line @typescript-eslint/dot-notation
+       
       this.httpClient.defaults.headers['Authorization'] = `Bearer ${this.accessToken}`;
 
       // Calculate seconds until expiration
@@ -187,22 +187,28 @@ export class AvigilonAltaAccessClient {
     const message = responseData?.message as string || error.message || 'Unknown error';
 
     switch (status) {
-      case 401:
+      case 401: {
         throw new InvalidCredentialsError();
-      case 403:
+      }
+      case 403: {
         if (message.toLowerCase().includes('rate limit')) {
           throw new RateLimitExceededError();
         }
         throw new UnauthorizedError();
-      case 404:
+      }
+      case 404: {
         throw new NoSuchObjectError('resource', 'unknown');
+      }
       case 400:
-      case 422:
+      case 422: {
         throw new InvalidInputError('request', message);
-      case 429:
+      }
+      case 429: {
         throw new RateLimitExceededError();
-      default:
+      }
+      default: {
         throw new UnexpectedError(message, status);
+      }
     }
   };
 }

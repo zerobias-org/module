@@ -1,16 +1,16 @@
 import { expect } from 'chai';
 import nock from 'nock';
-import { PagedResults, Email, UnexpectedError } from '@auditmation/types-core-js';
-import { AuditProducerApiImpl } from '../../src/AuditProducerApiImpl';
-import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
-import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
-import { AuditLogEntry } from '../../generated/model';
+import { PagedResults, Email, UnexpectedError } from '@zerobias-org/types-core-js';
+import { AuditProducerApiImpl } from '../../src/AuditProducerApiImpl.js';
+import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient.js';
+import { ConnectionProfile } from '../../generated/model/ConnectionProfile.js';
+import { AuditLogEntry } from '../../generated/model/index.js';
 import {
   mockAuthenticatedRequest,
   mockPaginatedResponse,
   mockErrorResponse,
   cleanNock
-} from '../utils/nock-helpers';
+} from '../utils/nock-helpers.js';
 
 describe('AuditProducerApiImpl', () => {
   let client: AvigilonAltaAccessClient;

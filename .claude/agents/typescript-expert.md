@@ -62,7 +62,7 @@ skills: build-standards, core-error-handling, gate-3-implementation, gate-2-type
 ### 1. Type Implementation
 ```typescript
 // Enforce strong typing
-import { UUID, Email, URL } from '@auditmation/types-core-js';
+import { UUID, Email, URL } from '@zerobias-org/types-core-js';
 
 interface User {
   id: UUID;           // Not string

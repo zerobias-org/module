@@ -1,21 +1,21 @@
 import { AxiosInstance } from 'axios';
-import { PagedResults, NoSuchObjectError, UnexpectedError } from '@auditmation/types-core-js';
-import { IdentityProviderProducerApi } from '../generated/api/IdentityProviderApi';
+import { PagedResults, NoSuchObjectError, UnexpectedError } from '@zerobias-org/types-core-js';
+import { IdentityProviderProducerApi } from '../generated/api/IdentityProviderApi.js';
 import {
   IdentityProviderType,
   IdentityProviderTypeInfo,
   IdentityProvider,
   IdentityProviderGroup,
   IdentityProviderGroupRelation
-} from '../generated/model';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
+} from '../generated/model/index.js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
 import {
   toIdentityProviderType,
   toIdentityProviderTypeInfo,
   toIdentityProvider,
   toIdentityProviderGroup,
   toIdentityProviderGroupRelation
-} from './Mappers';
+} from './Mappers.js';
 
 export class IdentityProviderProducerApiImpl implements IdentityProviderProducerApi {
   private readonly httpClient: AxiosInstance;
@@ -46,7 +46,7 @@ export class IdentityProviderProducerApiImpl implements IdentityProviderProducer
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toIdentityProviderGroupRelation);
+    results.items = response.data.data.map((item) => toIdentityProviderGroupRelation(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -89,7 +89,7 @@ export class IdentityProviderProducerApiImpl implements IdentityProviderProducer
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toIdentityProviderGroup);
+    results.items = response.data.data.map((item) => toIdentityProviderGroup(item));
     results.count = response.data.totalCount || 0;
 
     // Handle pagination token if present
@@ -116,7 +116,7 @@ export class IdentityProviderProducerApiImpl implements IdentityProviderProducer
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toIdentityProviderType);
+    results.items = response.data.data.map((item) => toIdentityProviderType(item));
     results.count = response.data.totalCount || 0;
 
     // Handle pagination token if present
@@ -143,7 +143,7 @@ export class IdentityProviderProducerApiImpl implements IdentityProviderProducer
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toIdentityProvider);
+    results.items = response.data.data.map((item) => toIdentityProvider(item));
     results.count = response.data.totalCount || 0;
 
     // Handle pagination token if present

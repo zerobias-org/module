@@ -1,6 +1,6 @@
 import { AxiosInstance } from 'axios';
-import { PagedResults, NoSuchObjectError, UnexpectedError } from '@auditmation/types-core-js';
-import { UserProducerApi } from '../generated/api/UserApi';
+import { PagedResults, NoSuchObjectError, UnexpectedError } from '@zerobias-org/types-core-js';
+import { UserProducerApi } from '../generated/api/UserApi.js';
 import {
   User,
   UserInfo,
@@ -17,8 +17,8 @@ import {
   SharedUser,
   UserCredential,
   UserZoneUser
-} from '../generated/model';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
+} from '../generated/model/index.js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
 import {
   toUser,
   toUserInfo,
@@ -35,7 +35,7 @@ import {
   toSharedUser,
   toUserCredential,
   toUserZoneUser
-} from './Mappers';
+} from './Mappers.js';
 
 export class UserProducerApiImpl implements UserProducerApi {
   private readonly httpClient: AxiosInstance;
@@ -80,7 +80,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toRole);
+    results.items = response.data.data.map((item) => toRole(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -106,7 +106,7 @@ export class UserProducerApiImpl implements UserProducerApi {
     }
 
     // Apply mappers and set pagination info from new response structure
-    results.items = response.data.data.map(toSite);
+    results.items = response.data.data.map((item) => toSite(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -126,7 +126,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toUser);
+    results.items = response.data.data.map((item) => toUser(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -151,7 +151,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toUserZone);
+    results.items = response.data.data.map((item) => toUserZone(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -176,7 +176,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toMfaCredential);
+    results.items = response.data.data.map((item) => toMfaCredential(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -201,7 +201,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toUserPicture);
+    results.items = response.data.data.map((item) => toUserPicture(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -226,7 +226,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toGroup);
+    results.items = response.data.data.map((item) => toGroup(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -251,7 +251,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toUserEntry);
+    results.items = response.data.data.map((item) => toUserEntry(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -276,7 +276,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toUserActivityEvent);
+    results.items = response.data.data.map((item) => toUserActivityEvent(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -300,7 +300,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toOrgIdentity);
+    results.items = response.data.data.map((item) => toOrgIdentity(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -324,7 +324,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toOrgPicture);
+    results.items = response.data.data.map((item) => toOrgPicture(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -348,7 +348,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toSharedUser);
+    results.items = response.data.data.map((item) => toSharedUser(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -373,7 +373,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toUserCredential);
+    results.items = response.data.data.map((item) => toUserCredential(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -398,7 +398,7 @@ export class UserProducerApiImpl implements UserProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toUserZoneUser);
+    results.items = response.data.data.map((item) => toUserZoneUser(item));
     results.count = response.data.totalCount || 0;
   }
 }

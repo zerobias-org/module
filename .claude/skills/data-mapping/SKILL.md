@@ -113,8 +113,8 @@ export function to<Resource>(raw: any): <Resource> {
 
 ```typescript
 // src/Mappers.ts
-import { map } from '@auditmation/util-hub-module-utils';
-import { UUID, Email, URL, DateTime, InvalidStateError } from '@auditmation/types-core-js';
+import { map } from '@zerobias-org/util-hub-module-utils';
+import { UUID, Email, URL, DateTime, InvalidStateError } from '@zerobias-org/types-core-js';
 import { User, Address, UserStatus, UserRole } from '../generated/model';
 import { mapWith, ensureProperties, optional } from './util';  // Import helpers
 
@@ -197,8 +197,8 @@ Always convert numeric IDs to strings:
 Use `map()` helper for types with constructors (Date, UUID, Email, URL, etc.):
 
 ```typescript
-import { map } from '@auditmation/util-hub-module-utils';
-import { UUID, Email, URL, DateTime } from '@auditmation/types-core-js';
+import { map } from '@zerobias-org/util-hub-module-utils';
+import { UUID, Email, URL, DateTime } from '@zerobias-org/types-core-js';
 
 {
   createdAt: map(DateTime, raw.created_at),    // Required or optional - map() handles both
@@ -506,7 +506,7 @@ export function toWebhook(raw: any): Webhook {
 
 **Key points:**
 - Check for required fields BEFORE any mapping
-- Use `InvalidStateError` from `@auditmation/types-core-js`
+- Use `InvalidStateError` from `@zerobias-org/types-core-js`
 - Use `ensureProperties()` helper for multiple fields or manual `if` checks for single fields
 - Throw immediately - don't return undefined for missing required fields
 - Use section comment: `// 1. Check for required fields`
@@ -726,7 +726,7 @@ export function toWebhook(data: any): Webhook | undefined {
 ls src/Mappers.ts
 
 # Uses map() utility
-grep "import.*map.*from.*@auditmation/util-hub-module-utils" src/Mappers.ts
+grep "import.*map.*from.*@zerobias-org/util-hub-module-utils" src/Mappers.ts
 # Should show import
 
 # Prefers map() over constructors
@@ -849,8 +849,8 @@ format: toEnum(FormatEnum, raw.format, (v) => v.toLowerCase())
 The `map()` utility function handles type conversion with automatic optional/undefined handling:
 
 ```typescript
-import { map } from '@auditmation/util-hub-module-utils';
-import { UUID, Email, URL, DateTime } from '@auditmation/types-core-js';
+import { map } from '@zerobias-org/util-hub-module-utils';
+import { UUID, Email, URL, DateTime } from '@zerobias-org/types-core-js';
 
 // Automatically handles optional/undefined
 id: map(UUID, raw.id)           // Required
@@ -1084,7 +1084,7 @@ function toAddress(raw: any): Address {
 
 **Implementation location:**
 - Currently: `src/util.ts` - import with `import { mapWith } from './util'`
-- Future: Will be moved to `@auditmation/util-hub-module-utils` alongside `map()` and `toEnum()`
+- Future: Will be moved to `@zerobias-org/util-hub-module-utils` alongside `map()` and `toEnum()`
 
 ## Inline Object Mapping - ANTI-PATTERN
 

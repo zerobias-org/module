@@ -223,12 +223,12 @@ paths:
 components:
   parameters:
     pageSizeParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageSizeParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageSizeParam'
     pageNumberParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageNumberParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageNumberParam'
   headers:
     linksHeader:
-      $ref: './node_modules/@auditmation/types-core/schema/headers.yml#/linksHeader'
+      $ref: './node_modules/@zerobias-org/types-core/schema/headers.yml#/linksHeader'
 
 paths:
   /users:
@@ -250,7 +250,7 @@ paths:
 
 # ❌ WRONG - Direct node_modules reference
 parameters:
-  - $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageSizeParam'  # NO! Define in components first
+  - $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageSizeParam'  # NO! Define in components first
 
 # ❌ WRONG - Custom pagination parameter names
 parameters:
@@ -397,16 +397,16 @@ components:
 components:
   parameters:
     pageSizeParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageSizeParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageSizeParam'
     pageNumberParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageNumberParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageNumberParam'
     # Or for token-based pagination:
     # pageTokenParam:
-    #   $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageTokenParam'
+    #   $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageTokenParam'
 
   headers:
     linksHeader:
-      $ref: './node_modules/@auditmation/types-core/schema/headers.yml#/linksHeader'
+      $ref: './node_modules/@zerobias-org/types-core/schema/headers.yml#/linksHeader'
 ```
 
 **The 4 required elements for LIST operations:**
@@ -439,7 +439,7 @@ components:
 
 ```yaml
 # connectionProfile.yml
-$ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
 ```
 
 **That's it!** The core profile provides: `token` (required), `url` (optional)
@@ -449,7 +449,7 @@ $ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
 ```yaml
 # connectionProfile.yml
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/basicConnection.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/basicConnection.yml'
   - type: object
     properties:
       username:
@@ -465,7 +465,7 @@ If API requires additional connection parameters:
 ```yaml
 # connectionProfile.yml
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
   - type: object
     properties:
       organizationId:
@@ -495,7 +495,7 @@ allOf:
 ```yaml
 # connectionState.yml
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   - type: object
     required:
       - accessToken
@@ -515,7 +515,7 @@ allOf:
 
 ```yaml
 # connectionState.yml
-$ref: './node_modules/@auditmation/types-core/schema/tokenConnectionState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenConnectionState.yml'
 ```
 
 **Provides**: `accessToken`, `expiresIn` (from baseConnectionState)
@@ -524,7 +524,7 @@ $ref: './node_modules/@auditmation/types-core/schema/tokenConnectionState.yml'
 
 ```yaml
 # connectionState.yml
-$ref: './node_modules/@auditmation/types-core/schema/oauthTokenState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
 ```
 
 **Provides**: `tokenType`, `accessToken`, `refreshToken`, `expiresIn`, `scope`, `url`
@@ -534,7 +534,7 @@ $ref: './node_modules/@auditmation/types-core/schema/oauthTokenState.yml'
 ```yaml
 # connectionState.yml
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   - type: object
     required:
       - accessToken
@@ -579,7 +579,7 @@ Open your files and verify:
 - ✅ First line extends baseConnectionState:
   ```yaml
   allOf:
-    - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+    - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   ```
 
 **Gate 1 Pass Criteria:**

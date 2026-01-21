@@ -338,7 +338,7 @@ describe('UserProducer', () => {
 ```typescript
 // ❌ WRONG - unit test Common.ts with env vars
 import { config } from 'dotenv';
-import { Email } from '@auditmation/types-core-js';
+import { Email } from '@zerobias-org/types-core-js';
 import { newService } from '../../src';
 
 config(); // NO! Unit tests don't use .env
@@ -357,7 +357,7 @@ export async function getConnectedInstance() {
 
 // ✅ CORRECT - unit test Common.ts with nock
 import * as nock from 'nock';
-import { Email } from '@auditmation/types-core-js';
+import { Email } from '@zerobias-org/types-core-js';
 import { newService } from '../../src';
 import type { ServiceConnector } from '../../src';
 

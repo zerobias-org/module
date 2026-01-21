@@ -34,10 +34,10 @@ Add `[TEMP-RAW-API]` debug logs in each Producer API implementation **BEFORE map
 
 ```typescript
 // In UserProducerApiImpl.ts
-import { getLogger } from '@auditmation/util-logger';
+import { LoggerEngine } from '@zerobias-org/logger';
 
 export class UserProducerApiImpl implements UserProducerApi {
-  private readonly logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+  private readonly logger = LoggerEngine.root();
 
   async list(results: PagedResults<User>, organizationId: string): Promise<void> {
     const response = await this.httpClient.get(`/orgs/${organizationId}/users`);

@@ -281,7 +281,7 @@ describe('UserProducer Integration', function () {
 ```typescript
 // ❌ WRONG - Common.ts missing test data exports
 import { config } from 'dotenv';
-import { Email } from '@auditmation/types-core-js';
+import { Email } from '@zerobias-org/types-core-js';
 import { newService } from '../../src';
 
 config();
@@ -299,8 +299,8 @@ export async function getConnectedInstance() {
 
 // ✅ CORRECT - Common.ts with test data exports
 import { config } from 'dotenv';
-import { Email } from '@auditmation/types-core-js';
-import { getLogger as getLoggerBase } from '@auditmation/util-logger';
+import { Email } from '@zerobias-org/types-core-js';
+import { LoggerEngine } from '@zerobias-org/logger';
 import { newService } from '../../src';
 import type { ServiceConnector } from '../../src';
 
@@ -315,10 +315,45 @@ export const TEST_USER_ID = process.env.SERVICE_TEST_USER_ID || '';
 export const TEST_ORGANIZATION_ID = process.env.SERVICE_TEST_ORGANIZATION_ID || '';
 export const TEST_RESOURCE_NAME = process.env.SERVICE_TEST_RESOURCE_NAME || '';
 
-const LOG_LEVEL = (process.env.LOG_LEVEL || 'info') as string;
-
 export function getLogger(name: string) {
-  return getLoggerBase(name, {}, LOG_LEVEL);
+  return LoggerEngine.root().get(name);
+}
+
+if (process.env.LOG_LEVEL) {
+  switch (process.env.LOG_LEVEL) {
+    case 'trace': {
+      getLogger().setLevel(LogLevel.TRACE);
+      break;
+    }
+    case 'debug': {
+      getLogger().setLevel(LogLevel.DEBUG);
+      break;
+    }
+    case 'verbose': {
+      getLogger().setLevel(LogLevel.VERBOSE);
+      break;
+    }
+    case 'info': {
+      getLogger().setLevel(LogLevel.INFO);
+      break;
+    }
+    case 'warn': {
+      getLogger().setLevel(LogLevel.WARN);
+      break;
+    }
+    case 'error': {
+      getLogger().setLevel(LogLevel.ERROR);
+      break;
+    }
+    case 'crit': {
+      getLogger().setLevel(LogLevel.CRIT);
+      break;
+    }
+    default: {
+      getLogger().setLevel(LogLevel.INFO);
+      break;
+    }
+  }
 }
 
 export function hasCredentials(): boolean {

@@ -129,12 +129,12 @@ For TypeScript PagedResults generation, operation MUST have ALL 4 conditions:
 components:
   parameters:
     pageSizeParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageSizeParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageSizeParam'
     pageNumberParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageNumberParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageNumberParam'
   headers:
     linksHeader:
-      $ref: './node_modules/@auditmation/types-core/schema/headers.yml#/linksHeader'
+      $ref: './node_modules/@zerobias-org/types-core/schema/headers.yml#/linksHeader'
 
 paths:
   /users:
@@ -161,12 +161,12 @@ paths:
   get:
     operationId: listUsers
     parameters:
-      - $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageSizeParam'  # NO! Use components
+      - $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageSizeParam'  # NO! Use components
     responses:
       '200':
         headers:
           links:
-            $ref: './node_modules/@auditmation/types-core/schema/headers.yml#/linksHeader'  # NO! Use components
+            $ref: './node_modules/@zerobias-org/types-core/schema/headers.yml#/linksHeader'  # NO! Use components
 
 # ❌ WRONG - Missing pagination
 /users:
@@ -192,11 +192,11 @@ paths:
 components:
   parameters:
     pageSizeParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageSizeParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageSizeParam'
     pageNumberParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageNumberParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageNumberParam'
     pageTokenParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageTokenParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageTokenParam'
 ```
 
 **Option A: Page Number (offset-based)**
@@ -229,7 +229,7 @@ parameters:
 components:
   headers:
     linksHeader:
-      $ref: './node_modules/@auditmation/types-core/schema/headers.yml#/linksHeader'
+      $ref: './node_modules/@zerobias-org/types-core/schema/headers.yml#/linksHeader'
 ```
 
 **Then reference in operations:**

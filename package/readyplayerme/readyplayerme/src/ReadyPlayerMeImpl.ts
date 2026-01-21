@@ -1,7 +1,7 @@
 import {
   ConnectionMetadata,
   OperationSupportStatusDef
-} from '@auditmation/hub-core';
+} from '@zerobias-org/types-core-js';
 import {
   ApplicationApi,
   AssetApi,
@@ -16,15 +16,15 @@ import {
   wrapAvatar3dProducer,
   wrapAvatarProducer,
   wrapUserProducer
-} from '../generated/api';
-import { ConnectionProfile } from '../generated/model';
-import { ApplicationProducerImpl } from './ApplicationProducerImpl';
-import { AssetProducerImpl } from './AssetProducerImpl';
-import { Avatar2dProducerImpl } from './Avatar2dProducerImpl';
-import { Avatar3dProducerImpl } from './Avatar3dProducerImpl';
-import { AvatarProducerImpl } from './AvatarProducerImpl';
-import { ReadyPlayerMeClient } from './ReadyPlayerMeClient';
-import { UserProducerImpl } from './UserProducerImpl';
+} from '../generated/api/index.js';
+import { ConnectionProfile } from '../generated/model/index.js';
+import { ApplicationProducerImpl } from './ApplicationProducerImpl.js';
+import { AssetProducerImpl } from './AssetProducerImpl.js';
+import { Avatar2dProducerImpl } from './Avatar2dProducerImpl.js';
+import { Avatar3dProducerImpl } from './Avatar3dProducerImpl.js';
+import { AvatarProducerImpl } from './AvatarProducerImpl.js';
+import { ReadyPlayerMeClient } from './ReadyPlayerMeClient.js';
+import { UserProducerImpl } from './UserProducerImpl.js';
 
 export class ReadyPlayerMeImpl implements ReadyPlayerMeConnector {
   private client = new ReadyPlayerMeClient();

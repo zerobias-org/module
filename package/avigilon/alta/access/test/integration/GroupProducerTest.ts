@@ -1,12 +1,14 @@
 import { expect } from 'chai';
+import stringify from 'safe-stable-stringify';
 import { describe, it, before } from 'mocha';
-import { getLogger } from '@auditmation/util-logger';
-import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common';
-import { AccessImpl, GroupApi } from '../../src';
+import { LoggerEngine } from '@zerobias-org/logger';
+import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common.js';
+import { AccessImpl } from '../../src/index.js';
+import type { GroupApi } from '../../src/index.js';
 
 // Core types for assertions
 
-const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+const logger = LoggerEngine.root();
 
 describe('Avigilon Alta Access - Group Producer Tests', function () {
   this.timeout(testConfig.timeout);
@@ -26,7 +28,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
     it('should list groups with default pagination', async () => {
       const groupsResult = await groupApi.list(testConfig.organizationId);
 
-      logger.debug(`groupApi.list(${testConfig.organizationId})`, JSON.stringify(groupsResult, null, 2));
+      logger.debug(`groupApi.list(${testConfig.organizationId}): ${stringify(groupsResult, null, 2)}`)
 
       expect(groupsResult).to.not.be.null;
       expect(groupsResult).to.not.be.undefined;
@@ -57,7 +59,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
     it('should list groups with custom pagination', async () => {
       const groupsResult = await groupApi.list(testConfig.organizationId, 1, 5);
 
-      logger.debug(`groupApi.list(${testConfig.organizationId}, 1, 5)`, JSON.stringify(groupsResult, null, 2));
+      logger.debug(`groupApi.list(${testConfig.organizationId}, 1, 5): ${stringify(groupsResult, null, 2)}`)
 
       expect(groupsResult).to.not.be.null;
       expect(groupsResult).to.not.be.undefined;
@@ -91,7 +93,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
 
       const group = await groupApi.get(testConfig.organizationId, groupId);
 
-      logger.debug(`groupApi.get(${testConfig.organizationId}, '${groupId}')`, JSON.stringify(group, null, 2));
+      logger.debug(`groupApi.get(${testConfig.organizationId}, '${groupId}'): ${stringify(group, null, 2)}`)
 
       expect(group).to.not.be.null;
       expect(group).to.not.be.undefined;
@@ -117,13 +119,13 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
 
       try {
         const group = await groupApi.get(testConfig.organizationId, nonExistentId);
-        logger.debug(`groupApi.get(${testConfig.organizationId}, '${nonExistentId}')`, JSON.stringify(group, null, 2));
+        logger.debug(`groupApi.get(${testConfig.organizationId}, '${nonExistentId}'): ${stringify(group, null, 2)}`)
 
         // If no error was thrown, the result should be null or undefined
         expect(group).to.satisfy((result: any) => (result === null || result === undefined));
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for non-existent group', err.message);
+        logger.debug(`Expected error for non-existent group: ${stringify(err.message)}`);
 
         // Expecting a 404 or similar error
         expect(error).to.not.be.null;
@@ -165,7 +167,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       // Test listUsers operation
       const usersResult = await groupApi.listUsers(testConfig.organizationId, groupId);
 
-      logger.debug(`groupApi.listUsers(${testConfig.organizationId}, '${groupId}')`, JSON.stringify(usersResult, null, 2));
+      logger.debug(`groupApi.listUsers(${testConfig.organizationId}, '${groupId}'): ${stringify(usersResult, null, 2)}`)
 
       expect(usersResult).to.not.be.null;
       expect(usersResult).to.not.be.undefined;
@@ -213,7 +215,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       // Test listUsers with pagination
       const usersResult = await groupApi.listUsers(testConfig.organizationId, groupId, 1, 5);
 
-      logger.debug(`groupApi.listUsers(${testConfig.organizationId}, '${groupId}', 1, 5)`, JSON.stringify(usersResult, null, 2));
+      logger.debug(`groupApi.listUsers(${testConfig.organizationId}, '${groupId}', 1, 5): ${stringify(usersResult, null, 2)}`)
 
       expect(usersResult).to.not.be.null;
       expect(usersResult).to.not.be.undefined;
@@ -244,7 +246,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       // Test listEntries operation
       const entriesResult = await groupApi.listEntries(testConfig.organizationId, groupId);
 
-      logger.debug(`groupApi.listEntries(${testConfig.organizationId}, '${groupId}')`, JSON.stringify(entriesResult, null, 2));
+      logger.debug(`groupApi.listEntries(${testConfig.organizationId}, '${groupId}'): ${stringify(entriesResult, null, 2)}`)
 
       expect(entriesResult).to.not.be.null;
       expect(entriesResult).to.not.be.undefined;
@@ -293,7 +295,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       // Test listEntries with pagination
       const entriesResult = await groupApi.listEntries(testConfig.organizationId, groupId, 1, 5);
 
-      logger.debug(`groupApi.listEntries(${testConfig.organizationId}, '${groupId}', 1, 5)`, JSON.stringify(entriesResult, null, 2));
+      logger.debug(`groupApi.listEntries(${testConfig.organizationId}, '${groupId}', 1, 5): ${stringify(entriesResult, null, 2)}`)
 
       expect(entriesResult).to.not.be.null;
       expect(entriesResult).to.not.be.undefined;
@@ -319,7 +321,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       }
 
       const group = groups[0];
-      logger.debug('Validating group schema', JSON.stringify(group, null, 2));
+      logger.debug(`Validating group schema: ${stringify(group, null, 2)}`);
 
       expect(group).to.be.an('object');
 
@@ -348,7 +350,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
       try {
         // Test with potentially invalid parameters
         const groupsResult = await groupApi.list(testConfig.organizationId, -1, -1);
-        logger.debug(`groupApi.list(${testConfig.organizationId}, -1, -1)`, JSON.stringify(groupsResult, null, 2));
+        logger.debug(`groupApi.list(${testConfig.organizationId}, -1, -1): ${stringify(groupsResult, null, 2)}`)
 
         // Should either return empty array or throw appropriate error
         if (groupsResult && groupsResult.items) {
@@ -356,7 +358,7 @@ describe('Avigilon Alta Access - Group Producer Tests', function () {
         }
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for invalid pagination', err.message);
+        logger.debug(`Expected error for invalid pagination: ${stringify(err.message)}`);
 
         // Should get a validation error
         expect(error).to.not.be.null;

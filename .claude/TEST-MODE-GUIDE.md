@@ -42,7 +42,7 @@ This guide explains how to safely add or update rules in the new agent-based sys
 Use for rate limit exceeded (429 errors):
 
 ```typescript
-import { RateLimitExceededError } from '@auditmation/types-core-js';
+import { RateLimitExceededError } from '@zerobias-org/types-core-js';
 
 // Basic usage
 throw new RateLimitExceededError();

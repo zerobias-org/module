@@ -1,13 +1,30 @@
 openapi: 3.0.3
 info:
   x-product-infos:
-    - $ref: './node_modules/@auditlogic/product-readyplayerme-readyplayerme/catalog.yml#/Product'
+    - $ref: '../../../node_modules/@zerobias-org/product-readyplayerme-readyplayerme/catalog.yml#/Product'
   version: '0.1.25'
   title: '@zerobias-org/module-readyplayerme-readyplayerme'
   x-impl-name: ReadyPlayerMe
   description: 'Ready Player Me'
 paths:
-  /avatars/3d/{avatarId}:
+  /avatars/{avatarId}:
+    get:
+      summary: Get Metadata
+      description: Get the metadata of an avatar in JSON format
+      operationId: getAvatarMetadata
+      x-method-name: getMetadata
+      tags:
+        - avatar
+      parameters:
+        - $ref: '#/components/parameters/avatarMetadataId'
+      responses:
+        '200':
+          description: Metadata of the avatar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarMetadata'
+  /avatars/{avatarId}/3d:
     get:
       summary: Get a 3D avatar GLB file
       description: Get a 3D avatar GLB model with desired performance and configuration settings
@@ -38,7 +55,7 @@ paths:
                 type: string
                 format: binary
                 example: '[Binary GLB file containing the 3D avatar model]'
-  /avatars/2d/{avatarId}:
+  /avatars/{avatarId}/2d:
     get:
       summary: Get 2D Render of an Avatar
       description: Get a 2D render of an avatar for stickers or profile pictures
@@ -69,23 +86,6 @@ paths:
               schema:
                 type: string
                 format: binary
-  /avatars/{avatarId}:
-    get:
-      summary: Get Metadata
-      description: Get the metadata of an avatar in JSON format
-      operationId: getAvatarMetadata
-      x-method-name: getMetadata
-      tags:
-        - avatar
-      parameters:
-        - $ref: '#/components/parameters/avatarMetadataId'
-      responses:
-        '200':
-          description: Metadata of the avatar
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AvatarMetadata'
   /avatars/{avatarId}/equip:
     put:
       summary: Equip an asset
@@ -287,16 +287,16 @@ paths:
 components:
   headers:
     pagedLink:
-      $ref: './node_modules/@auditmation/types-core/schema/pagedLinkHeader.yml'
+      $ref: '../../../node_modules/@zerobias-org/types-core/schema/pagedLinkHeader.yml'
   parameters:
     pageNumber:
-      $ref: './node_modules/@auditmation/types-core/schema/pageNumberParam.yml'
+      $ref: '../../../node_modules/@zerobias-org/types-core/schema/pageNumberParam.yml'
     pageSize:
-      $ref: './node_modules/@auditmation/types-core/schema/pageSizeParam.yml'
+      $ref: '../../../node_modules/@zerobias-org/types-core/schema/pageSizeParam.yml'
     sortDir:
-      $ref: './node_modules/@auditmation/types-core/schema/sortDirParam.yml'
+      $ref: '../../../node_modules/@zerobias-org/types-core/schema/sortDirParam.yml'
     sortBy:
-      $ref: './node_modules/@auditmation/types-core/schema/sortByParam.yml'
+      $ref: '../../../node_modules/@zerobias-org/types-core/schema/sortByParam.yml'
     avatar3DId:
       name: avatarId
       in: path
@@ -311,16 +311,7 @@ components:
       required: false
       description: Use quality presets to combine performance related parameters
       schema:
-        type: string
-        enum:
-          - low
-          - medium
-          - high
-        example: high
-        x-enum-descriptions:
-          - 'Low quality preset (meshLod=2, textureSizeLimit=256, textureAtlas=256, morphTargets=none)'
-          - 'Medium quality preset (meshLod=1, textureSizeLimit=512, textureAtlas=512, morphTargets=none)'
-          - 'High quality preset (meshLod=0, textureSizeLimit=1024, textureAtlas=1024, morphTargets=none)'
+        $ref: '#/components/schemas/Avatar3DQuality'
     avatar3DTextureSizeLimit:
       name: textureSizeLimit
       in: query
@@ -338,36 +329,14 @@ components:
       required: false
       description: Set the quality for textures on the Avatar by choosing from one of the presets
       schema:
-        type: string
-        enum:
-          - low
-          - medium
-          - high
-        example: medium
-        default: medium
-        x-enum-descriptions:
-          - 'Overall lower quality textures on the avatar and equipped assets'
-          - 'Higher quality head and upper body assets (default)'
-          - 'Overall high quality textures on the whole avatar and assets'
+        $ref: '#/components/schemas/Avatar3DQuality'
     avatar3DTextureAtlas:
       name: textureAtlas
       in: query
       required: false
       description: Generates a texture atlas of the desired resolution. The operation merges all meshes and splits opaque objects from transparent ones resulting in a maximum of 2 draw calls
       schema:
-        type: string
-        enum:
-          - none
-          - '256'
-          - '512'
-          - '1024'
-        default: none
-        example: '512'
-        x-enum-descriptions:
-          - 'Do not create a texture atlas (default)'
-          - 'Create a texture atlas of 256x256px'
-          - 'Create a texture atlas of 512x512px'
-          - 'Create a texture atlas of 1024x1024px'
+        $ref: '#/components/schemas/Avatar3DTextureAtlas'
     avatar3DTextureChannels:
       name: textureChannels
       in: query
@@ -410,15 +379,7 @@ components:
       required: false
       description: Defines the pose for a full-body avatar
       schema:
-        type: string
-        enum:
-          - A
-          - T
-        default: A
-        example: T
-        x-enum-descriptions:
-          - 'A-pose (default)'
-          - 'T-pose'
+        $ref: '#/components/schemas/Avatar3DPose'
     avatar3DUseHands:
       name: useHands
       in: query
@@ -437,16 +398,7 @@ components:
       required: false
       description: Reduce avatar file size by formatting all textures into the specified format
       schema:
-        type: string
-        enum:
-          - webp
-          - jpeg
-          - png
-        example: webp
-        x-enum-descriptions:
-          - 'WebP format (smaller file size, up to 40% reduction)'
-          - 'JPEG format'
-          - 'PNG format'
+        $ref: '#/components/schemas/Avatar3DTextureFormat'
     avatar3DLod:
       name: lod
       in: query
@@ -475,25 +427,14 @@ components:
       in: query
       required: false
       schema:
-        type: string
-        enum:
-          - happy
-          - lol
-          - sad
-          - scared
-          - rage
+        $ref: '#/components/schemas/Avatar2DExpression'
       description: Avatar facial expression
     avatar2DPose:
       name: pose
       in: query
       required: false
       schema:
-        type: string
-        enum:
-          - power-stance
-          - relaxed
-          - standing
-          - thumbs-up
+        $ref: '#/components/schemas/Avatar2DPose'
       description: Avatar pose
     avatar2DBlendShapes:
       name: blendShapes
@@ -508,12 +449,7 @@ components:
       in: query
       required: false
       schema:
-        type: string
-        enum:
-          - portrait
-          - fullbody
-          - fit
-        default: portrait
+        $ref: '#/components/schemas/Avatar2DCamera'
       description: Camera preset
     avatar2DBackground:
       name: background
@@ -622,26 +558,7 @@ components:
       schema:
         type: array
         items:
-          type: string
-          enum:
-            - outfit
-            - top
-            - shirt
-            - bottom
-            - beard
-            - eye
-            - eyebrows
-            - eyeshape
-            - facemask
-            - faceshape
-            - facewear
-            - footwear
-            - glasses
-            - hair
-            - headwear
-            - lipshape
-            - noseshape
-            - costume
+          $ref: '#/components/schemas/AssetType'
       style: form
       explode: true
       description: Filter to find assets by their type. Supports multiple values
@@ -653,11 +570,7 @@ components:
       schema:
         type: array
         items:
-          type: string
-          enum:
-            - male
-            - female
-            - neutral
+          $ref: '#/components/schemas/AssetGender'
       style: form
       explode: true
       description: Filter to find assets by their gender. Supports multiple values
@@ -687,6 +600,88 @@ components:
       description: Filter to find assets that are available in specific applications
       example: ["12345", "54321"]
   schemas:
+    # Reusable enum types
+    AssetType:
+      type: string
+      description: Defines which body part of the avatar this asset belongs to
+      enum:
+        - outfit
+        - top
+        - shirt
+        - bottom
+        - beard
+        - eye
+        - eyebrows
+        - eyeshape
+        - facemask
+        - faceshape
+        - facewear
+        - footwear
+        - glasses
+        - hair
+        - headwear
+        - lipshape
+        - noseshape
+        - costume
+    AssetGender:
+      type: string
+      description: Defines which avatar genders are supported
+      enum:
+        - male
+        - female
+        - neutral
+    Avatar3DQuality:
+      type: string
+      description: Quality preset for 3D avatars
+      enum:
+        - low
+        - medium
+        - high
+    Avatar3DTextureAtlas:
+      type: string
+      description: Texture atlas resolution
+      enum:
+        - none
+        - '256'
+        - '512'
+        - '1024'
+    Avatar3DPose:
+      type: string
+      description: Pose for full-body avatar
+      enum:
+        - A
+        - T
+    Avatar3DTextureFormat:
+      type: string
+      description: Texture format for avatars
+      enum:
+        - webp
+        - jpeg
+        - png
+    Avatar2DExpression:
+      type: string
+      description: Avatar facial expression
+      enum:
+        - happy
+        - lol
+        - sad
+        - scared
+        - rage
+    Avatar2DPose:
+      type: string
+      description: Avatar pose for 2D render
+      enum:
+        - power-stance
+        - relaxed
+        - standing
+        - thumbs-up
+    Avatar2DCamera:
+      type: string
+      description: Camera preset for 2D render
+      enum:
+        - portrait
+        - fullbody
+        - fit
     CreateUserRequest:
       type: object
       properties:
@@ -810,36 +805,9 @@ components:
           description: A boolean value which when set to true requires the asset to be unlocked for specific user before it is usable by them
           example: false
         type:
-          type: string
-          enum:
-            - beard
-            - bottom
-            - eye
-            - eyebrows
-            - eyeshape
-            - facemask
-            - faceshape
-            - facewear
-            - footwear
-            - glasses
-            - hair
-            - headwear
-            - lipshape
-            - noseshape
-            - outfit
-            - shirt
-            - top
-            - costume
-          description: Defines which body part of the avatar this asset belongs to
-          example: 'top'
+          $ref: '#/components/schemas/AssetType'
         gender:
-          type: string
-          enum:
-            - male
-            - female
-            - neutral
-          description: Defines which avatar genders are supported for this asset
-          example: 'neutral'
+          $ref: '#/components/schemas/AssetGender'
         modelUrl:
           type: string
           description: The URL where you can find the GLB model for the asset
@@ -987,19 +955,9 @@ components:
               description: Minimum length of 1 character
               example: "New Asset"
             type:
-              type: string
-              enum:
-                - outfit
-              description: Type of asset
-              example: "outfit"
+              $ref: '#/components/schemas/AssetType'
             gender:
-              type: string
-              enum:
-                - male
-                - female
-                - neutral
-              description: Gender compatibility of the asset
-              example: "male"
+              $ref: '#/components/schemas/AssetGender'
             modelUrl:
               type: string
               format: uri
@@ -1049,19 +1007,9 @@ components:
               minLength: 1
               example: "jacket-occassionwear-02"
             type:
-              type: string
-              enum:
-                - outfit
-              description: The type of the asset
-              example: "outfit"
+              $ref: '#/components/schemas/AssetType'
             gender:
-              type: string
-              enum:
-                - male
-                - female
-                - neutral
-              description: The gender supported by the asset
-              example: "neutral"
+              $ref: '#/components/schemas/AssetGender'
             modelUrl:
               type: string
               format: url
@@ -1100,9 +1048,11 @@ components:
           example: "fullbody"
         outfitGender:
           type: string
+          description: Gendor for the outfit
           example: "masculine"
         outfitVersion:
           type: integer
+          description: Version of the outfit
           example: 2
         skinTone:
           type: string

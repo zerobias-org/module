@@ -1,10 +1,10 @@
 /**
  * Utility functions for mappers
  *
- * TODO: Move to @auditmation/util-hub-module-utils once stabilized
+ * TODO: Move to @zerobias-org/util-hub-module-utils once stabilized
  */
 
-import { InvalidStateError } from '@auditmation/types-core-js';
+import { InvalidStateError } from '@zerobias-org/types-core-js';
 
 /**
  * Applies a mapper function to a value, handling null/undefined
@@ -51,25 +51,25 @@ export function ensureProperties<K extends string>(
 ): asserts raw is Record<string, unknown> & Record<K, unknown>;
 
 // Overload for any type (backward compatibility)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export function ensureProperties<K extends keyof any>(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   raw: any,
   property: readonly K[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
 ): asserts raw is Record<string, any> & { [P in K]: any };
 
 // Implementation
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export function ensureProperties<T extends Record<string, any>>(
   raw: T,
   property: readonly (keyof T)[]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
 ): asserts raw is T & Record<string, any> {
-  property.forEach((prop) => {
+  for (const prop of property) {
     const value = raw[prop];
     if (value === null || value === undefined) {
       throw new InvalidStateError(`Missing required field: ${String(prop)}`);
     }
-  });
+  }
 }

@@ -170,7 +170,7 @@ export function toUser(data: any): User {
 
 **CRITICAL**:
 - **NEVER use `!`** (non-null assertion) - Design code to avoid it
-- **PREFER `map()` over constructors** - Use `map()` from `@auditmation/util-hub-module-utils` unless map() doesn't meet requirements
+- **PREFER `map()` over constructors** - Use `map()` from `@zerobias-org/util-hub-module-utils` unless map() doesn't meet requirements
 - **Validate required fields** - Throw if missing, then TypeScript knows they exist
 - **Let map() handle optionals** - It returns `Type | undefined` automatically
 - **Always declare const with type** - Enables type checking

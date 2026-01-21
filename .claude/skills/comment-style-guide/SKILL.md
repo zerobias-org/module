@@ -183,7 +183,7 @@ const rawData = response.data.data || response.data;
 
 ```typescript
 // ✅ GOOD - Tracks technical debt
-// TODO: Move to @auditmation/util-hub-module-utils once stabilized
+// TODO: Move to @zerobias-org/util-hub-module-utils once stabilized
 export function mapWith<T>(mapper: (raw: any) => T, value: any): T | undefined {
   // ...
 }

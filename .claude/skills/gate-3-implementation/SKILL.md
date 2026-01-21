@@ -51,15 +51,15 @@ grep -E "(apiKey|token|baseUrl|organizationId):" src/*Producer.ts
 if [ -f "src/Mappers.ts" ]; then
   if grep -E "new (UUID|Email|URL|DateTime)\(" src/Mappers.ts > /dev/null; then
     echo "⚠️  WARNING: Mappers.ts using constructors directly"
-    echo "   PREFER map() from @auditmation/util-hub-module-utils"
+    echo "   PREFER map() from @zerobias-org/util-hub-module-utils"
     echo "   Example: map(UUID, value) instead of new UUID(value)"
     echo "   Only use constructors if map() doesn't meet requirements"
   fi
 
   # Check for map() import
-  if ! grep -q "import.*map.*from.*@auditmation/util-hub-module-utils" src/Mappers.ts; then
+  if ! grep -q "import.*map.*from.*@zerobias-org/util-hub-module-utils" src/Mappers.ts; then
     echo "⚠️  WARNING: Mappers.ts missing map() import"
-    echo "   Add: import { map } from '@auditmation/util-hub-module-utils';"
+    echo "   Add: import { map } from '@zerobias-org/util-hub-module-utils';"
     echo "   map() handles optional values automatically and is preferred"
   fi
 fi
@@ -120,7 +120,7 @@ fi
 - ✅ isSupported() exact boilerplate: `async isSupported(_operationId: string) { return OperationSupportStatus.Maybe; }`
 - ❌ NO customization of metadata() or isSupported() methods
 - ✅ Mappers implemented for field conversions (const output pattern)
-- ✅ Mappers use `map()` from `@auditmation/util-hub-module-utils` (NOT constructors directly)
+- ✅ Mappers use `map()` from `@zerobias-org/util-hub-module-utils` (NOT constructors directly)
 - ✅ **Mapper runtime validation completed** - ZERO missing fields confirmed (see validation section below)
 - ✅ Error handling uses core error types
 - ✅ NO connection context parameters (apiKey, token, baseUrl, organizationId) in producer methods

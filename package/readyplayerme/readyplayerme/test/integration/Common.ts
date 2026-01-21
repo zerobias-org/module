@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { config } from 'dotenv';
-import { ConnectionProfile, newReadyPlayerMe, ReadyPlayerMe } from '../../src';
+import { newReadyPlayerMe } from '../../src/index.js';
+import type { ConnectionProfile, ReadyPlayerMe } from '../../src/index.js';
 
 config();
 

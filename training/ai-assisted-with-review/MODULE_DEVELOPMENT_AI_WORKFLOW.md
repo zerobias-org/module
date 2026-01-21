@@ -594,7 +594,7 @@ properties:
 ```yaml
 # ✅ Correct
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   - type: object
     properties:
       accessToken:

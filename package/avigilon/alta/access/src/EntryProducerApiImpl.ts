@@ -1,9 +1,9 @@
 import { AxiosInstance } from 'axios';
-import { PagedResults, NoSuchObjectError, UnexpectedError } from '@auditmation/types-core-js';
-import { EntryProducerApi } from '../generated/api/EntryApi';
-import { Entry, EntryInfo, EntryActivityEvent, EntryCamera, EntryStateInfo, EntryUserSchedule, EntryUser } from '../generated/model';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toEntry, toEntryInfo, toEntryActivityEvent, toEntryCamera, toEntryStateInfo, toEntryUserSchedule, toEntryUser } from './Mappers';
+import { PagedResults, NoSuchObjectError, UnexpectedError } from '@zerobias-org/types-core-js';
+import { EntryProducerApi } from '../generated/api/EntryApi.js';
+import { Entry, EntryInfo, EntryActivityEvent, EntryCamera, EntryStateInfo, EntryUserSchedule, EntryUser } from '../generated/model/index.js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
+import { toEntry, toEntryInfo, toEntryActivityEvent, toEntryCamera, toEntryStateInfo, toEntryUserSchedule, toEntryUser } from './Mappers.js';
 
 export class EntryProducerApiImpl implements EntryProducerApi {
   private readonly httpClient: AxiosInstance;
@@ -28,7 +28,7 @@ export class EntryProducerApiImpl implements EntryProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toEntry);
+    results.items = response.data.data.map((item) => toEntry(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -64,7 +64,7 @@ export class EntryProducerApiImpl implements EntryProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toEntryActivityEvent);
+    results.items = response.data.data.map((item) => toEntryActivityEvent(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -88,7 +88,7 @@ export class EntryProducerApiImpl implements EntryProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toEntryCamera);
+    results.items = response.data.data.map((item) => toEntryCamera(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -111,7 +111,7 @@ export class EntryProducerApiImpl implements EntryProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toEntryStateInfo);
+    results.items = response.data.data.map((item) => toEntryStateInfo(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -135,7 +135,7 @@ export class EntryProducerApiImpl implements EntryProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toEntryUserSchedule);
+    results.items = response.data.data.map((item) => toEntryUserSchedule(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -159,7 +159,7 @@ export class EntryProducerApiImpl implements EntryProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toEntryUser);
+    results.items = response.data.data.map((item) => toEntryUser(item));
     results.count = response.data.totalCount || 0;
   }
 }

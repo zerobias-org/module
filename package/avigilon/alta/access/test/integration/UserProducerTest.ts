@@ -1,13 +1,15 @@
 import { expect } from 'chai';
+import stringify from 'safe-stable-stringify';
 import { describe, it, before } from 'mocha';
-import { getLogger } from '@auditmation/util-logger';
-import { UUID } from '@auditmation/types-core-js';
-import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common';
-import { AccessImpl, UserApi, RoleApi } from '../../src';
+import { LoggerEngine } from '@zerobias-org/logger';
+import { UUID } from '@zerobias-org/types-core-js';
+import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common.js';
+import { AccessImpl } from '../../src/index.js';
+import type { UserApi, RoleApi } from '../../src/index.js';
 
 // Core types for assertions
 
-const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+const logger = LoggerEngine.root();
 
 describe('Avigilon Alta Access - User Producer Tests', function () {
   this.timeout(testConfig.timeout);
@@ -30,7 +32,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
     it('should list users with default pagination', async () => {
       const usersResult = await userApi.list(testConfig.organizationId);
 
-      logger.debug(`userApi.list(${testConfig.organizationId})`, JSON.stringify(usersResult, null, 2));
+      logger.debug(`userApi.list(${testConfig.organizationId}): ${stringify(usersResult, null, 2)}`)
 
       expect(usersResult).to.not.be.null;
       expect(usersResult).to.not.be.undefined;
@@ -71,7 +73,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
     it('should list users with custom pagination', async () => {
       const usersResult = await userApi.list(testConfig.organizationId, 1, 5);
 
-      logger.debug(`userApi.list(${testConfig.organizationId}, 1, 5)`, JSON.stringify(usersResult, null, 2));
+      logger.debug(`userApi.list(${testConfig.organizationId}, 1, 5): ${stringify(usersResult, null, 2)}`)
 
       expect(usersResult).to.not.be.null;
       expect(usersResult).to.not.be.undefined;
@@ -104,7 +106,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
 
       const user = await userApi.get(testConfig.organizationId, userId);
 
-      logger.debug(`userApi.get(${testConfig.organizationId}, '${userId}')`, JSON.stringify(user, null, 2));
+      logger.debug(`userApi.get(${testConfig.organizationId}, '${userId}'): ${stringify(user, null, 2)}`)
 
       expect(user).to.not.be.null;
       expect(user).to.not.be.undefined;
@@ -139,13 +141,13 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
 
       try {
         const user = await userApi.get(testConfig.organizationId, nonExistentId);
-        logger.debug(`userApi.get(${testConfig.organizationId}, '${nonExistentId}')`, JSON.stringify(user, null, 2));
+        logger.debug(`userApi.get(${testConfig.organizationId}, '${nonExistentId}'): ${stringify(user, null, 2)}`)
 
         // If no error was thrown, the result should be null or undefined
         expect(user).to.satisfy((result: any) => (result === null || result === undefined));
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for non-existent user', err.message);
+        logger.debug(`Expected error for non-existent user: ${stringify(err.message)}`);
 
         // Expecting a 404 or similar error
         expect(error).to.not.be.null;
@@ -186,7 +188,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       // List roles for the user
       const rolesResult = await userApi.listRoles(testConfig.organizationId, userId);
 
-      logger.debug(`userApi.listRoles(${testConfig.organizationId}, '${userId}')`, JSON.stringify(rolesResult, null, 2));
+      logger.debug(`userApi.listRoles(${testConfig.organizationId}, '${userId}'): ${stringify(rolesResult, null, 2)}`)
 
       expect(rolesResult).to.not.be.null;
       expect(rolesResult).to.not.be.undefined;
@@ -228,7 +230,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       // List roles with custom pagination
       const rolesResult = await userApi.listRoles(testConfig.organizationId, userId, 1, 3);
 
-      logger.debug(`userApi.listRoles(${testConfig.organizationId}, '${userId}', 1, 3)`, JSON.stringify(rolesResult, null, 2));
+      logger.debug(`userApi.listRoles(${testConfig.organizationId}, '${userId}', 1, 3): ${stringify(rolesResult, null, 2)}`)
 
       expect(rolesResult).to.not.be.null;
       expect(rolesResult.items).to.be.an('array');
@@ -257,7 +259,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       // List sites for the user
       const sitesResult = await userApi.listSites(testConfig.organizationId, userId);
 
-      logger.debug(`userApi.listSites(${testConfig.organizationId}, '${userId}')`, JSON.stringify(sitesResult, null, 2));
+      logger.debug(`userApi.listSites(${testConfig.organizationId}, '${userId}'): ${stringify(sitesResult, null, 2)}`)
 
       expect(sitesResult).to.not.be.null;
       expect(sitesResult).to.not.be.undefined;
@@ -299,7 +301,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       // List sites with custom pagination
       const sitesResult = await userApi.listSites(testConfig.organizationId, userId, 1, 3);
 
-      logger.debug(`userApi.listSites(${testConfig.organizationId}, '${userId}', 1, 3)`, JSON.stringify(sitesResult, null, 2));
+      logger.debug(`userApi.listSites(${testConfig.organizationId}, '${userId}', 1, 3): ${stringify(sitesResult, null, 2)}`)
 
       expect(sitesResult).to.not.be.null;
       expect(sitesResult.items).to.be.an('array');
@@ -322,7 +324,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       }
 
       const user = users[0];
-      logger.debug('Validating user schema', JSON.stringify(user, null, 2));
+      logger.debug(`Validating user schema: ${stringify(user, null, 2)}`);
 
       expect(user).to.be.an('object');
 
@@ -351,7 +353,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
       try {
         // Test with potentially invalid parameters
         const usersResult = await userApi.list(testConfig.organizationId, -1, -1);
-        logger.debug(`userApi.list(${testConfig.organizationId}, -1, -1)`, JSON.stringify(usersResult, null, 2));
+        logger.debug(`userApi.list(${testConfig.organizationId}, -1, -1): ${stringify(usersResult, null, 2)}`)
 
         // Should either return empty array or throw appropriate error
         if (usersResult && usersResult.items) {
@@ -359,7 +361,7 @@ describe('Avigilon Alta Access - User Producer Tests', function () {
         }
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for invalid pagination', err.message);
+        logger.debug(`Expected error for invalid pagination: ${stringify(err.message)}`);
 
         // Should get a validation error
         expect(error).to.not.be.null;

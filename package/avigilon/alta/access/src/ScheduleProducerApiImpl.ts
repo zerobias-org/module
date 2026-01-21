@@ -1,15 +1,15 @@
-import { getLogger } from '@auditmation/util-logger';
+import { LoggerEngine } from '@zerobias-org/logger';
 import { AxiosInstance } from 'axios';
-import { PagedResults, UnexpectedError } from '@auditmation/types-core-js';
-import { ScheduleProducerApi } from '../generated/api/ScheduleApi';
-import { ScheduleType, Schedule, ScheduleEvent } from '../generated/model';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toScheduleTypeExported, toScheduleExported, toScheduleEvent } from './Mappers';
+import { PagedResults, UnexpectedError } from '@zerobias-org/types-core-js';
+import { ScheduleProducerApi } from '../generated/api/ScheduleApi.js';
+import { ScheduleType, Schedule, ScheduleEvent } from '../generated/model/index.js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
+import { toScheduleTypeExported, toScheduleExported, toScheduleEvent } from './Mappers.js';
 
 export class ScheduleProducerApiImpl implements ScheduleProducerApi {
   private readonly httpClient: AxiosInstance;
 
-  private readonly logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+  private readonly logger = LoggerEngine.root();
 
   constructor(client: AvigilonAltaAccessClient) {
     this.httpClient = client.getHttpClient();
@@ -38,7 +38,7 @@ export class ScheduleProducerApiImpl implements ScheduleProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toScheduleEvent);
+    results.items = response.data.data.map((item) => toScheduleEvent(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -65,7 +65,7 @@ export class ScheduleProducerApiImpl implements ScheduleProducerApi {
     }
 
     // Apply mappers and set pagination info from response structure
-    results.items = response.data.data.map(toScheduleTypeExported);
+    results.items = response.data.data.map((item) => toScheduleTypeExported(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -92,7 +92,7 @@ export class ScheduleProducerApiImpl implements ScheduleProducerApi {
     }
 
     // Apply mappers and set pagination info from response structure
-    results.items = response.data.data.map(toScheduleExported);
+    results.items = response.data.data.map((item) => toScheduleExported(item));
     results.count = response.data.totalCount || 0;
   }
 }

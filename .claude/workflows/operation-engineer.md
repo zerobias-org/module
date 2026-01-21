@@ -40,7 +40,7 @@ Import required modules:
 - AxiosInstance from axios
 - Generated types from ../generated/model/
 - Mapper functions from ./Mappers
-- Core error types from @auditmation/types-core-js
+- Core error types from @zerobias-org/types-core-js
 - Utility functions (handleAxiosError) if available
 
 **Import patterns:** See "Producer Pattern" in @.claude/rules/implementation.md

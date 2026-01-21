@@ -18,7 +18,7 @@ Requires Node.js 18+ and an Avigilon Alta Access account with email/password cre
 
 ```typescript
 import { newAvigilonAltaAccess } from '@zerobias-org/module-avigilon-alta-access';
-import { Email } from '@auditmation/types-core-js';
+import { Email } from '@zerobias-org/types-core-js';
 
 const client = newAvigilonAltaAccess();
 
@@ -39,7 +39,7 @@ See [User Guide](USER_GUIDE.md) for detailed setup instructions.
 ## Usage
 
 ```typescript
-import { Email } from '@auditmation/types-core-js';
+import { Email } from '@zerobias-org/types-core-js';
 
 const client = newAvigilonAltaAccess();
 await client.connect({

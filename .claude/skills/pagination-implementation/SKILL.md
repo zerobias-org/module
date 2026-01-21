@@ -463,10 +463,10 @@ Before completing a LIST operation with token-based pagination:
 
 ## Integration with PagedResults
 
-The `PagedResults<T>` type is provided by `@auditmation/types-core-js`:
+The `PagedResults<T>` type is provided by `@zerobias-org/types-core-js`:
 
 ```typescript
-import { PagedResults } from '@auditmation/types-core-js';
+import { PagedResults } from '@zerobias-org/types-core-js';
 
 interface PagedResults<T> {
   items: T[];           // Array of domain objects (output)

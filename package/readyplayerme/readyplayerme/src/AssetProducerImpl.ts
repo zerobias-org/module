@@ -1,4 +1,4 @@
-import { AssetProducerApi } from '../generated/api';
+import { AssetProducerApi } from '../generated/api/index.js';
 import {
   AddAssetToApplicationRequest,
   AssetInfoResponse,
@@ -8,13 +8,13 @@ import {
   RemoveAssetFromApplicationRequest,
   UnlockAssetRequest,
   UpdateAssetRequest
-} from '../generated/model';
-import { toAssetInfoResponse, toAssetResponse } from './mappers';
-import { ReadyPlayerMeClient } from './ReadyPlayerMeClient';
-import { handleAxiosError } from './util';
+} from '../generated/model/index.js';
+import { toAssetInfoResponse, toAssetResponse } from './mappers.js';
+import { ReadyPlayerMeClient } from './ReadyPlayerMeClient.js';
+import { handleAxiosError } from './util.js';
 
 export class AssetProducerImpl implements AssetProducerApi {
-  constructor(private client: ReadyPlayerMeClient) { }
+  constructor(private client: ReadyPlayerMeClient) {}
 
   async addToApplication(
     assetId: string,

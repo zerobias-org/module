@@ -5,11 +5,11 @@ import {
   InvalidCredentialsError,
   NoSuchObjectError,
   UnexpectedError
-} from '@auditmation/types-core-js';
-import { UserProducerApiImpl } from '../../src/UserProducerApiImpl';
-import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
-import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
-import { User, UserInfo, Role, Site } from '../../generated/model';
+} from '@zerobias-org/types-core-js';
+import { UserProducerApiImpl } from '../../src/UserProducerApiImpl.js';
+import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient.js';
+import { ConnectionProfile } from '../../generated/model/ConnectionProfile.js';
+import { User, UserInfo, Role, Site } from '../../generated/model/index.js';
 import {
   mockAuthenticatedRequest,
   mockPaginatedResponse,
@@ -17,7 +17,7 @@ import {
   mockErrorResponse,
   loadFixture,
   cleanNock
-} from '../utils/nock-helpers';
+} from '../utils/nock-helpers.js';
 
 describe('UserProducerApiImpl', () => {
   let client: AvigilonAltaAccessClient;

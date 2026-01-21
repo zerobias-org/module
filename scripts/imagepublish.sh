@@ -44,18 +44,18 @@ scope=$(cat package.json | jq -r '.name | split("/")[0]')
 scope=${scope:1}
 REPOSITORY_NAME="$scope-$name"
 
-if [ "$name" == "module-auditmation-interface-rest" ]; then
+if [ "$name" == "module-interface-rest" ]; then
 	echo "--- Skipping rest interface"
 	exit 0;
 fi
 
-if [ "$name" == "module-auditmation-interface-spreadsheet" ]; then
+if [ "$name" == "module-interface-spreadsheet" ]; then
 	echo "--- Skipping spreadsheet interface"
 	exit 0;
 fi
 
 version=$(cat package.json | jq -r '.version')
-deprecated=$(cat package.json | jq -rc '.auditmation.deprecated')
+deprecated=$(cat package.json | jq -rc '.zerobias.deprecated')
 
 if [ "${deprecated}" == "true" ]; then
 	echo "--- Skipping deprecated module $name"

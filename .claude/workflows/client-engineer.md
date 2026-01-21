@@ -141,7 +141,7 @@ Run validation checks:
 
 **Using Core Profiles:**
 - When service matches core profile type (TokenProfile, OAuthClientProfile, etc.)
-- Import from @auditmation/types-core-js
+- Import from @zerobias-org/types-core-js
 - Reduces code duplication
 - **Pattern:** See "Core Profile Usage" in @.claude/rules/connection-profile-design.md
 

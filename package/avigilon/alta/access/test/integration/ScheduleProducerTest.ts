@@ -1,10 +1,12 @@
 import { expect } from 'chai';
+import stringify from 'safe-stable-stringify';
 import { describe, it, before } from 'mocha';
-import { getLogger } from '@auditmation/util-logger';
-import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common';
-import { AccessImpl, ScheduleApi } from '../../src';
+import { LoggerEngine } from '@zerobias-org/logger';
+import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common.js';
+import { AccessImpl } from '../../src/index.js';
+import type { ScheduleApi } from '../../src/index.js';
 
-const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+const logger = LoggerEngine.root();
 
 describe('Avigilon Alta Access - Schedule Producer Tests', function () {
   this.timeout(testConfig.timeout);
@@ -24,7 +26,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
     it('should list schedules with default pagination', async () => {
       const schedulesResult = await scheduleApi.listSchedules(testConfig.organizationId);
 
-      logger.debug(`scheduleApi.listSchedules(${testConfig.organizationId})`, JSON.stringify(schedulesResult, null, 2));
+      logger.debug(`scheduleApi.listSchedules(${testConfig.organizationId}): ${stringify(schedulesResult, null, 2)}`)
 
       expect(schedulesResult).to.not.be.null;
       expect(schedulesResult).to.not.be.undefined;
@@ -80,7 +82,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
     it('should list schedules with custom pagination', async () => {
       const schedulesResult = await scheduleApi.listSchedules(testConfig.organizationId, 1, 5);
 
-      logger.debug(`scheduleApi.listSchedules(${testConfig.organizationId}, 1, 5)`, JSON.stringify(schedulesResult, null, 2));
+      logger.debug(`scheduleApi.listSchedules(${testConfig.organizationId}, 1, 5): ${stringify(schedulesResult, null, 2)}`)
 
       expect(schedulesResult).to.not.be.null;
       expect(schedulesResult).to.not.be.undefined;
@@ -101,7 +103,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
       // Request with large page number to potentially get empty results
       const schedulesResult = await scheduleApi.listSchedules(testConfig.organizationId, 1000, 10);
 
-      logger.debug(`scheduleApi.listSchedules(${testConfig.organizationId}, 1000, 10)`, JSON.stringify(schedulesResult, null, 2));
+      logger.debug(`scheduleApi.listSchedules(${testConfig.organizationId}, 1000, 10): ${stringify(schedulesResult, null, 2)}`)
 
       expect(schedulesResult).to.not.be.null;
       expect(schedulesResult.items).to.be.an('array');
@@ -115,7 +117,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
     it('should list schedule types with default pagination', async () => {
       const typesResult = await scheduleApi.listScheduleTypes(testConfig.organizationId);
 
-      logger.debug(`scheduleApi.listScheduleTypes(${testConfig.organizationId})`, JSON.stringify(typesResult, null, 2));
+      logger.debug(`scheduleApi.listScheduleTypes(${testConfig.organizationId}): ${stringify(typesResult, null, 2)}`)
 
       expect(typesResult).to.not.be.null;
       expect(typesResult).to.not.be.undefined;
@@ -159,7 +161,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
     it('should list schedule types with custom pagination', async () => {
       const typesResult = await scheduleApi.listScheduleTypes(testConfig.organizationId, 1, 3);
 
-      logger.debug(`scheduleApi.listScheduleTypes(${testConfig.organizationId}, 1, 3)`, JSON.stringify(typesResult, null, 2));
+      logger.debug(`scheduleApi.listScheduleTypes(${testConfig.organizationId}, 1, 3): ${stringify(typesResult, null, 2)}`)
 
       expect(typesResult).to.not.be.null;
       expect(typesResult.items).to.be.an('array');
@@ -193,7 +195,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
         scheduleId
       );
 
-      logger.debug(`scheduleApi.listScheduleEvents(${testConfig.organizationId}, '${scheduleId}')`, JSON.stringify(eventsResult, null, 2));
+      logger.debug(`scheduleApi.listScheduleEvents(${testConfig.organizationId}, '${scheduleId}'): ${stringify(eventsResult, null, 2)}`)
 
       expect(eventsResult).to.not.be.null;
       expect(eventsResult).to.not.be.undefined;
@@ -274,7 +276,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
         3
       );
 
-      logger.debug(`scheduleApi.listScheduleEvents(${testConfig.organizationId}, '${scheduleId}', 1, 3)`, JSON.stringify(eventsResult, null, 2));
+      logger.debug(`scheduleApi.listScheduleEvents(${testConfig.organizationId}, '${scheduleId}', 1, 3): ${stringify(eventsResult, null, 2)}`)
 
       expect(eventsResult).to.not.be.null;
       expect(eventsResult.items).to.be.an('array');
@@ -305,10 +307,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
         scheduleId
       );
 
-      logger.debug(
-        `scheduleApi.listScheduleEvents(${testConfig.organizationId}, '${scheduleId}') - checking for empty`,
-        JSON.stringify(eventsResult, null, 2)
-      );
+      logger.debug(`scheduleApi.listScheduleEvents(${testConfig.organizationId}, '${scheduleId}') - checking for empty: ${stringify(eventsResult, null, 2)}`);
 
       expect(eventsResult).to.not.be.null;
       expect(eventsResult.items).to.be.an('array');
@@ -330,7 +329,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
       }
 
       const schedule = schedules[0];
-      logger.debug('Validating schedule schema', JSON.stringify(schedule, null, 2));
+      logger.debug(`Validating schedule schema: ${stringify(schedule, null, 2)}`);
 
       expect(schedule).to.be.an('object');
 
@@ -365,7 +364,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
       }
 
       const scheduleType = types[0];
-      logger.debug('Validating schedule type schema', JSON.stringify(scheduleType, null, 2));
+      logger.debug(`Validating schedule type schema: ${stringify(scheduleType, null, 2)}`);
 
       expect(scheduleType).to.be.an('object');
 
@@ -407,7 +406,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
       }
 
       const event = events[0];
-      logger.debug('Validating schedule event schema', JSON.stringify(event, null, 2));
+      logger.debug(`Validating schedule event schema: ${stringify(event, null, 2)}`);
 
       expect(event).to.be.an('object');
 
@@ -437,7 +436,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
       try {
         // Test with potentially invalid parameters
         const schedulesResult = await scheduleApi.listSchedules(testConfig.organizationId, -1, -1);
-        logger.debug(`scheduleApi.listSchedules(${testConfig.organizationId}, -1, -1)`, JSON.stringify(schedulesResult, null, 2));
+        logger.debug(`scheduleApi.listSchedules(${testConfig.organizationId}, -1, -1): ${stringify(schedulesResult, null, 2)}`)
 
         // Should either return empty array or throw appropriate error
         if (schedulesResult && schedulesResult.items) {
@@ -445,7 +444,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
         }
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for invalid pagination', err.message);
+        logger.debug(`Expected error for invalid pagination: ${stringify(err.message)}`);
 
         // Should get a validation error
         expect(error).to.not.be.null;
@@ -466,10 +465,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
           testConfig.organizationId,
           nonExistentScheduleId
         );
-        logger.debug(
-          `scheduleApi.listScheduleEvents(${testConfig.organizationId}, '${nonExistentScheduleId}')`,
-          JSON.stringify(eventsResult, null, 2)
-        );
+        logger.debug(`scheduleApi.listScheduleEvents(${testConfig.organizationId}, '${nonExistentScheduleId}'): ${stringify(eventsResult, null, 2)}`);
 
         // If no error was thrown, the result should be empty or null
         if (eventsResult) {
@@ -477,7 +473,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
         }
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for non-existent schedule', err.message);
+        logger.debug(`Expected error for non-existent schedule: ${stringify(err.message)}`);
 
         // Expecting a 404 or similar error
         expect(error).to.not.be.null;
@@ -509,7 +505,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
         expect.fail('Should have thrown ParameterRequiredError');
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for empty organizationId', err.message);
+        logger.debug(`Expected error for empty organizationId: ${stringify(err.message)}`);
 
         expect(error).to.not.be.null;
         expect((error as Error).message).to.include('organizationId');
@@ -536,7 +532,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
           pageSize
         );
 
-        logger.debug(`Page ${currentPage}:`, JSON.stringify(schedulesResult, null, 2));
+        logger.debug(`Page ${currentPage}:: ${stringify(schedulesResult, null, 2)}`)
 
         expect(schedulesResult.items).to.be.an('array');
 
@@ -577,7 +573,7 @@ describe('Avigilon Alta Access - Schedule Producer Tests', function () {
           pageSize
         );
 
-        logger.debug(`Page ${currentPage}:`, JSON.stringify(typesResult, null, 2));
+        logger.debug(`Page ${currentPage}:: ${stringify(typesResult, null, 2)}`)
 
         expect(typesResult.items).to.be.an('array');
 

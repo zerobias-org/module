@@ -5,18 +5,18 @@ import {
   UnexpectedError,
   URL,
   Email
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 import {
   ConnectionMetadata,
   ConnectionStatus,
   OperationSupportStatus
-} from '@auditmation/hub-core';
-import { AccessImpl } from '../../src/AccessImpl';
-import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
-import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
-import { UserProducerApiImpl } from '../../src/UserProducerApiImpl';
-import { GroupProducerApiImpl } from '../../src/GroupProducerApiImpl';
-import { mockAuthenticatedRequest, cleanNock, loadFixture } from '../utils/nock-helpers';
+} from '@zerobias-org/types-core-js';
+import { AccessImpl } from '../../src/AccessImpl.js';
+import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient.js';
+import { ConnectionProfile } from '../../generated/model/ConnectionProfile.js';
+import { UserProducerApiImpl } from '../../src/UserProducerApiImpl.js';
+import { GroupProducerApiImpl } from '../../src/GroupProducerApiImpl.js';
+import { mockAuthenticatedRequest, cleanNock, loadFixture } from '../utils/nock-helpers.js';
 
 describe('AccessImpl', () => {
   let accessImpl: AccessImpl;

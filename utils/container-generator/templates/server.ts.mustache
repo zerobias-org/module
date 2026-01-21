@@ -1,8 +1,8 @@
 {{#oauth}}
-import { OAuthConnectionDetails } from '@auditmation/hub-core';
+import { OAuthConnectionDetails } from '@zerobias-org/types-core-js';
 {{/oauth}}
-import { CoreError, NotFoundError, UnauthorizedError, UnexpectedError } from '@auditmation/types-core-js';
-import { getLogger } from '@auditmation/util-logger';
+import { CoreError, NotFoundError, UnauthorizedError, UnexpectedError } from '@zerobias-org/types-core-js';
+import { LoggerEngine } from '@zerobias-org/logger';
 {{#esModuleInterop}}
 import express from 'express';
 {{/esModuleInterop}}
@@ -36,13 +36,7 @@ import { ConnectionState } from '../dist/generated/model';
 import { {{pascal}}Impl } from '../dist/src/{{pascal}}Impl';
 {{/dryRun}}
 
-/*
-getLogger = () => {
-  console.log('LOGGER');
-  getLogger('console');
-}
-*/
-const logger = getLogger('console');
+const logger = LoggerEngine.root();
 
 import * as util from 'util';
 
@@ -61,7 +55,7 @@ try {
   logger.error('Couldnt read connection profile for sensitive fields, filtering all of them', err);
 }
 
-const AUTH_SECRET = 'auditmation-auth'
+const AUTH_SECRET = 'zerobias-org-auth'
 
 function getConnection(req: Request) {
   const { connectionId } = req.params;

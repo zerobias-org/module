@@ -295,8 +295,8 @@ it('should retrieve user', async () => {
 ```typescript
 // test/integration/Common.ts - ONLY file allowed to access process.env
 import { config } from 'dotenv';
-import { Email } from '@auditmation/types-core-js';
-import { getLogger as getLoggerBase } from '@auditmation/util-logger';
+import { Email } from '@zerobias-org/types-core-js';
+import { LoggerEngine } from '@zerobias-org/logger';
 import { newService } from '../../src';
 import type { ServiceConnector } from '../../src';
 
@@ -313,14 +313,49 @@ export const SERVICE_BASE_URL = process.env.SERVICE_BASE_URL || 'https://api.exa
 export const SERVICE_TEST_USER_ID = process.env.SERVICE_TEST_USER_ID || '';
 export const SERVICE_TEST_ORGANIZATION_ID = process.env.SERVICE_TEST_ORGANIZATION_ID || '';
 
-const LOG_LEVEL = (process.env.LOG_LEVEL || 'info') as string;
-
 /**
  * Get a logger with configurable level from LOG_LEVEL env var.
  * Usage: LOG_LEVEL=debug npm run test:integration
  */
 export function getLogger(name: string) {
-  return getLoggerBase(name, {}, LOG_LEVEL);
+  return LoggerEngine.root().get(name);
+}
+
+if (process.env.LOG_LEVEL) {
+  switch (process.env.LOG_LEVEL) {
+    case 'trace': {
+      getLogger().setLevel(LogLevel.TRACE);
+      break;
+    }
+    case 'debug': {
+      getLogger().setLevel(LogLevel.DEBUG);
+      break;
+    }
+    case 'verbose': {
+      getLogger().setLevel(LogLevel.VERBOSE);
+      break;
+    }
+    case 'info': {
+      getLogger().setLevel(LogLevel.INFO);
+      break;
+    }
+    case 'warn': {
+      getLogger().setLevel(LogLevel.WARN);
+      break;
+    }
+    case 'error': {
+      getLogger().setLevel(LogLevel.ERROR);
+      break;
+    }
+    case 'crit': {
+      getLogger().setLevel(LogLevel.CRIT);
+      break;
+    }
+    default: {
+      getLogger().setLevel(LogLevel.INFO);
+      break;
+    }
+  }
 }
 
 export function hasCredentials(): boolean {

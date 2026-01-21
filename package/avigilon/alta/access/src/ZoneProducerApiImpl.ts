@@ -1,9 +1,9 @@
 import { AxiosInstance } from 'axios';
-import { PagedResults, UnexpectedError } from '@auditmation/types-core-js';
-import { ZoneProducerApi } from '../generated/api/ZoneApi';
-import { Zone, ZoneShare, ZoneZoneUser } from '../generated/model';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toZone, toZoneShare, toZoneZoneUser } from './Mappers';
+import { PagedResults, UnexpectedError } from '@zerobias-org/types-core-js';
+import { ZoneProducerApi } from '../generated/api/ZoneApi.js';
+import { Zone, ZoneShare, ZoneZoneUser } from '../generated/model/index.js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
+import { toZone, toZoneShare, toZoneZoneUser } from './Mappers.js';
 
 export class ZoneProducerApiImpl implements ZoneProducerApi {
   private readonly httpClient: AxiosInstance;
@@ -28,7 +28,7 @@ export class ZoneProducerApiImpl implements ZoneProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toZone);
+    results.items = response.data.data.map((item) => toZone(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -55,7 +55,7 @@ export class ZoneProducerApiImpl implements ZoneProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toZoneShare);
+    results.items = response.data.data.map((item) => toZoneShare(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -82,7 +82,7 @@ export class ZoneProducerApiImpl implements ZoneProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toZoneZoneUser);
+    results.items = response.data.data.map((item) => toZoneZoneUser(item));
     results.count = response.data.totalCount || 0;
   }
 }

@@ -1,11 +1,11 @@
-import { UserProducerApi } from '../generated/api';
-import { CreateUserRequest, CreateUserResponse, TokenResponse } from '../generated/model';
-import { toCreateUserResponse, toTokenResponse } from './mappers';
-import { ReadyPlayerMeClient } from './ReadyPlayerMeClient';
-import { handleAxiosError } from './util';
+import { UserProducerApi } from '../generated/api/index.js';
+import { CreateUserRequest, CreateUserResponse, TokenResponse } from '../generated/model/index.js';
+import { toCreateUserResponse, toTokenResponse } from './mappers.js';
+import { ReadyPlayerMeClient } from './ReadyPlayerMeClient.js';
+import { handleAxiosError } from './util.js';
 
 export class UserProducerImpl implements UserProducerApi {
-  constructor(private client: ReadyPlayerMeClient) { }
+  constructor(private client: ReadyPlayerMeClient) {}
 
   async getToken(userId: string, partner: string): Promise<TokenResponse> {
     const { apiClient } = this.client;

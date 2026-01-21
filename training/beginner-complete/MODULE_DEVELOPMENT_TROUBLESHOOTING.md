@@ -197,7 +197,7 @@ Not extending baseConnectionState.yml, missing expiresIn field.
 ```yaml
 # ✅ CORRECT
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   - type: object
     required:
       - accessToken

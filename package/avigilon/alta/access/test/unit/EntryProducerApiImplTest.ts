@@ -4,16 +4,16 @@ import {
   PagedResults, Email, NotConnectedError,
   NoSuchObjectError,
   UnexpectedError
-} from '@auditmation/types-core-js';
-import { EntryProducerApiImpl } from '../../src/EntryProducerApiImpl';
-import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
-import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
-import { Entry, EntryInfo, EntryActivityEvent, EntryCamera, EntryStateInfo, EntryUserSchedule, EntryUser } from '../../generated/model';
+} from '@zerobias-org/types-core-js';
+import { EntryProducerApiImpl } from '../../src/EntryProducerApiImpl.js';
+import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient.js';
+import { ConnectionProfile } from '../../generated/model/ConnectionProfile.js';
+import { Entry, EntryInfo, EntryActivityEvent, EntryCamera, EntryStateInfo, EntryUserSchedule, EntryUser } from '../../generated/model/index.js';
 import {
   mockAuthenticatedRequest,
   mockPaginatedResponse,
   cleanNock
-} from '../utils/nock-helpers';
+} from '../utils/nock-helpers.js';
 
 describe('EntryProducerApiImpl', () => {
   let client: AvigilonAltaAccessClient;

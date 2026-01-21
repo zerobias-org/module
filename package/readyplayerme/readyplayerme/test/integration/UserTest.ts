@@ -1,7 +1,7 @@
 /* eslint-disable */
 import { expect } from 'chai';
-import { CreateUserRequest } from '../../src';
-import { prepareApi, READYPLAYERME_APP_ID } from './Common';
+import type { CreateUserRequest } from '../../src/index.js';
+import { prepareApi, READYPLAYERME_APP_ID } from './Common.js';
 
 describe('UserTest', () => {
   const api = prepareApi();

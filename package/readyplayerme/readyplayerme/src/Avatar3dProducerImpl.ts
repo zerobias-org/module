@@ -1,25 +1,25 @@
-import { Avatar3dApi, Avatar3dProducerApi } from '../generated/api';
-import { RequestFile } from '../generated/model';
-import { toRequestFile } from './mappers';
-import { ReadyPlayerMeClient } from './ReadyPlayerMeClient';
-import { handleAxiosError } from './util';
+import { Avatar3dProducerApi } from '../generated/api/index.js';
+import { RequestFile, Avatar3DQualityDef, Avatar3DTextureAtlasDef, Avatar3DPoseDef, Avatar3DTextureFormatDef } from '../generated/model/index.js';
+import { toRequestFile } from './mappers.js';
+import { ReadyPlayerMeClient } from './ReadyPlayerMeClient.js';
+import { handleAxiosError } from './util.js';
 
 export class Avatar3dProducerImpl implements Avatar3dProducerApi {
-  constructor(private client: ReadyPlayerMeClient) { }
+  constructor(private client: ReadyPlayerMeClient) {}
 
   async get3DModel(
     avatarId: string,
-    quality?: Avatar3dApi.QualityEnumDef,
+    quality?: Avatar3DQualityDef,
     textureSizeLimit?: number,
-    textureQuality?: Avatar3dApi.TextureQualityEnumDef,
-    textureAtlas?: Avatar3dApi.TextureAtlasEnumDef,
+    textureQuality?: Avatar3DQualityDef,
+    textureAtlas?: Avatar3DTextureAtlasDef,
     textureChannels?: string,
     morphTargets?: string,
     useDracoMeshCompression?: boolean,
     useQuantizeMeshOptCompression?: boolean,
-    pose?: Avatar3dApi.PoseEnumDef,
+    pose?: Avatar3DPoseDef,
     useHands?: boolean,
-    textureFormat?: Avatar3dApi.TextureFormatEnumDef,
+    textureFormat?: Avatar3DTextureFormatDef,
     lod?: number
   ): Promise<RequestFile> {
     const { modelClient } = this.client;

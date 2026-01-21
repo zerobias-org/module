@@ -3,24 +3,24 @@ import {
   ConnectionStatus,
   OperationSupportStatus,
   OperationSupportStatusDef
-} from '@auditmation/hub-core';
-import { InvalidCredentialsError, NotConnectedError } from '@auditmation/types-core-js';
-import { Axios } from 'axios';
-import { ConnectionProfile } from '../generated/model/ConnectionProfile';
+} from '@zerobias-org/types-core-js';
+import { InvalidCredentialsError, NotConnectedError } from '@zerobias-org/types-core-js';
+import axios, { AxiosInstance } from 'axios';
+import { ConnectionProfile } from '../generated/model/ConnectionProfile.js';
 
 export class ReadyPlayerMeClient {
-  private _apiClient?: Axios;
+  private _apiClient?: AxiosInstance;
 
-  private _modelClient?: Axios;
+  private _modelClient?: AxiosInstance;
 
-  public get apiClient(): Axios {
+  public get apiClient(): AxiosInstance {
     if (!this._apiKey || !this._apiClient) {
       throw new NotConnectedError();
     }
     return this._apiClient;
   }
 
-  public get modelClient(): Axios {
+  public get modelClient(): AxiosInstance {
     if (!this._apiKey || !this._modelClient) {
       throw new NotConnectedError();
     }
@@ -44,15 +44,15 @@ export class ReadyPlayerMeClient {
     if (!connectionProfile.apiToken) {
       throw new InvalidCredentialsError();
     }
-    this.apiKey = connectionProfile.apiToken;
 
-    this._apiClient = new Axios({
+    this.apiKey = connectionProfile.apiToken;
+    this._apiClient = axios.create({
       baseURL: 'https://api.readyplayer.me/v1',
       headers: { 'x-api-key': this.apiKey },
       validateStatus: (status) => status >= 200 && status < 300,
     });
 
-    this._modelClient = new Axios({
+    this._modelClient = axios.create({
       baseURL: 'https://model.readyplayer.me',
       headers: { 'x-api-key': this.apiKey },
       validateStatus: (status) => status >= 200 && status < 300,
@@ -69,12 +69,12 @@ export class ReadyPlayerMeClient {
     this._modelClient = undefined;
   }
 
-  // eslint-disable-next-line class-methods-use-this
+   
   async metadata(): Promise<ConnectionMetadata> {
     return new ConnectionMetadata(ConnectionStatus.Down);
   }
 
-  // eslint-disable-next-line class-methods-use-this
+   
   async isSupported(_operationId: string): Promise<OperationSupportStatusDef> {
     return OperationSupportStatus.Maybe;
   }

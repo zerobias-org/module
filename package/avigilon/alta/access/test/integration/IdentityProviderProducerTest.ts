@@ -1,12 +1,14 @@
 import { expect } from 'chai';
+import stringify from 'safe-stable-stringify';
 import { describe, it, before } from 'mocha';
-import { getLogger } from '@auditmation/util-logger';
-import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common';
-import { AccessImpl, IdentityProviderApi } from '../../src';
+import { LoggerEngine } from '@zerobias-org/logger';
+import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common.js';
+import { AccessImpl } from '../../src/index.js';
+import type { IdentityProviderApi } from '../../src/index.js';
 
 // Core types for assertions
 
-const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+const logger = LoggerEngine.root();
 
 describe('Avigilon Alta Access - Identity Provider Producer Tests', function () {
   this.timeout(testConfig.timeout);
@@ -26,7 +28,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
     it('should list identity providers with default pagination', async () => {
       const providersResult = await identityProviderApi.listIdentityProviders(testConfig.organizationId);
 
-      logger.debug(`identityProviderApi.listIdentityProviders(${testConfig.organizationId})`, JSON.stringify(providersResult, null, 2));
+      logger.debug(`identityProviderApi.listIdentityProviders(${testConfig.organizationId}): ${stringify(providersResult, null, 2)}`)
 
       expect(providersResult).to.not.be.null;
       expect(providersResult).to.not.be.undefined;
@@ -71,7 +73,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
     it('should list identity providers with custom pagination', async () => {
       const providersResult = await identityProviderApi.listIdentityProviders(testConfig.organizationId, 1, 5);
 
-      logger.debug(`identityProviderApi.listIdentityProviders(${testConfig.organizationId}, 1, 5)`, JSON.stringify(providersResult, null, 2));
+      logger.debug(`identityProviderApi.listIdentityProviders(${testConfig.organizationId}, 1, 5): ${stringify(providersResult, null, 2)}`)
 
       expect(providersResult).to.not.be.null;
       expect(providersResult).to.not.be.undefined;
@@ -93,7 +95,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
     it('should list identity provider types with default pagination', async () => {
       const typesResult = await identityProviderApi.listIdentityProviderTypes(testConfig.organizationId);
 
-      logger.debug(`identityProviderApi.listIdentityProviderTypes(${testConfig.organizationId})`, JSON.stringify(typesResult, null, 2));
+      logger.debug(`identityProviderApi.listIdentityProviderTypes(${testConfig.organizationId}): ${stringify(typesResult, null, 2)}`)
 
       expect(typesResult).to.not.be.null;
       expect(typesResult).to.not.be.undefined;
@@ -130,7 +132,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
     it('should list identity provider types with custom pagination', async () => {
       const typesResult = await identityProviderApi.listIdentityProviderTypes(testConfig.organizationId, 1, 3);
 
-      logger.debug(`identityProviderApi.listIdentityProviderTypes(${testConfig.organizationId}, 1, 3)`, JSON.stringify(typesResult, null, 2));
+      logger.debug(`identityProviderApi.listIdentityProviderTypes(${testConfig.organizationId}, 1, 3): ${stringify(typesResult, null, 2)}`)
 
       expect(typesResult).to.not.be.null;
       expect(typesResult.items).to.be.an('array');
@@ -158,7 +160,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
 
       const typeInfo = await identityProviderApi.getIdentityProviderType(testConfig.organizationId, typeId);
 
-      logger.debug(`identityProviderApi.getIdentityProviderType(${testConfig.organizationId}, '${typeId}')`, JSON.stringify(typeInfo, null, 2));
+      logger.debug(`identityProviderApi.getIdentityProviderType(${testConfig.organizationId}, '${typeId}'): ${stringify(typeInfo, null, 2)}`)
 
       expect(typeInfo).to.not.be.null;
       expect(typeInfo).to.not.be.undefined;
@@ -188,15 +190,14 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       try {
         const typeInfo = await identityProviderApi.getIdentityProviderType(testConfig.organizationId, nonExistentId);
         logger.debug(
-          `identityProviderApi.getIdentityProviderType(${testConfig.organizationId}, '${nonExistentId}')`,
-          JSON.stringify(typeInfo, null, 2)
+          `identityProviderApi.getIdentityProviderType(${testConfig.organizationId}, '${nonExistentId}'): ${stringify(typeInfo, null, 2)}`
         );
 
         // If no error was thrown, the result should be null or undefined
         expect(typeInfo).to.satisfy((result: any) => (result === null || result === undefined));
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for non-existent identity provider type', err.message);
+        logger.debug(`Expected error for non-existent identity provider type: ${stringify(err.message)}`);
 
         // Expecting a 404 or similar error
         expect(error).to.not.be.null;
@@ -240,8 +241,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       const groupsResult = await identityProviderApi.listIdentityProviderGroups(testConfig.organizationId, String(providerId));
 
       logger.debug(
-        `identityProviderApi.listIdentityProviderGroups(${testConfig.organizationId}, '${providerId}')`,
-        JSON.stringify(groupsResult, null, 2)
+        `identityProviderApi.listIdentityProviderGroups(${testConfig.organizationId}, '${providerId}'): ${stringify(groupsResult, null, 2)}`
       );
 
       expect(groupsResult).to.not.be.null;
@@ -294,8 +294,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       // List groups with custom pagination
       const groupsResult = await identityProviderApi.listIdentityProviderGroups(testConfig.organizationId, String(providerId), 1, 3);
       logger.debug(
-        `identityProviderApi.listIdentityProviderGroups(${testConfig.organizationId}, '${providerId}', 1, 3)`,
-        JSON.stringify(groupsResult, null, 2)
+        `identityProviderApi.listIdentityProviderGroups(${testConfig.organizationId}, '${providerId}', 1, 3): ${stringify(groupsResult, null, 2)}`
       );
 
       expect(groupsResult).to.not.be.null;
@@ -384,8 +383,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       const relationsResult = await identityProviderApi.getIdentityProviderGroupRelations(testConfig.organizationId, String(providerId), 1, 3);
 
       logger.debug(
-        `identityProviderApi.getIdentityProviderGroupRelations(${testConfig.organizationId}, '${providerId}', 1, 3)`,
-        JSON.stringify(relationsResult, null, 2)
+        `identityProviderApi.getIdentityProviderGroupRelations(${testConfig.organizationId}, '${providerId}', 1, 3): ${stringify(relationsResult, null, 2)}`
       );
       expect(relationsResult).to.not.be.null;
       expect(relationsResult.items).to.be.an('array');
@@ -410,7 +408,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       }
 
       const provider = providers[0];
-      logger.debug('Validating identity provider schema', JSON.stringify(provider, null, 2));
+      logger.debug(`Validating identity provider schema: ${stringify(provider, null, 2)}`);
 
       expect(provider).to.be.an('object');
 
@@ -443,7 +441,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       }
 
       const typeInfo = types[0];
-      logger.debug('Validating identity provider type schema', JSON.stringify(typeInfo, null, 2));
+      logger.debug(`Validating identity provider type schema: ${stringify(typeInfo, null, 2)}`);
 
       expect(typeInfo).to.be.an('object');
 
@@ -469,7 +467,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       try {
         // Test with potentially invalid parameters
         const providersResult = await identityProviderApi.listIdentityProviders(testConfig.organizationId, -1, -1);
-        logger.debug(`identityProviderApi.listIdentityProviders(${testConfig.organizationId}, -1, -1)`, JSON.stringify(providersResult, null, 2));
+        logger.debug(`identityProviderApi.listIdentityProviders(${testConfig.organizationId}, -1, -1): ${stringify(providersResult, null, 2)}`)
 
         // Should either return empty array or throw appropriate error
         if (providersResult && providersResult.items) {
@@ -477,7 +475,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
         }
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for invalid pagination', err.message);
+        logger.debug(`Expected error for invalid pagination: ${stringify(err.message)}`);
 
         // Should get a validation error
         expect(error).to.not.be.null;
@@ -503,7 +501,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       // Even if there are no identity providers, the API should return an empty array
       const providersResult = await identityProviderApi.listIdentityProviders(testConfig.organizationId, 1, 100);
 
-      logger.debug('Empty list test', JSON.stringify(providersResult, null, 2));
+      logger.debug(`Empty list test: ${stringify(providersResult, null, 2)}`);
 
       expect(providersResult).to.not.be.null;
       expect(providersResult.items).to.be.an('array');
@@ -519,7 +517,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       // Get first page with small page size
       const page1 = await identityProviderApi.listIdentityProviders(testConfig.organizationId, 1, 2);
 
-      logger.debug('First page', JSON.stringify(page1, null, 2));
+      logger.debug(`First page: ${stringify(page1, null, 2)}`);
 
       expect(page1).to.not.be.null;
       expect(page1.items).to.be.an('array');
@@ -528,7 +526,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       if (page1.count && page1.count > 2) {
         const page2 = await identityProviderApi.listIdentityProviders(testConfig.organizationId, 2, 2);
 
-        logger.debug('Second page', JSON.stringify(page2, null, 2));
+        logger.debug(`Second page: ${stringify(page2, null, 2)}`);
 
         expect(page2).to.not.be.null;
         expect(page2.items).to.be.an('array');
@@ -555,7 +553,7 @@ describe('Avigilon Alta Access - Identity Provider Producer Tests', function () 
       for (const pageSize of pageSizes) {
         const result = await identityProviderApi.listIdentityProviders(testConfig.organizationId, 1, pageSize);
 
-        logger.debug(`Page size ${pageSize}:`, JSON.stringify(result, null, 2));
+        logger.debug(`Page size ${pageSize}:: ${stringify(result, null, 2)}`)
 
         expect(result.items).to.be.an('array');
         expect(result.items.length).to.be.at.most(pageSize);

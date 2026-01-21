@@ -1,16 +1,21 @@
 import * as dotenv from 'dotenv';
+import stringify from 'safe-stable-stringify';
 import { expect } from 'chai';
 import fs from 'fs';
 import path from 'path';
-import { getLogger } from '@auditmation/util-logger';
-import { Email, URL, UUID, IpAddress } from '@auditmation/types-core-js';
-import { newAccess, AccessImpl } from '../../src';
-import { ConnectionProfile } from '../../generated/model';
+import { fileURLToPath } from 'url';
+import { LoggerEngine } from '@zerobias-org/logger';
+import { Email, URL, UUID, IpAddress } from '@zerobias-org/types-core-js';
+import { newAccess, AccessImpl } from '../../src/index.js';
+import { ConnectionProfile } from '../../generated/model/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load environment variables
 dotenv.config();
 
-const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+const logger = LoggerEngine.root();
 
 // Environment variables for Avigilon Alta Access API
 const EMAIL = process.env.AVIGILON_EMAIL;
@@ -51,7 +56,7 @@ function sanitizeObject(obj: unknown): unknown {
 
 export function sanitizeResponse(data: unknown): unknown {
   if (!data) return data;
-  const sanitized = JSON.parse(JSON.stringify(data));
+  const sanitized = JSON.parse(stringify(data));
   return sanitizeObject(sanitized);
 }
 
@@ -59,11 +64,11 @@ export function debugLog(operation: string, params: unknown, response?: unknown)
   if (process.env.LOG_LEVEL === 'debug') {
     logger.debug(`Operation: ${operation}`);
     if (params) {
-      logger.debug(`Params: ${JSON.stringify(params, null, 2)}`);
+      logger.debug(`Params: ${stringify(params, null, 2)}`);
     }
     if (response) {
       const sanitized = sanitizeResponse(response);
-      logger.debug(`Response: ${JSON.stringify(sanitized, null, 2)}`);
+      logger.debug(`Response: ${stringify(sanitized, null, 2)}`);
     }
   }
 }
@@ -92,14 +97,14 @@ export async function prepareApi(): Promise<AccessImpl> {
   }
 
   const profile = new ConnectionProfile(new Email(EMAIL), PASSWORD, TOTP_CODE);
-  logger.debug('Connecting to Avigilon Alta Access API (shared connection)', { email: EMAIL });
+  logger.debug(`Connecting to Avigilon Alta Access API (shared connection): ${stringify({ email: EMAIL })}`);
 
   try {
     await access.connect(profile);
     logger.debug('Successfully connected to Avigilon Alta Access API (shared connection)');
     sharedConnection = access;
   } catch (error) {
-    logger.error('Failed to connect to Avigilon Alta Access API (shared connection)', error);
+    logger.error(`Failed to connect to Avigilon Alta Access API (shared connection): ${stringify(error)}`);
     throw error;
   }
 
@@ -121,13 +126,13 @@ export async function prepareTestConnection(): Promise<AccessImpl> {
   }
 
   const profile = new ConnectionProfile(new Email(EMAIL), PASSWORD, TOTP_CODE);
-  logger.debug('Connecting to Avigilon Alta Access API (test connection)', { email: EMAIL });
+  logger.debug(`Connecting to Avigilon Alta Access API (test connection): ${stringify({ email: EMAIL })}`);
 
   try {
     await access.connect(profile);
     logger.debug('Successfully connected to Avigilon Alta Access API (test connection)');
   } catch (error) {
-    logger.error('Failed to connect to Avigilon Alta Access API (test connection)', error);
+    logger.error(`Failed to connect to Avigilon Alta Access API (test connection): ${stringify(error)}`);
     throw error;
   }
 
@@ -144,7 +149,7 @@ export async function cleanupApi(): Promise<void> {
       await sharedConnection.disconnect();
       logger.debug('Disconnected from Avigilon Alta Access API');
     } catch (error) {
-      logger.error('Error disconnecting from API', error);
+      logger.error(`Error disconnecting from API: ${stringify(error)}`);
     } finally {
       sharedConnection = null;
     }
@@ -164,7 +169,7 @@ export async function saveFixture(filename: string, data: unknown): Promise<void
   }
 
   const filepath = path.join(fixtureDir, filename);
-  fs.writeFileSync(filepath, JSON.stringify(sanitized, null, 2));
+  fs.writeFileSync(filepath, stringify(sanitized, null, 2) ?? '');
   logger.debug(`Saved fixture: ${filename}`);
 }
 

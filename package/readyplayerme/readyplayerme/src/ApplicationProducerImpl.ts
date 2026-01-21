@@ -1,23 +1,20 @@
-import { PagedResults, SortDirection } from '@auditmation/types-core-js';
-import {
-  ApplicationApi,
-  ApplicationProducerApi
-} from '../generated/api';
-import { AssetInfo } from '../generated/model';
-import { ReadyPlayerMeClient } from './ReadyPlayerMeClient';
-import { handleAxiosError } from './util';
-import { toAssetInfo } from './mappers';
+import { PagedResults, SortDirection } from '@zerobias-org/types-core-js';
+import { ApplicationProducerApi } from '../generated/api/index.js';
+import { AssetInfo, AssetTypeDef, AssetGenderDef } from '../generated/model/index.js';
+import { ReadyPlayerMeClient } from './ReadyPlayerMeClient.js';
+import { handleAxiosError } from './util.js';
+import { toAssetInfo } from './mappers.js';
 
 export class ApplicationProducerImpl implements ApplicationProducerApi {
-  constructor(private client: ReadyPlayerMeClient) { }
+  constructor(private client: ReadyPlayerMeClient) {}
 
   async listAssets(
     results: PagedResults<AssetInfo>,
     appId: string,
     name?: string,
     organizationId?: string,
-    type?: Array<ApplicationApi.TypeEnumDef>,
-    gender?: Array<ApplicationApi.GenderEnumDef>,
+    type?: Array<AssetTypeDef>,
+    gender?: Array<AssetGenderDef>,
     ids?: Array<string>,
     applicationIds?: Array<string>
   ): Promise<void> {
@@ -43,6 +40,6 @@ export class ApplicationProducerImpl implements ApplicationProducerApi {
       })
       .catch(handleAxiosError);
 
-    return results.ingest(data.data?.map(toAssetInfo));
+    return results.ingest(data.data?.map((asset) => toAssetInfo(asset)));
   }
 }

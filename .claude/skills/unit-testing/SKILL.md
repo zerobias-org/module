@@ -54,7 +54,7 @@ import fetchMock from 'fetch-mock';  // NO
 ```typescript
 // ✅ CORRECT: Unit test Common.ts - NO env vars
 import * as nock from 'nock';
-import { Email } from '@auditmation/types-core-js';
+import { Email } from '@zerobias-org/types-core-js';
 import { newService } from '../../src';
 
 export async function getConnectedInstance() {
@@ -157,7 +157,7 @@ Tests connection lifecycle with mocked HTTP (no real credentials).
 // test/unit/ConnectionTest.ts
 import { expect } from 'chai';
 import * as nock from 'nock';
-import { Email, InvalidCredentialsError } from '@auditmation/types-core-js';
+import { Email, InvalidCredentialsError } from '@zerobias-org/types-core-js';
 import { newService } from '../../src';
 
 describe('Connection', () => {
@@ -248,7 +248,7 @@ describe('Connection', () => {
 ```typescript
 // test/unit/Common.ts
 import * as nock from 'nock';
-import { Email } from '@auditmation/types-core-js';
+import { Email } from '@zerobias-org/types-core-js';
 import { newService } from '../../src';
 import type { ServiceConnector } from '../../src';
 

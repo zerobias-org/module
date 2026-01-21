@@ -1,18 +1,18 @@
-import { Avatar2dApi, Avatar2dProducerApi } from '../generated/api';
-import { RequestFile } from '../generated/model';
-import { toRequestFile } from './mappers';
-import { ReadyPlayerMeClient } from './ReadyPlayerMeClient';
-import { handleAxiosError } from './util';
+import { Avatar2dProducerApi } from '../generated/api/index.js';
+import { RequestFile, Avatar2DExpressionDef, Avatar2DPoseDef, Avatar2DCameraDef } from '../generated/model/index.js';
+import { toRequestFile } from './mappers.js';
+import { ReadyPlayerMeClient } from './ReadyPlayerMeClient.js';
+import { handleAxiosError } from './util.js';
 
 export class Avatar2dProducerImpl implements Avatar2dProducerApi {
-  constructor(private client: ReadyPlayerMeClient) { }
+  constructor(private client: ReadyPlayerMeClient) {}
 
   async get2DRender(
     avatarId: string,
-    expression?: Avatar2dApi.ExpressionEnumDef,
-    pose?: Avatar2dApi.PoseEnumDef,
+    expression?: Avatar2DExpressionDef,
+    pose?: Avatar2DPoseDef,
     blendShapes?: string,
-    camera?: Avatar2dApi.CameraEnumDef,
+    camera?: Avatar2DCameraDef,
     background?: string,
     quality?: number,
     size?: number,

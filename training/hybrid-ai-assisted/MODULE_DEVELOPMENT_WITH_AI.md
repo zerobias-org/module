@@ -111,7 +111,7 @@ Speed               Judgment             Fast + Correct
    ```
    1. YOU: Test auth with curl, identify exact method
    2. AI: Suggest appropriate core profile
-   3. YOU: Verify profile matches (check node_modules/@auditmation/types-core/schema/)
+   3. YOU: Verify profile matches (check node_modules/@zerobias-org/types-core/schema/)
    4. AI: Create connectionState extending baseConnectionState
    5. YOU: Verify expiresIn field present
    ```
@@ -342,7 +342,7 @@ properties:
 
 # YOU MUST ensure this (CORRECT):
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   - type: object
     properties:
       accessToken:
@@ -624,7 +624,7 @@ grep "baseConnectionState" connectionState.yml || echo "❌ MISSING!"
 ```yaml
 # ✅ Correct
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   - type: object
     properties:
       accessToken:

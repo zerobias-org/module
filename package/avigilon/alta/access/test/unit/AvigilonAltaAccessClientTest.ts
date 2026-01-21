@@ -5,10 +5,10 @@ import {
   UnexpectedError,
   NotConnectedError,
   Email
-} from '@auditmation/types-core-js';
-import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient';
-import { ConnectionProfile } from '../../generated/model/ConnectionProfile';
-import { cleanNock } from '../utils/nock-helpers';
+} from '@zerobias-org/types-core-js';
+import { AvigilonAltaAccessClient } from '../../src/AvigilonAltaAccessClient.js';
+import { ConnectionProfile } from '../../generated/model/ConnectionProfile.js';
+import { cleanNock } from '../utils/nock-helpers.js';
 
 describe('AvigilonAltaAccessClient', () => {
   let client: AvigilonAltaAccessClient;
@@ -315,11 +315,11 @@ describe('AvigilonAltaAccessClient', () => {
           },
         });
 
-      const newConnectionState = await client.refresh();
+      const newTokenConnectionState = await client.refresh();
 
-      expect(newConnectionState.accessToken).to.equal('refreshed-token-456');
-      expect(newConnectionState.expiresIn).to.be.a('number');
-      expect(newConnectionState.expiresIn).to.be.greaterThan(7000); // Should be around 7200 seconds
+      expect(newTokenConnectionState.accessToken).to.equal('refreshed-token-456');
+      expect(newTokenConnectionState.expiresIn).to.be.a('number');
+      expect(newTokenConnectionState.expiresIn).to.be.greaterThan(7000); // Should be around 7200 seconds
 
       // Verify the HTTP client has the new token
       const httpClient = client.getHttpClient();

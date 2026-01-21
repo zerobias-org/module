@@ -194,7 +194,7 @@ describe('{Resource} Producer Integration', function () {
 ```
 
 **Debug Logging Requirements**:
-- ✅ Import getLogger from `./Common` (not from @auditmation/util-logger directly)
+- ✅ Import getLogger from `./Common` (not from @zerobias-org/logger directly)
 - ✅ Create logger with test file name: `const logger = getLogger('{Resource}ProducerTest')`
 - ✅ Log operation call BEFORE execution: `logger.debug('api.methodName(param1, param2)')`
 - ✅ Log result AFTER execution: `logger.debug('→', JSON.stringify(result, null, 2))`
@@ -237,12 +237,12 @@ Tests with real API and credentials.
 ```typescript
 // test/integration/ConnectionTest.ts
 import { expect } from 'chai';
-import { getLogger } from '@auditmation/util-logger';
-import { Email } from '@auditmation/types-core-js';
+import { LoggerEngine } from '@zerobias-org/logger';
+import { Email } from '@zerobias-org/types-core-js';
 import { newService } from '../../src';
 import { SERVICE_EMAIL, SERVICE_PASSWORD, hasCredentials } from './Common';
 
-const logger = getLogger('ConnectionTest');
+const logger = LoggerEngine.root().get('ConnectionTest');
 
 describe('Connection Integration Tests', function () {
   this.timeout(30000);
@@ -341,8 +341,8 @@ describe('Connection Integration Tests', function () {
 ```typescript
 // test/integration/Common.ts
 import { config } from 'dotenv';
-import { Email } from '@auditmation/types-core-js';
-import { getLogger as getLoggerBase } from '@auditmation/util-logger';
+import { Email } from '@zerobias-org/types-core-js';
+import { LoggerEngine } from '@zerobias-org/logger';
 import { newService } from '../../src';
 import type { ServiceConnector } from '../../src';
 
@@ -356,14 +356,49 @@ export const SERVICE_PASSWORD = process.env.SERVICE_PASSWORD || '';
 export const SERVICE_TEST_USER_ID = process.env.SERVICE_TEST_USER_ID || '';
 export const SERVICE_TEST_ORGANIZATION_ID = process.env.SERVICE_TEST_ORGANIZATION_ID || '';
 
-const LOG_LEVEL = (process.env.LOG_LEVEL || 'info') as string;
-
 /**
  * Get a logger with configurable level from LOG_LEVEL env var.
  * Usage: LOG_LEVEL=debug npm run test:integration
  */
 export function getLogger(name: string) {
-  return getLoggerBase(name, {}, LOG_LEVEL);
+  return LoggerEngine.root().get(name);
+}
+
+if (process.env.LOG_LEVEL) {
+  switch (process.env.LOG_LEVEL) {
+    case 'trace': {
+      getLogger().setLevel(LogLevel.TRACE);
+      break;
+    }
+    case 'debug': {
+      getLogger().setLevel(LogLevel.DEBUG);
+      break;
+    }
+    case 'verbose': {
+      getLogger().setLevel(LogLevel.VERBOSE);
+      break;
+    }
+    case 'info': {
+      getLogger().setLevel(LogLevel.INFO);
+      break;
+    }
+    case 'warn': {
+      getLogger().setLevel(LogLevel.WARN);
+      break;
+    }
+    case 'error': {
+      getLogger().setLevel(LogLevel.ERROR);
+      break;
+    }
+    case 'crit': {
+      getLogger().setLevel(LogLevel.CRIT);
+      break;
+    }
+    default: {
+      getLogger().setLevel(LogLevel.INFO);
+      break;
+    }
+  }
 }
 
 export function hasCredentials(): boolean {

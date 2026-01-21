@@ -128,7 +128,7 @@ grep "export function to" src/Mappers.ts
 // ✅ CORRECT - Grouped and ordered
 // 1. External dependencies
 import { AxiosInstance } from 'axios';
-import { UUID, Email } from '@auditmation/types-core-js';
+import { UUID, Email } from '@zerobias-org/types-core-js';
 
 // 2. Generated types
 import { Webhook, WebhookConfig } from '../generated/model';
@@ -262,7 +262,8 @@ src/
 ### Import Order
 1. Node built-ins (if any)
 2. External dependencies
-3. @auditmation packages
+3. @zerboias-org packages
+3. @zerboias-com packages
 4. Generated types
 5. Local modules (relative imports)
 

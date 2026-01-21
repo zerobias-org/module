@@ -218,7 +218,7 @@ Integration implementation is complete when:
 
 - HTTP client library (axios)
 - nock (for mocking in unit tests)
-- Core error types from @auditmation/types-core-js
+- Core error types from @zerobias-org/types-core-js
 - Mapper functions from Mappers.ts
 
 ## Related Documentation

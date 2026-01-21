@@ -1,13 +1,14 @@
 import { expect } from 'chai';
+import stringify from 'safe-stable-stringify';
 import { describe, it, before } from 'mocha';
-import { getLogger } from '@auditmation/util-logger';
-import { Email } from '@auditmation/types-core-js';
-import { prepareTestConnection, testConfig, saveFixture } from './Common';
-import { AccessImpl } from '../../src';
+import { LoggerEngine } from '@zerobias-org/logger';
+import { Email } from '@zerobias-org/types-core-js';
+import { prepareTestConnection, testConfig, saveFixture } from './Common.js';
+import { AccessImpl } from '../../src/index.js';
 
 // Core types for assertions
 
-const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+const logger = LoggerEngine.root();
 
 describe('Avigilon Alta Access - Connection Tests', function () {
   this.timeout(testConfig.timeout);
@@ -25,7 +26,7 @@ describe('Avigilon Alta Access - Connection Tests', function () {
         logger.debug('Connection already established in before hook');
 
         const isConnected = await access.isConnected();
-        logger.debug('access.isConnected()', JSON.stringify(isConnected, null, 2));
+        logger.debug(`access.isConnected(): ${stringify(isConnected, null, 2)}`);
 
         expect(isConnected).to.be.true;
 
@@ -35,7 +36,7 @@ describe('Avigilon Alta Access - Connection Tests', function () {
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
-        logger.error('Connection test failed', error);
+        logger.error(`Connection test failed: ${stringify(error)}`);
         throw error;
       }
     });
@@ -44,7 +45,7 @@ describe('Avigilon Alta Access - Connection Tests', function () {
       expect(access).to.not.be.undefined;
 
       const connectionStatus = await access.isConnected();
-      logger.debug('access.isConnected()', JSON.stringify(connectionStatus, null, 2));
+      logger.debug(`access.isConnected(): ${stringify(connectionStatus, null, 2)}`);
 
       expect(connectionStatus).to.be.a('boolean');
       expect(connectionStatus).to.be.true;
@@ -54,7 +55,7 @@ describe('Avigilon Alta Access - Connection Tests', function () {
       expect(access).to.not.be.undefined;
 
       const metadata = await access.metadata();
-      logger.debug('access.metadata()', JSON.stringify(metadata, null, 2));
+      logger.debug(`access.metadata(): ${stringify(metadata, null, 2)}`);
 
       expect(metadata).to.not.be.null;
       expect(metadata).to.not.be.undefined;
@@ -72,7 +73,7 @@ describe('Avigilon Alta Access - Connection Tests', function () {
 
       for (const operation of operations) {
         const support = await access.isSupported(operation);
-        logger.debug(`access.isSupported('${operation}')`, JSON.stringify(support, null, 2));
+        logger.debug(`access.isSupported('${operation}'): ${stringify(support, null, 2)}`)
         supportResults[operation] = support;
 
         expect(support).to.not.be.null;
@@ -88,7 +89,7 @@ describe('Avigilon Alta Access - Connection Tests', function () {
       const { client } = (access as any);
 
       // Get the current connection state
-      const initialState = client.getConnectionState();
+      const initialState = client.getTokenConnectionState();
       if (!initialState || !initialState.accessToken) {
         throw new Error('Not connected - cannot test token refresh');
       }
@@ -139,7 +140,7 @@ describe('Avigilon Alta Access - Connection Tests', function () {
       logger.debug('access.disconnect() completed');
 
       const isConnectedAfterDisconnect = await access.isConnected();
-      logger.debug('access.isConnected() after disconnect', JSON.stringify(isConnectedAfterDisconnect, null, 2));
+      logger.debug(`access.isConnected() after disconnect: ${stringify(isConnectedAfterDisconnect, null, 2)}`);
 
       // Verify disconnection worked
       expect(isConnectedAfterDisconnect).to.be.false;

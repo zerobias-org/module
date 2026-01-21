@@ -56,7 +56,7 @@ Test list, get, create, update, delete methods
 ```typescript
 import nock from 'nock';
 import { WebhookProducer } from '../src/WebhookProducer';
-import { InvalidInputError, ResourceNotFoundError } from '@auditmation/types-core-js';
+import { InvalidInputError, ResourceNotFoundError } from '@zerobias-org/types-core-js';
 
 describe('WebhookProducer', () => {
   let producer: WebhookProducer;

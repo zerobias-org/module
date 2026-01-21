@@ -266,7 +266,7 @@ import {
   InvalidCredentialsError,
   NoSuchObjectError,
   RateLimitExceededError
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 
 async function handleErrors() {
   const connector = newServiceName();

@@ -1,7 +1,7 @@
-import { NotConnectedError } from '@auditmation/types-core-js';
+import { NotConnectedError } from '@zerobias-org/types-core-js';
 import { expect } from 'chai';
-import { newReadyPlayerMe } from '../../src';
-import { connectionProfile } from './Common';
+import { newReadyPlayerMe } from '../../src/index.js';
+import { connectionProfile } from './Common.js';
 
 describe('ConnectionTest', () => {
 

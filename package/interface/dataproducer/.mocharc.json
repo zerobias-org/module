@@ -1,4 +1,4 @@
 {
   "extension": ["ts"],
-  "import": "tsx"
+  "node-option": ["import=tsx/esm"]
 }

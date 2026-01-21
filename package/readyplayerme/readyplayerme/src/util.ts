@@ -1,4 +1,4 @@
-import { InvalidInputError, NotFoundError } from '@auditmation/types-core-js';
+import { InvalidInputError, NotFoundError } from '@zerobias-org/types-core-js';
 import { AxiosError } from 'axios';
 
 export function handleAxiosError(e: AxiosError): never {

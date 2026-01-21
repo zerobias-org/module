@@ -1,9 +1,9 @@
 import { AxiosInstance } from 'axios';
-import { PagedResults, UnexpectedError } from '@auditmation/types-core-js';
-import { SiteProducerApi } from '../generated/api/SiteApi';
-import { Site } from '../generated/model';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toSite } from './Mappers';
+import { PagedResults, UnexpectedError } from '@zerobias-org/types-core-js';
+import { SiteProducerApi } from '../generated/api/SiteApi.js';
+import { Site } from '../generated/model/index.js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
+import { toSite } from './Mappers.js';
 
 export class SiteProducerApiImpl implements SiteProducerApi {
   private readonly httpClient: AxiosInstance;
@@ -28,7 +28,7 @@ export class SiteProducerApiImpl implements SiteProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toSite);
+    results.items = response.data.data.map((item) => toSite(item));
     results.count = response.data.totalCount || 0;
   }
 }

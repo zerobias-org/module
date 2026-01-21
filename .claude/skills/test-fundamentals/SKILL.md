@@ -241,9 +241,9 @@ describe('{ClassName}', () => {
 **Standard Pattern:**
 
 ```typescript
-import { getLogger } from '@auditmation/util-logger';
+import { LoggerEngine } from '@zerobias-org/logger';
 
-const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+const logger = LoggerEngine.root();
 
 describe('User Producer Tests', function() {
   it('should list users', async function() {
@@ -259,7 +259,7 @@ describe('User Producer Tests', function() {
 ```
 
 **Requirements:**
-- ✅ Import logger from `@auditmation/util-logger`
+- ✅ Import logger from `@zerobias-org/logger`
 - ✅ Create logger with LOG_LEVEL from environment
 - ✅ Log AFTER every API operation call
 - ✅ Include operation name and parameters in log

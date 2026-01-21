@@ -122,11 +122,11 @@ components:
 
 ```yaml
 # For token auth
-$ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
 
 # For OAuth email/password
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/basicConnection.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/basicConnection.yml'
   - type: object
     properties:
       username:
@@ -137,10 +137,10 @@ allOf:
 
 ```yaml
 # Simple token
-$ref: './node_modules/@auditmation/types-core/schema/tokenConnectionState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenConnectionState.yml'
 
 # OAuth with refresh
-$ref: './node_modules/@auditmation/types-core/schema/oauthTokenState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
 ```
 
 ### Validate & Generate
@@ -235,8 +235,8 @@ export function toEnum<T>(...) { /* ... */ }
 ### Create Mappers.ts
 
 ```typescript
-import { map } from '@auditmation/util-hub-module-utils';
-import { UUID, Email, DateTime } from '@auditmation/types-core-js';
+import { map } from '@zerobias-org/util-hub-module-utils';
+import { UUID, Email, DateTime } from '@zerobias-org/types-core-js';
 import { User } from '../generated/api';
 import { ensureProperties, optional } from './util';
 
@@ -357,7 +357,7 @@ describe('UserProducer', () => {
 ```typescript
 // test/integration/Common.ts
 import { config } from 'dotenv';
-import { getLogger as getLoggerBase } from '@auditmation/util-logger';
+import { LoggerEngine } from '@zerobias-org/logger';
 import { newService } from '../../src';
 
 config();
@@ -366,10 +366,45 @@ export const SERVICE_EMAIL = process.env.SERVICE_EMAIL || '';
 export const SERVICE_PASSWORD = process.env.SERVICE_PASSWORD || '';
 export const SERVICE_TEST_USER_ID = process.env.SERVICE_TEST_USER_ID || '';
 
-const LOG_LEVEL = (process.env.LOG_LEVEL || 'info') as string;
-
 export function getLogger(name: string) {
-  return getLoggerBase(name, {}, LOG_LEVEL);
+  return LoggerEngine.root().get(name);
+}
+
+if (process.env.LOG_LEVEL) {
+  switch (process.env.LOG_LEVEL) {
+    case 'trace': {
+      getLogger().setLevel(LogLevel.TRACE);
+      break;
+    }
+    case 'debug': {
+      getLogger().setLevel(LogLevel.DEBUG);
+      break;
+    }
+    case 'verbose': {
+      getLogger().setLevel(LogLevel.VERBOSE);
+      break;
+    }
+    case 'info': {
+      getLogger().setLevel(LogLevel.INFO);
+      break;
+    }
+    case 'warn': {
+      getLogger().setLevel(LogLevel.WARN);
+      break;
+    }
+    case 'error': {
+      getLogger().setLevel(LogLevel.ERROR);
+      break;
+    }
+    case 'crit': {
+      getLogger().setLevel(LogLevel.CRIT);
+      break;
+    }
+    default: {
+      getLogger().setLevel(LogLevel.INFO);
+      break;
+    }
+  }
 }
 
 export function hasCredentials(): boolean {

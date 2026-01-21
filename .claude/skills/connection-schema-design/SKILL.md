@@ -21,7 +21,7 @@ properties:
     type: string
 
 # ✅ CORRECT - Extend core profile
-$ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
 ```
 
 ### Rule 2: connectionState MUST Extend baseConnectionState
@@ -31,7 +31,7 @@ $ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
 ```yaml
 # ✅ CORRECT - Extends base with expiresIn
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   - type: object
     properties:
       accessToken:
@@ -73,7 +73,7 @@ expiresAt:
 | **oauthTokenProfile.yml** | OAuth2 with Refresh | clientId, clientSecret |
 | **basicConnection.yml** | Username/Password, Email/Password | username, password |
 
-**Path**: `./node_modules/@auditmation/types-core/schema/{profileName}.yml`
+**Path**: `./node_modules/@zerobias-org/types-core/schema/{profileName}.yml`
 
 ### Selection Decision Tree
 
@@ -116,30 +116,30 @@ IF requiresRefresh == true
 
 ```yaml
 # connectionProfile.yml
-$ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
 
 # connectionState.yml
-$ref: './node_modules/@auditmation/types-core/schema/tokenConnectionState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenConnectionState.yml'
 ```
 
 ### Pattern 2: OAuth Client Credentials
 
 ```yaml
 # connectionProfile.yml
-$ref: './node_modules/@auditmation/types-core/schema/oauthClientProfile.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/oauthClientProfile.yml'
 
 # connectionState.yml (no refresh)
-$ref: './node_modules/@auditmation/types-core/schema/tokenConnectionState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenConnectionState.yml'
 ```
 
 ### Pattern 3: OAuth with Refresh Token
 
 ```yaml
 # connectionProfile.yml
-$ref: './node_modules/@auditmation/types-core/schema/oauthTokenProfile.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenProfile.yml'
 
 # connectionState.yml
-$ref: './node_modules/@auditmation/types-core/schema/oauthTokenState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
 ```
 
 ### Pattern 4: Custom Fields (Extend Core)
@@ -147,7 +147,7 @@ $ref: './node_modules/@auditmation/types-core/schema/oauthTokenState.yml'
 ```yaml
 # connectionProfile.yml - Add organizationId
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
   - type: object
     required: [organizationId]
     properties:
@@ -157,7 +157,7 @@ allOf:
 
 # connectionState.yml - Add extra state
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/tokenConnectionState.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/tokenConnectionState.yml'
   - type: object
     properties:
       organizationName:
@@ -192,7 +192,7 @@ allOf:
 ```yaml
 # Example: Service has optional region parameter
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
   - type: object
     properties:
       region:
@@ -210,13 +210,13 @@ allOf:
 
 ```bash
 # Check what tokenProfile.yml provides
-cat node_modules/@auditmation/types-core/schema/tokenProfile.yml
+cat node_modules/@zerobias-org/types-core/schema/tokenProfile.yml
 
 # Check what basicConnection.yml provides
-cat node_modules/@auditmation/types-core/schema/basicConnection.yml
+cat node_modules/@zerobias-org/types-core/schema/basicConnection.yml
 
 # Check what baseConnectionState.yml provides
-cat node_modules/@auditmation/types-core/schema/baseConnectionState.yml
+cat node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml
 ```
 
 ### Avoid Semantic Duplication
@@ -224,7 +224,7 @@ cat node_modules/@auditmation/types-core/schema/baseConnectionState.yml
 ```yaml
 # ❌ WRONG - basicConnection already has uri
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/basicConnection.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/basicConnection.yml'
   - type: object
     properties:
       url:    # Duplicate! basicConnection has uri
@@ -232,7 +232,7 @@ allOf:
 
 # ✅ CORRECT - Use parent's uri, or extend if truly different
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/basicConnection.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/basicConnection.yml'
   # uri is already provided by basicConnection
 ```
 
@@ -249,7 +249,7 @@ allOf:
 ```yaml
 # Example: Missing mfaCode from product docs
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/basicConnection.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/basicConnection.yml'
   - type: object
     properties:
       mfaCode:    # Found in product docs!
@@ -271,7 +271,7 @@ allOf:
 # ❌ WRONG - Limits connection to single organization
 connectionState:
   allOf:
-    - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+    - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
     - type: object
       properties:
         accessToken:
@@ -282,7 +282,7 @@ connectionState:
 # ✅ CORRECT - Connection works across all organizations
 connectionState:
   allOf:
-    - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+    - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
     - type: object
       properties:
         accessToken:
@@ -328,7 +328,7 @@ If NO to all → don't add it
 ```yaml
 # ✅ CORRECT - Include optional fields that some environments need
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
   - type: object
     properties:
       region:

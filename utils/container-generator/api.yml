@@ -1,8 +1,8 @@
 openapi: 3.0.2
 info:
   version: 1.0.0
-  description: Auditmaion Hub Connector
-  title: 'Auditmation Hub Connector'
+  description: Zerobias Hub Connector
+  title: 'Zerobias Hub Connector'
 servers:
   - url: '/connections/{id}'
 paths:

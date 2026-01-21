@@ -1,9 +1,9 @@
 import { AxiosInstance } from 'axios';
-import { PagedResults, UnexpectedError } from '@auditmation/types-core-js';
-import { RoleProducerApi } from '../generated/api/RoleApi';
-import { Role, RoleInfo, RoleUser } from '../generated/model';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toRoleInfo, toRoleUser, toRole } from './Mappers';
+import { PagedResults, UnexpectedError } from '@zerobias-org/types-core-js';
+import { RoleProducerApi } from '../generated/api/RoleApi.js';
+import { Role, RoleInfo, RoleUser } from '../generated/model/index.js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
+import { toRoleInfo, toRoleUser, toRole } from './Mappers.js';
 
 export class RoleProducerApiImpl implements RoleProducerApi {
   private readonly httpClient: AxiosInstance;
@@ -33,7 +33,7 @@ export class RoleProducerApiImpl implements RoleProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toRoleUser);
+    results.items = response.data.data.map((item) => toRoleUser(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -58,7 +58,7 @@ export class RoleProducerApiImpl implements RoleProducerApi {
     }
 
     // Apply mappers and set pagination info from response structure
-    results.items = response.data.data.map(toRoleInfo);
+    results.items = response.data.data.map((item) => toRoleInfo(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -84,7 +84,7 @@ export class RoleProducerApiImpl implements RoleProducerApi {
     }
 
     // Apply mappers and set pagination info from response structure
-    results.items = response.data.data.map(toRole);
+    results.items = response.data.data.map((item) => toRole(item));
     results.count = response.data.totalCount || 0;
   }
 }

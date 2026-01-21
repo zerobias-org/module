@@ -1,6 +1,6 @@
 # Dynamic Data Producer Interface
 
-This interface defines a generic data and browsing system for the Auditmation platform, enabling a wide variety of use cases through a unified API.
+This interface defines a generic data and browsing system for the Zerobias platform, enabling a wide variety of use cases through a unified API.
 
 ## 🎯 Supported Use Cases
 
@@ -163,7 +163,7 @@ Objects can implement zero or more classes, each providing specific capabilities
 
 ### DataType Entities
 
-DataType entities are defined in `@zerobias-org/types-core` and provide validated, standardized type definitions across the Auditmation platform.
+DataType entities are defined in `@zerobias-org/types-core` and provide validated, standardized type definitions across the zerobias platform.
 
 #### Finding Available DataTypes
 

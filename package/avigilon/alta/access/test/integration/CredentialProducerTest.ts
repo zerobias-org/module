@@ -1,10 +1,12 @@
 import { expect } from 'chai';
+import stringify from 'safe-stable-stringify';
 import { describe, it, before } from 'mocha';
-import { getLogger } from '@auditmation/util-logger';
-import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common';
-import { AccessImpl, CredentialApi } from '../../src';
+import { LoggerEngine } from '@zerobias-org/logger';
+import { prepareApi, testConfig, saveFixture, validateCoreTypes } from './Common.js';
+import { AccessImpl } from '../../src/index.js';
+import type { CredentialApi } from '../../src/index.js';
 
-const logger = getLogger('console', {}, process.env.LOG_LEVEL || 'info');
+const logger = LoggerEngine.root();
 
 describe('Avigilon Alta Access - Credential Producer Tests', function () {
   this.timeout(testConfig.timeout);
@@ -24,7 +26,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
     it('should list card formats with default pagination', async () => {
       const cardFormatsResult = await credentialApi.listCardFormats(testConfig.organizationId);
 
-      logger.debug(`credentialApi.listCardFormats(${testConfig.organizationId})`, JSON.stringify(cardFormatsResult, null, 2));
+      logger.debug(`credentialApi.listCardFormats(${testConfig.organizationId}): ${stringify(cardFormatsResult, null, 2)}`)
 
       expect(cardFormatsResult).to.not.be.null;
       expect(cardFormatsResult).to.not.be.undefined;
@@ -87,7 +89,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
     it('should list card formats with custom pagination', async () => {
       const cardFormatsResult = await credentialApi.listCardFormats(testConfig.organizationId, 1, 5);
 
-      logger.debug(`credentialApi.listCardFormats(${testConfig.organizationId}, 1, 5)`, JSON.stringify(cardFormatsResult, null, 2));
+      logger.debug(`credentialApi.listCardFormats(${testConfig.organizationId}, 1, 5): ${stringify(cardFormatsResult, null, 2)}`)
 
       expect(cardFormatsResult).to.not.be.null;
       expect(cardFormatsResult).to.not.be.undefined;
@@ -109,7 +111,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
     it('should list credential types with default pagination', async () => {
       const credentialTypesResult = await credentialApi.listCredentialTypes(testConfig.organizationId);
 
-      logger.debug(`credentialApi.listCredentialTypes(${testConfig.organizationId})`, JSON.stringify(credentialTypesResult, null, 2));
+      logger.debug(`credentialApi.listCredentialTypes(${testConfig.organizationId}): ${stringify(credentialTypesResult, null, 2)}`)
 
       expect(credentialTypesResult).to.not.be.null;
       expect(credentialTypesResult).to.not.be.undefined;
@@ -150,7 +152,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
     it('should list credential types with custom pagination', async () => {
       const credentialTypesResult = await credentialApi.listCredentialTypes(testConfig.organizationId, 1, 3);
 
-      logger.debug(`credentialApi.listCredentialTypes(${testConfig.organizationId}, 1, 3)`, JSON.stringify(credentialTypesResult, null, 2));
+      logger.debug(`credentialApi.listCredentialTypes(${testConfig.organizationId}, 1, 3): ${stringify(credentialTypesResult, null, 2)}`)
 
       expect(credentialTypesResult).to.not.be.null;
       expect(credentialTypesResult).to.not.be.undefined;
@@ -172,7 +174,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
     it('should list credential action types with default pagination', async () => {
       const actionTypesResult = await credentialApi.listCredentialActionTypes(testConfig.organizationId);
 
-      logger.debug(`credentialApi.listCredentialActionTypes(${testConfig.organizationId})`, JSON.stringify(actionTypesResult, null, 2));
+      logger.debug(`credentialApi.listCredentialActionTypes(${testConfig.organizationId}): ${stringify(actionTypesResult, null, 2)}`)
 
       expect(actionTypesResult).to.not.be.null;
       expect(actionTypesResult).to.not.be.undefined;
@@ -209,7 +211,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
     it('should list credential action types with custom pagination', async () => {
       const actionTypesResult = await credentialApi.listCredentialActionTypes(testConfig.organizationId, 1, 3);
 
-      logger.debug(`credentialApi.listCredentialActionTypes(${testConfig.organizationId}, 1, 3)`, JSON.stringify(actionTypesResult, null, 2));
+      logger.debug(`credentialApi.listCredentialActionTypes(${testConfig.organizationId}, 1, 3): ${stringify(actionTypesResult, null, 2)}`)
 
       expect(actionTypesResult).to.not.be.null;
       expect(actionTypesResult).to.not.be.undefined;
@@ -231,7 +233,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
     it('should list organization credentials with default pagination', async () => {
       const credentialsResult = await credentialApi.listOrgCredentials(testConfig.organizationId);
 
-      logger.debug(`credentialApi.listOrgCredentials(${testConfig.organizationId})`, JSON.stringify(credentialsResult, null, 2));
+      logger.debug(`credentialApi.listOrgCredentials(${testConfig.organizationId}): ${stringify(credentialsResult, null, 2)}`)
 
       expect(credentialsResult).to.not.be.null;
       expect(credentialsResult).to.not.be.undefined;
@@ -299,7 +301,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
     it('should list organization credentials with custom pagination', async () => {
       const credentialsResult = await credentialApi.listOrgCredentials(testConfig.organizationId, 1, 5);
 
-      logger.debug(`credentialApi.listOrgCredentials(${testConfig.organizationId}, 1, 5)`, JSON.stringify(credentialsResult, null, 2));
+      logger.debug(`credentialApi.listOrgCredentials(${testConfig.organizationId}, 1, 5): ${stringify(credentialsResult, null, 2)}`)
 
       expect(credentialsResult).to.not.be.null;
       expect(credentialsResult).to.not.be.undefined;
@@ -338,7 +340,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
         credentialId
       );
 
-      logger.debug(`credentialApi.listCredentialActions(${testConfig.organizationId}, '${credentialId}')`, JSON.stringify(actionsResult, null, 2));
+      logger.debug(`credentialApi.listCredentialActions(${testConfig.organizationId}, '${credentialId}'): ${stringify(actionsResult, null, 2)}`)
 
       expect(actionsResult).to.not.be.null;
       expect(actionsResult).to.not.be.undefined;
@@ -406,8 +408,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
       );
 
       logger.debug(
-        `credentialApi.listCredentialActions(${testConfig.organizationId}, '${credentialId}', 1, 3)`,
-        JSON.stringify(actionsResult, null, 2)
+        `credentialApi.listCredentialActions(${testConfig.organizationId}, '${credentialId}', 1, 3) ${stringify(actionsResult, null, 2)}`
       );
 
       expect(actionsResult).to.not.be.null;
@@ -433,7 +434,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
       }
 
       const credential = credentials[0];
-      logger.debug('Validating credential schema', JSON.stringify(credential, null, 2));
+      logger.debug(`Validating credential schema: ${stringify(credential, null, 2)}`);
 
       expect(credential).to.be.an('object');
 
@@ -466,7 +467,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
       }
 
       const cardFormat = cardFormats[0];
-      logger.debug('Validating card format schema', JSON.stringify(cardFormat, null, 2));
+      logger.debug(`Validating card format schema: ${stringify(cardFormat, null, 2)}`);
 
       expect(cardFormat).to.be.an('object');
       expect(cardFormat.id).to.be.a('string');
@@ -489,7 +490,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
       try {
         // Test with potentially invalid parameters
         const credentialsResult = await credentialApi.listOrgCredentials(testConfig.organizationId, -1, -1);
-        logger.debug(`credentialApi.listOrgCredentials(${testConfig.organizationId}, -1, -1)`, JSON.stringify(credentialsResult, null, 2));
+        logger.debug(`credentialApi.listOrgCredentials(${testConfig.organizationId}, -1, -1): ${stringify(credentialsResult, null, 2)}`)
 
         // Should either return empty array or throw appropriate error
         if (credentialsResult && credentialsResult.items) {
@@ -497,7 +498,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
         }
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for invalid pagination', err.message);
+        logger.debug(`Expected error for invalid pagination: ${stringify(err.message)}`);
 
         // Should get a validation error
         expect(error).to.not.be.null;
@@ -519,7 +520,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
           testConfig.organizationId,
           nonExistentId
         );
-        logger.debug(`credentialApi.listCredentialActions(${testConfig.organizationId}, '${nonExistentId}')`, JSON.stringify(actionsResult, null, 2));
+        logger.debug(`credentialApi.listCredentialActions(${testConfig.organizationId}, '${nonExistentId}'): ${stringify(actionsResult, null, 2)}`)
 
         // If no error was thrown, should return empty array or specific result
         if (actionsResult && actionsResult.items) {
@@ -527,7 +528,7 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
         }
       } catch (error: unknown) {
         const err = error as any;
-        logger.debug('Expected error for non-existent credential', err.message);
+        logger.debug(`Expected error for non-existent credential: ${stringify(err.message)}`);
 
         // Expecting a 404 or similar error
         expect(error).to.not.be.null;
@@ -569,12 +570,12 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
     it('should properly handle pagination metadata for card formats', async () => {
       const page1Result = await credentialApi.listCardFormats(testConfig.organizationId, 1, 2);
 
-      logger.debug('Pagination metadata test', JSON.stringify({
+      logger.debug(`Pagination metadata test: ${stringify({
         count: page1Result.count,
         itemsLength: page1Result.items.length,
         pageNumber: page1Result.pageNumber,
         pageSize: page1Result.pageSize,
-      }, null, 2));
+      }, null, 2)}`);
 
       expect(page1Result.count).to.be.a('number');
       expect(page1Result.pageNumber).to.equal(1);
@@ -598,12 +599,12 @@ describe('Avigilon Alta Access - Credential Producer Tests', function () {
     it('should properly handle pagination metadata for credentials', async () => {
       const page1Result = await credentialApi.listOrgCredentials(testConfig.organizationId, 1, 2);
 
-      logger.debug('Credentials pagination metadata test', JSON.stringify({
+      logger.debug(`Credentials pagination metadata test: ${stringify({
         count: page1Result.count,
         itemsLength: page1Result.items.length,
         pageNumber: page1Result.pageNumber,
         pageSize: page1Result.pageSize,
-      }, null, 2));
+      }, null, 2)}`);
 
       expect(page1Result.count).to.be.a('number');
       expect(page1Result.pageNumber).to.equal(1);

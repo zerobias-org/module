@@ -11,8 +11,6 @@ Set `ZB_TOKEN` in your environment variables to authenticate with npm registry.
 
 ## Getting Started
 
-**Please run `npm install` in the root directory as soon as the repository is cloned, this will setup husky hooks**
-
 ## Commit conventions and Version management
 ### Versioning: [lerna](https://github.com/lerna/lerna)
 
@@ -75,10 +73,6 @@ Implicitely this calls the following 2 package.json `scripts`
 This workflow is used to finalize module publication. At the moment it:
 <!-- * Publishes docs to [docs_cms]( TODO add new docs location here ). -->
 * Sends a slack notification.
-
-### Git Hooks: [Husky](https://typicode.github.io/husky/#/)
-
-`Husky` has been configured on this repository to perform the following checks before a change is allowed to be commited.
 
 #### Check commit Message Format against conventional commits
 

@@ -1,11 +1,11 @@
-import { AvatarProducerApi } from '../generated/api';
-import { EquipAssetRequest, UnequipAssetRequest } from '../generated/model';
-import { toAvatarMetadata } from './mappers';
-import { ReadyPlayerMeClient } from './ReadyPlayerMeClient';
-import { handleAxiosError } from './util';
+import { AvatarProducerApi } from '../generated/api/index.js';
+import { EquipAssetRequest, UnequipAssetRequest } from '../generated/model/index.js';
+import { toAvatarMetadata } from './mappers.js';
+import { ReadyPlayerMeClient } from './ReadyPlayerMeClient.js';
+import { handleAxiosError } from './util.js';
 
 export class AvatarProducerImpl implements AvatarProducerApi {
-  constructor(private client: ReadyPlayerMeClient) { }
+  constructor(private client: ReadyPlayerMeClient) {}
 
   async getMetadata(avatarId: string): Promise<object> {
     const { modelClient } = this.client;

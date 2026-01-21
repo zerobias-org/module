@@ -24,7 +24,7 @@ const apiKey = process.env.API_KEY; // NEVER
 ### Rule #3: Core Error Usage
 
 - **NEVER** use generic `Error` class
-- **ALWAYS** use errors from `@auditmation/types-core-js`
+- **ALWAYS** use errors from `@zerobias-org/types-core-js`
 - See [error-handling.md](./error-handling.md)
 
 ### Rule #4: Type Generation Workflow
@@ -278,7 +278,7 @@ import {
   UnauthorizedError,
   RateLimitExceededError,
   UnexpectedError
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 
 export function handleAxiosError(error: any): never {
   const status = error.response?.status || 500;
@@ -313,9 +313,9 @@ Add to tsconfig.json:
 ## Import Organization
 
 ```typescript
-// Core types - from @auditmation packages
-import { URL, UUID, Email } from '@auditmation/types-core-js';
-import { toEnum, map } from '@auditmation/util-hub-module-utils';
+// Core types - from @zerobias-org packages
+import { URL, UUID, Email } from '@zerobias-org/types-core-js';
+import { toEnum, map } from '@zerobias-org/util-hub-module-utils';
 
 // NEVER from Node.js built-ins
 // ❌ import { URL } from 'url';
@@ -428,7 +428,7 @@ const response = await this.httpClient.get(`/organizations/${organizationId}/use
 ```typescript
 // ✅ REQUIRED imports for error handling
 import { AxiosInstance } from 'axios';
-import { PagedResults, NoSuchObjectError, UnexpectedError } from '@auditmation/types-core-js';
+import { PagedResults, NoSuchObjectError, UnexpectedError } from '@zerobias-org/types-core-js';
 import { UserProducerApi } from '../generated/api/UserApi';
 import { User, UserInfo } from '../generated/model';
 import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
@@ -667,24 +667,24 @@ case 429:
 ```json
 {
   "dependencies": {
-    "@auditmation/hub-core": "^4.5.19",
-    "@auditmation/util-hub-module-utils": "^1.0.0",
-    "@auditmation/util-logger": "^4.0.9"
+    "@zerobias-org/connector": "^1.0.0",
+    "@zerobias-org/util-hub-module-utils": "^1.0.0",
+    "@zerobias-org/logger": "^1.0.0"
   },
   "peerDependencies": {
-    "@auditmation/types-core": "^4.9.1",
-    "@auditmation/types-core-js": "^4.10.2"
+    "@zerobias-org/types-core": "^1.0.0",
+    "@zerobias-org/types-core-js": "^1.0.0"
   }
 }
 ```
 
 **What each package provides:**
 
-- **`@auditmation/hub-core`** - Hub framework core functionality, interfaces
-- **`@auditmation/util-hub-module-utils`** - **MANDATORY** - Provides `map()`, `toEnum()`, `mapArray()` functions for type mapping
-- **`@auditmation/util-logger`** - Logging utilities (winston wrapper)
-- **`@auditmation/types-core`** - Core type schemas
-- **`@auditmation/types-core-js`** - Core TypeScript types (UUID, Email, URL, DateTime, Errors, etc.)
+- **`@zerobias-org/hub-core`** - Hub framework core functionality, interfaces
+- **`@zerobias-org/util-hub-module-utils`** - **MANDATORY** - Provides `map()`, `toEnum()`, `mapArray()` functions for type mapping
+- **`@zerobias-org/logger`** - Logging utilities (winston wrapper)
+- **`@zerobias-org/types-core`** - Core type schemas
+- **`@zerobias-org/types-core-js`** - Core TypeScript types (UUID, Email, URL, DateTime, Errors, etc.)
 
 **Why util-hub-module-utils is mandatory:**
 - Provides `map()` function used in ALL mappers
@@ -724,5 +724,5 @@ grep -A 1 "async isSupported" src/*ConnectorImpl.ts | grep "OperationSupportStat
 
 ```bash
 # Check required dependencies present
-grep -E "(@auditmation/hub-core|@auditmation/util-hub-module-utils|@auditmation/util-logger)" package.json && echo "✅ Required deps present" || echo "❌ Missing required dependencies"
+grep -E "(@zerobias-org/connector|@zerobias-org/util-hub-module-utils|@zerobias-org/logger)" package.json && echo "✅ Required deps present" || echo "❌ Missing required dependencies"
 ```

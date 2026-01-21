@@ -1,12 +1,12 @@
-import { RequestDetailedFile } from '@auditmation/hub-core';
 import {
   AssetInfo,
   AssetInfoResponse,
   AssetResponse,
   AvatarMetadata,
   CreateUserResponse,
+  RequestDetailedFile,
   TokenResponse
-} from '../generated/model';
+} from '../generated/model/index.js';
 
 export function toCreateUserResponse(data: any): CreateUserResponse {
   return CreateUserResponse.newInstance(typeof data === 'string' ? JSON.parse(data) : data);

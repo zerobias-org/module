@@ -1,9 +1,9 @@
 import { AxiosInstance } from 'axios';
-import { PagedResults, UnexpectedError } from '@auditmation/types-core-js';
-import { CredentialProducerApi } from '../generated/api/CredentialApi';
-import { CredentialType, OrgCredential, CredentialAction, CredentialActionType, CardFormat } from '../generated/model';
-import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient';
-import { toCredentialType, toOrgCredential, toCredentialAction, toCredentialActionType, toCardFormat } from './Mappers';
+import { PagedResults, UnexpectedError } from '@zerobias-org/types-core-js';
+import { CredentialProducerApi } from '../generated/api/CredentialApi.js';
+import { CredentialType, OrgCredential, CredentialAction, CredentialActionType, CardFormat } from '../generated/model/index.js';
+import { AvigilonAltaAccessClient } from './AvigilonAltaAccessClient.js';
+import { toCredentialType, toOrgCredential, toCredentialAction, toCredentialActionType, toCardFormat } from './Mappers.js';
 
 export class CredentialProducerApiImpl implements CredentialProducerApi {
   private readonly httpClient: AxiosInstance;
@@ -32,7 +32,7 @@ export class CredentialProducerApiImpl implements CredentialProducerApi {
       throw new UnexpectedError('Invalid response format: expected data array');
     }
 
-    results.items = response.data.data.map(toCardFormat);
+    results.items = response.data.data.map((item) => toCardFormat(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -58,7 +58,7 @@ export class CredentialProducerApiImpl implements CredentialProducerApi {
     }
 
     // Apply mappers and set pagination info from response structure
-    results.items = response.data.data.map(toCredentialAction);
+    results.items = response.data.data.map((item) => toCredentialAction(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -83,7 +83,7 @@ export class CredentialProducerApiImpl implements CredentialProducerApi {
     }
 
     // Apply mappers and set pagination info from response structure
-    results.items = response.data.data.map(toCredentialActionType);
+    results.items = response.data.data.map((item) => toCredentialActionType(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -108,7 +108,7 @@ export class CredentialProducerApiImpl implements CredentialProducerApi {
     }
 
     // Apply mappers and set pagination info from response structure
-    results.items = response.data.data.map(toCredentialType);
+    results.items = response.data.data.map((item) => toCredentialType(item));
     results.count = response.data.totalCount || 0;
   }
 
@@ -133,7 +133,7 @@ export class CredentialProducerApiImpl implements CredentialProducerApi {
     }
 
     // Apply mappers and set pagination info from response structure
-    results.items = response.data.data.map(toOrgCredential);
+    results.items = response.data.data.map((item) => toOrgCredential(item));
     results.count = response.data.totalCount || 0;
   }
 }

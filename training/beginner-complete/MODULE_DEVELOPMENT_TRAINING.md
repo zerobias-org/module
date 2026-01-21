@@ -1338,12 +1338,12 @@ paths:
 components:
   parameters:
     pageSizeParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageSizeParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageSizeParam'
     pageNumberParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageNumberParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageNumberParam'
   headers:
     linksHeader:
-      $ref: './node_modules/@auditmation/types-core/schema/headers.yml#/linksHeader'
+      $ref: './node_modules/@zerobias-org/types-core/schema/headers.yml#/linksHeader'
 
 paths:
   /users:
@@ -1365,7 +1365,7 @@ paths:
 
 # ❌ WRONG - Direct node_modules reference
 parameters:
-  - $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageSizeParam'  # NO! Define in components first
+  - $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageSizeParam'  # NO! Define in components first
 
 # ❌ WRONG - Custom pagination parameter names
 parameters:
@@ -1512,16 +1512,16 @@ components:
 components:
   parameters:
     pageSizeParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageSizeParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageSizeParam'
     pageNumberParam:
-      $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageNumberParam'
+      $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageNumberParam'
     # Or for token-based pagination:
     # pageTokenParam:
-    #   $ref: './node_modules/@auditmation/types-core/schema/params.yml#/pageTokenParam'
+    #   $ref: './node_modules/@zerobias-org/types-core/schema/params.yml#/pageTokenParam'
 
   headers:
     linksHeader:
-      $ref: './node_modules/@auditmation/types-core/schema/headers.yml#/linksHeader'
+      $ref: './node_modules/@zerobias-org/types-core/schema/headers.yml#/linksHeader'
 ```
 
 **The 4 required elements for LIST operations:**
@@ -1554,7 +1554,7 @@ components:
 
 ```yaml
 # connectionProfile.yml
-$ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
 ```
 
 **That's it!** The core profile provides: `token` (required), `url` (optional)
@@ -1564,7 +1564,7 @@ $ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
 ```yaml
 # connectionProfile.yml
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/basicConnection.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/basicConnection.yml'
   - type: object
     properties:
       username:
@@ -1580,7 +1580,7 @@ If API requires additional connection parameters:
 ```yaml
 # connectionProfile.yml
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/tokenProfile.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/tokenProfile.yml'
   - type: object
     properties:
       organizationId:
@@ -1610,7 +1610,7 @@ allOf:
 ```yaml
 # connectionState.yml
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   - type: object
     required:
       - accessToken
@@ -1630,7 +1630,7 @@ allOf:
 
 ```yaml
 # connectionState.yml
-$ref: './node_modules/@auditmation/types-core/schema/tokenConnectionState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/tokenConnectionState.yml'
 ```
 
 **Provides**: `accessToken`, `expiresIn` (from baseConnectionState)
@@ -1639,7 +1639,7 @@ $ref: './node_modules/@auditmation/types-core/schema/tokenConnectionState.yml'
 
 ```yaml
 # connectionState.yml
-$ref: './node_modules/@auditmation/types-core/schema/oauthTokenState.yml'
+$ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
 ```
 
 **Provides**: `tokenType`, `accessToken`, `refreshToken`, `expiresIn`, `scope`, `url`
@@ -1649,7 +1649,7 @@ $ref: './node_modules/@auditmation/types-core/schema/oauthTokenState.yml'
 ```yaml
 # connectionState.yml
 allOf:
-  - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   - type: object
     required:
       - accessToken
@@ -1694,7 +1694,7 @@ Open your files and verify:
 - ✅ First line extends baseConnectionState:
   ```yaml
   allOf:
-    - $ref: './node_modules/@auditmation/types-core/schema/baseConnectionState.yml'
+    - $ref: './node_modules/@zerobias-org/types-core/schema/baseConnectionState.yml'
   ```
 
 **Gate 1 Pass Criteria:**
@@ -1801,7 +1801,7 @@ Mappers   = Transform ONLY (API response → typed objects)
 
 ```typescript
 import axios, { AxiosInstance } from 'axios';
-import { Email, DateTime } from '@auditmation/types-core-js';
+import { Email, DateTime } from '@zerobias-org/types-core-js';
 import { handleAxiosError } from './util';
 import {
   ConnectionProfile,
@@ -1956,7 +1956,7 @@ import {
   RateLimitExceededError,
   UnexpectedError,
   InvalidStateError
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 
 /**
  * Handle axios errors and convert to core error types
@@ -2079,8 +2079,8 @@ function toSnakeCase(str: string): string {
 #### 7.5.1 Create Mappers.ts
 
 ```typescript
-import { map } from '@auditmation/util-hub-module-utils';
-import { UUID, Email, DateTime } from '@auditmation/types-core-js';
+import { map } from '@zerobias-org/util-hub-module-utils';
+import { UUID, Email, DateTime } from '@zerobias-org/types-core-js';
 import { User } from '../generated/api';
 import { ensureProperties, optional } from './util';
 
@@ -2238,7 +2238,7 @@ status: toEnum(UserStatus, raw.status) // Default: snake_case
 **Example: UserProducer.ts**
 
 ```typescript
-import { PagedResults } from '@auditmation/types-core-js';
+import { PagedResults } from '@zerobias-org/types-core-js';
 import { User } from '../generated/api';
 import { GitHubClient } from './GitHubClient';
 import { toUser } from './Mappers';
@@ -2416,7 +2416,7 @@ import {
   ConnectionStatus,
   OperationSupportStatus,
   AccessApi
-} from '@auditmation/types-core-js';
+} from '@zerobias-org/types-core-js';
 import { GitHubClient } from './GitHubClient';
 import { UserProducer } from './UserProducer';
 import type {
@@ -2557,7 +2557,7 @@ npm run build
 
 ```typescript
 import * as nock from 'nock';
-import { Email } from '@auditmation/types-core-js';
+import { Email } from '@zerobias-org/types-core-js';
 import { newService } from '../../src';
 import type { GitHubConnector } from '../../src';
 
@@ -2597,7 +2597,7 @@ export async function getConnectedInstance(): Promise<GitHubConnector> {
 ```typescript
 import { expect } from 'chai';
 import * as nock from 'nock';
-import { InvalidCredentialsError } from '@auditmation/types-core-js';
+import { InvalidCredentialsError } from '@zerobias-org/types-core-js';
 import { newService } from '../../src';
 
 describe('Connection', () => {
@@ -2680,7 +2680,7 @@ describe('Connection', () => {
 ```typescript
 import { expect } from 'chai';
 import * as nock from 'nock';
-import { PagedResults, UUID, Email } from '@auditmation/types-core-js';
+import { PagedResults, UUID, Email } from '@zerobias-org/types-core-js';
 import { User } from '../../generated/api';
 import { getConnectedInstance } from './Common';
 
@@ -2843,7 +2843,7 @@ npm run test:unit
 
 ```typescript
 import { config } from 'dotenv';
-import { getLogger as getLoggerBase } from '@auditmation/util-logger';
+import { LoggerEngine } from '@zerobias-org/logger';
 import { newService } from '../../src';
 import type { GitHubConnector } from '../../src';
 
@@ -2856,14 +2856,49 @@ export const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 // Export test data
 export const GITHUB_TEST_USER_ID = process.env.GITHUB_TEST_USER_ID || '';
 
-const LOG_LEVEL = (process.env.LOG_LEVEL || 'info') as string;
-
 /**
  * Get a logger with configurable level from LOG_LEVEL env var
  * Usage: LOG_LEVEL=debug npm run test:integration
  */
 export function getLogger(name: string) {
-  return getLoggerBase(name, {}, LOG_LEVEL);
+  return LoggerEngine.root().get(name);
+}
+
+if (process.env.LOG_LEVEL) {
+  switch (process.env.LOG_LEVEL) {
+    case 'trace': {
+      getLogger().setLevel(LogLevel.TRACE);
+      break;
+    }
+    case 'debug': {
+      getLogger().setLevel(LogLevel.DEBUG);
+      break;
+    }
+    case 'verbose': {
+      getLogger().setLevel(LogLevel.VERBOSE);
+      break;
+    }
+    case 'info': {
+      getLogger().setLevel(LogLevel.INFO);
+      break;
+    }
+    case 'warn': {
+      getLogger().setLevel(LogLevel.WARN);
+      break;
+    }
+    case 'error': {
+      getLogger().setLevel(LogLevel.ERROR);
+      break;
+    }
+    case 'crit': {
+      getLogger().setLevel(LogLevel.CRIT);
+      break;
+    }
+    default: {
+      getLogger().setLevel(LogLevel.INFO);
+      break;
+    }
+  }
 }
 
 export function hasCredentials(): boolean {
@@ -2971,7 +3006,7 @@ describe('Connection Integration Tests', function () {
 
 ```typescript
 import { expect } from 'chai';
-import { PagedResults, Email } from '@auditmation/types-core-js';
+import { PagedResults, Email } from '@zerobias-org/types-core-js';
 import { User } from '../../generated/api';
 import {
   getConnectedInstance,

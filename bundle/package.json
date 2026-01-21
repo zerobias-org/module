@@ -2,7 +2,7 @@
   "name": "@zerobias-org/module-bundle",
   "version": "0.0.21",
   "description": "All installable modules",
-  "author": "team@auditmation.io",
+  "author": "team@zerobias.com",
   "license": "ISC",
   "repository": {
     "type": "git",
@@ -12,10 +12,10 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com/"
   },
-  "auditmation": {
+  "zerobias": {
     "package": "bundle.all-modules",
     "import-artifact": "bundle",
-    "dataloader-version": "0.5.4"
+    "dataloader-version": "1.0.0"
   },
   "dependencies": {
     "@zerobias-org/module-avigilon-alta-access": "0.4.2",

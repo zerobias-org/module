@@ -4,6 +4,7 @@
     "moduleResolution": "NodeNext",
     "target": "ES2022",
     "strict": true,
+    "esModuleInterop": true,
     "noImplicitAny": false,
     "removeComments": true,
     "sourceMap": true,

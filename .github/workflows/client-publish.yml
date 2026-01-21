@@ -63,3 +63,5 @@ jobs:
           apiPath: '${{ matrix.package.apiPath }}'
           publishToken: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Release Announcement
+        uses: zerobias-org/devops/nx-actions/release-announcement@main

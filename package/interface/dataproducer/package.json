@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-interface-dataproducer",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Dynamic Data Producer Interface",
   "moduleId": "a2b032b3-eb87-4cb8-8916-8fbbd4c3fcef",
   "type": "module",

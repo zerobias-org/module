@@ -35,8 +35,7 @@
     "lint:api:bundled": "npx spectral lint module-avigilon-alta-access.yml",
     "nx:publish": "publish",
     "prepublishtest": "prepublishtest",
-    "prepublishOnly": "npm run build && npm run docs",
-    "postpublish": "curl -i -u $NPM_USER:$WORKFLOW_DISPATCH_TOKEN -X POST -H \"Accept: application/vnd.github.v3+json\" https://api.github.com/repos/zerobias-org/module/actions/workflows/$WORKFLOW_ID/dispatches -d '{\"ref\":\"master\", \"inputs\":{\"module\":\"fileproducer\", \"tag\":\"'$(yq -oy e .name package.json)@$(yq -oy e .version package.json)'\", \"message\":\"'\"$MESSAGE\"'\"}}'"
+    "prepublishOnly": "npm run build && npm run docs"
   },
   "license": "UNLICENSED",
   "repository": {

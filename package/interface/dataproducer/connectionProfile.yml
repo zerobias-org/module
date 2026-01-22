@@ -1,20 +1,22 @@
 type: object
-description: >-
-  Profile for connecting to Zerobias Platform. Either API Key or JWT must be present, depending on how the module is expected to connect.
-required: 
-  - url
+description: A module ConnectionProfile to use to interact with Hub server
+required:
+  - server
+  - targetId
 properties:
-  url:
+  server:
     type: string
     format: url
-    description: Organization domain
+    description: The URL for the Hub Server instance
+  apiKey:
+    type: string
+    format: password
+    description: The API key to use to execute operations against the Hub Server
+  targetId:
+    type: string
+    format: uuid
+    description: The target against which to execute
   orgId:
     type: string
     format: uuid
-    description: Id for the organization
-  apiKey:
-    type: string  
-    description: Personal access token, an OAuth token, an installation access token or a JSON Web Token
-  jwt:
-    type: string  
-    description: a JSON Web Token
+    description: ID for the Org. Optional. If provided, it must match the Org of the Target.

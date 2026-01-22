@@ -21,3 +21,4 @@ jobs:
     secrets: inherit
     with:
       skip-publish-announcement: 'false'
+      dispatch-client-publish: true

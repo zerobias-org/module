@@ -107,11 +107,4 @@ curl -X POST \
 	-H "Content-type: application/json" https://api.github.com/repos/zerobias-org/kb/dispatches \
 	-d ''"$PAYLOAD"''
 
-PAYLOAD=$(echo "$PACKAGES_JSON" | jq -rc '{"event_type": "client-publish", "client_payload": { "packages": [.[] | { "name": (.name + "@" + .version), "version": .version, "apiName": (.name | split("-") | .[-1] ), "apiPath": (.name | split("-") | .[-1] ) } ] }}')
-curl -X POST \
-	-vvv \
-	--fail \
-	-H "Authorization: token $DISPATCH_TOKEN" \
-	-H "Accept: application/vnd.github.v3+json" \
-	-H "Content-type: application/json" https://api.github.com/repos/zerobias-org/module/dispatches \
-	-d ''"$PAYLOAD"''
+# client-publish dispatch moved to devops publish-reusable-nx.yml workflow

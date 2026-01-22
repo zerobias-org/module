@@ -16,7 +16,7 @@
     "transpile": "tsc -b",
     "build": "npm run lint && npm run validate && npm run generate && npm run transpile",
     "docs:redoc": "npx redocly build-docs module-readyplayerme-readyplayerme.yml -o docs/index.html",
-    "docs:api": "npx hub-generator generate -g hub-markdown -i full.yml -o docs/",
+    "docs:api": "hub-generator generate -g hub-markdown -i full.yml -o docs/",
     "docs:combine": "concat-md --toc --decrease-title-levels --dir-name-as-title docs >> README.md",
     "docs": "npm run docs:redoc && npm run docs:api && npm run docs:combine",
     "version": "npm run sync-meta && git add api.yml",
@@ -34,8 +34,7 @@
     "lint:api:bundled": "npx spectral lint module-readyplayerme-readyplayerme.yml",
     "nx:publish": "publish",
     "prepublish-init": "prepublish-init",
-    "prepublishtest": "prepublishtest",
-    "prepublishOnly": "npm run docs"
+    "prepublishtest": "prepublishtest"
   },
   "author": "team@zerobias.com",
   "license": "UNLICENSED",

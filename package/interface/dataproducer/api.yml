@@ -3,7 +3,7 @@ info:
   x-product-infos:
     - $ref: '../../../node_modules/@zerobias-org/product-zerobias-zerobias/catalog.yml#/Product'
   x-impl-name: DynamicDataProducer
-  version: 1.2.12
+  version: 1.2.17
   title: '@zerobias-org/module-interface-dataproducer'
   description: Dynamic Data Producer Interface
 paths:

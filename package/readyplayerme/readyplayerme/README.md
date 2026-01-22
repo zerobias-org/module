@@ -357,7 +357,7 @@ Method | HTTP request | Description
 
 Get 2D Render of an Avatar
 
-    Get a 2D render of an avatar for stickers or profile pictures
+    Get a 2D render of an avatar for stickers or profile pictures.
 
 #### Parameters
 

@@ -1,6 +1,6 @@
 # @zerobias-org/module-avigilon-alta-access
 
-A TypeScript client library for integrating with the Avigilon Alta Access API. Provides type-safe operations for managing people, groups, and access control units with read-only access
+A TypeScript client library for integrating with the Avigilon Alta Access API. Provides type-safe operations for managing people, groups, and access control units with read-only access.
 
 For credential setup, see the [User Guide](USER_GUIDE.md).
 

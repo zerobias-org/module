@@ -73,16 +73,16 @@
   "dependencies": {
     "@types/node": "22.19.7",
     "@zerobias-org/product-readyplayerme-readyplayerme": "2.0.1",
-    "@zerobias-org/types-core-js": "1.2.9",
-    "@zerobias-org/util-connector": "1.0.8",
+    "@zerobias-org/types-core-js": "1.2.10",
+    "@zerobias-org/util-connector": "1.0.11",
     "axios": "1.13.2"
   },
   "devDependencies": {
     "@redocly/cli": "^2.14.5",
     "@types/chai": "^5.2.3",
     "@types/mocha": "^10.0.10",
-    "@zerobias-org/devops-tools": "^1.0.13",
-    "@zerobias-org/util-codegen": "^2.0.11",
+    "@zerobias-org/devops-tools": "^1.0.23",
+    "@zerobias-org/util-codegen": "^2.0.14",
     "chai": "^6.2.2",
     "concat-md": "^0.5.1",
     "mocha": "^11.7.5",

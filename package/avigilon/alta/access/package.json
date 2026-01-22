@@ -35,7 +35,7 @@
     "lint:api:bundled": "npx spectral lint module-avigilon-alta-access.yml",
     "nx:publish": "publish",
     "prepublishtest": "prepublishtest",
-    "prepublishOnly": "npm run build && npm run docs"
+    "prepublishOnly": "npm run docs"
   },
   "license": "UNLICENSED",
   "repository": {

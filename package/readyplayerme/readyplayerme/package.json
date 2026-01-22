@@ -35,7 +35,7 @@
     "nx:publish": "publish",
     "prepublish-init": "prepublish-init",
     "prepublishtest": "prepublishtest",
-    "prepublishOnly": "npm run build && npm run docs"
+    "prepublishOnly": "npm run docs"
   },
   "author": "team@zerobias.com",
   "license": "UNLICENSED",

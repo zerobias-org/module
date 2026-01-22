@@ -48,7 +48,7 @@
     "lint:api:bundled": "npx redocly lint module-interface-dataproducer.yml",
     "nx:publish": "publish",
     "prepublishtest": "prepublishtest",
-    "prepublishOnly": "npm run build && npm run docs"
+    "prepublishOnly": "npm run docs"
   },
   "author": "drojas@zerobias.com",
   "license": "UNLICENSED",

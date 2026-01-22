@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-bundle",
-  "version": "0.0.32",
+  "version": "0.0.33",
   "description": "All installable modules",
   "author": "team@zerobias.com",
   "license": "ISC",
@@ -18,8 +18,8 @@
     "dataloader-version": "1.0.0"
   },
   "dependencies": {
-    "@zerobias-org/module-avigilon-alta-access": "1.0.11",
-    "@zerobias-org/module-interface-dataproducer": "1.2.12",
-    "@zerobias-org/module-readyplayerme-readyplayerme": "1.1.10"
+    "@zerobias-org/module-avigilon-alta-access": "1.0.16",
+    "@zerobias-org/module-interface-dataproducer": "1.2.17",
+    "@zerobias-org/module-readyplayerme-readyplayerme": "1.1.15"
   }
 }

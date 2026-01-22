@@ -1,6 +1,6 @@
 # Dynamic Data Producer Interface
 
-This interface defines a generic data and browsing system for the Zerobias platform, enabling a wide variety of use cases through a unified API.
+This interface defines a generic data and browsing system for the Zerobias platform, enabling a wide variety of use cases through a unified API
 
 ## 🎯 Supported Use Cases
 

@@ -3,6 +3,35 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.17-rc.2](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@1.0.17-rc.0...@zerobias-org/module-avigilon-alta-access@1.0.17-rc.2) (2026-01-22)
+
+**Note:** Version bump only for package @zerobias-org/module-avigilon-alta-access
+
+
+
+
+
+## [1.0.17-rc.1](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@1.0.17-rc.0...@zerobias-org/module-avigilon-alta-access@1.0.17-rc.1) (2026-01-22)
+
+**Note:** Version bump only for package @zerobias-org/module-avigilon-alta-access
+
+
+
+
+
+## [1.0.17-rc.0](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@1.0.16...@zerobias-org/module-avigilon-alta-access@1.0.17-rc.0) (2026-01-22)
+
+
+### Bug Fixes
+
+* force ([c90e063](https://github.com/zerobias-org/module-avigilon-alta-access/commit/c90e063a0cc452923defb6de36ae38a2148c66a9))
+* force change ([e72d6f4](https://github.com/zerobias-org/module-avigilon-alta-access/commit/e72d6f47525155b907a220a0a261d2ba17566df1))
+* update process ([81da8c6](https://github.com/zerobias-org/module-avigilon-alta-access/commit/81da8c693a4414ee062edb5fb657c34f63ea9344))
+
+
+
+
+
 ## [1.0.16](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@1.0.3...@zerobias-org/module-avigilon-alta-access@1.0.16) (2026-01-22)
 
 

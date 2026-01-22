@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-readyplayerme-readyplayerme",
-  "version": "1.1.15",
+  "version": "1.1.16-rc.2",
   "description": "Ready Player Me",
   "moduleId": "b15c91d4-f3af-4b7a-ab56-a81875f2d984",
   "type": "module",
@@ -40,7 +40,7 @@
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "https://github.com/auditlogic/module",
+    "url": "https://github.com/zerobias-org/module",
     "directory": "package/readyplayerme/readyplayerme"
   },
   "publishConfig": {

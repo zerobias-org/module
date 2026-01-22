@@ -1,11 +1,11 @@
 {
   "name": "@zerobias-org/module-avigilon-alta-access",
-  "version": "1.0.16",
+  "version": "1.0.17-rc.2",
   "description": "Avigilon Alta Access",
   "moduleId": "17feded8-8e28-4b45-8960-d4b1f0cbe4a8",
   "type": "module",
   "main": "dist/src/index.js",
-  "author": "ctamas@zerobias.com",
+  "author": "team@zerobias.com",
   "scripts": {
     "clean": "rm -rf generated/ dist/ docs/ full*.yml module-avigilon-alta-access.yml",
     "sync-meta": "VERSION=$(npm run -s get-version) NAME=$(yq -oy e .name package.json) DESC=$(yq -oy e .description package.json) yq e -i '.info.version=strenv(VERSION) | .info.title=strenv(NAME) | .info.description=strenv(DESC)' api.yml",

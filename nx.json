@@ -19,32 +19,20 @@
   },
   "targetDefaults": {
     "clean": {},
-    "lint": {},
+    "lint": {
+      "dependsOn": [
+        "^generate"
+      ]
+    },
     "generate": {
       "dependsOn": [
-        "^build"
+        "^nx:build"
       ]
     },
-    "build": {
+    "nx:build": {
       "dependsOn": [
-        "^build",
+        "^nx:build",
         "generate"
-      ]
-    },
-    "test": {
-      "dependsOn": [
-        "build"
-      ]
-    },
-    "test:integration": {
-      "dependsOn": [
-        "build"
-      ]
-    },
-    "prepublishOnly": {
-      "dependsOn": [
-        "build",
-        "^build"
       ]
     }
   }

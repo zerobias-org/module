@@ -22,29 +22,14 @@
     "lint": {},
     "generate": {
       "dependsOn": [
-        "^build"
+        "^nx:build",
+        "lint"
       ]
     },
-    "build": {
+    "nx:build": {
       "dependsOn": [
-        "^build",
+        "^nx:build",
         "generate"
-      ]
-    },
-    "test": {
-      "dependsOn": [
-        "build"
-      ]
-    },
-    "test:integration": {
-      "dependsOn": [
-        "build"
-      ]
-    },
-    "prepublishOnly": {
-      "dependsOn": [
-        "build",
-        "^build"
       ]
     }
   }

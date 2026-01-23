@@ -75,6 +75,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
       - name: Build images
+        id: build
         shell: bash
         env:
           ZB_TOKEN: ${{ env.ZB_TOKEN }}
@@ -84,7 +85,7 @@ jobs:
 
       - name: Slack Notification
         uses: slackapi/slack-github-action@v2.1.1
-        if: success()
+        if: success() && steps.build.outputs.PUBLISHED == 'true'
         with:
           webhook: ${{ env.SLACK_RELEASES_WEBHOOK }}
           webhook-type: incoming-webhook

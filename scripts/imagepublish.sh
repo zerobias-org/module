@@ -105,6 +105,7 @@ npm prune --omit=dev
 if [ "$2" = "--dry-run" ]; then
   echo "Building local image for testing"
   docker buildx build --platform linux/amd64 -t 961260934100.dkr.ecr.us-east-1.amazonaws.com/$REPOSITORY_NAME:$version -o type=docker .
+  echo "PUBLISHED=true" >> $GITHUB_OUTPUT 2>/dev/null || true
 else
   echo "Building image for ecr"
   aws ecr create-repository \
@@ -115,10 +116,7 @@ else
 	  --policy-text '{ "Version": "2012-10-17", "Statement": [ { "Sid": "ReadonlyAccess", "Effect": "Allow", "Principal": { "AWS": "*" }, "Action": [ "ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:DescribeImageScanFindings", "ecr:DescribeImages", "ecr:DescribeRepositories", "ecr:GetAuthorizationToken", "ecr:GetDownloadUrlForLayer", "ecr:GetRepositoryPolicy", "ecr:ListImages" ], "Condition": { "StringLike": { "aws:PrincipalOrgID": "o-dppyp34ws8" } } } ] }'
 
   docker buildx build --platform linux/amd64,linux/arm64 -t 961260934100.dkr.ecr.us-east-1.amazonaws.com/$REPOSITORY_NAME:$version --push .
-
-  # No longer need this
-  # echo "Building image for ghcr"
-  # docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/zerobias-com/$REPOSITORY_NAME:$version --push .
+  echo "PUBLISHED=true" >> $GITHUB_OUTPUT 2>/dev/null || true
 fi
 
 echo "--- Changing back to $BASEDIR"

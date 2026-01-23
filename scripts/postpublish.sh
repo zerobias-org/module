@@ -7,7 +7,12 @@ if [ "$1" = "--dry-run" ]; then
   DRY_RUN=true
 fi;
 
-if [ "$DRY_RUN" = "true" ]; then
+# Use PUBLISHED_PACKAGES_FILE if available, otherwise fall back to lerna list
+if [ -n "$PUBLISHED_PACKAGES_FILE" ] && [ -f "$PUBLISHED_PACKAGES_FILE" ]; then
+  echo "Using packages from $PUBLISHED_PACKAGES_FILE"
+  versions=($(jq -r '.[].version' "$PUBLISHED_PACKAGES_FILE" | tr '\n' ' '))
+  dirs=($(jq -r '.[].location' "$PUBLISHED_PACKAGES_FILE" | tr '\n' ' '))
+elif [ "$DRY_RUN" = "true" ]; then
   versions=($(npx lerna list --since --ndjson | jq -r '[.version] | join(",")'))
   dirs=($(npx lerna list --since --ndjson | jq -r '[.location] | join(",")'))
 else
@@ -63,9 +68,12 @@ done
 
 if [ "$1" = "--dry-run" ]; then
   echo "--- This was only a dry-run ---"
-	SINCE=${2:-"HEAD~1"}
-	echo "Testing publishing images since"
-	PACKAGES=$(npx lerna list --since --ndjson | jq -r '(.name + "@" + .version)')
+	echo "Testing publishing images"
+	if [ -n "$PUBLISHED_PACKAGES_FILE" ] && [ -f "$PUBLISHED_PACKAGES_FILE" ]; then
+		PACKAGES=$(jq -r '.[] | .name + "@" + .version' "$PUBLISHED_PACKAGES_FILE")
+	else
+		PACKAGES=$(npx lerna list --since --ndjson | jq -r '(.name + "@" + .version)')
+	fi
 	for pkg in $PACKAGES; do
 		scripts/imagepublish.sh $pkg --dry-run
 	done

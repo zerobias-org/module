@@ -19,14 +19,11 @@
   },
   "targetDefaults": {
     "clean": {},
-    "lint": {
-      "dependsOn": [
-        "^generate"
-      ]
-    },
+    "lint": {},
     "generate": {
       "dependsOn": [
-        "^nx:build"
+        "^nx:build",
+        "lint"
       ]
     },
     "nx:build": {

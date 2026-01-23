@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.17-rc.0](https://github.com/zerobias-org/module/compare/@zerobias-org/module-readyplayerme-readyplayerme@1.1.16...@zerobias-org/module-readyplayerme-readyplayerme@1.1.17-rc.0) (2026-01-23)
+
+
+### Bug Fixes
+
+* try again ([5eb8b57](https://github.com/zerobias-org/module/commit/5eb8b576f6e694641102736c212dc28b629e90fd))
+* update nx:build ([7042d52](https://github.com/zerobias-org/module/commit/7042d52eea8fdbf01d0fd87c97fe3b4e14a13bfa))
+
+
+
+
+
 ## [1.1.16](https://github.com/zerobias-org/module/compare/@zerobias-org/module-readyplayerme-readyplayerme@1.1.16-rc.0...@zerobias-org/module-readyplayerme-readyplayerme@1.1.16) (2026-01-22)
 
 **Note:** Version bump only for package @zerobias-org/module-readyplayerme-readyplayerme

@@ -29,6 +29,7 @@
     "generate": "npm run generate:full && npm run generate:inflate && npm run generate:api",
     "transpile": "tsc -b",
     "build": "npm run lint && npm run validate && npm run generate && npm run transpile",
+    "nx:build": "npm run transpile",
     "docs:redoc": "npx redocly build-docs module-interface-dataproducer.yml -o docs/index.html",
     "docs:api": "hub-generator generate -g hub-markdown -i full.yml -o docs/",
     "docs:combine": "concat-md --toc --decrease-title-levels --dir-name-as-title docs >> README.md",

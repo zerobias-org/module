@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.21](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@1.0.19...@zerobias-org/module-avigilon-alta-access@1.0.21) (2026-01-23)
+
+
+### Bug Fixes
+
+* try now ([06f23d9](https://github.com/zerobias-org/module-avigilon-alta-access/commit/06f23d936b8ee10475296883ec71cbf69fbe42c2))
+
+
+
+
+
 ## [1.0.19](https://github.com/zerobias-org/module-avigilon-alta-access/compare/@zerobias-org/module-avigilon-alta-access@1.0.17...@zerobias-org/module-avigilon-alta-access@1.0.19) (2026-01-23)
 
 

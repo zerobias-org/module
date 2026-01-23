@@ -27,7 +27,8 @@
     "reset": "npm run clean:full && npm install && npm run build:full",
     "test": "nx affected -t test",
     "test:full": "nx run-many -t test",
-    "nx:publish": "lerna list --since HEAD~1 --json | jq -r '.[].location' | xargs -I {} bash -c 'cd {} && publish'"
+    "nx:publish": "lerna list --since HEAD~1 --json | jq -r '.[].location' | xargs -I {} bash -c 'cd {} && publish'",
+    "prepublish-init": "prepublish-init"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com/"

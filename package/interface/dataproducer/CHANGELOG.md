@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.20-rc.1](https://github.com/zerobias-org/module/compare/@zerobias-org/module-interface-dataproducer@1.2.18...@zerobias-org/module-interface-dataproducer@1.2.20-rc.1) (2026-01-23)
+
+
+### Bug Fixes
+
+* testing flow with file changes but not all 3 ([21c2df2](https://github.com/zerobias-org/module/commit/21c2df2a6d610493a4f26ff27026a463aca9f6df))
+* try again ([5eb8b57](https://github.com/zerobias-org/module/commit/5eb8b576f6e694641102736c212dc28b629e90fd))
+* update nx:build ([7042d52](https://github.com/zerobias-org/module/commit/7042d52eea8fdbf01d0fd87c97fe3b4e14a13bfa))
+
+
+
+
+
+## [1.2.20-rc.0](https://github.com/zerobias-org/module/compare/@zerobias-org/module-interface-dataproducer@1.2.18...@zerobias-org/module-interface-dataproducer@1.2.20-rc.0) (2026-01-23)
+
+
+### Bug Fixes
+
+* testing flow with file changes but not all 3 ([21c2df2](https://github.com/zerobias-org/module/commit/21c2df2a6d610493a4f26ff27026a463aca9f6df))
+* try again ([5eb8b57](https://github.com/zerobias-org/module/commit/5eb8b576f6e694641102736c212dc28b629e90fd))
+* update nx:build ([7042d52](https://github.com/zerobias-org/module/commit/7042d52eea8fdbf01d0fd87c97fe3b4e14a13bfa))
+
+
+
+
+
 ## [1.2.18](https://github.com/zerobias-org/module/compare/@zerobias-org/module-interface-dataproducer@1.2.18-rc.0...@zerobias-org/module-interface-dataproducer@1.2.18) (2026-01-22)
 
 **Note:** Version bump only for package @zerobias-org/module-interface-dataproducer

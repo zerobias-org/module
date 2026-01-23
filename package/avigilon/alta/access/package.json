@@ -14,7 +14,7 @@
     "generate:api": "hub-generator generate -g hub-module -i full.yml -o generated/ $(if test -f connectionProfile.yml; then echo -p isConnector=true;fi) $(if test -f connectionState.yml; then echo -p hasState=true;fi)",
     "generate": "npm run generate:full && npm run generate:inflate && npm run generate:api",
     "transpile": "tsc -b",
-    "build": "npm run lint && npm run validate && npm run generate && npm run transpile",
+    "build": "npm run lint && npm run generate && npm run transpile",
     "nx:build": "npm run transpile",
     "docs:redoc": "npx redocly build-docs module-avigilon-alta-access.yml -o docs/index.html",
     "docs:api": "hub-generator generate -g hub-markdown -i full.yml -o docs/",

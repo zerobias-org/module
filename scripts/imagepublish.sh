@@ -44,13 +44,8 @@ scope=$(cat package.json | jq -r '.name | split("/")[0]')
 scope=${scope:1}
 REPOSITORY_NAME="$scope-$name"
 
-if [ "$name" == "module-interface-rest" ]; then
-	echo "--- Skipping rest interface"
-	exit 0;
-fi
-
-if [ "$name" == "module-interface-spreadsheet" ]; then
-	echo "--- Skipping spreadsheet interface"
+if [[ "$name" == *"module-interface"* ]]; then
+	echo "--- Skipping interface module $name"
 	exit 0;
 fi
 

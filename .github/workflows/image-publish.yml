@@ -83,6 +83,16 @@ jobs:
           npm ci
           ./scripts/imagepublish.sh ${{ matrix.package }}
 
+      - name: Extract package info
+        id: pkg_info
+        if: success() && steps.build.outputs.PUBLISHED == 'true'
+        shell: bash
+        run: |
+          # Extract package name without scope and version (e.g., @zerobias-org/module-name@1.0.0 -> module-name)
+          PKG_NAME=$(echo "${{ matrix.package }}" | sed 's/@[^/]*\///' | sed 's/@.*//')
+          echo "name=$PKG_NAME" >> $GITHUB_OUTPUT
+          echo "changelog_url=https://github.com/${{ github.repository }}/blob/main/packages/${PKG_NAME}/CHANGELOG.md" >> $GITHUB_OUTPUT
+
       - name: Slack Notification
         uses: slackapi/slack-github-action@v2.1.1
         if: success() && steps.build.outputs.PUBLISHED == 'true'
@@ -94,8 +104,8 @@ jobs:
             attachments:
               - color: "#36a64f"
                 fallback: "New Module Image Published"
-                title: ":gear: New Module Image Published :tada:"
-                text: "${{ matrix.package }}"
+                title: ":robot: New Image Published :tada:"
+                text: "Published by *@${{ github.actor }}*\n\n*:gear: Image*\n• `${{ matrix.package }}` <${{ steps.pkg_info.outputs.changelog_url }}|changelog>"
                 footer: "<https://github.com/${{ github.repository }}|${{ github.repository }}> • <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
                 mrkdwn_in:
                   - text
@@ -112,8 +122,8 @@ jobs:
             attachments:
               - color: "#ff0000"
                 fallback: "Image Publish Failed"
-                title: ":fire: ${{ github.repository }} image publish failed"
-                text: "${{ matrix.package }}"
+                title: ":fire: Image Publish Failed"
+                text: "Triggered by *@${{ github.actor }}*\n\n*:gear: Image*\n• `${{ matrix.package }}`"
                 footer: "<https://github.com/${{ github.repository }}|${{ github.repository }}> • <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
                 mrkdwn_in:
                   - text

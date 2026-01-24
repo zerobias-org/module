@@ -54,7 +54,7 @@
     "CHANGELOG.md",
     "USERGUIDE.md",
     "test-results.json",
-    "package-lock.json"
+    "npm-shrinkwrap.json"
   ],
   "zerobias": {
     "package": "avigilon.alta.access.module",

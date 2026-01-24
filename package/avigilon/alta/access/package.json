@@ -53,7 +53,8 @@
     "docs/",
     "CHANGELOG.md",
     "USERGUIDE.md",
-    "test-results.json"
+    "test-results.json",
+    "package-lock.json"
   ],
   "zerobias": {
     "package": "avigilon.alta.access.module",

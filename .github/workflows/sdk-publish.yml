@@ -3,7 +3,7 @@ name: SDK Publish
 on:
   repository_dispatch:
     types:
-      - client-publish
+      - sdk-publish
 
 permissions:
   contents: write

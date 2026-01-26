@@ -3,7 +3,7 @@ name: Hub SDK Publish
 on:
   repository_dispatch:
     types:
-      - client-publish
+      - hub-sdk-publish
 
 permissions:
   contents: write

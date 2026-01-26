@@ -1,4 +1,4 @@
-name: Client Publish
+name: Hub SDK Publish
 
 on:
   repository_dispatch:

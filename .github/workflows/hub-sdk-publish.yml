@@ -55,9 +55,9 @@ jobs:
           aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile tools
           aws configure set aws_session_token $AWS_SESSION_TOKEN --profile tools
 
-      - name: publish SDK client
-        id: publish-sdk
-        uses: zerobias-org/devops/nx-actions/publish-module-sdk@main
+      - name: publish hub SDK client
+        id: publish-hub-sdk
+        uses: zerobias-org/devops/nx-actions/publish-hub-module-sdk@main
         with:
           package: '${{ matrix.package.name }}'
           apiName: '${{ matrix.package.apiName }}'
@@ -65,19 +65,19 @@ jobs:
           publishToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Slack Notification
-        if: steps.publish-sdk.outputs.published == 'true'
+        if: steps.publish-hub-sdk.outputs.published == 'true'
         uses: slackapi/slack-github-action@v2.1.1
         with:
           webhook: ${{ env.SLACK_RELEASES_WEBHOOK }}
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "New ${{ github.repository }} SDK Published",
+              "text": "New ${{ github.repository }} Hub SDK Published",
               "attachments": [{
                 "color": "#36a64f",
-                "fallback": "New SDK Published",
-                "title": ":robot: New SDK Published :tada:",
-                "text": "Published by *@${{ github.actor }}*\n\n*:package: Packages*\n• `${{ steps.publish-sdk.outputs.packageId }}` <https://github.com/${{ github.repository }}/blob/main/${{ steps.publish-sdk.outputs.dir }}/CHANGELOG.md|changelog>",
+                "fallback": "New Hub SDK Published",
+                "title": ":robot: New Hub SDK Published :tada:",
+                "text": "Published by *@${{ github.actor }}*\n\n*:package: Packages*\n• `${{ steps.publish-hub-sdk.outputs.packageId }}` <https://github.com/${{ github.repository }}/blob/main/${{ steps.publish-hub-sdk.outputs.dir }}/CHANGELOG.md|changelog>",
                 "footer": "<https://github.com/${{ github.repository }}|${{ github.repository }}> • <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>",
                 "mrkdwn_in": ["text", "footer"]
               }]
@@ -91,11 +91,11 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "${{ github.repository }} SDK Publish Failed",
+              "text": "${{ github.repository }} Hub SDK Publish Failed",
               "attachments": [{
                 "color": "#ff0000",
-                "fallback": "SDK Publish Failed",
-                "title": ":fire: ${{ github.repository }} SDK Publish Failed",
+                "fallback": "Hub SDK Publish Failed",
+                "title": ":fire: ${{ github.repository }} Hub SDK Publish Failed",
                 "text": "Workflow run failed",
                 "footer": "<https://github.com/${{ github.repository }}|${{ github.repository }}> • <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>",
                 "mrkdwn_in": ["text", "footer"]

@@ -1,17 +1,17 @@
 {
   "name": "@zerobias-org/module-bundle",
-  "version": "0.0.39",
+  "version": "0.0.40",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "@zerobias-org/module-bundle",
-      "version": "0.0.39",
+      "version": "0.0.40",
       "license": "ISC",
       "dependencies": {
-        "@zerobias-org/module-avigilon-alta-access": "1.0.26",
-        "@zerobias-org/module-interface-dataproducer": "1.2.28",
-        "@zerobias-org/module-readyplayerme-readyplayerme": "1.1.23",
+        "@zerobias-org/module-avigilon-alta-access": "1.0.28",
+        "@zerobias-org/module-interface-dataproducer": "1.2.30",
+        "@zerobias-org/module-readyplayerme-readyplayerme": "1.1.25",
         "@zerobias-org/module-util-container-generator": "1.0.1"
       }
     },

@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.25](https://github.com/zerobias-org/module/compare/@zerobias-org/module-interface-dataproducer@1.2.22...@zerobias-org/module-interface-dataproducer@1.2.25) (2026-01-26)
+
+
+### Bug Fixes
+
+* try this ([d3e4d7f](https://github.com/zerobias-org/module/commit/d3e4d7f90d31c1f104c94e37f7f52b88998c8f58))
+
+
+### Chores
+
+* **release:** bump version ([2a2dc11](https://github.com/zerobias-org/module/commit/2a2dc11fb9cf2351280ac47373181da08a1638fc))
+
+
+
 ## [1.2.23](https://github.com/zerobias-org/module/compare/@zerobias-org/module-interface-dataproducer@1.2.22...@zerobias-org/module-interface-dataproducer@1.2.23) (2026-01-24)
 
 **Note:** Version bump only for package @zerobias-org/module-interface-dataproducer

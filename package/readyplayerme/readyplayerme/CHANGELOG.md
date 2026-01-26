@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.21](https://github.com/zerobias-org/module/compare/@zerobias-org/module-readyplayerme-readyplayerme@1.1.19...@zerobias-org/module-readyplayerme-readyplayerme@1.1.21) (2026-01-26)
+
+
+### Bug Fixes
+
+* try again ([c4babf4](https://github.com/zerobias-org/module/commit/c4babf4ed98b0d0d6b334216e9ddfdf3dbeda10d))
+
+
+### Chores
+
+* **release:** bump version ([2a2dc11](https://github.com/zerobias-org/module/commit/2a2dc11fb9cf2351280ac47373181da08a1638fc))
+
+
+
 ## [1.1.20](https://github.com/zerobias-org/module/compare/@zerobias-org/module-readyplayerme-readyplayerme@1.1.19...@zerobias-org/module-readyplayerme-readyplayerme@1.1.20) (2026-01-24)
 
 **Note:** Version bump only for package @zerobias-org/module-readyplayerme-readyplayerme

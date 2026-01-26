@@ -56,7 +56,7 @@
     "test-results.json",
     "npm-shrinkwrap.json"
   ],
-  "zerobias": {
+  "auditmation": {
     "package": "avigilon.alta.access.module",
     "dataloader-version": "1.0.0",
     "import-artifact": "module"

@@ -52,9 +52,10 @@
     "generated/api/manifest.json",
     "docs/",
     "CHANGELOG.md",
-    "test-results.json"
+    "test-results.json",
+    "npm-shrinkwrap.json"
   ],
-  "zerobias": {
+  "auditmation": {
     "package": "readyplayerme.readyplayerme.module",
     "dataloader-version": "1.0.0",
     "import-artifact": "module"

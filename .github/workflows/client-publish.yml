@@ -35,7 +35,7 @@ jobs:
           secrets: |
             operations-kv/data/ci/github readPackagesToken | NPM_TOKEN;
             operations-kv/data/ci/slack devopsNotifications | SLACK_DEVOPS_NOTIFICATIONS;
-            operations-kv/data/ci/github docsDeploymentToken | DISPATCH_TOKEN;
+            operations-kv/data/ci/github dispatchToken | DISPATCH_TOKEN;
             operations-kv/data/ci/slack releasesWebhook | SLACK_RELEASES_WEBHOOK;
             operations-kv/data/ci/github username | USERNAME ;
             operations-kv/data/ci/github writePackagesToken | WRITE_TOKEN ;

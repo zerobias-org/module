@@ -67,9 +67,10 @@
     "generated/api/manifest.json",
     "docs/",
     "CHANGELOG.md",
-    "test-results.json"
+    "test-results.json",
+    "npm-shrinkwrap.json"
   ],
-  "zerobias": {
+  "auditmation": {
     "package": "zerobias.interface.dataproducer.module",
     "dataloader-version": "1.0.0",
     "import-artifact": "module"

@@ -1,0 +1,87 @@
+{
+  "name": "@zerobias-org/module-w3geekery-sme-mart",
+  "version": "1.0.0",
+  "description": "W3Geekery SME Mart - Marketplace for Subject Matter Experts",
+  "moduleId": "",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "author": "team@w3geekery.com",
+  "scripts": {
+    "clean": "rm -rf generated/ dist/ docs/ full*.yml module-w3geekery-sme-mart.yml",
+    "sync-meta": "VERSION=$(npm run -s get-version) NAME=$(yq -oy e .name package.json) DESC=$(yq -oy e .description package.json) yq e -i '.info.version=strenv(VERSION) | .info.title=strenv(NAME) | .info.description=strenv(DESC)' api.yml",
+    "generate:full": "cp api.yml full.yml && if test -f connectionProfile.yml; then yq e -i '.components.schemas.ConnectionProfile.$ref'=\\\"./connectionProfile.yml\\\" full.yml; fi && if test -f connectionState.yml; then yq e -i '.components.schemas.ConnectionState.$ref'=\\\"./connectionState.yml\\\" full.yml; fi",
+    "generate:inflate": "npx redocly bundle full.yml --output full.yml && dereference-product-infos full.yml full.yml && cp full.yml module-w3geekery-sme-mart.yml",
+    "generate:api": "hub-generator generate -g hub-module -i full.yml -o generated/ $(if test -f connectionProfile.yml; then echo -p isConnector=true;fi) $(if test -f connectionState.yml; then echo -p hasState=true;fi)",
+    "generate": "npm run generate:full && npm run generate:inflate && npm run generate:api",
+    "transpile": "tsc -b",
+    "build": "npm run lint && npm run generate && npm run transpile",
+    "nx:build": "npm run transpile",
+    "docs:redoc": "npx redocly build-docs module-w3geekery-sme-mart.yml -o docs/index.html",
+    "docs:api": "hub-generator generate -g hub-markdown -i full.yml -o docs/",
+    "docs": "npm run docs:redoc && npm run docs:api",
+    "version": "npm run sync-meta && git add api.yml",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "node --import tsx/esm ../../../node_modules/mocha/bin/mocha.js --exit --extensions ts --inline-diffs --reporter=list test/unit/**/*.ts",
+    "test:integration": "node --import tsx/esm ../../../node_modules/mocha/bin/mocha.js --exit --extensions ts --inline-diffs --reporter=list test/integration/**/*.ts",
+    "test:watch": "npm run test -- --watch --reporter=min",
+    "get-version": "yq -oy e .version package.json",
+    "lint": "npm run lint:api && npm run lint:src",
+    "lint:src": "eslint 'src/**/*.ts'",
+    "lint:src:fix": "eslint --fix 'src/**/*.ts'",
+    "lint:api": "npx redocly lint api.yml --config .redocly.yaml",
+    "lint:api:bundled": "npx spectral lint module-w3geekery-sme-mart.yml",
+    "nx:publish": "publish",
+    "prepublishtest": "prepublishtest"
+  },
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/w3geekery/module",
+    "directory": "/package/w3geekery/sme-mart"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": [
+    "module-w3geekery-sme-mart.yml",
+    "connectionProfile.yml",
+    "dist",
+    "generated/api/manifest.json",
+    "docs/",
+    "CHANGELOG.md",
+    "test-results.json",
+    "npm-shrinkwrap.json"
+  ],
+  "auditmation": {
+    "package": "w3geekery.sme-mart.module",
+    "dataloader-version": "1.0.0",
+    "import-artifact": "module"
+  },
+  "overrides": {
+    "@zerobias-org/types-core-js": "$@zerobias-org/types-core-js"
+  },
+  "dependencies": {
+    "@types/node": "22.19.7",
+    "@zerobias-org/logger": "2.0.13",
+    "@zerobias-org/types-core-js": "1.2.10",
+    "@zerobias-org/util-connector": "1.0.11",
+    "@zerobias-org/util-hub-module-utils": "2.0.11",
+    "@neondatabase/serverless": "^0.10.4",
+    "drizzle-orm": "^0.38.3",
+    "safe-stable-stringify": "^2.5.0"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.14.5",
+    "@types/chai": "^5.2.3",
+    "@types/mocha": "^10.0.10",
+    "@types/nock": "^10.0.3",
+    "@zerobias-org/devops-tools": "^1.0.23",
+    "@zerobias-org/util-codegen": "^2.0.14",
+    "chai": "^6.2.2",
+    "concat-md": "^0.5.1",
+    "mocha": "^11.7.5",
+    "nock": "^14.0.5",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,1053 @@
+openapi: 3.0.3
+info:
+  version: 1.0.0
+  title: '@zerobias-org/module-w3geekery-sme-mart'
+  description: W3Geekery SME Mart - Marketplace for Subject Matter Experts
+  x-impl-name: SmeMart
+tags:
+  - name: provider
+    description: Provider directory and public profile operations
+  - name: profile
+    description: Authenticated provider profile management
+  - name: service
+    description: Service catalog operations
+  - name: request
+    description: Work request and proposal management
+  - name: admin
+    description: Admin operations (stats, categories, review moderation)
+components:
+  parameters:
+    providerIdParam:
+      name: providerId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique identifier for a provider profile
+    categoryIdParam:
+      name: categoryId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique identifier for a category
+    requestIdParam:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique identifier for a work request
+    proposalIdParam:
+      name: proposalId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique identifier for a proposal
+    reviewIdParam:
+      name: reviewId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique identifier for a review
+    skillIdParam:
+      name: skillId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique identifier for a skill
+    serviceIdParam:
+      name: serviceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique identifier for a service offering
+    pageNumberParam:
+      $ref: "../../../node_modules/@zerobias-org/types-core/schema/pageNumberParam.yml"
+    pageSizeParam:
+      $ref: "../../../node_modules/@zerobias-org/types-core/schema/pageSizeParam.yml"
+  headers:
+    pagedLinkHeader:
+      $ref: "../../../node_modules/@zerobias-org/types-core/schema/pagedLinkHeader.yml"
+  schemas:
+    # --- Provider (public) ---
+    Provider:
+      type: object
+      required:
+        - id
+        - displayName
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Provider profile ID
+        zerobiasUserId:
+          type: string
+          description: ZeroBias platform user ID
+        displayName:
+          type: string
+          description: Display name
+        headline:
+          type: string
+          description: Short tagline
+        about:
+          type: string
+          description: Full bio / about section
+        avatarUrl:
+          type: string
+          description: Profile picture URL
+        hourlyRate:
+          type: string
+          description: Hourly rate (decimal string)
+        availabilityStatus:
+          type: string
+          enum: [available, busy, unavailable]
+          description: Current availability
+        responseTime:
+          type: string
+          description: Typical response time
+        totalJobsCompleted:
+          type: integer
+          description: Lifetime completed jobs
+        ratingAverage:
+          type: string
+          description: Average rating (decimal string)
+        createdAt:
+          type: string
+          format: date-time
+          description: Profile creation timestamp
+    ProviderDetail:
+      allOf:
+        - $ref: '#/components/schemas/Provider'
+        - type: object
+          properties:
+            skills:
+              type: array
+              items:
+                $ref: '#/components/schemas/Skill'
+              description: Provider skills
+            serviceOfferings:
+              type: array
+              items:
+                $ref: '#/components/schemas/ServiceOffering'
+              description: Active service offerings
+            reviews:
+              type: array
+              items:
+                $ref: '#/components/schemas/Review'
+              description: Recent reviews
+    # --- Skills ---
+    Skill:
+      type: object
+      required:
+        - id
+        - skillName
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Skill ID
+        skillName:
+          type: string
+          description: Skill name
+        skillCategory:
+          type: string
+          description: Category grouping
+        proficiencyLevel:
+          type: string
+          enum: [beginner, intermediate, expert]
+          description: Proficiency level
+        yearsExperience:
+          type: integer
+          description: Years of experience
+        verified:
+          type: boolean
+          description: Whether skill is verified
+    SkillInput:
+      type: object
+      required:
+        - skillName
+      properties:
+        skillName:
+          type: string
+          description: Skill name
+        skillCategory:
+          type: string
+          description: Category grouping
+        proficiencyLevel:
+          type: string
+          enum: [beginner, intermediate, expert]
+          description: Proficiency level
+        yearsExperience:
+          type: integer
+          description: Years of experience
+    # --- Service Offerings ---
+    ServiceOffering:
+      type: object
+      required:
+        - id
+        - title
+        - category
+        - pricingType
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Service offering ID
+        providerId:
+          type: string
+          format: uuid
+          description: Owning provider ID
+        title:
+          type: string
+          description: Service title
+        description:
+          type: string
+          description: Service description
+        category:
+          type: string
+          description: Service category
+        subcategory:
+          type: string
+          description: Service subcategory
+        pricingType:
+          type: string
+          enum: [fixed, hourly, subscription, custom]
+          description: Pricing model
+        price:
+          type: string
+          description: Price (decimal string)
+        deliveryTime:
+          type: string
+          description: Expected delivery time
+        includes:
+          type: array
+          items:
+            type: string
+          description: What is included
+        requirements:
+          type: string
+          description: Requirements from buyer
+        isActive:
+          type: boolean
+          description: Whether offering is active
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp
+    ServiceOfferingInput:
+      type: object
+      required:
+        - title
+        - category
+        - pricingType
+      properties:
+        title:
+          type: string
+          description: Service title
+        description:
+          type: string
+          description: Service description
+        category:
+          type: string
+          description: Service category
+        subcategory:
+          type: string
+          description: Service subcategory
+        pricingType:
+          type: string
+          enum: [fixed, hourly, subscription, custom]
+          description: Pricing model
+        price:
+          type: string
+          description: Price (decimal string)
+        deliveryTime:
+          type: string
+          description: Expected delivery time
+        includes:
+          type: array
+          items:
+            type: string
+          description: What is included
+        requirements:
+          type: string
+          description: Requirements from buyer
+    # --- Reviews ---
+    Review:
+      type: object
+      required:
+        - id
+        - rating
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Review ID
+        providerId:
+          type: string
+          format: uuid
+          description: Reviewed provider ID
+        reviewerZerobiasUserId:
+          type: string
+          description: Reviewer ZeroBias user ID
+        requestId:
+          type: string
+          format: uuid
+          description: Associated work request
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Rating (1-5)
+        reviewText:
+          type: string
+          description: Review content
+        status:
+          type: string
+          enum: [pending, approved, flagged, removed]
+          description: Moderation status
+        createdAt:
+          type: string
+          format: date-time
+          description: Review timestamp
+    ReviewInput:
+      type: object
+      required:
+        - rating
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Rating (1-5)
+        reviewText:
+          type: string
+          description: Review content
+    # --- Work Requests ---
+    WorkRequest:
+      type: object
+      required:
+        - id
+        - title
+        - category
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Work request ID
+        buyerZerobiasUserId:
+          type: string
+          description: Buyer ZeroBias user ID
+        buyerZerobiasOrgId:
+          type: string
+          description: Buyer ZeroBias org ID
+        title:
+          type: string
+          description: Request title
+        description:
+          type: string
+          description: Detailed description
+        category:
+          type: string
+          description: Service category
+        budgetType:
+          type: string
+          enum: [fixed, hourly, negotiable]
+          description: Budget type
+        budgetMin:
+          type: string
+          description: Minimum budget (decimal string)
+        budgetMax:
+          type: string
+          description: Maximum budget (decimal string)
+        timeline:
+          type: string
+          description: Expected timeline
+        status:
+          type: string
+          enum: [open, in_progress, completed, cancelled]
+          description: Request status
+        zerobiasBoundaryId:
+          type: string
+          description: ZeroBias boundary for scoped work
+        zerobiasTaskId:
+          type: string
+          description: ZeroBias task ID
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp
+    WorkRequestInput:
+      type: object
+      required:
+        - title
+        - category
+      properties:
+        title:
+          type: string
+          description: Request title
+        description:
+          type: string
+          description: Detailed description
+        category:
+          type: string
+          description: Service category
+        budgetType:
+          type: string
+          enum: [fixed, hourly, negotiable]
+          description: Budget type
+        budgetMin:
+          type: string
+          description: Minimum budget (decimal string)
+        budgetMax:
+          type: string
+          description: Maximum budget (decimal string)
+        timeline:
+          type: string
+          description: Expected timeline
+    # --- Proposals ---
+    Proposal:
+      type: object
+      required:
+        - id
+        - requestId
+        - providerId
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Proposal ID
+        requestId:
+          type: string
+          format: uuid
+          description: Associated work request ID
+        providerId:
+          type: string
+          format: uuid
+          description: Proposing provider ID
+        coverLetter:
+          type: string
+          description: Cover letter / pitch
+        proposedPrice:
+          type: string
+          description: Proposed price (decimal string)
+        proposedTimeline:
+          type: string
+          description: Proposed timeline
+        status:
+          type: string
+          enum: [pending, accepted, rejected, withdrawn]
+          description: Proposal status
+        createdAt:
+          type: string
+          format: date-time
+          description: Submission timestamp
+    ProposalInput:
+      type: object
+      required:
+        - requestId
+      properties:
+        requestId:
+          type: string
+          format: uuid
+          description: Work request to propose on
+        coverLetter:
+          type: string
+          description: Cover letter / pitch
+        proposedPrice:
+          type: string
+          description: Proposed price (decimal string)
+        proposedTimeline:
+          type: string
+          description: Proposed timeline
+    # --- Categories ---
+    Category:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Category ID
+        name:
+          type: string
+          description: Category name
+        slug:
+          type: string
+          description: URL-friendly slug
+        description:
+          type: string
+          description: Category description
+        parentId:
+          type: string
+          format: uuid
+          description: Parent category ID (for tree structure)
+        icon:
+          type: string
+          description: Icon identifier
+        sortOrder:
+          type: integer
+          description: Display sort order
+    CategoryInput:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Category name
+        slug:
+          type: string
+          description: URL-friendly slug (auto-generated if omitted)
+        description:
+          type: string
+          description: Category description
+        parentId:
+          type: string
+          format: uuid
+          description: Parent category ID
+        icon:
+          type: string
+          description: Icon identifier
+        sortOrder:
+          type: integer
+          description: Display sort order
+    # --- Admin Stats ---
+    AdminStats:
+      type: object
+      properties:
+        totalProviders:
+          type: integer
+          description: Total registered providers
+        totalServices:
+          type: integer
+          description: Total active service offerings
+        totalRequests:
+          type: integer
+          description: Total work requests
+        totalCategories:
+          type: integer
+          description: Total categories
+        recentProviders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Provider'
+          description: Recently joined providers
+    # --- Profile (authenticated user's own profile) ---
+    ProfileUpsertInput:
+      type: object
+      properties:
+        displayName:
+          type: string
+          description: Display name
+        headline:
+          type: string
+          description: Short tagline
+        about:
+          type: string
+          description: Full bio
+        avatarUrl:
+          type: string
+          description: Profile picture URL
+        hourlyRate:
+          type: string
+          description: Hourly rate (decimal string)
+        availabilityStatus:
+          type: string
+          enum: [available, busy, unavailable]
+          description: Availability status
+        responseTime:
+          type: string
+          description: Typical response time
+paths:
+  # === Provider (public) ===
+  /providers:
+    get:
+      tags: [provider]
+      summary: List all providers with optional filters
+      operationId: listProviders
+      x-method-name: list
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filter by category
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by name or headline
+        - name: availability
+          in: query
+          schema:
+            type: string
+            enum: [available, busy, unavailable]
+          description: Filter by availability
+      responses:
+        '200':
+          description: List of providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Provider'
+  /providers/{providerId}:
+    get:
+      tags: [provider]
+      summary: Get provider detail with skills, services, and reviews
+      operationId: getProvider
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/providerIdParam'
+      responses:
+        '200':
+          description: Provider detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderDetail'
+        '404':
+          description: Provider not found
+  /providers/{providerId}/reviews:
+    post:
+      tags: [provider]
+      summary: Submit a review for a provider
+      operationId: submitReview
+      x-method-name: submitReview
+      parameters:
+        - $ref: '#/components/parameters/providerIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewInput'
+      responses:
+        '201':
+          description: Review submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+  # === Profile (authenticated) ===
+  /profile:
+    get:
+      tags: [profile]
+      summary: Get the authenticated user's provider profile
+      operationId: getProfile
+      x-method-name: get
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderDetail'
+        '404':
+          description: No profile exists yet
+    put:
+      tags: [profile]
+      summary: Create or update the authenticated user's profile
+      operationId: upsertProfile
+      x-method-name: upsert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpsertInput'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Provider'
+  /profile/skills:
+    post:
+      tags: [profile]
+      summary: Add a skill to the authenticated provider's profile
+      operationId: addSkill
+      x-method-name: addSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillInput'
+      responses:
+        '201':
+          description: Skill added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Skill'
+  /profile/skills/{skillId}:
+    delete:
+      tags: [profile]
+      summary: Remove a skill from the authenticated provider's profile
+      operationId: removeSkill
+      x-method-name: removeSkill
+      parameters:
+        - $ref: '#/components/parameters/skillIdParam'
+      responses:
+        '200':
+          description: Skill removed
+  /profile/services:
+    post:
+      tags: [profile]
+      summary: Add a service offering to the authenticated provider's profile
+      operationId: addService
+      x-method-name: addService
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceOfferingInput'
+      responses:
+        '201':
+          description: Service added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceOffering'
+  /profile/services/{serviceId}:
+    put:
+      tags: [profile]
+      summary: Update a service offering
+      operationId: updateService
+      x-method-name: updateService
+      parameters:
+        - $ref: '#/components/parameters/serviceIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceOfferingInput'
+      responses:
+        '200':
+          description: Service updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceOffering'
+    delete:
+      tags: [profile]
+      summary: Remove a service offering
+      operationId: removeService
+      x-method-name: removeService
+      parameters:
+        - $ref: '#/components/parameters/serviceIdParam'
+      responses:
+        '200':
+          description: Service removed
+  /profile/reviews:
+    get:
+      tags: [profile]
+      summary: Get reviews for the authenticated provider
+      operationId: getProfileReviews
+      x-method-name: getProfileReviews
+      responses:
+        '200':
+          description: List of reviews
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+  # === Service Catalog ===
+  /services:
+    get:
+      tags: [service]
+      summary: List all active service offerings across providers
+      operationId: listServices
+      x-method-name: list
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filter by category
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by title or description
+      responses:
+        '200':
+          description: List of service offerings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceOffering'
+  # === Work Requests ===
+  /requests:
+    get:
+      tags: [request]
+      summary: List work requests
+      operationId: listRequests
+      x-method-name: list
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, in_progress, completed, cancelled]
+          description: Filter by status
+      responses:
+        '200':
+          description: List of work requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkRequest'
+    post:
+      tags: [request]
+      summary: Create a new work request
+      operationId: createRequest
+      x-method-name: create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkRequestInput'
+      responses:
+        '201':
+          description: Work request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkRequest'
+  /requests/{requestId}:
+    get:
+      tags: [request]
+      summary: Get a work request by ID
+      operationId: getRequest
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/requestIdParam'
+      responses:
+        '200':
+          description: Work request detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkRequest'
+        '404':
+          description: Request not found
+    put:
+      tags: [request]
+      summary: Update a work request
+      operationId: updateRequest
+      x-method-name: update
+      parameters:
+        - $ref: '#/components/parameters/requestIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkRequestInput'
+      responses:
+        '200':
+          description: Work request updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkRequest'
+  # === Proposals ===
+  /proposals:
+    post:
+      tags: [request]
+      summary: Create a proposal for a work request
+      operationId: createProposal
+      x-method-name: createProposal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProposalInput'
+      responses:
+        '201':
+          description: Proposal submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Proposal'
+  /proposals/{proposalId}:
+    put:
+      tags: [request]
+      summary: Update a proposal
+      operationId: updateProposal
+      x-method-name: updateProposal
+      parameters:
+        - $ref: '#/components/parameters/proposalIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProposalInput'
+      responses:
+        '200':
+          description: Proposal updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Proposal'
+    delete:
+      tags: [request]
+      summary: Delete/withdraw a proposal
+      operationId: deleteProposal
+      x-method-name: deleteProposal
+      parameters:
+        - $ref: '#/components/parameters/proposalIdParam'
+      responses:
+        '200':
+          description: Proposal deleted
+  # === Admin ===
+  /admin/stats:
+    get:
+      tags: [admin]
+      summary: Get marketplace admin statistics
+      operationId: getStats
+      x-method-name: getStats
+      responses:
+        '200':
+          description: Admin statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStats'
+  /admin/categories:
+    get:
+      tags: [admin]
+      summary: List all categories
+      operationId: listCategories
+      x-method-name: listCategories
+      responses:
+        '200':
+          description: All categories ordered by sortOrder
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+    post:
+      tags: [admin]
+      summary: Create a new category
+      operationId: createCategory
+      x-method-name: createCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryInput'
+      responses:
+        '201':
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+  /admin/categories/{categoryId}:
+    put:
+      tags: [admin]
+      summary: Update a category
+      operationId: updateCategory
+      x-method-name: updateCategory
+      parameters:
+        - $ref: '#/components/parameters/categoryIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryInput'
+      responses:
+        '200':
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+    delete:
+      tags: [admin]
+      summary: Delete a category and its children
+      operationId: deleteCategory
+      x-method-name: deleteCategory
+      parameters:
+        - $ref: '#/components/parameters/categoryIdParam'
+      responses:
+        '200':
+          description: Category deleted
+  /admin/reviews:
+    get:
+      tags: [admin]
+      summary: List all reviews for moderation
+      operationId: listAllReviews
+      x-method-name: listAllReviews
+      responses:
+        '200':
+          description: All reviews
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+  /admin/reviews/{reviewId}:
+    put:
+      tags: [admin]
+      summary: Moderate a review (approve, flag, remove)
+      operationId: moderateReview
+      x-method-name: moderateReview
+      parameters:
+        - $ref: '#/components/parameters/reviewIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [approved, flagged, removed]
+                  description: New moderation status
+      responses:
+        '200':
+          description: Review moderated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'

@@ -1,0 +1,81 @@
+# Redocly configuration for OpenAPI validation
+
+apis:
+  main:
+    root: ./api.yml
+
+extends:
+  - recommended
+
+rules:
+  # Disabled rules (not applicable)
+  no-empty-servers: off
+  security-defined: off
+  operation-4xx-response: off
+  no-unused-components: off
+  info-contact: off
+  info-license: off
+  operation-description: off
+  tag-description: off
+
+  # Structural rules
+  struct: error
+  no-unresolved-refs: error
+  no-invalid-media-type-examples: warn
+
+  # Operation rules
+  operation-summary: error
+  operation-operationId: error
+  operation-operationId-unique: error
+
+  # Schema rules
+  no-invalid-schema-examples: warn
+  boolean-parameter-prefixes: off
+
+  # Path rules
+  no-ambiguous-paths: error
+  no-http-verbs-in-paths: error
+  no-path-trailing-slash: error
+  path-not-include-query: error
+
+  # Parameter rules
+  parameter-description: warn
+
+  # Server rules
+  no-server-example.com: error
+  no-server-trailing-slash: error
+
+  # Custom naming conventions
+  rule/property-names-camelCase:
+    subject:
+      type: SchemaProperties
+    assertions:
+      casing: camelCase
+    severity: error
+    message: Property names must be camelCase.
+
+  rule/parameter-names-camelCase:
+    subject:
+      type: Parameter
+      property: name
+      filterInParentKeys:
+        - query
+        - path
+    assertions:
+      casing: camelCase
+    severity: error
+    message: Parameter names must be camelCase.
+
+  rule/properties-have-description:
+    subject:
+      type: Schema
+      property: description
+    where:
+      - subject:
+          type: SchemaProperties
+        assertions:
+          defined: true
+    assertions:
+      defined: true
+    severity: warn
+    message: Properties should have a description.

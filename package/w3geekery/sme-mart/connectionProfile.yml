@@ -1,0 +1,9 @@
+type: object
+properties:
+  databaseUrl:
+    type: string
+    format: uri
+    description: Neon PostgreSQL connection string (pooled)
+    example: postgresql://user:pass@ep-xxx.us-east-1.aws.neon.tech/sme-mart?sslmode=require
+required:
+  - databaseUrl

@@ -950,7 +950,7 @@ pwd
 # Should show: /path/to/module
 
 # Run Yeoman generator
-yo @auditmation/hub-module \
+yo @com/hub-module \
   --productPackage '@zerobias-org/product-github-github' \
   --modulePackage '@zerobias-org/module-github-github' \
   --packageVersion '0.0.0' \

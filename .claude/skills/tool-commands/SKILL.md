@@ -57,7 +57,7 @@ Essential tools and commands for module development.
 npm view @zerobias-org/product-bundle --json
 
 # Create module with Yeoman generator
-yo @auditmation/hub-module
+yo @com/hub-module
 # Follow prompts to configure module
 
 # Sync package metadata

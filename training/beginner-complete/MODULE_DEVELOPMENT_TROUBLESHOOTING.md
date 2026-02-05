@@ -981,7 +981,7 @@ ls dist/
 
 **Symptom:**
 ```bash
-yo @auditmation/hub-module
+yo @com/hub-module
 # Error: yo: command not found
 ```
 
@@ -998,7 +998,7 @@ npm install -g @auditmation/generator-hub-module
 
 # Verify
 yo --version
-yo --generators  # Should show @auditmation/hub-module
+yo --generators  # Should show @com/hub-module
 ```
 
 ---

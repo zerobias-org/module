@@ -70,13 +70,13 @@
     }
   },
   "dependencies": {
-    "@types/node": "22.19.7",
-    "@zerobias-org/logger": "2.0.13",
-    "@zerobias-org/product-avigilon-alta-access": "2.0.1",
-    "@zerobias-org/types-core-js": "1.2.10",
-    "@zerobias-org/util-connector": "1.0.11",
-    "@zerobias-org/util-hub-module-utils": "2.0.11",
-    "axios": "1.13.2",
+    "@types/node": "^22.19.7",
+    "@zerobias-org/logger": "latest",
+    "@zerobias-org/product-avigilon-alta-access": "latest",
+    "@zerobias-org/types-core-js": "latest",
+    "@zerobias-org/util-connector": "latest",
+    "@zerobias-org/util-hub-module-utils": "latest",
+    "axios": "^1.13.2",
     "safe-stable-stringify": "^2.5.0"
   },
   "devDependencies": {

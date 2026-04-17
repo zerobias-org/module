@@ -1,0 +1,10 @@
+{
+  "name": "@zerobias-org/hub-sdk-avigilon-alta-access",
+  "version": "0.0.0",
+  "description": "Hub SDK for Avigilon Alta Access module",
+  "type": "module",
+  "main": "generated/api/index.ts",
+  "types": "generated/api/index.ts",
+  "files": ["generated/**/*.ts"],
+  "publishConfig": { "access": "restricted" }
+}

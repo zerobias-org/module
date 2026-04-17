@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   x-product-infos:
-    - $ref: "../../../../node_modules/@zerobias-org/product-avigilon-alta-access/catalog.yml#/Product"
+    - $ref: "./node_modules/@zerobias-org/product-avigilon-alta-access/catalog.yml#/Product"
   version: 1.0.31
   title: '@zerobias-org/module-avigilon-alta-access'
   description: Avigilon Alta Access
@@ -95,12 +95,12 @@ components:
         type: string
       description: Unique identifier for an entry
     pageNumberParam:
-      $ref: "../../../../node_modules/@zerobias-org/types-core/schema/pageNumberParam.yml"
+      $ref: "./node_modules/@zerobias-org/types-core/schema/pageNumberParam.yml"
     pageSizeParam:
-      $ref: "../../../../node_modules/@zerobias-org/types-core/schema/pageSizeParam.yml"
+      $ref: "./node_modules/@zerobias-org/types-core/schema/pageSizeParam.yml"
   headers:
     pagedLinkHeader:
-      $ref: "../../../../node_modules/@zerobias-org/types-core/schema/pagedLinkHeader.yml"
+      $ref: "./node_modules/@zerobias-org/types-core/schema/pagedLinkHeader.yml"
   securitySchemes:
     access-token:
       type: oauth2

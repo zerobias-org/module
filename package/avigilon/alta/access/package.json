@@ -1,96 +1,64 @@
 {
   "name": "@zerobias-org/module-avigilon-alta-access",
-  "version": "1.0.31",
+  "version": "2.0.0",
   "description": "Avigilon Alta Access",
   "moduleId": "17feded8-8e28-4b45-8960-d4b1f0cbe4a8",
   "type": "module",
   "main": "dist/src/index.js",
   "author": "team@zerobias.com",
-  "scripts": {
-    "clean": "rm -rf generated/ dist/ docs/ full*.yml module-avigilon-alta-access.yml",
-    "sync-meta": "VERSION=$(npm run -s get-version) NAME=$(yq -oy e .name package.json) DESC=$(yq -oy e .description package.json) yq e -i '.info.version=strenv(VERSION) | .info.title=strenv(NAME) | .info.description=strenv(DESC)' api.yml",
-    "generate:full": "cp api.yml full.yml && if test -f connectionProfile.yml; then yq e -i '.components.schemas.ConnectionProfile.$ref'=\\\"./connectionProfile.yml\\\" full.yml; fi && if test -f connectionState.yml; then yq e -i '.components.schemas.ConnectionState.$ref'=\\\"./connectionState.yml\\\" full.yml; fi",
-    "generate:inflate": "npx redocly bundle full.yml --output full.yml && dereference-product-infos full.yml full.yml && cp full.yml module-avigilon-alta-access.yml",
-    "generate:api": "hub-generator generate -g hub-module -i full.yml -o generated/ $(if test -f connectionProfile.yml; then echo -p isConnector=true;fi) $(if test -f connectionState.yml; then echo -p hasState=true;fi)",
-    "generate": "npm run generate:full && npm run generate:inflate && npm run generate:api",
-    "transpile": "tsc -b",
-    "build": "npm run lint && npm run generate && npm run transpile",
-    "nx:build": "npm run transpile",
-    "docs:redoc": "npx redocly build-docs module-avigilon-alta-access.yml -o docs/index.html",
-    "docs:api": "hub-generator generate -g hub-markdown -i full.yml -o docs/",
-    "docs:combine": "concat-md --toc --decrease-title-levels --dir-name-as-title docs >> README.md",
-    "docs": "npm run docs:redoc && npm run docs:api && npm run docs:combine",
-    "version": "npm run sync-meta && git add api.yml",
-    "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "node --import tsx/esm ../../../../node_modules/mocha/bin/mocha.js --exit --extensions ts --inline-diffs --reporter=list test/unit/**/*.ts",
-    "test:integration": "node --import tsx/esm ../../../../node_modules/mocha/bin/mocha.js --exit --extensions ts --inline-diffs --reporter=list test/integration/**/*.ts",
-    "test:watch": "npm run test -- --watch --reporter=min",
-    "test:integration:json": "mocha --reporter=json --reporter-option output=test-results.json test/integration/**/*.ts",
-    "test:integration:watch": "npm run test:integration -- --watch --reporter=min",
-    "get-version": "yq -oy e .version package.json",
-    "lint": "npm run lint:api && npm run lint:src",
-    "lint:src": "eslint 'src/**/*.ts'",
-    "lint:src:fix": "eslint --fix 'src/**/*.ts'",
-    "lint:api": "npx redocly lint api.yml --config .redocly.yaml",
-    "lint:api:bundled": "npx spectral lint module-avigilon-alta-access.yml",
-    "nx:publish": "publish",
-    "prepublishtest": "prepublishtest"
-  },
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zerobias-org/module-avigilon-alta-access",
-    "directory": "/package/avigilon/alta/access"
+    "url": "https://github.com/zerobias-org/module",
+    "directory": "package/avigilon/alta/access"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com/"
   },
+  "scripts": {
+    "clean": "rm -rf build/ dist/ generated/ hub-sdk/generated module-avigilon-alta-access.yml full.yml"
+  },
   "files": [
-    "module-avigilon-alta-access.yml",
-    "connectionProfile.yml",
     "dist",
     "generated/api/manifest.json",
-    "docs/",
-    "CHANGELOG.md",
-    "USERGUIDE.md",
-    "test-results.json",
-    "npm-shrinkwrap.json"
+    "api.yml",
+    "connectionProfile.yml",
+    "connectionState.yml"
   ],
-  "auditmation": {
+  "zerobias": {
     "package": "avigilon.alta.access.module",
     "dataloader-version": "1.0.0",
     "import-artifact": "module"
   },
   "overrides": {
-    "@zerobias-org/types-core-js": "$@zerobias-org/types-core-js",
-    "tar": "7.5.6",
-    "@rollup/plugin-commonjs": "^28.0.0",
-    "mocha": {
-      "diff": "^8.0.3"
-    }
+    "diff": ">=8.0.3",
+    "serialize-javascript": ">=7.0.3"
   },
   "dependencies": {
-    "@types/node": "^22.19.7",
-    "@zerobias-org/logger": "latest",
-    "@zerobias-org/product-avigilon-alta-access": "latest",
-    "@zerobias-org/types-core-js": "latest",
-    "@zerobias-org/util-connector": "latest",
-    "@zerobias-org/util-hub-module-utils": "latest",
-    "axios": "^1.13.2",
-    "safe-stable-stringify": "^2.5.0"
+    "@zerobias-org/logger": "3.0.7",
+    "@zerobias-org/product-avigilon-alta-access": "2.0.1",
+    "@zerobias-org/util-connector": "1.0.38",
+    "@zerobias-org/util-hub-module-utils": "2.0.44",
+    "axios": "1.15.0",
+    "safe-stable-stringify": "2.5.0"
+  },
+  "peerDependencies": {
+    "@zerobias-org/types-core": "^1.0.22",
+    "@zerobias-org/types-core-js": "^1.2.19"
   },
   "devDependencies": {
-    "@redocly/cli": "2.14.5",
-    "@types/chai": "^5.2.3",
-    "@types/mocha": "^10.0.10",
-    "@types/nock": "^10.0.3",
-    "@zerobias-org/devops-tools": "^1.0.23",
-    "@zerobias-org/util-codegen": "^2.0.14",
-    "chai": "^6.2.2",
-    "concat-md": "^0.5.1",
-    "mocha": "^11.7.5",
-    "nock": "^14.0.5",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "@redocly/cli": "2.28.1",
+    "@types/chai": "4.3.20",
+    "@types/js-yaml": "4.0.9",
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.19.17",
+    "@zerobias-org/eslint-config": "1.0.36",
+    "@zerobias-org/module-test-client": "1.0.3",
+    "@zerobias-org/util-api-client-base": "1.0.42",
+    "@zerobias-org/util-codegen": "2.0.49",
+    "chai": "4.5.0",
+    "mocha": "11.7.5",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
   }
 }

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   x-product-infos:
-    - $ref: '../../../node_modules/@zerobias-org/product-readyplayerme-readyplayerme/catalog.yml#/Product'
+    - $ref: './node_modules/@zerobias-org/product-readyplayerme-readyplayerme/catalog.yml#/Product'
   version: '1.1.27'
   title: '@zerobias-org/module-readyplayerme-readyplayerme'
   x-impl-name: ReadyPlayerMe
@@ -287,16 +287,16 @@ paths:
 components:
   headers:
     pagedLink:
-      $ref: '../../../node_modules/@zerobias-org/types-core/schema/pagedLinkHeader.yml'
+      $ref: './node_modules/@zerobias-org/types-core/schema/pagedLinkHeader.yml'
   parameters:
     pageNumber:
-      $ref: '../../../node_modules/@zerobias-org/types-core/schema/pageNumberParam.yml'
+      $ref: './node_modules/@zerobias-org/types-core/schema/pageNumberParam.yml'
     pageSize:
-      $ref: '../../../node_modules/@zerobias-org/types-core/schema/pageSizeParam.yml'
+      $ref: './node_modules/@zerobias-org/types-core/schema/pageSizeParam.yml'
     sortDir:
-      $ref: '../../../node_modules/@zerobias-org/types-core/schema/sortDirParam.yml'
+      $ref: './node_modules/@zerobias-org/types-core/schema/sortDirParam.yml'
     sortBy:
-      $ref: '../../../node_modules/@zerobias-org/types-core/schema/sortByParam.yml'
+      $ref: './node_modules/@zerobias-org/types-core/schema/sortByParam.yml'
     avatar3DId:
       name: avatarId
       in: path

@@ -1,9 +1,9 @@
 {
   "version": "2.0.0-uat.0",
   "branch": "migrate/gradle-interface-dataproducer-readyplayerme",
-  "timestamp": "2026-04-17T19:46:52.050575Z",
-  "sourceHash": "4472bbceb12cba79fac32b082efbe88801a9f0be9078fd40d589eff65c038655",
-  "testHash": "c86593489cf8da5826b448b6e769abb3937c8ec54cb6b4e2a647b4f9c55c30fc",
+  "timestamp": "2026-04-17T19:46:35.291120Z",
+  "sourceHash": "38019cf3df92419e136e741d9b4a59ddfca97be67a60f90c6e55b42e0f1eb3b2",
+  "testHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "tasks": {
     "validate": "passed",
     "lint": "passed",
@@ -15,8 +15,8 @@
     "buildArtifacts": "passed"
   },
   "tests": {
-      "unit": { "expected": 419, "ran": 419, "status": "passed" },
+      "unit": { "expected": 0, "ran": 0, "status": "skipped" },
       "integration": { "expected": 0, "ran": 0, "status": "skipped" },
-      "e2e": { "expected": 101, "ran": 101, "status": "passed" }
+      "e2e": { "expected": 1, "ran": 1, "status": "passed" }
   }
 }

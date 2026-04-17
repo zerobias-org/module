@@ -1,0 +1,10 @@
+{
+  "name": "@zerobias-org/hub-sdk-readyplayerme-readyplayerme",
+  "version": "0.0.0",
+  "description": "Hub SDK for Ready Player Me module",
+  "type": "module",
+  "main": "generated/api/index.ts",
+  "types": "generated/api/index.ts",
+  "files": ["generated/**/*.ts"],
+  "publishConfig": { "access": "restricted" }
+}

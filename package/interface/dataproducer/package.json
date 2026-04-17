@@ -1,9 +1,10 @@
 {
   "name": "@zerobias-org/module-interface-dataproducer",
-  "version": "1.2.33",
+  "version": "2.0.0",
   "description": "Dynamic Data Producer Interface",
   "moduleId": "a2b032b3-eb87-4cb8-8916-8fbbd4c3fcef",
   "type": "module",
+  "interface": true,
   "main": "dist/src/index.js",
   "exports": {
     ".": {
@@ -19,84 +20,51 @@
       "import": "./dist/generated/model/index.js"
     }
   },
-  "scripts": {
-    "clean": "rm -rf generated/ dist/ docs/ full*.yml module-interface-dataproducer.yml",
-    "sync-meta": "VERSION=$(npm run -s get-version) NAME=$(yq -oy e .name package.json) DESC=$(yq -oy e .description package.json) yq e -i '.info.version=strenv(VERSION) | .info.title=strenv(NAME) | .info.description=strenv(DESC)' api.yml",
-    "generate:full": "cp api.yml full.yml && if test -f connectionProfile.yml; then yq e -i '.components.schemas.ConnectionProfile.$ref'=\\\"./connectionProfile.yml\\\" full.yml; fi && if test -f connectionState.yml; then yq e -i '.components.schemas.ConnectionState.$ref'=\\\"./connectionState.yml\\\" full.yml; fi",
-    "generate:inflate": "npx redocly bundle full.yml --output full.yml && dereference-product-infos full.yml full.yml && cp full.yml module-interface-dataproducer.yml",
-    "generate:api": "hub-generator generate -g hub-module -i full.yml -o generated/ $(if test -f connectionProfile.yml; then echo -p isConnector=true;fi) $(if test -f connectionState.yml; then echo -p hasState=true;fi)",
-    "generate": "npm run generate:full && npm run generate:inflate && npm run generate:api",
-    "transpile": "tsc -b",
-    "build": "npm run lint && npm run generate && npm run transpile",
-    "nx:build": "npm run transpile",
-    "docs:redoc": "npx redocly build-docs module-interface-dataproducer.yml -o docs/index.html",
-    "docs:api": "hub-generator generate -g hub-markdown -i full.yml -o docs/",
-    "docs:combine": "concat-md --toc --decrease-title-levels --dir-name-as-title docs >> README.md",
-    "docs": "npm run docs:redoc && npm run docs:api && npm run docs:combine",
-    "version": "npm run sync-meta && git add api.yml",
-    "test": "echo 'No tests for interface module'",
-    "test:unit": "echo 'No unit tests'",
-    "test:integration": "echo 'No integration tests'",
-    "test:watch": "npm run test -- --watch --reporter=min",
-    "test:integration:json": "mocha --reporter=json --reporter-option output=test-results.json test/integration/**/*.ts",
-    "test:integration:watch": "npm run test:integration -- --watch --reporter=min",
-    "get-version": "yq -oy e .version package.json",
-    "lint": "npm run lint:api && npm run lint:src",
-    "lint:src": "eslint 'src/**/*.ts'",
-    "lint:src:fix": "eslint --fix 'src/**/*.ts'",
-    "lint:api": "npx redocly lint api.yml --config .redocly.yaml",
-    "lint:api:bundled": "npx redocly lint module-interface-dataproducer.yml",
-    "nx:publish": "publish",
-    "prepublishtest": "prepublishtest"
-  },
   "author": "team@zerobias.com",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git@github.com:zerobias-org/module.git",
+    "url": "https://github.com/zerobias-org/module",
     "directory": "package/interface/dataproducer"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com/"
   },
+  "scripts": {
+    "clean": "rm -rf build/ dist/ generated/ hub-sdk/generated module-interface-dataproducer.yml full.yml"
+  },
   "files": [
-    ".redocly.yaml",
-    "module-interface-dataproducer.yml",
-    "connectionProfile.yml",
     "dist",
     "generated/api/manifest.json",
-    "docs/",
-    "CHANGELOG.md",
-    "test-results.json",
-    "npm-shrinkwrap.json"
+    "api.yml",
+    "connectionProfile.yml"
   ],
-  "auditmation": {
+  "zerobias": {
     "package": "zerobias.interface.dataproducer.module",
     "dataloader-version": "1.0.0",
     "import-artifact": "module"
   },
   "overrides": {
-    "@zerobias-org/types-core-js": "$@zerobias-org/types-core-js",
-    "tar": "7.5.6",
-    "@rollup/plugin-commonjs": "^28.0.0",
-    "mocha": {
-      "diff": "^8.0.3"
-    }
+    "diff": ">=8.0.3",
+    "serialize-javascript": ">=7.0.3"
   },
   "dependencies": {
-    "@types/node": "^22.19.7",
-    "@zerobias-org/product-zerobias-zerobias": "latest",
-    "@zerobias-org/types-core-js": "latest",
-    "@zerobias-org/util-connector": "latest",
-    "axios": "^1.13.2"
+    "@zerobias-org/product-zerobias-zerobias": "2.0.1",
+    "@zerobias-org/util-connector": "1.0.38",
+    "axios": "1.15.0"
+  },
+  "peerDependencies": {
+    "@zerobias-org/types-core": "^1.0.22",
+    "@zerobias-org/types-core-js": "^1.2.19"
   },
   "devDependencies": {
-    "@redocly/cli": "^2.14.5",
-    "@types/mocha": "^10.0.10",
-    "@zerobias-org/devops-tools": "^1.0.23",
-    "@zerobias-org/util-codegen": "^2.0.14",
-    "concat-md": "^0.5.1",
-    "mocha": "^11.7.5",
-    "typescript": "^5.9.3"
+    "@redocly/cli": "2.28.1",
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.19.17",
+    "@zerobias-org/eslint-config": "1.0.36",
+    "@zerobias-org/util-codegen": "2.0.49",
+    "mocha": "11.7.5",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
   }
 }

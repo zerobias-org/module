@@ -1,11 +1,21 @@
-wwwroot/*.js
 node_modules/
-typings
 dist/
 generated/
+hub-sdk/generated/
 docs/
+build/
+
+# Ephemeral build artifacts
+eslint.config.js
+eslint.config.mjs
+module-*.yml
 full.yml
-module-interface-dataproducer.yml
 redoc-static.html
 test-results.json
-.claude/
+
+# OpenAPI generator artifacts
+.openapi-generator
+.openapi-generator-ignore
+
+# Editor
+*.swp

@@ -1,0 +1,10 @@
+{
+  "name": "@zerobias-org/hub-sdk-interface-dataproducer",
+  "version": "0.0.0",
+  "description": "Hub SDK for Dynamic Data Producer Interface module",
+  "type": "module",
+  "main": "generated/api/index.ts",
+  "types": "generated/api/index.ts",
+  "files": ["generated/**/*.ts"],
+  "publishConfig": { "access": "restricted" }
+}

@@ -70,6 +70,8 @@ export default [
       'unicorn/prefer-array-some': 'off',
       'unicorn/no-useless-undefined': 'off',
       'unicorn/prefer-structured-clone': 'off',
+      'unicorn/no-array-callback-reference': 'off',
+      'unicorn/import-style': 'off',
     },
   },
 ];

@@ -9,8 +9,6 @@ lerna-debug.log*
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-.nx/
-
 # Runtime data
 pids
 *.pid
@@ -116,6 +114,13 @@ dist
 .yarn/build-state.yml
 .pnp.*
 
+# Gradle
+.gradle/
+build/
+
+# Local properties (developer overrides)
+gradle-local.properties
+
 # ctags
 .tags
 
@@ -135,5 +140,8 @@ generated
 *-full.yml
 **/.DS_Store
 
-# Claude Code
 .claude/.localmemory
+npm-shrinkwrap.json
+
+# zbb
+.zbb-monorepo/

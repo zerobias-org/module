@@ -1,9 +1,9 @@
 {
-  "version": "2.0.0-uat.0",
-  "branch": "migrate/gradle-interface-dataproducer-readyplayerme",
-  "timestamp": "2026-04-17T19:46:35.291120Z",
-  "sourceHash": "38019cf3df92419e136e741d9b4a59ddfca97be67a60f90c6e55b42e0f1eb3b2",
-  "testHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "version": "2.0.0",
+  "branch": "main",
+  "timestamp": "2026-04-17T20:10:24.654498Z",
+  "sourceHash": "f978ae2b250628c972cc0acbbb2bb706b9a509420fef2d9ad6bb1832a70488ab",
+  "testHash": "8200265d17a9a8b377662ef2e784017a4483e33d076b474033ab9c2b1d7cb0bd",
   "tasks": {
     "validate": "passed",
     "lint": "passed",

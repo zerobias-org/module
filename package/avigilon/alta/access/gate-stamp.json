@@ -1,9 +1,9 @@
 {
   "version": "2.0.0-uat.0",
   "branch": "migrate/gradle-avigilon-alta-access",
-  "timestamp": "2026-04-17T17:48:51.921216Z",
+  "timestamp": "2026-04-17T18:20:45.555400Z",
   "sourceHash": "4472bbceb12cba79fac32b082efbe88801a9f0be9078fd40d589eff65c038655",
-  "testHash": "e2392c02ab3c7d3c6d4c0f68b62ce8321ba8b4bec8763fc8190406b6a3c1ed77",
+  "testHash": "c86593489cf8da5826b448b6e769abb3937c8ec54cb6b4e2a647b4f9c55c30fc",
   "tasks": {
     "validate": "passed",
     "lint": "passed",
@@ -17,6 +17,6 @@
   "tests": {
       "unit": { "expected": 419, "ran": 419, "status": "passed" },
       "integration": { "expected": 0, "ran": 0, "status": "skipped" },
-      "e2e": { "expected": 14, "ran": 14, "status": "passed" }
+      "e2e": { "expected": 101, "ran": 101, "status": "passed" }
   }
 }

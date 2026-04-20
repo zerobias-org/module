@@ -1,7 +1,7 @@
 {
-  "version": "2.0.0",
+  "version": "2.0.1",
   "branch": "main",
-  "timestamp": "2026-04-20T15:52:03.595630Z",
+  "timestamp": "2026-04-20T15:55:08.931344016Z",
   "sourceHash": "0686d544fc26aca5830a88e765dcbf5161e5d5443df1b52469b5cf1c8706996d",
   "testHash": "8200265d17a9a8b377662ef2e784017a4483e33d076b474033ab9c2b1d7cb0bd",
   "tasks": {

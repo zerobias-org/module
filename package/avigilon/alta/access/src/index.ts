@@ -1,6 +1,6 @@
 import { AccessImpl } from './AccessImpl.js';
 
-// Factory Function - Primary way to create module instances
+/** Factory function — the primary entry point for creating module instances. */
 export function newAccess(): AccessImpl {
   return new AccessImpl();
 }

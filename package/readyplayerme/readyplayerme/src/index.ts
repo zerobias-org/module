@@ -11,6 +11,7 @@ export * from '../generated/model/index.js';
 // import for date-time query parameters.
 export const Date = globalThis.Date;
 
+/** Factory function — the primary entry point for creating module instances. */
 export function newReadyPlayerMe(): ReadyPlayerMeConnector {
   return new ReadyPlayerMeImpl();
 }

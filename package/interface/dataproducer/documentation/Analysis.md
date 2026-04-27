@@ -14,18 +14,18 @@ This document provides a comprehensive meta-analysis of the Dynamic Data Produce
 
 | Use Case | API Fitness | Implementation Effort | Translation Complexity | Primary Challenges |
 |----------|-------------|----------------------|------------------------|-------------------|
-| **[SQL/PostgreSQL](./Mapping-SQL.md)** | ⭐⭐⭐⭐ Excellent | Medium | Medium | JOIN queries, complex SQL patterns |
-| **[LDAP](./Mapping-LDAP.md)** | ⭐⭐⭐⭐⭐ Outstanding | Low | Very Low | RFC4515 native compatibility (perfect match) |
-| **[OpenAPI/REST](./Mapping-OpenAPI.md)** | ⭐⭐⭐⭐⭐ Outstanding | Low-Medium | Low | Supersedes `rest` module, schema validation |
-| **[GraphQL](./Mapping-GraphQL.md)** | ⭐⭐⭐ Good | High | High | Non-standard filtering, nested queries, schema diversity |
-| **[DNS](./Mapping-DNS.md)** | ⭐⭐⭐⭐ Excellent | Medium | Medium | Zone file parsing, record type variations |
-| **[SOAP/WSDL](./Mapping-SOAP.md)** | ⭐⭐⭐⭐ Excellent | Medium-High | Medium-High | WSDL parsing, envelope construction, WS-* specs |
-| **[FTP/FTPS](./Mapping-FTP.md)** | ⭐⭐⭐⭐⭐ Outstanding | Low | Low | Simple protocol, directory listing parsing |
-| **[SNMP](./Mapping-SNMP.md)** | ⭐⭐⭐⭐ Excellent | Medium | Medium | MIB database dependency, table walking |
-| **[Windows Registry](./Mapping-Registry.md)** | ⭐⭐⭐⭐ Excellent | Low-Medium | Low | Dual object classes, WOW64 redirection |
-| **[IPMI](./Mapping-IPMI.md)** | ⭐⭐⭐⭐ Excellent | Medium-High | Medium-High | SDR parsing, session management, v1.5/v2.0 variants |
-| **[DynamoDB](./Mapping-DynamoDB.md)** | ⭐⭐⭐⭐ Excellent | Medium | Medium | Expression translation, composite keys, ScyllaDB compatibility |
-| **[Confluence](./Mapping-Confluence.md)** | ⭐⭐⭐⭐ Excellent | Medium | Medium | HTML→Markdown conversion, CQL translation, macro handling |
+| **[SQL/PostgreSQL](./mappings/SQL.md)** | ⭐⭐⭐⭐ Excellent | Medium | Medium | JOIN queries, complex SQL patterns |
+| **[LDAP](./mappings/LDAP.md)** | ⭐⭐⭐⭐⭐ Outstanding | Low | Very Low | RFC4515 native compatibility (perfect match) |
+| **[OpenAPI/REST](./mappings/OpenAPI.md)** | ⭐⭐⭐⭐⭐ Outstanding | Low-Medium | Low | Schema-driven validation; HTTP routing isolated to `HttpModule` sub-interface |
+| **[GraphQL](./mappings/GraphQL.md)** | ⭐⭐⭐ Good | High | High | Non-standard filtering, nested queries, schema diversity |
+| **[DNS](./mappings/DNS.md)** | ⭐⭐⭐⭐ Excellent | Medium | Medium | Zone file parsing, record type variations |
+| **[SOAP/WSDL](./mappings/SOAP.md)** | ⭐⭐⭐⭐ Excellent | Medium-High | Medium-High | WSDL parsing, envelope construction, WS-* specs |
+| **[FTP/FTPS](./mappings/FTP.md)** | ⭐⭐⭐⭐⭐ Outstanding | Low | Low | Simple protocol, directory listing parsing |
+| **[SNMP](./mappings/SNMP.md)** | ⭐⭐⭐⭐ Excellent | Medium | Medium | MIB database dependency, table walking |
+| **[Windows Registry](./mappings/Registry.md)** | ⭐⭐⭐⭐ Excellent | Low-Medium | Low | Dual object classes, WOW64 redirection |
+| **[IPMI](./mappings/IPMI.md)** | ⭐⭐⭐⭐ Excellent | Medium-High | Medium-High | SDR parsing, session management, v1.5/v2.0 variants |
+| **[DynamoDB](./mappings/DynamoDB.md)** | ⭐⭐⭐⭐ Excellent | Medium | Medium | Expression translation, composite keys, ScyllaDB compatibility |
+| **[Confluence](./mappings/Confluence.md)** | ⭐⭐⭐⭐ Excellent | Medium | Medium | HTML→Markdown conversion, CQL translation, macro handling |
 
 ### Detailed Assessment
 
@@ -38,10 +38,10 @@ This document provides a comprehensive meta-analysis of the Dynamic Data Produce
 - **Time Estimate**: 2-3 weeks for full implementation
 
 **OpenAPI/REST**
-- **Why Outstanding**: Enhanced function objects with HTTP properties provide superior abstraction over legacy `rest` module
-- **Implementation Effort**: Low-Medium - Schema integration is straightforward, retry/validation logic well-defined
-- **Key Strength**: Type safety via OpenAPI schemas, backward compatibility with raw REST execution
-- **Time Estimate**: 3-4 weeks (includes validation, retry, bulk operations)
+- **Why Outstanding**: OpenAPI schemas map directly onto Schema IDs and Function input/output schemas; HTTP transport details stay isolated to a separate `HttpModule` sub-interface, keeping the public DataProducer surface transport-agnostic.
+- **Implementation Effort**: Low-Medium — schema integration is straightforward; routing/retry logic lives in the producer's HttpModule side, decoupled from the public function object.
+- **Key Strength**: Type safety via OpenAPI schemas; the same RFC4515 filter contract applies whether the underlying API uses query params, JSON:API, or OData.
+- **Time Estimate**: 3-4 weeks (includes validation, retry, bulk operations).
 
 **FTP/FTPS**
 - **Why Outstanding**: Simple, well-defined protocol with clear container/binary mapping

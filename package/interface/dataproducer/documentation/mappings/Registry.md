@@ -1,583 +1,276 @@
-# Windows Registry Mapping to Dynamic Data Producer Interface
+# Registry Mapping
 
 ## Overview
 
-This document describes how the Windows Registry hierarchy maps to the Dynamic Data Producer Interface, enabling unified access to Windows system configuration through the generic object model. The interface is implemented via a translation layer that converts generic operations into Windows Registry API calls (RegOpenKeyEx, RegQueryValueEx, RegSetValueEx, RegEnumKeyEx, etc.).
+How the Windows Registry (and equivalent hierarchical configuration registries)
+surfaces through the DataProducer interface. Registry hives become top-level
+Containers; keys become Containers (and may additionally declare `collection`
+when the caller wants to enumerate the key's values as elements); each key's
+values are exposed as a Collection rather than as individual child Documents.
+This keeps a key's children purely structural (subkeys) while still giving
+direct access to value-level CRUD.
 
-**Platform**: Windows NT-based systems (Windows 2000+)
-**API**: Windows Registry API (advapi32.dll)
+For the foundational rules this mapping follows, see
+[`../Concepts.md`](../Concepts.md), [`../SchemaIds.md`](../SchemaIds.md),
+[`../CoreDataTypes.md`](../CoreDataTypes.md), and
+[`../FilterSyntax.md`](../FilterSyntax.md).
 
 ## Conceptual Mapping
 
-### Windows Registry → Object Model
+| Registry concept             | DataProducer concept                  | Notes                                                              |
+|------------------------------|---------------------------------------|--------------------------------------------------------------------|
+| Registry root                 | Root container                       | `id == name == "/"`                                                |
+| Hive (HKLM, HKCU, …)          | Container                            | One per predefined root key.                                       |
+| Subkey                        | Container + Collection               | Container exposes child subkeys; Collection exposes the key's values. |
+| Value                         | Collection element                   | Element id is the value name (or `(default)` for the unnamed value). |
+| Value type                    | DataType + optional `references`     | REG_SZ→string, REG_DWORD→integer, REG_BINARY→byte, REG_MULTI_SZ→string + multi, etc. |
+| Symlink (REG_LINK)            | Property with `references.schemaId`  | Target is a key path; modeled as a string with reference semantics. |
+| Security descriptor (SDDL)    | Tag / metadata, not a child object   | Surfaced via `tags` if the producer chooses to expose it.          |
+| Watch / change notification    | Out of scope                         | Long-lived notifications are not part of the request/response interface. |
 
-```
-Windows Registry
-├── HKEY_LOCAL_MACHINE (HKLM)         → Root Container
-│   ├── SOFTWARE                      → Container Object (Key)
-│   │   ├── Microsoft                 → Container Object (Key)
-│   │   │   ├── Windows               → Container Object (Key)
-│   │   │   │   ├── CurrentVersion   → Container Object (Key)
-│   │   │   │   │   ├── Run          → Container Object (Key)
-│   │   │   │   │   │   ├── (Default)           → Document Object (Value)
-│   │   │   │   │   │   ├── SecurityHealth      → Document Object (Value)
-│   │   │   │   │   │   └── WindowsDefender     → Document Object (Value)
-│   │   │   │   │   ├── ProgramFilesDir         → Document Object (Value)
-│   │   │   │   │   └── CommonFilesDir          → Document Object (Value)
-│   ├── SYSTEM                        → Container Object (Key)
-│   │   ├── CurrentControlSet         → Container Object (Key)
-│   │   │   ├── Services              → Container Object (Key)
-│   │   │   └── Control               → Container Object (Key)
-│   └── HARDWARE                      → Container Object (Key)
-├── HKEY_CURRENT_USER (HKCU)          → Root Container
-│   ├── Software                      → Container Object (Key)
-│   ├── Environment                   → Container Object (Key)
-│   └── Control Panel                 → Container Object (Key)
-├── HKEY_CLASSES_ROOT (HKCR)          → Root Container
-├── HKEY_USERS (HKU)                  → Root Container
-└── HKEY_CURRENT_CONFIG (HKCC)        → Root Container
-```
+The "key is both Container and Collection" model is the canonical one. Use
+Container ops (`getChildren`, `createChildObject`, `deleteObject`) to navigate
+subkeys; use Collection ops (`getCollectionElements`, `addCollectionElement`,
+`updateCollectionElement`, `deleteCollectionElement`) to manipulate the values
+directly under the key.
 
-## Detailed Object Mappings
+## Object Mappings
 
-### 1. Registry Hive → Root Container
+### Hive (Container)
+
 ```yaml
 Object:
-  id: "hive_hklm"
+  id: "/HKLM"
   name: "HKEY_LOCAL_MACHINE"
   objectClass: ["container"]
-  description: "Local machine configuration and settings"
-  tags: ["registry", "hive", "system"]
-  metadata:
-    hiveHandle: "HKEY_LOCAL_MACHINE"
-    hiveAbbreviation: "HKLM"
-    accessRights: "KEY_READ | KEY_WRITE"
-    registryView: "Registry64"  # or "Registry32" for WOW64
+  description: "Local machine configuration"
+  path: ["HKLM"]
+  tags: ["hive"]
 ```
 
-### 2. Registry Key → Container Object
+### Key (Container + Collection)
+
 ```yaml
 Object:
-  id: "key_currentversion"
-  name: "CurrentVersion"
-  objectClass: ["container"]
-  description: "Windows version information"
-  path: ["HKEY_LOCAL_MACHINE", "SOFTWARE", "Microsoft", "Windows", "CurrentVersion"]
-  tags: ["key", "system-info"]
-  created: "2024-01-15T10:30:00.000Z"  # From key timestamp
-  modified: "2025-10-15T14:22:00.000Z"
-  metadata:
-    fullPath: "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion"
-    subKeyCount: 42
-    valueCount: 15
-    maxSubKeyLength: 64
-    maxValueNameLength: 128
-    securityDescriptor: "O:BAG:SYD:(A;CI;KA;;;BA)(A;CI;KR;;;BU)"
-```
-
-### 3. Registry Value → Document Object
-```yaml
-Object:
-  id: "value_programfilesdir"
-  name: "ProgramFilesDir"
-  objectClass: ["document"]
-  description: "Default program files directory path"
-  path: ["HKEY_LOCAL_MACHINE", "SOFTWARE", "Microsoft", "Windows", "CurrentVersion", "ProgramFilesDir"]
-  documentSchema: "registry_value_schema"
-  tags: ["value", "path", "system-config"]
-  modified: "2025-10-15T14:22:00.000Z"
-  metadata:
-    fullPath: "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ProgramFilesDir"
-    valueType: "REG_SZ"
-    dataSize: 36
-
-Schema:
-  id: "registry_value_schema"
-  properties:
-    - name: "name"
-      dataType: "string"
-      required: true
-      description: "Value name"
-    - name: "type"
-      dataType: "string"
-      required: true
-      description: "Registry value type"
-    - name: "data"
-      description: "Value data (type varies)"
-    - name: "dataSize"
-      dataType: "integer"
-      description: "Data size in bytes"
-
-# Document Data:
-Document Data:
-{
-  "name": "ProgramFilesDir",
-  "type": "REG_SZ",
-  "data": "C:\\Program Files",
-  "dataSize": 36
-}
-```
-
-### 4. Registry Multi-Value Key → Collection Object
-```yaml
-Object:
-  id: "key_run"
+  id: "/HKLM/SOFTWARE/Microsoft/Windows/CurrentVersion/Run"
   name: "Run"
   objectClass: ["container", "collection"]
-  description: "Programs that run at startup"
-  path: ["HKEY_LOCAL_MACHINE", "SOFTWARE", "Microsoft", "Windows", "CurrentVersion", "Run"]
-  collectionSchema: "registry_value_collection_schema"
+  description: "Programs that launch at user logon"
+  path: ["HKLM", "SOFTWARE", "Microsoft", "Windows", "CurrentVersion", "Run"]
+  collectionSchema: "schema:shared:windows_registry_value"
   collectionSize: 8
-  tags: ["key", "startup", "autorun"]
-  metadata:
-    fullPath: "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
-    treatAsCollection: true
+  modified: "2025-10-15T14:22:00.000Z"
+  tags: ["key"]
+```
 
+The single shared schema covers all values regardless of REG_* type — the
+`type` discriminator and union-shaped `data` field carry the typing
+information at the row level.
+
+```yaml
 Schema:
-  id: "registry_value_collection_schema"
+  id: "schema:shared:windows_registry_value"
+  dataTypes:
+    - name: "string"
+    - name: "integer"
+    - name: "byte"
   properties:
     - name: "name"
       dataType: "string"
       primaryKey: true
       required: true
-      description: "Value name (unique within key)"
+      description: "Value name. Empty string represents (Default)."
     - name: "type"
       dataType: "string"
       required: true
-    - name: "data"
+      description: "REG_SZ | REG_EXPAND_SZ | REG_MULTI_SZ | REG_DWORD | REG_QWORD | REG_BINARY | REG_NONE | REG_LINK"
+    - name: "stringData"
       dataType: "string"
-      description: "Command line or path"
-```
-
-### 5. Registry Search → Function Object
-```yaml
-Object:
-  id: "func_registry_search"
-  name: "registrySearch"
-  objectClass: ["function"]
-  description: "Search registry for keys or values by name or data"
-  inputSchema: "registry_search_input_schema"
-  outputSchema: "registry_search_output_schema"
-  tags: ["registry", "search"]
-
-Schema (Input):
-  id: "registry_search_input_schema"
-  properties:
-    - name: "rootKey"
+      description: "Set for REG_SZ, REG_EXPAND_SZ, REG_LINK"
+    - name: "stringList"
       dataType: "string"
-      required: true
-      description: "Starting key path"
-    - name: "searchType"
-      dataType: "string"
-      required: true
-      description: "Search type: key, value, data"
-    - name: "pattern"
-      dataType: "string"
-      required: true
-      description: "Search pattern (supports wildcards)"
-    - name: "recursive"
-      dataType: "boolean"
-      default: true
-      description: "Search recursively"
-    - name: "maxDepth"
-      dataType: "integer"
-      default: 10
-      description: "Maximum recursion depth"
-
-Schema (Output):
-  id: "registry_search_output_schema"
-  properties:
-    - name: "results"
-      dataType: "array"
       multi: true
-      references:
-        schemaId: "registry_search_result_schema"
-
-Schema:
-  id: "registry_search_result_schema"
-  properties:
-    - name: "path"
-      dataType: "string"
-      required: true
-    - name: "matchType"
-      dataType: "string"
-      description: "Type: key, valueName, valueData"
-    - name: "valueType"
-      dataType: "string"
-      description: "Registry value type (if applicable)"
-    - name: "data"
-      description: "Value data (if applicable)"
+      description: "Set for REG_MULTI_SZ"
+    - name: "intData"
+      dataType: "integer"
+      description: "Set for REG_DWORD, REG_QWORD"
+    - name: "bytes"
+      dataType: "byte"
+      description: "Set for REG_BINARY and REG_NONE; base64-encoded"
+    - name: "byteSize"
+      dataType: "integer"
+      description: "Decoded size in bytes (informational)"
 ```
 
-## API Usage Examples with Registry Translation
+When a REG_BINARY value carries a known structure (e.g. a serialized device
+descriptor), a derived per-value schema can be exposed and referenced via
+`references.schemaId` on `bytes`:
 
-### Registry Navigation
-
-**List Registry Hives:**
-```http
-GET /objects/
-# Returns: HKLM, HKCU, HKCR, HKU, HKCC containers
+```yaml
+- name: "bytes"
+  dataType: "byte"
+  references:
+    schemaId: "schema:shared:windows_devnode_descriptor"
 ```
 
-**List Keys in Hive:**
-```http
-GET /objects/hive_hklm/children
-# Translates to: RegEnumKeyEx(HKEY_LOCAL_MACHINE, ...)
-# Returns: SOFTWARE, SYSTEM, HARDWARE, SAM, SECURITY keys
-```
+### Hierarchical Browsing
 
-**List Subkeys:**
-```http
-GET /objects/key_software/children
-# Translates to: RegEnumKeyEx(HKLM\SOFTWARE, ...)
-# Returns: Microsoft, Classes, Policies, etc.
-```
+`getChildren` on the Run key returns subkey Containers (none in this example).
+`getCollectionElements` on the same key returns the eight value rows:
 
-**List Values in Key:**
-```http
-GET /objects/key_currentversion/children?type=document
-# Translates to: RegEnumValue(HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion, ...)
-# Returns: Document objects for each registry value
-```
-
-### Value Operations
-
-**Get Registry Value:**
-```http
-GET /objects/value_programfilesdir/document
-# Translates to: RegQueryValueEx(HKLM\SOFTWARE\...\CurrentVersion, "ProgramFilesDir", ...)
-
-# Response:
-{
-  "name": "ProgramFilesDir",
-  "type": "REG_SZ",
-  "data": "C:\\Program Files",
-  "dataSize": 36
-}
-```
-
-**Set Registry Value:**
-```http
-PUT /objects/value_customsetting/document
-Content-Type: application/json
-
-{
-  "type": "REG_SZ",
-  "data": "CustomValue"
-}
-
-# Translates to: RegSetValueEx(..., "CustomSetting", REG_SZ, "CustomValue", ...)
-```
-
-**Create New Value:**
-```http
-POST /objects/key_myapp/children
-Content-Type: application/json
-
-{
-  "name": "Version",
-  "objectClass": ["document"],
-  "documentData": {
-    "type": "REG_SZ",
-    "data": "1.0.0"
-  }
-}
-
-# Translates to: RegSetValueEx(..., "Version", REG_SZ, "1.0.0", ...)
-```
-
-**Delete Value:**
-```http
-DELETE /objects/value_oldvalue
-# Translates to: RegDeleteValue(..., "OldValue")
-```
-
-### Key Operations
-
-**Create Registry Key:**
-```http
-POST /objects/key_software/children
-Content-Type: application/json
-
-{
-  "name": "MyApplication",
-  "objectClass": ["container"]
-}
-
-# Translates to: RegCreateKeyEx(HKLM\SOFTWARE, "MyApplication", ...)
-```
-
-**Delete Registry Key:**
-```http
-DELETE /objects/key_myapp?recursive=true
-# Translates to: RegDeleteTree(..., "MyApplication")
-# Or: RegDeleteKeyEx(..., "MyApplication", ...) if recursive=false
-```
-
-**Export Registry Key:**
-```http
-GET /objects/key_myapp?export=true
-# Translates to:
-# 1. Enumerate all subkeys and values recursively
-# 2. Format as .reg file content
-
-# Response: .reg file format
-Windows Registry Editor Version 5.00
-
-[HKEY_LOCAL_MACHINE\SOFTWARE\MyApplication]
-"Version"="1.0.0"
-"InstallDate"=dword:00000001
-```
-
-### Collection Operations (Multi-Value Keys)
-
-**List Startup Programs:**
-```http
-GET /objects/key_run/collection/elements
-# Translates to: RegEnumValue(HKLM\...\Run, ...) for all values
-
-# Response:
+```json
 [
   {
     "name": "SecurityHealth",
     "type": "REG_EXPAND_SZ",
-    "data": "%ProgramFiles%\\Windows Defender\\MSASCuiL.exe"
+    "stringData": "%ProgramFiles%\\Windows Defender\\MSASCuiL.exe"
   },
   {
-    "name": "WindowsDefender",
-    "type": "REG_EXPAND_SZ",
-    "data": "%ProgramFiles%\\Windows Defender\\MSASCui.exe"
+    "name": "OneDrive",
+    "type": "REG_SZ",
+    "stringData": "C:\\Program Files\\Microsoft\\OneDrive\\OneDrive.exe /background"
   }
 ]
 ```
 
-**Get Specific Startup Entry:**
-```http
-GET /objects/key_run/collection/elements/SecurityHealth
-# Translates to: RegQueryValueEx(...\Run, "SecurityHealth", ...)
-```
+### Registry Search (Function)
 
-**Add Startup Entry:**
-```http
-POST /objects/key_run/collection/elements
-Content-Type: application/json
-
-{
-  "name": "MyApp",
-  "type": "REG_SZ",
-  "data": "C:\\Program Files\\MyApp\\myapp.exe"
-}
-
-# Translates to: RegSetValueEx(...\Run, "MyApp", REG_SZ, ...)
-```
-
-**Remove Startup Entry:**
-```http
-DELETE /objects/key_run/collection/elements/MyApp
-# Translates to: RegDeleteValue(...\Run, "MyApp")
-```
-
-### Search Operations
-
-**Search for Keys:**
-```http
-POST /objects/func_registry_search/invoke
-{
-  "rootKey": "HKEY_LOCAL_MACHINE\\SOFTWARE",
-  "searchType": "key",
-  "pattern": "*Java*",
-  "recursive": true,
-  "maxDepth": 5
-}
-
-# Translates to: Recursive RegEnumKeyEx with pattern matching
-
-# Response:
-{
-  "results": [
-    {
-      "path": "HKLM\\SOFTWARE\\JavaSoft",
-      "matchType": "key"
-    },
-    {
-      "path": "HKLM\\SOFTWARE\\Microsoft\\Java",
-      "matchType": "key"
-    }
-  ]
-}
-```
-
-**Search for Values:**
-```http
-GET /objects/key_software/search?keywords=Version&scope=subtree
-# Translates to: Recursive enumeration with value name filtering
-
-# Response: Document objects for all values named "Version"
-```
-
-## Translation Layer Capabilities
-
-### 1. **Registry API Mapping**
-
-| Generic Operation | Registry API | Notes |
-|-------------------|--------------|-------|
-| `children()` (keys) | `RegEnumKeyEx` | Enumerate subkeys |
-| `children()` (values) | `RegEnumValue` | Enumerate values |
-| `documentData()` (get) | `RegQueryValueEx` | Read value data |
-| `documentData()` (set) | `RegSetValueEx` | Write value data |
-| `createChild()` (key) | `RegCreateKeyEx` | Create new key |
-| `createChild()` (value) | `RegSetValueEx` | Create new value |
-| `deleteObject()` (key) | `RegDeleteTree` / `RegDeleteKeyEx` | Delete key |
-| `deleteObject()` (value) | `RegDeleteValue` | Delete value |
-| `collectionElements()` | `RegEnumValue` | List all values as collection |
-| Export | `RegSaveKey` / custom | Export to .reg format |
-
-### 2. **Path Resolution**
-- **Capability**: Convert object paths to registry paths
-- **Implementation**: ["HKEY_LOCAL_MACHINE", "SOFTWARE", "Microsoft"] → "HKLM\\SOFTWARE\\Microsoft"
-- **Normalization**: Handle abbreviated hive names (HKLM, HKCU, etc.)
-
-### 3. **Registry Value Type Mapping**
-
-| Registry Type | DataType | Description |
-|---------------|----------|-------------|
-| REG_SZ | `string` | Null-terminated string |
-| REG_EXPAND_SZ | `string` | Expandable string (with %env%) |
-| REG_MULTI_SZ | `array` (string[]) | Multiple strings |
-| REG_DWORD | `integer` | 32-bit number |
-| REG_QWORD | `integer` | 64-bit number |
-| REG_BINARY | `byte` | Binary data (base64) |
-| REG_NONE | `string` | No defined type |
-| REG_LINK | `string` | Symbolic link |
-
-### 4. **Access Control**
-- **Capability**: Respect Windows ACLs and permissions
-- **Implementation**: Use appropriate access rights (KEY_READ, KEY_WRITE, KEY_ALL_ACCESS)
-- **User Context**: Operations run under connecting user's credentials
-
-## Implementation Considerations
-
-### 1. **Security and Permissions**
-
-**Read Access:**
-```yaml
-metadata:
-  accessRights: "KEY_READ"
-  samDesired: "KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS"
-```
-
-**Write Access:**
-```yaml
-metadata:
-  accessRights: "KEY_WRITE"
-  samDesired: "KEY_SET_VALUE | KEY_CREATE_SUB_KEY"
-```
-
-**Full Control:**
-```yaml
-metadata:
-  accessRights: "KEY_ALL_ACCESS"
-  requiresElevation: true
-  requiresAdmin: true
-```
-
-### 2. **Registry Redirection (WOW64)**
-- **32-bit on 64-bit**: Handle registry redirection for 32-bit applications
-- **KEY_WOW64_64KEY**: Access 64-bit registry view
-- **KEY_WOW64_32KEY**: Access 32-bit registry view (WOW64 node)
-- **Default**: Use native architecture view
-
-### 3. **Performance Optimization**
-- **Caching**: Cache frequently accessed keys/values with TTL
-- **Batch Operations**: Combine multiple value reads when possible
-- **Lazy Enumeration**: Don't enumerate all subkeys unless requested
-- **Handle Reuse**: Keep registry key handles open for multiple operations
-
-### 4. **Error Handling**
-
-| Registry Error | HTTP Status | Error Type |
-|----------------|-------------|------------|
-| `ERROR_SUCCESS` | 200 | Success |
-| `ERROR_FILE_NOT_FOUND` | 404 | `noSuchObjectError` |
-| `ERROR_ACCESS_DENIED` | 403 | `ForbiddenError` |
-| `ERROR_INVALID_PARAMETER` | 400 | `InvalidInputError` |
-| `ERROR_MORE_DATA` | 500 | `buffer_overflow` |
-| `ERROR_NO_MORE_ITEMS` | 200 | End of enumeration |
-
-### 5. **Special Registry Features**
-
-**Registry Symbolic Links:**
 ```yaml
 Object:
-  metadata:
-    valueType: "REG_LINK"
-    target: "\\Registry\\Machine\\System\\CurrentControlSet"
-    isSymbolicLink: true
-```
-
-**Registry Transactions (Windows Vista+):**
-```yaml
-# Support for RegCreateTransaction, RegCommitTransaction
-metadata:
-  supportsTransactions: true
-  transactionId: "HTRX_12345"
-```
-
-**Registry Notifications:**
-```yaml
-# Support for RegNotifyChangeKeyValue
-Object:
-  id: "func_watch_key"
-  name: "watchRegistryKey"
+  id: "/functions/registrySearch"
+  name: "registrySearch"
   objectClass: ["function"]
-  description: "Monitor registry key for changes"
-  inputSchema: "registry_watch_schema"
+  description: "Recursive search for keys, value names, or value data"
+  inputSchema:  "schema:shared:windows_registry_search_input"
+  outputSchema: "schema:shared:windows_registry_search_output"
+  tags: ["search"]
 ```
 
-## Limitations and Workarounds
+```yaml
+Schema:
+  id: "schema:shared:windows_registry_search_input"
+  dataTypes:
+    - name: "string"
+    - name: "boolean"
+    - name: "integer"
+  properties:
+    - name: "rootPath"
+      dataType: "string"
+      required: true
+      description: "Starting key path (e.g. HKLM\\SOFTWARE)"
+    - name: "match"
+      dataType: "string"
+      required: true
+      description: "key | valueName | valueData"
+    - name: "pattern"
+      dataType: "string"
+      required: true
+      description: "Glob pattern — *foo*, foo*, etc."
+    - name: "recursive"
+      dataType: "boolean"
+    - name: "maxDepth"
+      dataType: "integer"
+```
 
-### 1. **Case Sensitivity**
-- **Issue**: Registry is case-insensitive but preserves case
-- **Workaround**: Normalize paths for comparison, preserve original case for display
+```yaml
+Schema:
+  id: "schema:shared:windows_registry_search_output"
+  dataTypes:
+    - name: "string"
+  properties:
+    - name: "matches"
+      dataType: "string"
+      multi: true
+      description: "Matching key/value paths"
+      references:
+        schemaId: "schema:shared:windows_registry_search_match"
+```
 
-### 2. **Special Characters in Names**
-- **Issue**: Backslashes in key names can be confusing
-- **Workaround**: URL-encode special characters in REST paths
+## Operation Mappings
 
-### 3. **Large Binary Values**
-- **Issue**: Large REG_BINARY values can be slow to transfer
-- **Workaround**: Use streaming or chunking for values > 1MB
+| DataProducer operation                          | Win32 Registry API                                         |
+|-------------------------------------------------|------------------------------------------------------------|
+| `getRootObject`                                 | (synthetic — registry instance)                            |
+| `getChildren` on hive / key                     | `RegEnumKeyExW`                                            |
+| `getObject` on key                              | `RegOpenKeyExW` + `RegQueryInfoKeyW`                       |
+| `createChildObject` (subkey)                    | `RegCreateKeyExW`                                          |
+| `deleteObject` (subkey, non-recursive)          | `RegDeleteKeyExW`                                          |
+| `deleteObject` (subkey, recursive)              | `RegDeleteTreeW`                                           |
+| `getCollectionElements`                          | `RegEnumValueW` loop                                      |
+| `getCollectionElement(name)`                    | `RegQueryValueExW`                                         |
+| `addCollectionElement` / `updateCollectionElement` | `RegSetValueExW`                                       |
+| `deleteCollectionElement`                       | `RegDeleteValueW`                                          |
+| `objectSearch` / `searchChildObjects`           | Recursive `RegEnumKeyExW` walk + RFC4515 filter post-fetch |
+| `invokeFunction` (registrySearch)               | Recursive walk with glob match                             |
 
-### 4. **Permission Requirements**
-- **Issue**: Some keys require administrator privileges
-- **Workaround**: Clearly indicate required permissions in metadata
+## Filter Translation Example
 
-## Security Best Practices
+The Registry has no query language. The producer recursively enumerates the
+target subtree and applies the parsed RFC4515 filter via
+`expression.matches(item)` from `@zerobias-org/util-lite-filter`.
 
-1. **Principle of Least Privilege**: Request only required access rights (READ vs WRITE)
-2. **Audit Logging**: Log all registry modifications for security auditing
-3. **Validation**: Validate value types and data before writing
-4. **Protected Keys**: Prevent deletion of critical system keys
-5. **Backup Before Write**: Consider backing up keys before modification
-6. **User Context**: Operations respect Windows user permissions and ACLs
+```
+RFC4515 (against a key's value Collection):
+  (&(type=REG_SZ)(name=*Path*)(stringData=*Java*))
 
-## Conclusion
+AST (lite-filter):
+  AND
+    EQ type "REG_SZ"
+    SUBSTR name "Path"
+    SUBSTR stringData "Java"
 
-The Dynamic Data Producer Interface provides effective abstraction for Windows Registry access through a translation layer that converts generic operations into Windows Registry API calls.
+Execution:
+  1. RegEnumValueW over the target key (or recursively, for subtree search)
+  2. For each value row, expression.matches(row)
+  3. Yield matching rows; honor pagination
+```
 
-**Key Benefits:**
-- **Unified Interface**: Same API patterns work across Registry, databases, and other sources
-- **Hierarchical Navigation**: Registry key hierarchy maps naturally to container objects
-- **Type Safety**: Registry value types mapped to appropriate DataTypes
-- **Collection Model**: Multi-value keys can be treated as collections with CRUD operations
-- **Security**: Respects Windows ACLs and user permissions
+For Container-level searches (key names rather than values), the producer
+walks subkeys and matches against `name`, `path`, and `tags`. Push-down of
+prefix matches (`(name=Microsoft*)`) into the enumeration cursor is an
+implementation optimization — RegEnumKeyExW does not natively support
+filtering, so push-down means early-exit when the substring is known to
+appear at the start.
 
-**Implementation Strategy:**
-The translation layer handles Windows Registry API complexity, permission checking, and WOW64 redirection while providing a consistent REST-like interface. Performance optimizations include handle caching, lazy enumeration, and batch operations.
+## Core Types Reference
 
-**Perfect Use Cases:**
-- Windows system configuration management
-- Application settings storage and retrieval
-- System inventory and auditing
-- Registry backup and restore operations
-- Cross-platform configuration management (Registry + Linux config files + databases)
+| Registry value type          | `dataType`         | Notes                                                       |
+|------------------------------|--------------------|-------------------------------------------------------------|
+| REG_SZ                       | `string`           |                                                             |
+| REG_EXPAND_SZ                | `string`           | Producer chooses whether to expand `%env%` before returning. |
+| REG_MULTI_SZ                 | `string` + `multi: true` | Multi-valued strings.                                  |
+| REG_DWORD                    | `integer`          | 32-bit unsigned. JSON `number` representation is fine.       |
+| REG_QWORD                    | `integer`          | 64-bit; serialize as JSON string if precision matters.       |
+| REG_BINARY                   | `byte`             | Base64 in JSON. Use `references.schemaId` if structured.     |
+| REG_NONE                     | `byte`             | Untyped binary.                                             |
+| REG_LINK                     | `string` + `references` | Symbolic link to another key path.                       |
+
+See [`../CoreDataTypes.md`](../CoreDataTypes.md) for the full catalog.
+
+## Edge Cases
+
+- **Case insensitivity.** Registry names are case-insensitive but case-preserving.
+  Object IDs use the original case from the source; comparisons are
+  case-insensitive within the producer.
+- **Backslash in IDs.** Object IDs use `/` as the path separator at the
+  interface level. The producer maps `/HKLM/SOFTWARE/Microsoft` to the native
+  `HKLM\SOFTWARE\Microsoft` when calling Win32 APIs.
+- **(Default) value.** The unnamed default value is exposed as an element with
+  `name: ""`. UIs may display it as `(Default)`.
+- **WOW64 redirection.** 32-bit-on-64-bit redirection is a connection-level
+  setting (`registryView: native | 32 | 64`); not exposed per operation.
+- **Permission denied.** `ERROR_ACCESS_DENIED` from Win32 surfaces as
+  `403`-equivalent. Existence-leaking keys (where ACL forbids reads on a
+  known-present key) should return `noSuchObjectError` instead, matching the
+  Confluence pattern.
+- **Transactional updates.** Win32 `RegCreateKeyTransacted` is optional. If
+  the connection negotiates transactions, multiple writes within a single
+  `executeBulkOperations` call run inside one transaction.
+- **Symlinks.** REG_LINK values are not auto-followed. Callers see a string
+  pointing at another key path and traverse explicitly.
+- **Large binary values.** Values over a few MB should be exposed as Binary
+  Objects under the key rather than embedded in a Collection element. Use
+  the producer's discretion based on a configurable size threshold.
+- **Hive types beyond Windows.** This mapping generalizes to any hierarchical
+  string-keyed configuration registry (macOS preferences, systemd unit
+  configuration trees). Only the value-type vocabulary changes.

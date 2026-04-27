@@ -1,396 +1,266 @@
-# LDAP Directory Services Mapping to Dynamic Data Producer Interface
+# LDAP Mapping
 
 ## Overview
 
-This document describes how LDAP (Lightweight Directory Access Protocol) concepts map to the Dynamic Data Producer Interface, enabling unified access to directory services through the generic object model. The interface is implemented via a translation layer that converts generic operations (RFC4515 filters, object hierarchy navigation) into appropriate LDAP operations (LDAP search filters, DN traversal, etc.).
+How LDAP / Active Directory directories surface through the DataProducer
+interface. LDAP is unique among the mapped sources because it natively uses
+**RFC4515** for filtering and a hierarchical DN model for navigation — the
+mapping is essentially pass-through.
+
+For the foundational rules this mapping follows, see
+[`../Concepts.md`](../Concepts.md), [`../SchemaIds.md`](../SchemaIds.md),
+[`../CoreDataTypes.md`](../CoreDataTypes.md), and
+[`../FilterSyntax.md`](../FilterSyntax.md).
 
 ## Conceptual Mapping
 
-### LDAP Directory → Object Model
+| LDAP concept                          | DataProducer concept                | Notes                                              |
+|---------------------------------------|-------------------------------------|----------------------------------------------------|
+| Root DSE                              | Root container (`id == "/"`)         |                                                    |
+| Naming context (`dc=...,dc=...`)      | Container                             |                                                    |
+| Organizational unit (`ou=...`)        | Container                             |                                                    |
+| Person / inetOrgPerson entry           | Document                              | Document body = entry attributes.                   |
+| Group entry (`groupOfNames`, etc.)     | Collection                            | Members are collection elements.                    |
+| LDAP schema (objectClass definition)   | Document                              | Read-only metadata.                                 |
+| Saved/dynamic search                  | Function                              | Input describes query; output is matching entries.  |
+| DN                                    | Object `id`                           | DN is opaque to callers; treat as the object's identifier. |
 
-```
-LDAP Root DSE
-├── dc=example,dc=com                    → Container Object (Naming Context)
-│   ├── ou=people                       → Container Object (Organizational Unit)
-│   │   ├── cn=John Doe                 → Document Object (Person Entry)
-│   │   ├── cn=Jane Smith               → Document Object (Person Entry)
-│   │   └── uid=jdoe                    → Document Object (Person Entry)
-│   ├── ou=groups                       → Container Object (Organizational Unit)
-│   │   ├── cn=administrators           → Collection Object (Group)
-│   │   └── cn=developers               → Collection Object (Group)
-│   ├── ou=roles                        → Container Object (Organizational Unit)
-│   │   └── cn=manager                  → Document Object (Role)
-│   └── cn=schema                       → Container Object (Schema Definition)
-│       ├── cn=attributeTypes           → Container Object
-│       └── cn=objectClasses           → Container Object
-```
+## Object Mappings
 
-## Detailed Object Mappings
+### Naming Context (Container)
 
-### 1. LDAP Root DSE → Root Container
 ```yaml
 Object:
-  id: "/"
-  name: "LDAP Directory"
-  objectClass: ["container"]
-  description: "LDAP Root Directory Service Entry"
-  tags: ["ldap", "directory"]
-```
-
-### 2. Naming Context (Domain Component) → Container Object
-```yaml
-Object:
-  id: "dc_example_com"
+  id: "dc=example,dc=com"
   name: "example.com"
   objectClass: ["container"]
-  description: "Domain naming context for example.com"
+  description: "Domain naming context"
   path: ["example.com"]
-  tags: ["domain", "naming-context"]
+  tags: ["naming-context"]
 ```
 
-### 3. Organizational Unit → Container Object
+### Organizational Unit (Container)
+
 ```yaml
 Object:
-  id: "ou_people"
+  id: "ou=people,dc=example,dc=com"
   name: "people"
   objectClass: ["container"]
-  description: "Organizational unit containing user accounts"
   path: ["example.com", "people"]
-  tags: ["organizational-unit", "users"]
+  tags: ["organizational-unit"]
 ```
 
-### 4. Person Entry → Document Object
+### Person Entry (Document)
+
 ```yaml
 Object:
-  id: "cn_john_doe"
+  id: "cn=John Doe,ou=people,dc=example,dc=com"
   name: "John Doe"
   objectClass: ["document"]
-  description: "User account for John Doe"
   path: ["example.com", "people", "John Doe"]
-  documentSchema: "person_schema"
-  tags: ["person", "user", "employee"]
+  documentSchema: "schema:type:example_com.entries.inetOrgPerson"
+  tags: ["person"]
+```
 
-# LDAP Entry as Document Data:
-Document Data:
+`getDocumentData` returns the entry's attributes:
+
+```json
 {
   "cn": "John Doe",
   "uid": "jdoe",
   "mail": "john.doe@example.com",
-  "telephoneNumber": "+1-555-123-4567",
-  "employeeNumber": "E12345",
+  "telephoneNumber": "+15551234567",
   "department": "Engineering",
   "objectClass": ["inetOrgPerson", "organizationalPerson", "person"]
 }
 ```
 
-### 5. Group → Collection Object
+The corresponding Schema (fetched via `getSchema`):
+
+```yaml
+Schema:
+  id: "schema:type:example_com.entries.inetOrgPerson"
+  dataTypes:
+    - name: "string"
+    - name: "email"
+    - name: "phoneNumber"
+  properties:
+    - name: "cn"
+      dataType: "string"
+      required: true
+      multi: true
+      description: "Common name"
+    - name: "uid"
+      dataType: "string"
+      description: "User ID"
+    - name: "mail"
+      dataType: "email"
+      multi: true
+      description: "Email address(es)"
+    - name: "telephoneNumber"
+      dataType: "phoneNumber"
+      multi: true
+    - name: "department"
+      dataType: "string"
+    - name: "objectClass"
+      dataType: "string"
+      multi: true
+      required: true
+      description: "LDAP object classes this entry implements"
+```
+
+> Note: LDAP DNs are modeled as plain strings (`dataType: string`). There is no
+> `dn` core type — DNs are entry-specific identifiers, not a domain-validated
+> data type like `email` or `ipAddress`. If a property's value is a DN
+> reference, use `string` plus a `references.schemaId` to indicate what kind
+> of entry it points at.
+
+### Group (Collection)
+
 ```yaml
 Object:
-  id: "cn_administrators"
+  id: "cn=administrators,ou=groups,dc=example,dc=com"
   name: "administrators"
   objectClass: ["collection"]
-  description: "Administrative users group"
   path: ["example.com", "groups", "administrators"]
-  collectionSchema: "group_member_schema"
+  collectionSchema: "schema:shared:ldap_group_member"
   collectionSize: 12
-  tags: ["group", "security", "admin"]
+  tags: ["group"]
+```
 
-# Group Members as Collection Elements
+```yaml
 Schema:
-  id: "group_member_schema"
+  id: "schema:shared:ldap_group_member"
+  dataTypes:
+    - name: "string"
   properties:
     - name: "member"
-      dataType: "dn"
+      dataType: "string"
       primaryKey: true
-      description: "Distinguished name of group member"
+      required: true
+      description: "Distinguished name of the member entry"
+      references:
+        schemaId: "schema:type:example_com.entries.inetOrgPerson"
     - name: "memberType"
       dataType: "string"
-      description: "Type of membership (direct, nested)"
+      description: "direct | nested"
 ```
 
-### 6. Schema Definitions → Document Objects
+The `references.schemaId` (without `propertyName`) tells the client that
+`member` is a DN pointing at an entry whose schema is the linked person type.
+
+### LDAP Search (Function)
+
 ```yaml
 Object:
-  id: "schema_person"
-  name: "person"
-  objectClass: ["document"]
-  description: "LDAP objectClass definition for person"
-  documentSchema: "ldap_objectclass_schema"
-  tags: ["schema", "objectclass"]
-
-Document Data:
-{
-  "objectClass": "person",
-  "type": "structural",
-  "sup": ["top"],
-  "must": ["sn", "cn"],
-  "may": ["userPassword", "telephoneNumber", "seeAlso", "description"]
-}
-```
-
-### 7. LDAP Search → Function Object
-```yaml
-Object:
-  id: "search_active_users"
+  id: "/searches/active_users"
   name: "active_users_search"
   objectClass: ["function"]
   description: "Search for active user accounts"
-  inputSchema: "ldap_search_input_schema"
-  outputSchema: "ldap_search_output_schema"
-  tags: ["search", "query", "users"]
+  inputSchema:  "schema:shared:ldap_search_input"
+  outputSchema: "schema:shared:ldap_search_output"
+  tags: ["search"]
+```
 
-# Search Input Schema
+```yaml
 Schema:
-  id: "ldap_search_input_schema"
+  id: "schema:shared:ldap_search_input"
+  dataTypes:
+    - name: "string"
   properties:
     - name: "baseDN"
-      dataType: "dn"
+      dataType: "string"
+      required: true
       description: "Search base distinguished name"
     - name: "scope"
       dataType: "string"
-      description: "Search scope (base, one, sub)"
+      required: true
+      description: "base | one | sub"
     - name: "filter"
       dataType: "string"
-      description: "LDAP search filter"
+      required: true
+      description: "RFC4515 filter expression"
     - name: "attributes"
       dataType: "string"
       multi: true
-      description: "Attributes to return"
+      description: "Attributes to return; empty = all"
 ```
 
-## API Usage Examples with LDAP Translation
+## Operation Mappings
 
-### Directory Navigation
+| DataProducer operation        | LDAP operation                                                               |
+|-------------------------------|------------------------------------------------------------------------------|
+| `getRootObject`               | RootDSE query                                                                 |
+| `getChildren`                 | Search, scope=one, base = parent DN                                           |
+| `objectSearch` / `searchChildObjects` | Search, scope=sub, base = parent DN, with the filter passed through  |
+| `getObject`                   | Search, scope=base, base = object DN                                          |
+| `createChildObject`           | Add operation                                                                  |
+| `updateObject`                | Modify operation                                                               |
+| `deleteObject`                | Delete operation (with `recursive` → recursive subtree delete)                |
+| `getDocumentData`             | Search scope=base; serialize attributes as JSON                                |
+| `updateDocumentData`          | Modify operation with replace semantics                                        |
+| `getCollectionElements` (group) | Search scope=base on group entry; return `member` attribute values           |
+| `addCollectionElement`        | Modify with `add: member`                                                      |
+| `deleteCollectionElement`     | Modify with `delete: member`                                                   |
+| `invokeFunction` (search fn)   | Search with the function's encoded parameters                                 |
 
-**List Naming Contexts:**
-```http
-GET /objects/children
-# Translates to: LDAP RootDSE query for namingContexts
+## Filter Translation Example
+
+LDAP is the **only** mapped backend that requires no translation. RFC4515
+filters travel through `@zerobias-org/util-lite-filter`'s parser only for
+validation; the original filter string is forwarded to the LDAP client
+verbatim.
+
+```
+RFC4515 (caller):
+  (&(objectClass=person)(department=Engineering)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
+
+LDAP search filter (wire):
+  (&(objectClass=person)(department=Engineering)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
 ```
 
-**List Organizational Units:**
-```http
-GET /objects/dc_example_com/children?tags=organizational-unit
-# Translates to: LDAP search (objectClass=organizationalUnit) scope=one
-```
+The Active Directory bitwise-match extension (`:1.2.840.113556.1.4.803:=`) is
+an example of an LDAP-specific extended match. The lite-filter parser tolerates
+extended matches via its `:function:` form, but the producer does not
+*translate* them — it just forwards.
 
-**List Users in OU:**
-```http
-GET /objects/ou_people/children?tags=person
-# Translates to: LDAP search base="ou=people,dc=example,dc=com" (objectClass=person) scope=one
-```
+## Core Types Reference
 
-### User Account Operations
+| LDAP attribute syntax            | `dataType`         | Notes                                            |
+|----------------------------------|--------------------|--------------------------------------------------|
+| Directory String                 | `string`           |                                                  |
+| IA5 String (RFC822 Mailbox)      | `email`            | When the attribute holds an email address.       |
+| Telephone Number                  | `phoneNumber`     |                                                  |
+| Distinguished Name (DN)          | `string` + `references` | DN is a reference; the schema referenced gives the target type. |
+| Generalized Time                 | `date-time`        |                                                  |
+| Boolean                          | `boolean`          |                                                  |
+| Integer                          | `integer`          |                                                  |
+| Octet String                     | `byte`             | Base64-encode binary attributes.                  |
+| URI                              | `url`              |                                                  |
+| `objectClass` (multi-valued)     | `string` + `multi: true` |                                                |
 
-**Search Users with Filter (RFC4515 → LDAP Filter):**
-```http
-GET /objects/ou_people/search?filter=(&(objectClass=person)(department=Engineering))
-# Translates to: LDAP search base="ou=people,dc=example,dc=com" filter="(&(objectClass=person)(department=Engineering))" scope=sub
-```
+See [`../CoreDataTypes.md`](../CoreDataTypes.md) for the full catalog.
 
-**Get Specific User:**
-```http
-GET /objects/cn_john_doe/document
-# Translates to: LDAP search base="cn=John Doe,ou=people,dc=example,dc=com" scope=base
-```
+## Edge Cases
 
-**Update User Attributes:**
-```http
-PUT /objects/cn_john_doe/document
-{
-  "telephoneNumber": "+1-555-999-8888",
-  "title": "Senior Engineer"
-}
-# Translates to: LDAP modify operation with replace operations
-```
-
-**Create New User:**
-```http
-POST /objects/ou_people/children
-{
-  "name": "Alice Johnson",
-  "objectClass": ["document"],
-  "documentSchema": "person_schema",
-  "tags": ["person", "user", "employee"]
-}
-# Then populate with:
-PUT /objects/cn_alice_johnson/document
-{
-  "cn": "Alice Johnson",
-  "uid": "ajohnson",
-  "mail": "alice.johnson@example.com",
-  "objectClass": ["inetOrgPerson", "organizationalPerson", "person"]
-}
-# Translates to: LDAP add operation
-```
-
-### Group Operations
-
-**List Group Members:**
-```http
-GET /objects/cn_administrators/collection/elements
-# Translates to: LDAP search for group entry, extract member attributes
-```
-
-**Add User to Group:**
-```http
-POST /objects/cn_administrators/collection/elements
-{
-  "member": "cn=Alice Johnson,ou=people,dc=example,dc=com",
-  "memberType": "direct"
-}
-# Translates to: LDAP modify operation adding member attribute value
-```
-
-**Remove User from Group:**
-```http
-DELETE /objects/cn_administrators/collection/elements/cn=Alice%20Johnson,ou=people,dc=example,dc=com
-# Translates to: LDAP modify operation removing specific member attribute value
-```
-
-### Search Operations
-
-**Execute Saved Search:**
-```http
-POST /objects/search_active_users/invoke
-{
-  "baseDN": "ou=people,dc=example,dc=com",
-  "scope": "sub",
-  "filter": "(&(objectClass=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))",
-  "attributes": ["cn", "mail", "department"]
-}
-# Translates to: LDAP search operation with specified parameters
-```
-
-## Translation Layer Capabilities
-
-### 1. **RFC4515 Filter Compatibility**
-- **Perfect Match**: LDAP natively uses RFC4515 filter syntax
-- **Direct Translation**: API filters pass through unchanged to LDAP
-- **Examples**:
-  - `(cn=John*)` → LDAP filter `(cn=John*)`
-  - `(&(objectClass=person)(department=Engineering))` → Direct LDAP usage
-  - `(|(mail=*@example.com)(mail=*@subsidiary.com))` → Direct LDAP usage
-
-### 2. **DN to Object ID Translation**
-- **Capability**: Distinguished Names map to hierarchical object IDs
-- **Implementation**: Bidirectional translation between DN and object paths
-- **Examples**:
-  - `cn=John Doe,ou=people,dc=example,dc=com` ↔ `/dc_example_com/ou_people/cn_john_doe`
-
-### 3. **LDAP Schema Integration**
-- **Capability**: LDAP schema definitions become Document objects
-- **Implementation**: objectClass definitions, attribute types, and syntax rules
-- **Benefit**: Schema-aware validation and attribute handling
-
-### 4. **Search Scope Translation**
-- **Capability**: Object hierarchy operations map to LDAP search scopes
-- **Mapping**:
-  - `GET /objects/{id}/children` → LDAP scope=one
-  - `GET /objects/{id}/search` → LDAP scope=sub
-  - `GET /objects/{id}` → LDAP scope=base
-
-## Implementation Considerations
-
-### 1. **Authentication Integration**
-- **LDAP Bind**: Translation layer handles LDAP authentication
-- **Pass-through**: Use connection credentials for LDAP bind operations
-- **Security**: Maintain LDAP security contexts throughout operations
-
-### 2. **Attribute Handling**
-- **Multi-valued Attributes**: Use Property `multi: true` for LDAP multi-valued attributes
-- **Binary Attributes**: Handle certificates, photos via Binary objects or base64 encoding
-- **Operational Attributes**: Include createTimestamp, modifyTimestamp in object metadata
-
-### 3. **Group Membership Models**
-- **Static Groups**: Member attributes stored as collection elements
-- **Dynamic Groups**: Use Function objects for memberURL-based groups
-- **Nested Groups**: Handle via recursive member resolution
-
-### 4. **Schema Discovery**
-- **Dynamic Schema**: Query LDAP schema to build Property definitions
-- **Caching**: Cache schema information for performance
-- **Updates**: Monitor schema changes for dynamic updates
-
-### 5. **Large Directory Handling**
-- **Paging**: Use LDAP paged results for large result sets
-- **VLV**: Support Virtual List View for sorted large datasets
-- **Referrals**: Handle LDAP referrals for distributed directories
-
-## LDAP-Specific Advantages
-
-### 1. **Natural Filter Compatibility**
-- LDAP already uses RFC4515 filters - no translation overhead
-- Complex directory searches work seamlessly
-- Standard LDAP operators (wildcards, presence, etc.) work directly
-
-### 2. **Hierarchical Structure Match**
-- LDAP's hierarchical DN structure maps naturally to object paths
-- Container/leaf distinction aligns with LDAP entry types
-- Organizational structure preservation
-
-### 3. **Schema Integration**
-- LDAP schema definitions can be exposed as Document objects
-- Dynamic schema discovery enables runtime adaptation
-- Attribute validation leverages existing LDAP schema rules
-
-### 4. **Security Model Alignment**
-- LDAP access controls map to object-level permissions
-- Authentication passthrough maintains security context
-- Directory-based authorization integrates naturally
-
-## Recommended Extensions
-
-### 1. **LDAP-Specific Query Functions**
-```yaml
-Object:
-  id: "query_user_groups"
-  name: "user_group_membership"
-  objectClass: ["function"]
-  description: "Get all groups for a user (including nested)"
-  inputSchema: "user_dn_schema"
-  outputSchema: "group_list_schema"
-```
-
-### 2. **Directory Synchronization**
-```yaml
-Object:
-  id: "sync_from_ad"
-  name: "active_directory_sync"
-  objectClass: ["function"]
-  description: "Synchronize users from Active Directory"
-  inputSchema: "sync_filter_schema"
-  outputSchema: "sync_result_schema"
-```
-
-### 3. **Enhanced Group Operations**
-```yaml
-Property:
-  name: "member"
-  dataType: "dn"
-  format: "distinguished-name"
-  references:
-    schemaId: "person_schema"
-    relationshipType: "group_membership"
-```
-
-## Conclusion
-
-The Dynamic Data Producer Interface provides an exceptionally natural mapping to LDAP directory services. The translation layer benefits from LDAP's native use of RFC4515 filters and hierarchical structure, making the implementation straightforward and efficient.
-
-**Key Benefits:**
-- **Native Filter Support**: RFC4515 filters pass through directly to LDAP
-- **Hierarchical Alignment**: DN structure maps perfectly to object hierarchy
-- **Schema Integration**: LDAP schema becomes discoverable through the API
-- **Security Preservation**: LDAP authentication and authorization integrate seamlessly
-- **Standard Operations**: All CRUD operations map to standard LDAP operations
-
-**Implementation Strategy:**
-The translation layer primarily handles DN ↔ Object ID mapping and result formatting, while leveraging LDAP's native capabilities for filtering, searching, and schema management. This results in a highly efficient implementation that preserves LDAP's strengths while providing the unified interface benefits.
-
-**Perfect Use Cases:**
-- User account management across multiple directories
-- Group membership administration
-- Directory schema discovery and documentation
-- Cross-directory synchronization and migration
-- Unified identity management interfaces
+- **DN as object id.** Object IDs are DNs verbatim. Encode reserved URL
+  characters (`,`, `=`, spaces) when embedding in path parameters.
+- **Multi-valued attributes.** Use `multi: true` on the property. Wire format
+  is a JSON array.
+- **Binary attributes** (`userCertificate`, `jpegPhoto`, `thumbnailPhoto`).
+  Either model as `byte` (base64 in JSON) or expose the entry as a Binary
+  object with class `binary` for streaming download.
+- **Referrals.** When a search receives a referral, follow it transparently or
+  surface it as `noSuchObjectError` if the referred-to server is not reachable
+  by the producer's connection.
+- **Paged results.** Use LDAP's simple paged result control. The `pageToken`
+  the producer returns wraps the LDAP cookie.
+- **VLV (Virtual List View).** Optional. When the underlying server supports
+  it, use VLV for sorted offset-based pagination instead of fetching pages
+  cumulatively.
+- **Operational attributes.** `createTimestamp`, `modifyTimestamp`,
+  `creatorsName`, `modifiersName` populate `Object.created`, `Object.modified`,
+  and may be exposed under `tags` if useful — they are *not* part of the
+  document body unless explicitly requested.
+- **Bind / authentication.** Inherited from the connection. The interface adds
+  no separate bind operation; the connection layer handles it.

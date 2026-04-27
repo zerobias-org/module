@@ -1,93 +1,71 @@
-# DynamoDB API Mapping to Dynamic Data Producer Interface
+# DynamoDB Mapping
 
 ## Overview
 
-This document describes how AWS DynamoDB and protocol-compatible databases (ScyllaDB, Amazon DynamoDB Local) map to the Dynamic Data Producer Interface, enabling unified access to NoSQL key-value and document databases through the generic object model. The interface is implemented via a translation layer that converts generic operations into DynamoDB API calls (GetItem, PutItem, Query, Scan, etc.).
+How AWS DynamoDB and protocol-compatible stores (ScyllaDB Alternator,
+DynamoDB Local) surface through the DataProducer interface. Tables are
+Collections; items are collection elements; the partition key (and optional
+sort key) drives `primaryKey: true`. The producer translates RFC4515
+filters into DynamoDB key-condition and filter expressions, and chooses
+`Query` vs `Scan` based on whether the filter touches a key. Streams and TTL
+are exposed via descriptive metadata only — the interface contract for
+reads and writes is `Query`/`Scan`/`GetItem`/`PutItem`/`UpdateItem`/`DeleteItem`.
 
-**Protocol**: DynamoDB HTTP API (JSON over HTTPS)
-**Compatible Implementations**: AWS DynamoDB, ScyllaDB Alternator, DynamoDB Local
-**API Version**: DynamoDB API 2012-08-10
+For the foundational rules this mapping follows, see
+[`../Concepts.md`](../Concepts.md), [`../SchemaIds.md`](../SchemaIds.md),
+[`../CoreDataTypes.md`](../CoreDataTypes.md), and
+[`../FilterSyntax.md`](../FilterSyntax.md).
 
 ## Conceptual Mapping
 
-### DynamoDB Database → Object Model
+| DynamoDB concept              | DataProducer concept                | Notes                                                             |
+|-------------------------------|-------------------------------------|-------------------------------------------------------------------|
+| Service endpoint              | Root container (`id == "/"`)         | One per producer connection (region-scoped).                      |
+| Table                         | Collection                           | Read+write if the key schema is fully addressable; otherwise list/search only. |
+| Item                          | Collection element                   | Primary key = partition key (and sort key if present).            |
+| Global / Local Secondary Index | (see Edge Cases)                    | Modeled as a separate Collection alongside the base table.        |
+| Custom item shape (Map)       | Referenced via `schema:type:…`       | Resolved through `getSchema`.                                     |
+| Stream                        | (metadata only)                      | The interface does not surface streams as live Functions.          |
+| TTL                           | (metadata only)                      | Exposed as schema property description.                            |
+| `BatchGetItem` / `BatchWriteItem` | `executeBulkOperations`          | The standard collection bulk op.                                   |
 
-```
-DynamoDB Account
-├── /                                  → Root Container (DynamoDB Service)
-│   ├── tables/                       → Container Object (Table List)
-│   │   ├── Users                     → Collection Object (Table)
-│   │   │   ├── item_user123          → Collection Element (Item)
-│   │   │   ├── item_user456          → Collection Element (Item)
-│   │   │   └── item_user789          → Collection Element (Item)
-│   │   ├── Orders                    → Collection Object (Table)
-│   │   │   ├── item_order001         → Collection Element (Item)
-│   │   │   └── item_order002         → Collection Element (Item)
-│   │   └── Products                  → Collection Object (Table)
-│   ├── indexes/                      → Container Object (GSI/LSI Metadata)
-│   │   ├── Users_EmailIndex          → Document Object (GSI definition)
-│   │   └── Orders_StatusIndex        → Document Object (GSI definition)
-│   └── operations/                   → Container Object (DynamoDB Operations)
-│       ├── batchGetItems             → Function Object (BatchGetItem)
-│       ├── batchWriteItems           → Function Object (BatchWriteItem)
-│       ├── transactWriteItems        → Function Object (TransactWriteItems)
-│       ├── transactGetItems          → Function Object (TransactGetItems)
-│       └── queryWithIndex            → Function Object (Query with GSI)
-```
+## Object Mappings
 
-## Detailed Object Mappings
+For an account in `us-east-1`, the producer scopes IDs under a logical
+catalog (`aws_us_east_1`) so schema IDs have a stable three-part form.
 
-### 1. DynamoDB Service → Root Container
+### Service Root (Container)
+
 ```yaml
 Object:
   id: "/"
-  name: "DynamoDB"
+  name: "/"
   objectClass: ["container"]
-  description: "DynamoDB service endpoint"
-  tags: ["dynamodb", "nosql", "database"]
-  metadata:
-    endpoint: "https://dynamodb.us-east-1.amazonaws.com"
-    region: "us-east-1"
-    apiVersion: "2012-08-10"
-    provider: "aws"  # or "scylladb", "local"
-    accountId: "123456789012"
+  description: "DynamoDB service (us-east-1)"
+  tags: ["dynamodb", "nosql"]
 ```
 
-### 2. DynamoDB Table → Collection Object
+### Table with Simple Key (Collection)
+
 ```yaml
 Object:
-  id: "table_users"
+  id: "/table:Users"
   name: "Users"
   objectClass: ["collection"]
-  description: "User accounts table"
-  path: ["/", "tables", "Users"]
-  collectionSchema: "dynamodb_users_schema"
-  collectionSize: 15847  # Approximate item count
-  tags: ["table", "users", "master-data"]
-  created: "2024-01-15T10:30:00.000Z"
-  metadata:
-    tableName: "Users"
-    tableStatus: "ACTIVE"
-    tableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/Users"
-    # Key schema
-    partitionKey: "userId"
-    partitionKeyType: "S"  # String
-    sortKey: null
-    # Capacity
-    billingMode: "PAY_PER_REQUEST"  # or "PROVISIONED"
-    readCapacityUnits: null
-    writeCapacityUnits: null
-    # Secondary indexes
-    globalSecondaryIndexes: ["EmailIndex", "StatusIndex"]
-    localSecondaryIndexes: []
-    # Additional metadata
-    itemCount: 15847
-    tableSizeBytes: 2458624
-    streamEnabled: true
-    streamViewType: "NEW_AND_OLD_IMAGES"
+  description: "User accounts"
+  path: ["Users"]
+  collectionSchema: "schema:table:aws_us_east_1.default.Users"
+  collectionSize: 15847
+  tags: ["table"]
+```
 
+```yaml
 Schema:
-  id: "dynamodb_users_schema"
+  id: "schema:table:aws_us_east_1.default.Users"
+  dataTypes:
+    - name: "string"
+    - name: "email"
+    - name: "date-time"
   properties:
     - name: "userId"
       dataType: "string"
@@ -97,44 +75,46 @@ Schema:
     - name: "email"
       dataType: "email"
       required: true
-      description: "User email address"
     - name: "username"
       dataType: "string"
       required: true
     - name: "createdAt"
       dataType: "date-time"
-      description: "Account creation timestamp"
+      required: true
     - name: "status"
       dataType: "string"
-      description: "Account status: active, inactive, suspended"
+      description: "Lifecycle status"
+      references:
+        schemaId: "schema:enum:aws_us_east_1.default.UserStatus"
     - name: "profile"
-      dataType: "object"
-      description: "Nested profile object"
+      dataType: "string"
+      description: "Nested profile"
+      references:
+        schemaId: "schema:type:aws_us_east_1.default.UserProfile"
     - name: "tags"
-      dataType: "array"
+      dataType: "string"
       multi: true
-      description: "User tags"
 ```
 
-### 3. DynamoDB Table with Composite Key → Collection Object
+### Table with Composite Key (Collection)
+
 ```yaml
 Object:
-  id: "table_orders"
+  id: "/table:Orders"
   name: "Orders"
   objectClass: ["collection"]
-  description: "Customer orders table"
-  path: ["/", "tables", "Orders"]
-  collectionSchema: "dynamodb_orders_schema"
-  tags: ["table", "orders", "transactional"]
-  metadata:
-    tableName: "Orders"
-    partitionKey: "customerId"
-    partitionKeyType: "S"
-    sortKey: "orderDate"
-    sortKeyType: "S"  # ISO 8601 date string
+  description: "Customer orders"
+  collectionSchema: "schema:table:aws_us_east_1.default.Orders"
+  tags: ["table", "transactional"]
+```
 
+```yaml
 Schema:
-  id: "dynamodb_orders_schema"
+  id: "schema:table:aws_us_east_1.default.Orders"
+  dataTypes:
+    - name: "string"
+    - name: "date-time"
+    - name: "decimal"
   properties:
     - name: "customerId"
       dataType: "string"
@@ -149,619 +129,197 @@ Schema:
     - name: "orderId"
       dataType: "string"
       required: true
-      description: "Unique order identifier"
     - name: "totalAmount"
       dataType: "decimal"
-      description: "Order total"
+      required: true
     - name: "status"
       dataType: "string"
-      description: "Order status"
-    - name: "items"
-      dataType: "array"
-      multi: true
-      description: "Order line items"
+      references:
+        schemaId: "schema:enum:aws_us_east_1.default.OrderStatus"
 ```
 
-### 4. Global Secondary Index → Document Object
+A composite key marks both fields `primaryKey: true`. Element addressing
+requires both values; the interface form
+`getCollectionElement(["customerId=customer123","orderDate=2025-10-24…"])`
+materializes both into a `Key` map for `GetItem`.
+
+### Secondary Index (Collection)
+
+A GSI surfaces as its own Collection sibling to the base table:
+
 ```yaml
 Object:
-  id: "gsi_users_email"
+  id: "/table:Users/index:EmailIndex"
   name: "EmailIndex"
-  objectClass: ["document"]
-  description: "GSI for querying users by email"
-  path: ["/", "indexes", "Users_EmailIndex"]
-  documentSchema: "dynamodb_gsi_schema"
+  objectClass: ["collection"]
+  description: "GSI: Users by email"
+  collectionSchema: "schema:table:aws_us_east_1.default.Users.EmailIndex"
   tags: ["index", "gsi"]
-  metadata:
-    tableName: "Users"
-    indexName: "EmailIndex"
-    indexStatus: "ACTIVE"
-    indexArn: "arn:aws:dynamodb:us-east-1:123456789012:table/Users/index/EmailIndex"
-    projection: "ALL"  # or "KEYS_ONLY", "INCLUDE"
+```
 
+The schema body declares the GSI's key fields as `primaryKey: true` and
+notes that mutating writes are not supported (an index is read-only). When
+the projection is `KEYS_ONLY` or `INCLUDE`, the schema lists only the
+projected attributes.
+
+### Custom Map Type (Referenced Schema)
+
+```yaml
 Schema:
-  id: "dynamodb_gsi_schema"
+  id: "schema:type:aws_us_east_1.default.UserProfile"
+  dataTypes:
+    - name: "string"
+    - name: "phoneNumber"
   properties:
-    - name: "indexName"
+    - name: "firstName"
       dataType: "string"
-      required: true
-    - name: "partitionKey"
+    - name: "lastName"
       dataType: "string"
-      required: true
-    - name: "sortKey"
-      dataType: "string"
-    - name: "projection"
-      dataType: "string"
-      description: "Projection type: ALL, KEYS_ONLY, INCLUDE"
-    - name: "projectedAttributes"
-      dataType: "array"
-      multi: true
-
-# Document Data:
-Document Data:
-{
-  "indexName": "EmailIndex",
-  "partitionKey": "email",
-  "sortKey": null,
-  "projection": "ALL",
-  "projectedAttributes": null,
-  "readCapacityUnits": null,
-  "writeCapacityUnits": null,
-  "itemCount": 15847,
-  "indexSizeBytes": 2458624
-}
+    - name: "phone"
+      dataType: "phoneNumber"
 ```
 
-### 5. Batch Write Operation → Function Object
-```yaml
-Object:
-  id: "func_batch_write"
-  name: "batchWriteItems"
-  objectClass: ["function"]
-  description: "Write multiple items across tables in batch"
-  inputSchema: "dynamodb_batch_write_input"
-  outputSchema: "dynamodb_batch_write_output"
-  tags: ["batch", "write", "performance"]
+## Operation Mappings
 
-Schema (Input):
-  id: "dynamodb_batch_write_input"
-  properties:
-    - name: "requestItems"
-      dataType: "object"
-      required: true
-      description: "Map of table name to write requests"
+### Browsing
 
-Schema (Output):
-  id: "dynamodb_batch_write_output"
-  properties:
-    - name: "unprocessedItems"
-      dataType: "object"
-      description: "Items that failed to process"
-    - name: "itemCollectionMetrics"
-      dataType: "object"
-      description: "Metrics about the operation"
+| Operation                      | DynamoDB API                                                          |
+|--------------------------------|-----------------------------------------------------------------------|
+| `getRootObject`                | (synthetic — endpoint identity)                                       |
+| `getChildren` on root          | `ListTables`                                                          |
+| `getChildren` on table         | `DescribeTable` to list secondary indexes                             |
+| `getObject` on table           | `DescribeTable`                                                       |
+
+### Items
+
+| Operation                      | DynamoDB API                                                          |
+|--------------------------------|-----------------------------------------------------------------------|
+| `getCollectionElements`        | `Scan` (no key constraint) — paginated via `ExclusiveStartKey`         |
+| `searchCollectionElements`     | `Query` if filter touches the partition key; otherwise `Scan` with `FilterExpression` |
+| `getCollectionElement(key)`    | `GetItem` with `Key`                                                  |
+| `addCollectionElement`         | `PutItem` (with `attribute_not_exists` condition for create-only)     |
+| `updateCollectionElement(key)` | `UpdateItem` with `UpdateExpression` (`SET`, `REMOVE`, `ADD`, `DELETE`) |
+| `deleteCollectionElement(key)` | `DeleteItem`                                                          |
+| `executeBulkOperations`        | `BatchWriteItem` (≤25 ops) or `TransactWriteItems` when `atomic: true` (≤100 ops) |
+
+### Query vs Scan Selection
+
+The producer inspects the parsed filter AST:
+
+- If the AST contains an equality on the partition key (and optionally a
+  comparison on the sort key), emit a `Query` with that pair as the
+  `KeyConditionExpression` and the remainder as `FilterExpression`.
+- Otherwise emit a `Scan` with the entire filter as `FilterExpression`. Scan
+  is correct, but expensive on large tables — the producer should warn
+  through telemetry, not refuse.
+
+## Filter Translation Example
+
+The producer walks the lite-filter AST and emits parameterized DynamoDB
+expressions, then routes the request to `Query` or `Scan` based on which
+attributes are constrained.
+
+```
+RFC4515:
+  (&(customerId=cust-123)(orderDate>=2025-10-01)(status=SHIPPED))
+
+AST (lite-filter):
+  AND
+    EQ customerId "cust-123"
+    GTE orderDate "2025-10-01"
+    EQ status "SHIPPED"
+
+Routing decision:
+  customerId is the table's partition key → Query
+  orderDate is the sort key             → KeyConditionExpression
+  status is non-key                     → FilterExpression
+
+Emitted Query:
+  TableName: "Orders"
+  KeyConditionExpression: "#cid = :cid AND #od >= :od"
+  FilterExpression:       "#st = :st"
+  ExpressionAttributeNames:  { "#cid":"customerId", "#od":"orderDate", "#st":"status" }
+  ExpressionAttributeValues: { ":cid":{"S":"cust-123"}, ":od":{"S":"2025-10-01"}, ":st":{"S":"SHIPPED"} }
 ```
 
-### 6. Query Operation → Function Object
-```yaml
-Object:
-  id: "func_query_orders"
-  name: "queryOrdersByCustomer"
-  objectClass: ["function"]
-  description: "Query orders for a specific customer"
-  inputSchema: "dynamodb_query_input"
-  outputSchema: "dynamodb_query_output"
-  tags: ["query", "orders"]
-
-Schema (Input):
-  id: "dynamodb_query_input"
-  properties:
-    - name: "partitionKeyValue"
-      dataType: "string"
-      required: true
-      description: "Partition key value to query"
-    - name: "sortKeyCondition"
-      dataType: "string"
-      description: "Sort key condition expression"
-    - name: "filterExpression"
-      dataType: "string"
-      description: "Additional filter expression"
-    - name: "indexName"
-      dataType: "string"
-      description: "GSI/LSI name (optional)"
-    - name: "limit"
-      dataType: "integer"
-      description: "Maximum items to return"
-    - name: "scanIndexForward"
-      dataType: "boolean"
-      default: true
-      description: "Sort order (true=ascending, false=descending)"
-
-Schema (Output):
-  id: "dynamodb_query_output"
-  properties:
-    - name: "items"
-      dataType: "array"
-      multi: true
-      description: "Matching items"
-    - name: "count"
-      dataType: "integer"
-      description: "Number of items returned"
-    - name: "scannedCount"
-      dataType: "integer"
-      description: "Number of items examined"
-    - name: "lastEvaluatedKey"
-      dataType: "object"
-      description: "Pagination token"
-```
-
-## API Usage Examples with DynamoDB Translation
-
-### Table Management
-
-**List All Tables:**
-```http
-GET /objects/tables/children
-# Translates to: DynamoDB ListTables API call
-
-# Response:
-[
-  {
-    "id": "table_users",
-    "name": "Users",
-    "objectClass": ["collection"],
-    "collectionSize": 15847
-  },
-  {
-    "id": "table_orders",
-    "name": "Orders",
-    "objectClass": ["collection"],
-    "collectionSize": 8423
-  }
-]
-```
-
-**Get Table Metadata:**
-```http
-GET /objects/table_users
-# Translates to: DynamoDB DescribeTable
-
-# Response includes table schema, capacity, indexes, etc.
-```
-
-### Item Operations (Single Table)
-
-**Get Item by Key:**
-```http
-GET /objects/table_users/collection/elements/user123
-# Translates to: DynamoDB GetItem
-# Key: { "userId": { "S": "user123" } }
-
-# Response:
-{
-  "userId": "user123",
-  "email": "john@example.com",
-  "username": "johndoe",
-  "createdAt": "2024-01-15T10:30:00.000Z",
-  "status": "active",
-  "profile": {
-    "firstName": "John",
-    "lastName": "Doe",
-    "phone": "+1-555-123-4567"
-  },
-  "tags": ["premium", "verified"]
-}
-```
-
-**Get Item with Composite Key:**
-```http
-GET /objects/table_orders/collection/elements/customer123?sortKey=2025-10-24T10:30:00.000Z
-# Translates to: DynamoDB GetItem
-# Key: { "customerId": { "S": "customer123" }, "orderDate": { "S": "2025-10-24T10:30:00.000Z" } }
-
-# Response: Order item with both partition and sort key
-```
-
-**Create/Update Item:**
-```http
-POST /objects/table_users/collection/elements
-Content-Type: application/json
-
-{
-  "userId": "user999",
-  "email": "alice@example.com",
-  "username": "alice",
-  "status": "active",
-  "createdAt": "2025-10-24T10:45:00.000Z"
-}
-
-# Translates to: DynamoDB PutItem
-```
-
-**Update Specific Attributes:**
-```http
-PUT /objects/table_users/collection/elements/user123
-Content-Type: application/json
-
-{
-  "status": "inactive",
-  "profile.phone": "+1-555-999-8888"
-}
-
-# Translates to: DynamoDB UpdateItem with UpdateExpression
-# SET status = :status, profile.phone = :phone
-```
-
-**Delete Item:**
-```http
-DELETE /objects/table_users/collection/elements/user123
-# Translates to: DynamoDB DeleteItem
-```
-
-### Query Operations
-
-**Query All Items in Partition:**
-```http
-GET /objects/table_orders/collection/search?filter=(customerId=customer123)
-# Translates to: DynamoDB Query
-# KeyConditionExpression: "customerId = :customerId"
-
-# Returns all orders for customer123
-```
-
-**Query with Sort Key Condition:**
-```http
-GET /objects/table_orders/collection/search?filter=(&(customerId=customer123)(orderDate>=2025-10-01))
-# Translates to: DynamoDB Query
-# KeyConditionExpression: "customerId = :cid AND orderDate >= :date"
-
-# Returns orders for customer123 from October 2025 onwards
-```
-
-**Query with Filter Expression:**
-```http
-GET /objects/table_orders/collection/search?filter=(&(customerId=customer123)(status=shipped))
-# Translates to: DynamoDB Query
-# KeyConditionExpression: "customerId = :cid"
-# FilterExpression: "status = :status"
-
-# Returns shipped orders for customer123
-```
-
-**Query Using GSI:**
-```http
-POST /objects/func_query_orders/invoke
-{
-  "indexName": "StatusIndex",
-  "partitionKeyValue": "pending",
-  "limit": 100
-}
-
-# Translates to: DynamoDB Query with IndexName parameter
-# Queries orders by status using GSI
-```
-
-### Scan Operations
-
-**Scan Entire Table:**
-```http
-GET /objects/table_users/collection/elements?scanMode=true
-# Translates to: DynamoDB Scan
-
-# Warning: Expensive operation on large tables
-```
-
-**Scan with Filter:**
-```http
-GET /objects/table_users/collection/search?filter=(status=active)&scanMode=true
-# Translates to: DynamoDB Scan
-# FilterExpression: "status = :status"
-
-# Scans entire table, returns only active users
-```
-
-**Parallel Scan (Segmented):**
-```http
-GET /objects/table_users/collection/elements?scanMode=true&segment=0&totalSegments=4
-# Translates to: DynamoDB Scan with Segment and TotalSegments
-# Useful for parallel processing of large tables
-```
-
-### Batch Operations
-
-**Batch Get Items:**
-```http
-POST /objects/func_batch_get/invoke
-{
-  "requestItems": {
-    "Users": {
-      "keys": [
-        { "userId": "user123" },
-        { "userId": "user456" },
-        { "userId": "user789" }
-      ]
-    }
-  }
-}
-
-# Translates to: DynamoDB BatchGetItem
-# Retrieves up to 100 items from one or more tables
-```
-
-**Batch Write Items:**
-```http
-POST /objects/func_batch_write/invoke
-{
-  "requestItems": {
-    "Users": [
-      {
-        "operation": "put",
-        "item": { "userId": "user111", "email": "user111@example.com" }
-      },
-      {
-        "operation": "delete",
-        "key": { "userId": "user222" }
-      }
-    ]
-  }
-}
-
-# Translates to: DynamoDB BatchWriteItem
-# Up to 25 put/delete operations across tables
-```
-
-### Transactional Operations
-
-**Transactional Write:**
-```http
-POST /objects/func_transact_write/invoke
-{
-  "transactItems": [
-    {
-      "operation": "put",
-      "tableName": "Users",
-      "item": { "userId": "user999", "email": "user999@example.com" }
-    },
-    {
-      "operation": "update",
-      "tableName": "Orders",
-      "key": { "customerId": "customer123", "orderDate": "2025-10-24T10:00:00.000Z" },
-      "updateExpression": "SET status = :status",
-      "expressionAttributeValues": { ":status": "completed" }
-    }
-  ]
-}
-
-# Translates to: DynamoDB TransactWriteItems
-# All-or-nothing transaction across multiple tables/items
-```
-
-**Transactional Read:**
-```http
-POST /objects/func_transact_get/invoke
-{
-  "transactItems": [
-    {
-      "tableName": "Users",
-      "key": { "userId": "user123" }
-    },
-    {
-      "tableName": "Orders",
-      "key": { "customerId": "customer123", "orderDate": "2025-10-24T10:00:00.000Z" }
-    }
-  ]
-}
-
-# Translates to: DynamoDB TransactGetItems
-# Consistent read across multiple items
-```
-
-## Translation Layer Capabilities
-
-### 1. **DynamoDB API Mapping**
-
-| Generic Operation | DynamoDB API | Notes |
-|-------------------|--------------|-------|
-| `children()` (tables) | `ListTables` | List all tables |
-| `collectionElements()` | `Scan` | Full table scan (expensive) |
-| `getCollectionElement()` | `GetItem` | Read single item by key |
-| `addElement()` | `PutItem` | Insert/replace item |
-| `updateElement()` | `UpdateItem` | Update specific attributes |
-| `deleteElement()` | `DeleteItem` | Delete item by key |
-| `collectionSearch()` | `Query` or `Scan` | Query by key, scan with filter |
-| Batch get | `BatchGetItem` | Up to 100 items |
-| Batch write | `BatchWriteItem` | Up to 25 operations |
-| Transactions | `TransactWriteItems` / `TransactGetItems` | ACID transactions |
-
-### 2. **Key Schema Handling**
-- **Simple Key**: Partition key only (HASH)
-- **Composite Key**: Partition key + sort key (HASH + RANGE)
-- **Primary Key Mapping**: Extract from object path or query parameters
-- **Key Condition Expressions**: Translate RFC4515 filters to DynamoDB conditions
-
-### 3. **RFC4515 Filter to DynamoDB Expression Translation**
-
-| RFC4515 Filter | DynamoDB Expression | Notes |
-|----------------|---------------------|-------|
-| `(userId=user123)` | `userId = :val` | Equality |
-| `(status>=active)` | `status >= :val` | Comparison |
-| `(&(a=1)(b=2))` | `a = :a AND b = :b` | Logical AND |
-| `(\|(a=1)(b=2))` | `a = :a OR b = :b` | Logical OR |
-| `(!(status=inactive))` | `NOT status = :val` | Negation |
-| `(email=*@example.com)` | `contains(email, :domain)` | Pattern matching |
-
-### 4. **Data Type Mapping**
-
-| DynamoDB Type | Core DataType | Notes |
-|---------------|--------------|-------|
-| S (String) | `string` | Text values |
-| N (Number) | `decimal` or `integer` | Stored as string, parsed as number |
-| BOOL | `boolean` | True/false |
-| B (Binary) | `byte` | Base64-encoded |
-| SS (String Set) | `array` (string[]) | Unordered set |
-| NS (Number Set) | `array` (decimal[]) | Unordered set |
-| BS (Binary Set) | `array` (byte[]) | Unordered set |
-| L (List) | `array` | Ordered list |
-| M (Map) | `object` | Nested document |
-| NULL | `null` | Null value |
-
-## Implementation Considerations
-
-### 1. **Authentication and Authorization**
-
-**AWS IAM:**
-```yaml
-metadata:
-  authentication: "AWS_IAM"
-  accessKeyId: "AKIAIOSFODNN7EXAMPLE"
-  region: "us-east-1"
-  # IAM policy determines table-level permissions
-```
-
-**IAM Roles:**
-```yaml
-metadata:
-  authentication: "AWS_IAM_ROLE"
-  roleArn: "arn:aws:iam::123456789012:role/DynamoDBAccess"
-```
-
-### 2. **Capacity Management**
-
-**Provisioned Mode:**
-```yaml
-metadata:
-  billingMode: "PROVISIONED"
-  readCapacityUnits: 100
-  writeCapacityUnits: 50
-  autoScalingEnabled: true
-```
-
-**On-Demand Mode:**
-```yaml
-metadata:
-  billingMode: "PAY_PER_REQUEST"
-  # No capacity units specified
-```
-
-### 3. **Performance Optimization**
-- **Batch Operations**: Use BatchGetItem/BatchWriteItem for bulk operations
-- **Query vs Scan**: Always prefer Query with key conditions over Scan
-- **Pagination**: Handle LastEvaluatedKey for result sets > 1MB
-- **Parallel Scan**: Use segmented scans for large tables
-- **GSI/LSI**: Leverage secondary indexes for alternate access patterns
-- **Projection**: Request only needed attributes to reduce data transfer
-
-### 4. **Error Handling**
-
-| DynamoDB Error | HTTP Status | Error Type |
-|----------------|-------------|------------|
-| `ResourceNotFoundException` | 404 | `noSuchObjectError` |
-| `ConditionalCheckFailedException` | 409 | `ConflictError` |
-| `ProvisionedThroughputExceededException` | 429 | `RateLimitExceededError` |
-| `ValidationException` | 400 | `InvalidInputError` |
-| `ItemCollectionSizeLimitExceededException` | 413 | `payload_too_large` |
-| `TransactionCanceledException` | 409 | `transaction_conflict` |
-| `AccessDeniedException` | 403 | `ForbiddenError` |
-
-### 5. **Advanced Features**
-
-**DynamoDB Streams:**
-```yaml
-Object:
-  id: "stream_users"
-  name: "UserStream"
-  objectClass: ["function"]
-  description: "Process changes to Users table"
-  metadata:
-    streamArn: "arn:aws:dynamodb:us-east-1:123456789012:table/Users/stream/..."
-    streamViewType: "NEW_AND_OLD_IMAGES"
-```
-
-**Time to Live (TTL):**
-```yaml
-metadata:
-  ttlEnabled: true
-  ttlAttributeName: "expirationTime"
-  # Items automatically deleted after expiration
-```
-
-**Point-in-Time Recovery:**
-```yaml
-metadata:
-  pointInTimeRecoveryEnabled: true
-  earliestRestorableDateTime: "2025-10-17T10:00:00.000Z"
-  latestRestorableDateTime: "2025-10-24T10:00:00.000Z"
-```
-
-## ScyllaDB Alternator Compatibility
-
-### 1. **Protocol Compatibility**
-ScyllaDB Alternator implements DynamoDB HTTP API, enabling transparent usage:
-
-```yaml
-Object:
-  id: "/"
-  metadata:
-    endpoint: "http://scylla-node:8000"
-    provider: "scylladb"
-    apiVersion: "2012-08-10"
-    # Same API calls work with ScyllaDB
-```
-
-### 2. **Performance Characteristics**
-- **Lower Latency**: ScyllaDB often provides sub-millisecond p99 latencies
-- **Higher Throughput**: Better performance for write-heavy workloads
-- **Predictable Performance**: C++ implementation vs Java (DynamoDB)
-
-### 3. **Feature Differences**
-- **Supported**: GetItem, PutItem, UpdateItem, DeleteItem, Query, Scan, BatchGetItem, BatchWriteItem
-- **Limited**: Transactions, Streams, Global Tables
-- **Not Supported**: TTL, PITR, DAX caching
-
-## Limitations and Workarounds
-
-### 1. **Item Size Limit**
-- **Issue**: Maximum item size 400KB
-- **Workaround**: Store large data in S3, reference via URL in item
-
-### 2. **Query Limitations**
-- **Issue**: Query requires partition key, sort key is optional
-- **Workaround**: Use GSI to enable queries on non-key attributes
-
-### 3. **No Server-Side Joins**
-- **Issue**: DynamoDB doesn't support SQL-style joins
-- **Workaround**: Denormalize data or implement application-level joins
-
-### 4. **Eventual Consistency**
-- **Issue**: Default reads are eventually consistent
-- **Workaround**: Use ConsistentRead=true for strongly consistent reads (2x cost)
-
-## Security Best Practices
-
-1. **IAM Policies**: Use least-privilege IAM policies for table access
-2. **Encryption**: Enable encryption at rest (AWS KMS) and in transit (TLS)
-3. **VPC Endpoints**: Use VPC endpoints to avoid internet traversal
-4. **Audit Logging**: Enable CloudTrail for DynamoDB API calls
-5. **Fine-Grained Access**: Use condition expressions in IAM for row-level security
-6. **Backup Strategy**: Enable point-in-time recovery and on-demand backups
-
-## Conclusion
-
-The Dynamic Data Producer Interface provides effective abstraction for DynamoDB and protocol-compatible databases through a translation layer that converts generic operations into DynamoDB API calls.
-
-**Key Benefits:**
-- **Unified Interface**: Same API patterns work across DynamoDB, SQL databases, and other sources
-- **Protocol Compatibility**: Works with AWS DynamoDB, ScyllaDB Alternator, DynamoDB Local
-- **NoSQL Flexibility**: Supports key-value and document data models
-- **Performance**: Batch operations, transactions, and query optimization
-- **Cloud Integration**: Native AWS IAM authentication and service integration
-
-**Implementation Strategy:**
-The translation layer handles DynamoDB API complexity, key schema resolution, and expression translation while providing a consistent REST-like interface. Performance optimizations include batch operations, query preference over scan, and GSI utilization.
-
-**Perfect Use Cases:**
-- Multi-cloud NoSQL database access (AWS + ScyllaDB)
-- Unified data access across SQL and NoSQL databases
-- DynamoDB table migration and synchronization
-- Hybrid cloud data integration
-- Development/testing with DynamoDB Local → production AWS DynamoDB
+| RFC4515            | DynamoDB FilterExpression       |
+|--------------------|---------------------------------|
+| `(name=Alice)`     | `name = :v`                      |
+| `(age>=18)`        | `age >= :v`                      |
+| `(name=A*)`        | `begins_with(name, :v)`          |
+| `(name=*ice*)`     | `contains(name, :v)`             |
+| `(email=*)`        | `attribute_exists(email)`        |
+| `(&(a=1)(b=2))`    | `a = :v1 AND b = :v2`            |
+| `(\|(a=1)(b=2))`   | `a = :v1 OR b = :v2`             |
+| `(!(active=true))` | `NOT (active = :v)`              |
+
+DynamoDB has no native suffix-only `LIKE '%foo'`. A producer that receives
+`(name=*foo)` falls back to a Scan with in-process post-filtering for that
+predicate, or rejects the request with a clear error — the choice belongs
+to the producer's documented capability set.
+
+## Core Types Reference
+
+| DynamoDB attribute type | `dataType`         | Notes                                                                 |
+|-------------------------|--------------------|-----------------------------------------------------------------------|
+| `S` (String)            | `string`           | Use a more specific core type if the value is email / URL / etc.      |
+| `N` (Number, integer)   | `integer`          |                                                                       |
+| `N` (Number, fractional)| `decimal`          | Money must be `decimal` — never a JS float.                          |
+| `BOOL`                  | `boolean`          |                                                                       |
+| `B` (Binary)            | `byte`             | Base64-encoded over the wire.                                         |
+| `SS` / `NS` / `BS` (Sets)| parent `dataType` + `multi: true` | Sets are unordered; the interface treats them as arrays. |
+| `L` (List)              | parent `dataType` + `multi: true` | Lists are ordered; preserve insertion order.            |
+| `M` (Map)               | `string` + `references.schemaId` to a `schema:type:…` |                                          |
+| `NULL`                  | (any property with `required: false`) |                                                            |
+
+DynamoDB has no native `date-time` type — timestamps are stored as `S`
+(ISO 8601) or `N` (epoch). Either is acceptable; the schema's
+`dataType: date-time` validates the value regardless of which is on the
+wire. A producer that stores them as numbers is responsible for
+converting to/from ISO 8601 at the boundary.
+
+See [`../CoreDataTypes.md`](../CoreDataTypes.md) for the full catalog.
+
+## Edge Cases
+
+- **Item size limit.** DynamoDB rejects items > 400KB. For large opaque
+  payloads, store in S3 and keep a `url` reference in the item.
+- **Eventual consistency.** Reads default to eventually consistent. The
+  producer may expose `ConsistentRead` as a per-call option; without it,
+  callers must accept stale reads.
+- **Pagination.** `Query` and `Scan` paginate via `LastEvaluatedKey`. The
+  producer wraps that key in the DataProducer `pageToken` (opaque to the
+  caller; serialize as base64 JSON so it survives the response header).
+- **Parallel scan.** `Segment` / `TotalSegments` are a `Scan` performance
+  knob and not surfaced through the interface; the producer may use them
+  internally when a single scan exceeds a configured row count.
+- **Transactions.** `executeBulkOperations` with `atomic: true` translates
+  to `TransactWriteItems` (≤100 items, includes optional condition checks).
+  Without `atomic`, it uses `BatchWriteItem` (≤25 items, no isolation).
+- **Conditional writes.** Optimistic concurrency goes through the
+  DataProducer `If-Match` header on `updateCollectionElement` /
+  `deleteCollectionElement`. The producer translates the ETag into a
+  `ConditionExpression` against an `etag` or `version` attribute.
+- **TTL.** When the table has TTL enabled, expose the TTL attribute as an
+  ordinary property with a description noting "TTL — items are removed
+  after this epoch". Use `integer` (epoch seconds) per the DynamoDB
+  contract.
+- **Streams.** Stream ARNs and view types are descriptive — record them
+  in producer metadata (or expose a `Document` object listing stream
+  configuration) but do not present streams as Functions.
+- **Reserved words.** DynamoDB reserves a long list of attribute names
+  (`Status`, `Name`, `Size`, …). Always use `ExpressionAttributeNames`
+  placeholders (`#name`) when emitting expressions; never substitute the
+  raw attribute name.
+- **Nested attribute updates.** `UpdateItem` paths support dot/index
+  notation (`profile.phone`, `tags[2]`). The producer walks the
+  `updateCollectionElement` payload and emits one `SET`/`REMOVE` per leaf.
+- **Index queries.** A request that targets `/table:Foo/index:BarIndex`
+  routes to `Query` with `IndexName: "BarIndex"`. Filter translation rules
+  apply to the index's key schema, not the base table's.
+- **ScyllaDB Alternator / DynamoDB Local.** Same protocol, same mapping;
+  feature differences (no streams, no transactions in older versions, no
+  PITR) are documented per-deployment in the connection profile rather than
+  in this mapping.
+- **Authentication.** AWS SigV4 / IAM / role assumption all live on the
+  connection. The interface adds no auth concepts.

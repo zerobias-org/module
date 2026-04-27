@@ -1,791 +1,284 @@
-# GraphQL API Mapping to Dynamic Data Producer Interface
+# GraphQL Mapping
 
 ## Overview
 
-This document describes how GraphQL APIs map to the Dynamic Data Producer Interface, enabling unified access to GraphQL endpoints through the generic object model. The interface is implemented via a translation layer that converts generic operations (RFC4515 filters, object hierarchy navigation) into appropriate GraphQL queries and mutations.
+How a GraphQL endpoint surfaces through the DataProducer interface. A
+producer wraps a GraphQL client and uses the introspection schema to derive
+the object hierarchy: list-returning Query fields become Collections,
+parameterized fields become Functions, types defined in the schema surface
+as referenceable Schema IDs. Mutations are Functions; the interface does
+not distinguish them from queries — both invocations go through
+`invokeFunction`. Subscriptions are out of scope for this version of the
+DataProducer contract.
+
+For the foundational rules this mapping follows, see
+[`../Concepts.md`](../Concepts.md), [`../SchemaIds.md`](../SchemaIds.md),
+[`../CoreDataTypes.md`](../CoreDataTypes.md), and
+[`../FilterSyntax.md`](../FilterSyntax.md).
 
 ## Conceptual Mapping
 
-### GraphQL Schema → Object Model
+| GraphQL concept                          | DataProducer concept                | Notes                                                            |
+|------------------------------------------|-------------------------------------|------------------------------------------------------------------|
+| Endpoint                                 | Root container (`id == "/"`)         |                                                                  |
+| `Query` root, `Mutation` root            | Containers                           | Named children of the root.                                      |
+| List-returning field on `Query`          | Collection                           | `[T]` or Relay-connection `…Connection`. Element schema is `T`.   |
+| Single-object field with arguments       | Function                             | `inputSchema` carries arguments; `outputSchema` is the field's return type. |
+| Mutation field                           | Function                             | Same shape as a query Function.                                   |
+| Object type / interface / union          | Referenced via `schema:type:…`       | Resolved through `getSchema`, not browseable as an Object.        |
+| Enum                                     | Referenced via `schema:enum:…`       | Same.                                                             |
+| Introspection (`__schema`, `__type`)     | Document                             | Read-only; surfaces the raw introspection payload.                |
+| Subscription                             | (out of scope)                       | Streaming is not part of the DataProducer interface.              |
 
-```
-GraphQL API Root
-├── Query Type                          → Container Object (Read Operations)
-│   ├── users                          → Collection Object
-│   ├── posts                          → Collection Object  
-│   ├── user(id: ID!)                  → Function Object
-│   └── searchPosts(query: String!)    → Function Object
-├── Mutation Type                      → Container Object (Write Operations)
-│   ├── createUser                     → Function Object
-│   ├── updateUser                     → Function Object
-│   └── deleteUser                     → Function Object
-├── Subscription Type                  → Container Object (Real-time)
-│   ├── userUpdated                    → Function Object
-│   └── postAdded                      → Function Object
-└── Types                              → Container Object (Schema Definitions)
-    ├── User                           → Document Object (Type Definition)
-    ├── Post                           → Document Object (Type Definition)
-    └── Comment                        → Document Object (Type Definition)
-```
+## Object Mappings
 
-## Detailed Object Mappings
+For a hypothetical endpoint at `https://api.shop.example/graphql`, the
+producer scopes IDs under a logical name (`shop_example`) so that schema IDs
+have a stable three-part form.
 
-### 1. GraphQL API Root → Root Container
+### Query Root (Container)
+
 ```yaml
 Object:
-  id: "/"
-  name: "GraphQL API"
-  objectClass: ["container"]
-  description: "GraphQL API endpoint"
-  tags: ["graphql", "api"]
-```
-
-### 2. Query Type → Container Object
-```yaml
-Object:
-  id: "query_root"
+  id: "/query"
   name: "Query"
   objectClass: ["container"]
-  description: "GraphQL Query operations"
+  description: "GraphQL Query root — read operations"
   path: ["Query"]
-  tags: ["query", "read-operations"]
+  tags: ["query"]
 ```
 
-### 3. Collection Field → Collection Object
+### List Field (Collection)
+
 ```yaml
 Object:
-  id: "field_users"
+  id: "/query/users"
   name: "users"
   objectClass: ["collection"]
-  description: "User collection from GraphQL users field"
+  description: "users field returning [User!]!"
   path: ["Query", "users"]
-  collectionSchema: "user_schema"
-  tags: ["users", "collection"]
+  collectionSchema: "schema:type:shop_example.types.User"
+  tags: ["users"]
+```
 
-# Derived from GraphQL type definition:
-# type User {
-#   id: ID!
-#   email: String!
-#   name: String
-#   posts: [Post!]!
-#   createdAt: DateTime!
-# }
-
+```yaml
 Schema:
-  id: "user_schema"
+  id: "schema:type:shop_example.types.User"
+  dataTypes:
+    - name: "string"
+    - name: "email"
+    - name: "date-time"
   properties:
     - name: "id"
       dataType: "string"
       primaryKey: true
       required: true
-      description: "User ID"
+      description: "GraphQL ID scalar"
     - name: "email"
-      dataType: "string"
-      format: "email"
+      dataType: "email"
       required: true
     - name: "name"
       dataType: "string"
     - name: "createdAt"
-      dataType: "datetime"
-      format: "ISO8601"
+      dataType: "date-time"
       required: true
     - name: "posts"
-      dataType: "array"
+      dataType: "string"
+      multi: true
+      description: "GraphQL [Post!]! — element references the Post schema"
       references:
-        schemaId: "post_schema"
-        relationshipType: "has_many"
+        schemaId: "schema:type:shop_example.types.Post"
+        propertyName: "id"
 ```
 
-### 4. Parameterized Field → Function Object
+The producer renders `[Post!]!` as a multi-valued reference. A foreign-key
+form (with `propertyName`) is appropriate when the field is a list of related
+objects identifiable by ID; embed-by-composition (no `propertyName`) is
+appropriate when the field is a list of value objects with no separate
+identity.
+
+### Parameterized Field (Function)
+
 ```yaml
 Object:
-  id: "func_user_by_id"
+  id: "/query/user"
   name: "user"
   objectClass: ["function"]
-  description: "Get user by ID from GraphQL user(id: ID!) field"
+  description: "user(id: ID!): User"
   path: ["Query", "user"]
-  inputSchema: "user_by_id_input_schema"
-  outputSchema: "user_schema"
-  tags: ["user", "lookup"]
+  inputSchema:  "schema:function:shop_example.query.user:input"
+  outputSchema: "schema:function:shop_example.query.user:output"
+  tags: ["query", "lookup"]
+```
 
-# Input Schema (from GraphQL field arguments)
+```yaml
 Schema:
-  id: "user_by_id_input_schema"
+  id: "schema:function:shop_example.query.user:input"
+  dataTypes:
+    - name: "string"
   properties:
     - name: "id"
       dataType: "string"
       required: true
-      description: "User ID to fetch"
+      description: "GraphQL ID scalar"
+
+Schema:
+  id: "schema:function:shop_example.query.user:output"
+  dataTypes:
+    - name: "string"
+  properties:
+    - name: "user"
+      dataType: "string"
+      description: "User reference; resolved against the User type schema"
+      references:
+        schemaId: "schema:type:shop_example.types.User"
+        propertyName: "id"
 ```
 
-### 5. Mutation Field → Function Object
+### Mutation (Function)
+
 ```yaml
 Object:
-  id: "func_create_user"
+  id: "/mutation/createUser"
   name: "createUser"
   objectClass: ["function"]
-  description: "Create new user via GraphQL createUser mutation"
+  description: "createUser(input: CreateUserInput!): User!"
   path: ["Mutation", "createUser"]
-  inputSchema: "create_user_input_schema"
-  outputSchema: "user_schema"
-  tags: ["user", "create", "mutation"]
-
-# Input Schema (from GraphQL input type)
-Schema:
-  id: "create_user_input_schema"
-  properties:
-    - name: "email"
-      dataType: "string"
-      format: "email"
-      required: true
-    - name: "name"
-      dataType: "string"
-    - name: "password"
-      dataType: "string"
-      required: true
+  inputSchema:  "schema:function:shop_example.mutation.createUser:input"
+  outputSchema: "schema:function:shop_example.mutation.createUser:output"
+  throws:
+    validation_error: "schema:shared:validation_error"
+  tags: ["mutation"]
 ```
 
-### 6. GraphQL Type Definition → Document Object
+The base interface has no notion of "mutation" distinct from "function" —
+GraphQL semantics (single execution per request, side-effecting) live inside
+the producer.
+
+### Introspection (Document)
+
 ```yaml
 Object:
-  id: "type_user"
-  name: "User"
+  id: "/__schema"
+  name: "__schema"
   objectClass: ["document"]
-  description: "GraphQL User type definition"
-  path: ["Types", "User"]
-  documentSchema: "graphql_type_schema"
-  tags: ["type", "schema"]
-
-# Type definition stored as document
-Document Data:
-{
-  "kind": "OBJECT",
-  "name": "User",
-  "fields": [
-    {
-      "name": "id",
-      "type": "ID!",
-      "description": "User identifier"
-    },
-    {
-      "name": "email", 
-      "type": "String!",
-      "description": "User email address"
-    },
-    {
-      "name": "posts",
-      "type": "[Post!]!",
-      "description": "Posts created by user"
-    }
-  ]
-}
+  description: "Raw GraphQL introspection payload for this endpoint"
+  documentSchema: "schema:shared:graphql_introspection"
+  tags: ["introspection", "metadata"]
 ```
 
-### 7. Subscription Field → Function Object
-```yaml
-Object:
-  id: "func_user_updated"
-  name: "userUpdated"
-  objectClass: ["function"]
-  description: "Subscribe to user update events"
-  path: ["Subscription", "userUpdated"]
-  inputSchema: "user_subscription_input_schema"
-  outputSchema: "user_schema"
-  tags: ["subscription", "real-time", "user"]
+The schema body for `schema:shared:graphql_introspection` is the
+GraphQL-spec-defined shape (`__Schema`, `__Type`, etc.) — describe it by
+composition rather than redefining it inline.
+
+## Operation Mappings
+
+| DataProducer operation             | GraphQL execution                                                                                          |
+|------------------------------------|------------------------------------------------------------------------------------------------------------|
+| `getRootObject`                    | (synthetic — endpoint identity)                                                                            |
+| `getChildren` on root              | Static — `Query`, `Mutation`, `__schema`, plus producer-defined groupings.                                  |
+| `getChildren` on `/query`          | Driven by the introspection of the `Query` type.                                                            |
+| `getCollectionElements`            | `query { <field>(first: $pageSize, after: $cursor) { …selected fields } }` (Relay connection)              |
+| `searchCollectionElements`         | Same, with translated `where:` / `filter:` argument from the RFC4515 expression.                           |
+| `getCollectionElement(key)`        | `query { <field>(id: $key) { …selected fields } }` if a singular by-id field exists; otherwise filter +1. |
+| `addCollectionElement`             | Corresponding `create…` mutation (if exposed).                                                              |
+| `updateCollectionElement(key)`     | Corresponding `update…` mutation.                                                                           |
+| `deleteCollectionElement(key)`     | Corresponding `delete…` mutation.                                                                           |
+| `invokeFunction`                   | Single GraphQL operation — query for query Functions, mutation for mutation Functions.                     |
+| `getDocumentData` on `/__schema`   | `query { __schema { … } }` introspection.                                                                  |
+
+The producer is responsible for selecting fields. Selection is driven by the
+DataProducer `properties` query parameter (see `Concepts.md`); the producer
+walks the schema referenced by `collectionSchema` / `outputSchema` and emits
+the matching GraphQL selection set.
+
+## Filter Translation Example
+
+GraphQL has no standard filter argument convention. The producer translates
+the RFC4515 AST into whichever convention the target endpoint uses (Relay
+`where:`, Hasura-style `where: { field: { _eq: ... } }`, custom argument
+sets). The lite-filter parser provides the AST; the emit step is endpoint-
+specific.
+
 ```
+RFC4515:
+  (&(active=true)(|(country=US)(country=CA))(createdAt>=2025-01-01))
 
-## API Usage Examples with GraphQL Translation
+AST (lite-filter):
+  AND
+    EQ active true
+    OR
+      EQ country "US"
+      EQ country "CA"
+    GTE createdAt "2025-01-01"
 
-### Schema Discovery
-
-**List Available Operations:**
-```http
-GET /objects/query_root/children
-# Translates to: GraphQL introspection query for Query type fields
-```
-
-**Get Type Definitions:**
-```http
-GET /objects/type_user/document
-# Translates to: GraphQL introspection query for User type definition
-```
-
-### Collection Operations
-
-**List All Users:**
-```http
-GET /objects/field_users/collection/elements?pageSize=10
-# Translates to: GraphQL query
-{
-  users(first: 10) {
-    id
-    email
-    name
-    createdAt
-  }
-}
-```
-
-**Search Users with Filter:**
-```http
-GET /objects/field_users/collection/search?filter=(name=John*)
-# Translates to: GraphQL query with variables
-{
-  users(where: { name: { startsWith: "John" } }) {
-    id
-    email
-    name
-    createdAt
-  }
-}
-```
-
-**Get Specific User:**
-```http
-GET /objects/field_users/collection/elements/user123
-# Translates to: GraphQL query
-{
-  user(id: "user123") {
-    id
-    email
-    name
-    createdAt
-  }
-}
-```
-
-### Function Operations
-
-**Execute Parameterized Query:**
-```http
-POST /objects/func_user_by_id/invoke
-{
-  "id": "user123"
-}
-# Translates to: GraphQL query
-{
-  user(id: "user123") {
-    id
-    email
-    name
-    posts {
-      id
-      title
-      content
-    }
-  }
-}
-```
-
-**Execute Mutation:**
-```http
-POST /objects/func_create_user/invoke
-{
-  "email": "alice@example.com",
-  "name": "Alice Johnson",
-  "password": "securepassword"
-}
-# Translates to: GraphQL mutation
-mutation {
-  createUser(input: {
-    email: "alice@example.com"
-    name: "Alice Johnson"
-    password: "securepassword"
-  }) {
-    id
-    email
-    name
-    createdAt
-  }
-}
-```
-
-### Collection Element CRUD
-
-**Create New User (via Collection):**
-```http
-POST /objects/field_users/collection/elements
-{
-  "email": "bob@example.com",
-  "name": "Bob Smith"
-}
-# Translates to: GraphQL mutation (if createUser mutation exists)
-mutation {
-  createUser(input: {
-    email: "bob@example.com"
-    name: "Bob Smith"
-  }) {
-    id
-    email
-    name
-    createdAt
-  }
-}
-```
-
-**Update User:**
-```http
-PUT /objects/field_users/collection/elements/user123
-{
-  "name": "John Doe Updated"
-}
-# Translates to: GraphQL mutation (if updateUser mutation exists)
-mutation {
-  updateUser(id: "user123", input: {
-    name: "John Doe Updated"
-  }) {
-    id
-    email
-    name
-    createdAt
-  }
-}
-```
-
-## Translation Layer Capabilities
-
-### 1. **RFC4515 Filter → GraphQL Arguments Translation**
-- **Challenge**: GraphQL doesn't use RFC4515; each API has custom argument patterns
-- **Solution**: Translation layer maps common filter patterns to GraphQL arguments
-- **Examples**:
-  - `(name=John*)` → `{ name: { startsWith: "John" } }`
-  - `(&(active=true)(role=admin))` → `{ active: true, role: "admin" }`
-  - `(createdAt>=2024-01-01)` → `{ createdAt: { gte: "2024-01-01" } }`
-
-### 2. **Schema Introspection → Object Discovery**
-- **Capability**: GraphQL introspection queries discover available operations and types
-- **Implementation**: Schema analysis creates object hierarchy dynamically
-- **Mapping**: GraphQL schema → Container/Collection/Function object structure
-
-### 3. **Field Selection Optimization**
-- **Capability**: Only request needed fields based on object schema
-- **Implementation**: Build GraphQL field selections from Property definitions
-- **Benefit**: Efficient queries that fetch only required data
-
-### 4. **Relationship Traversal**
-- **Challenge**: GraphQL relationships are nested, not separate collection objects
-- **Solution**: Create virtual collection objects for relationships
-- **Example**: `user.posts` becomes a collection object under the user
-
-## Implementation Considerations
-
-### 1. **Schema Mapping Complexity**
-- **Challenge**: GraphQL schemas vary significantly between APIs
-- **Solution**: Configurable mapping rules for each GraphQL endpoint
-- **Strategy**: Schema analysis to auto-generate object hierarchy
-
-### 2. **Filter Translation**
-- **Challenge**: Each GraphQL API has different argument patterns for filtering
-- **Solution**: API-specific filter translation rules
-- **Examples**:
-  - Relay-style: `{ where: { name: { contains: "value" } } }`
-  - Custom: `{ nameFilter: "value", activeOnly: true }`
-  - Simple: `{ name: "value", active: true }`
-
-### 3. **Mutation Discovery**
-- **Approach**: Introspect Mutation type to discover available write operations
-- **Mapping**: Create Function objects for each mutation field
-- **Collection Integration**: Link mutations to collections where possible
-
-### 4. **Relationship Handling**
-- **Nested Objects**: Handle GraphQL nested selections
-- **Related Collections**: Create virtual collections for relationship fields
-- **Deep Fetching**: Manage GraphQL query depth and complexity
-
-### 5. **Real-time Operations**
-- **Subscriptions**: Map GraphQL subscriptions to Function objects
-- **Implementation**: WebSocket or Server-Sent Events integration
-- **State Management**: Handle subscription lifecycle through function calls
-
-## Implementation Suggestions for GraphQL Adapters
-
-### 1. **Dynamic Schema Composition Pattern**
-
-**Bulk Type Catalog Transfer:**
-```javascript
-class GraphQLDataProducerImpl {
-  async getSchema(schemaId) {
-    if (schemaId === 'graphql_type_catalog') {
-      // Return all GraphQL types in single response
-      return {
-        id: 'graphql_type_catalog',
-        dataTypes: await this.introspectAllTypes(),
-        properties: [] // Empty - this is just a type catalog
-      };
-    }
-    return super.getSchema(schemaId);
-  }
-  
-  async introspectAllTypes() {
-    // GraphQL introspection query to get all types
-    const introspection = await this.executeGraphQL(`
-      query IntrospectionQuery {
-        __schema {
-          types {
-            name
-            kind
-            fields { name type { name kind } }
-            enumValues { name }
-          }
-        }
-      }
-    `);
-    
-    return this.convertToDataTypes(introspection);
-  }
-}
-```
-
-### 2. **Enhanced Function Execution with Field Selection**
-
-**Support Dynamic Field Selection:**
-```javascript
-async invokeFunction(objectId, input) {
-  const baseFunction = this.getFunctionMetadata(objectId);
-  
-  // Check for GraphQL-specific enhancement parameters
-  if (input._fields || input._projection) {
-    return this.invokeWithProjection(objectId, input);
-  }
-  
-  // Standard function execution
-  return this.executeStandardFunction(baseFunction, input);
-}
-
-async invokeWithProjection(objectId, input) {
-  const baseFunction = this.getFunctionMetadata(objectId);
-  const fieldSelection = input._fields || this.extractFields(input._projection);
-  
-  // Build GraphQL query with custom field selection
-  const graphqlQuery = this.buildCustomQuery(baseFunction, fieldSelection, input);
-  
-  // Execute and shape result
-  const result = await this.executeGraphQL(graphqlQuery, input);
-  
-  // Return with dynamically composed schema
-  return {
-    data: result,
-    schema: this.generateProjectionSchema(fieldSelection)
-  };
-}
-```
-
-### 3. **Field Selection Query Building**
-
-**Convert Field Selection to GraphQL:**
-```javascript
-buildCustomQuery(baseFunction, fieldSelection, variables) {
-  const fieldSelectionString = this.buildFieldSelectionString(fieldSelection);
-  
-  return `
-    query CustomQuery(${this.buildVariableDefinitions(baseFunction.arguments)}) {
-      ${baseFunction.graphqlFieldName}(${this.buildArguments(variables)}) {
-        ${fieldSelectionString}
-      }
-    }
-  `;
-}
-
-buildFieldSelectionString(fields) {
-  return fields.map(field => {
-    if (field.includes('.')) {
-      // Handle nested field selection
-      const [parent, ...nested] = field.split('.');
-      return `${parent} { ${nested.join(' { ')} ${'}'.repeat(nested.length)}`;
-    }
-    return field;
-  }).join('\n');
-}
-```
-
-### 4. **Client-Side Usage Patterns**
-
-**Enhanced Function Invocation:**
-```javascript
-// Standard function call
-const user = await dataProducer.invokeFunction('func_user', { id: '123' });
-
-// With custom field selection
-const userWithPosts = await dataProducer.invokeFunction('func_user', {
-  id: '123',
-  _fields: ['id', 'name', 'email', 'posts.id', 'posts.title', 'posts.createdAt']
-});
-
-// With projection schema
-const customResult = await dataProducer.invokeFunction('func_user', {
-  id: '123',
-  _projection: {
-    properties: [
-      { name: 'userId', dataType: 'ID', source: 'id' },
-      { name: 'fullName', dataType: 'String', source: 'name' },
-      { name: 'recentPosts', dataType: 'Post', multi: true, 
-        fields: ['id', 'title'], limit: 5 }
+Emitted (Hasura-style example):
+  where: {
+    _and: [
+      { active: { _eq: true } },
+      { _or: [
+        { country: { _eq: "US" } },
+        { country: { _eq: "CA" } }
+      ]},
+      { createdAt: { _gte: "2025-01-01" } }
     ]
   }
-});
 ```
 
-### 5. **Collection Enhancement for GraphQL**
+For endpoints that do not expose a filter argument at all, the producer
+falls back to `expression.matches(item)` post-fetch. Producers that translate
+must document the supported predicate set in their connector documentation.
 
-**Dynamic Collection Field Selection:**
-```javascript
-async getCollectionElements(objectId, options = {}) {
-  const collection = this.getCollectionMetadata(objectId);
-  
-  if (options.fields) {
-    // Custom field selection for collection elements
-    const query = this.buildCollectionQuery(collection, options);
-    const result = await this.executeGraphQL(query);
-    
-    return {
-      elements: result,
-      schema: this.generateCollectionSchema(options.fields)
-    };
-  }
-  
-  return super.getCollectionElements(objectId, options);
-}
+## Core Types Reference
 
-buildCollectionQuery(collection, options) {
-  const fieldSelection = options.fields.join('\n');
-  const args = this.buildPaginationArgs(options);
-  
-  return `
-    query CollectionQuery {
-      ${collection.graphqlFieldName}(${args}) {
-        ${fieldSelection}
-      }
-    }
-  `;
-}
-```
+| GraphQL type                | `dataType`         | Notes                                                              |
+|-----------------------------|--------------------|--------------------------------------------------------------------|
+| `ID`                        | `string`           | Treated as opaque; mark `primaryKey` on the canonical id property. |
+| `String`                    | `string`           | If the value is an email/URL/etc., use the matching core type.     |
+| `Int`                       | `integer`          |                                                                    |
+| `Float`                     | `decimal` (currency) or generic number | Currency-bearing fields must be `decimal`.            |
+| `Boolean`                   | `boolean`          |                                                                    |
+| `DateTime` (custom scalar)  | `date-time`        | Matches ISO 8601 — the core type's pattern validates the value.    |
+| `Date` (custom scalar)      | `date`             |                                                                    |
+| `URL`/`URI` (custom scalar) | `url`              |                                                                    |
+| `Email` (custom scalar)     | `email`            |                                                                    |
+| `BigDecimal` / `Money`      | `decimal`          |                                                                    |
+| Enum types                  | `string` + `references.schemaId` to a `schema:enum:…` |                                          |
+| Object types                | property whose `references.schemaId` points at the type's `schema:type:…` schema. |               |
+| List wrapper (`[T]`)        | parent `dataType` + `multi: true` |                                                              |
+| Non-null wrapper (`T!`)     | maps to `required: true` on the property |                                                          |
 
-### 6. **Schema Optimization Strategies**
+See [`../CoreDataTypes.md`](../CoreDataTypes.md) for the full catalog.
 
-**Intelligent Type Caching:**
-```javascript
-class GraphQLSchemaManager {
-  constructor() {
-    this.typeCache = new Map();
-    this.schemaCache = new Map();
-  }
-  
-  async getOrCreateProjectionSchema(fieldSelection) {
-    const cacheKey = this.hashFieldSelection(fieldSelection);
-    
-    if (this.schemaCache.has(cacheKey)) {
-      return this.schemaCache.get(cacheKey);
-    }
-    
-    const schema = await this.composeProjectionSchema(fieldSelection);
-    this.schemaCache.set(cacheKey, schema);
-    return schema;
-  }
-  
-  composeProjectionSchema(fieldSelection) {
-    // Use cached types to build new schema
-    const properties = fieldSelection.map(field => 
-      this.buildPropertyFromField(field)
-    );
-    
-    return {
-      id: `projection_${Date.now()}`,
-      dataTypes: [], // Reference shared types
-      properties: properties
-    };
-  }
-}
-```
+## Edge Cases
 
-### 7. **Error Handling and Query Complexity**
-
-**GraphQL-Specific Error Translation:**
-```javascript
-async executeGraphQL(query, variables) {
-  try {
-    const result = await this.graphqlClient.request(query, variables);
-    
-    if (result.errors) {
-      throw new GraphQLExecutionError(result.errors);
-    }
-    
-    return result.data;
-  } catch (error) {
-    if (error.response?.errors) {
-      // Translate GraphQL errors to standard API errors
-      throw this.translateGraphQLError(error.response.errors);
-    }
-    throw error;
-  }
-}
-
-translateGraphQLError(graphqlErrors) {
-  // Map GraphQL error types to standard error responses
-  for (const error of graphqlErrors) {
-    if (error.extensions?.code === 'UNAUTHENTICATED') {
-      return new UnauthorizedError(error.message);
-    }
-    if (error.extensions?.code === 'FORBIDDEN') {
-      return new ForbiddenError(error.message);
-    }
-  }
-  
-  return new BadRequestError('GraphQL execution failed');
-}
-```
-
-### 8. **Performance Optimizations**
-
-**Query Batching and DataLoader Integration:**
-```javascript
-class GraphQLDataProducer {
-  constructor() {
-    this.dataLoader = new DataLoader(this.batchLoadEntities.bind(this));
-  }
-  
-  async batchLoadEntities(keys) {
-    // Combine multiple requests into single GraphQL query
-    const batchQuery = this.buildBatchQuery(keys);
-    const results = await this.executeGraphQL(batchQuery);
-    
-    return this.distributeBatchResults(results, keys);
-  }
-  
-  buildBatchQuery(requests) {
-    // Generate GraphQL query with aliases for multiple entities
-    const queries = requests.map((req, index) => `
-      result_${index}: ${req.fieldName}(${req.args}) {
-        ${req.fieldSelection}
-      }
-    `).join('\n');
-    
-    return `query BatchQuery { ${queries} }`;
-  }
-}
-```
-
-These implementation suggestions provide GraphQL-specific optimizations while maintaining compatibility with the generic Dynamic Data Producer Interface. They handle the complexity of dynamic schema composition and field selection without requiring changes to the base API specification.
-
-## GraphQL-Specific Challenges
-
-### 1. **Non-Standard Filter Syntax**
-- **Problem**: No universal GraphQL filtering standard
-- **Impact**: Filter translation requires API-specific configuration
-- **Workaround**: Configurable filter mapping rules per endpoint
-
-### 2. **Complex Nested Queries**
-- **Problem**: GraphQL allows deep nested selections
-- **Impact**: Object model flattens what GraphQL represents as nested
-- **Solution**: Virtual collections for relationships, function objects for complex queries
-
-### 3. **Schema Evolution**
-- **Problem**: GraphQL schemas can change without versioning
-- **Impact**: Object hierarchy may become stale
-- **Solution**: Dynamic schema refresh and change detection
-
-### 4. **Write Operation Discovery**
-- **Problem**: Not all GraphQL fields map cleanly to CRUD operations
-- **Impact**: Some mutations may not fit collection element patterns
-- **Solution**: Expose all mutations as Function objects
-
-### 5. **Query Complexity Management**
-- **Problem**: GraphQL queries can become very complex
-- **Impact**: Performance and security concerns
-- **Solution**: Query complexity analysis and limits in translation layer
-
-## Recommended Extensions
-
-### 1. **GraphQL-Specific Function Objects**
-```yaml
-Object:
-  id: "func_complex_user_search"
-  name: "complex_user_search"
-  objectClass: ["function"]
-  description: "Multi-criteria user search with relationships"
-  inputSchema: "complex_search_input_schema"
-  outputSchema: "complex_search_output_schema"
-  # Custom GraphQL query template
-  graphqlQuery: |
-    query($filters: UserFilters, $includePosts: Boolean = false) {
-      users(where: $filters) {
-        id
-        email
-        name
-        posts @include(if: $includePosts) {
-          id
-          title
-        }
-      }
-    }
-```
-
-### 2. **Relationship Collections**
-```yaml
-Object:
-  id: "user_123_posts"
-  name: "posts"
-  objectClass: ["collection"]
-  description: "Posts for user 123"
-  path: ["users", "user123", "posts"]
-  collectionSchema: "post_schema"
-  tags: ["posts", "relationship"]
-  # Virtual collection backed by GraphQL relationship
-```
-
-### 3. **Schema Versioning**
-```yaml
-Object:
-  id: "schema_version"
-  name: "schema_version"
-  objectClass: ["document"]
-  description: "GraphQL schema version tracking"
-  documentSchema: "schema_version_schema"
-  
-Document Data:
-{
-  "version": "2024.1.15",
-  "schemaHash": "abc123...",
-  "lastUpdated": "2024-01-15T10:30:00Z",
-  "breaking_changes": []
-}
-```
-
-## Advanced Patterns
-
-### 1. **Federated GraphQL**
-- **Challenge**: Multiple GraphQL services with unified schema
-- **Solution**: Create container objects for each service
-- **Benefit**: Unified access across federated services
-
-### 2. **GraphQL Subscriptions as Collections**
-- **Pattern**: Real-time data streams as dynamic collections
-- **Implementation**: WebSocket-backed collection elements
-- **Use Case**: Live feeds, notifications, real-time dashboards
-
-### 3. **Batch Operations**
-- **Pattern**: Multiple GraphQL operations in single request
-- **Implementation**: Function objects that execute multiple mutations
-- **Benefit**: Transaction-like behavior for related operations
-
-## Conclusion
-
-The Dynamic Data Producer Interface can effectively abstract GraphQL APIs, though with more complexity than SQL or LDAP due to GraphQL's flexibility and lack of standardization. The translation layer must be more sophisticated to handle the variety of GraphQL API patterns.
-
-**Key Benefits:**
-- **Unified Interface**: Same API patterns work across REST, GraphQL, and other data sources
-- **Schema Discovery**: GraphQL introspection enables dynamic object hierarchy generation
-- **Relationship Modeling**: GraphQL relationships become navigable object hierarchies
-- **Type Safety**: GraphQL type system maps well to schema definitions
-
-**Implementation Strategy:**
-The translation layer requires API-specific configuration to handle GraphQL's flexibility, but provides significant value in unifying access patterns across different GraphQL endpoints and other data sources.
-
-**Best Use Cases:**
-- Multi-API data integration platforms
-- GraphQL API documentation and exploration tools
-- Cross-API data synchronization
-- Unified query interfaces across different backend services
-- API gateway functionality with data transformation
-
-**Configuration Requirements:**
-Each GraphQL endpoint requires mapping configuration to define how its specific schema, arguments, and operations translate to the generic object model. This configuration can often be auto-generated from GraphQL introspection with minimal manual adjustments.
+- **Pagination.** Relay connections use `pageInfo { endCursor hasNextPage }`
+  + `edges { node }`. Wrap the `endCursor` in the DataProducer `pageToken`
+  response header. Offset-style pagination (`first` / `offset`) is also
+  acceptable; the producer picks based on what the field exposes.
+- **Connection-style collections.** When a field is `UserConnection` rather
+  than `[User!]!`, the collection's element schema is the connection's `node`
+  type, not the connection itself. The producer flattens edges/cursors into
+  pagination metadata.
+- **Aliasing.** GraphQL fields may have non-JS-identifier names if quoted in
+  the schema. The producer should expose them under their schema name, not
+  rewrite them.
+- **Interfaces and unions.** Either expose them as `schema:type:…` whose
+  schema body documents the `__typename` discriminator and the union arms, or
+  flatten to the most common subtype. The first option preserves the type
+  information; the second loses it.
+- **Custom scalars.** Map to the closest core type by inspecting the scalar's
+  format. If unknown, fall back to `string` + `description` — never invent a
+  custom `format:` string.
+- **Schema evolution.** GraphQL has no schema versioning; introspect on
+  connection establishment and re-introspect on a TTL or on cache miss. Cache
+  the resulting schema bodies under their `schema:type:…` IDs.
+- **Errors.** GraphQL `errors[]` accompany partial data. A producer maps
+  fatal errors (no `data`) to the appropriate DataProducer error and surfaces
+  field-level errors in `throws[errorCode]`-shaped form when the operation's
+  schema declares them.
+- **Authorization.** Bearer tokens, signed requests, etc. live on the
+  underlying connection. The interface adds nothing.
+- **Subscriptions.** Not surfaced. If a use case demands streaming, model it
+  via repeated invocation of a Function or surface the subscription
+  separately on a streaming sub-interface — not on the base DataProducer.

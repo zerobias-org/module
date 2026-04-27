@@ -1,607 +1,153 @@
 # Dynamic Data Producer Interface
 
-This interface defines a generic data and browsing system for the Zerobias platform, enabling a wide variety of use cases through a unified API.
+A unified interface for browsing and acting on heterogeneous data sources —
+filesystems, databases, REST APIs, directories, low-code platforms — through a
+single object/operation model. The full specification lives in
+[`documentation/`](documentation/); this README is the consumer entry point.
 
-## 🎯 Supported Use Cases
+## What It Does
 
-- **File and Folder Browsing** - Navigate filesystem-like structures
-- **File Content Parsing** - Extract and process document contents  
-- **Database Access** - Query and browse database schemas and records
-- **Function Calling** - Invoke REST/Lambda/OpenAPI endpoints
-- **Low-Code/No-Code Integration** - Connect to Spreadsheets, Zoho, Salesforce, GRC platforms
+DataProducer abstracts five capability classes — **container**, **collection**,
+**function**, **document**, **binary** — into one interface. An implementation
+declares which classes its objects support, and the interface provides the
+matching operations: tree browsing, filtered/paged queries, function
+invocation, document/binary I/O, and schema introspection.
 
-## 🏗️ Architecture Overview
+## When to Use It
 
-This module builds upon the data structures and definitions provided by the Core Types model: `@zerobias-org/types-core`.
+- You need to surface a non-API data source (database, directory, filesystem,
+  proprietary store) through a uniform interface.
+- You're building a UI or pipeline that should work the same way over many
+  data sources.
+- You need composable schemas — referenced by ID, fetched on demand, cached
+  for the session.
 
-### Core Components
+## Installation
 
-The DynamicData module uses three primary interfaces:
+```bash
+npm install @zerobias-org/module-interface-dataproducer
+```
 
-#### 1. Object Interface
-The foundational unit that forms a tree-like browsing structure. Objects can represent files, folders, database tables, API endpoints, or any hierarchical data.
+Peer dependencies (provided by your platform):
 
-#### 2. Schema Resource  
-Provides metadata and describes data relationships. Used by Collection, Function, and Document objects to define their structure.
+- `@zerobias-org/types-core` — core data type catalog and error model
+- `@zerobias-org/types-core-js` — runtime helpers (`PagedResults`,
+  `PropertySelector`, `CoreType`)
 
-#### 3. Property Entity
-Defines individual properties within schemas, including data types, validation rules, and relationships.
+## Quick Start
 
----
+A minimal flow: get the root, browse children, query a collection.
 
-## 📋 Object Interface Specification
-
-### Core Properties
-
-| Property | Type | Required | Description |
-|----------|------|----------|-------------|
-| `id` | string | ✅ | Immutable primary key (unique identifier) |
-| `name` | string | ✅ | Human-readable name (relatively unique under parent) |
-| `description` | string | ❌ | Optional description |
-| `path` | string[] | ❌ | Documentary path array from root to object |
-| `thumbnail` | string | ❌ | Public URL or data URI for visual representation |
-| `tags` | string[] | ❌ | Optional organizational tags |
-| `created` | timestamp | ❌ | Creation timestamp |
-| `modified` | timestamp | ❌ | Last modification timestamp |
-| `objectClass` | string[] | ❌ | Capability indicators (see Object Classes below) |
-
-### ⚠️ Important Implementation Notes
-
-- **Root Object**: All implementations **MUST** provide a root object with `id` and `name` of `'/'` that includes the `container` objectClass
-- **Identity**: Object `id` is the only reliable identifier; `path` is documentary only
-- **Hierarchy**: Objects can have multiple parents (flexible hierarchy support)
-- **Naming**: Name collisions are allowed but discouraged (names are informational)
-
----
-
-## 🔧 Object Classes (Subtypes)
-
-Objects can implement zero or more classes, each providing specific capabilities. Attempting unsupported operations throws `UnsupportedOperationException`.
-
-### 📁 Container Objects
-*Objects that can contain other objects*
-
-**Capabilities**: `["container"]`
-
-**Required Operations**:
-- **`children()`** - Returns paged results of direct child objects
-  - Supports optional `type` parameter to filter by object class
-  - Only returns immediate children (not grandchildren)
-
-**Optional Operations**:
-- **`objectSearch()`** - Keyword search within object hierarchy
-  - `scope`: `"one_level"` | `"subtree"` (default: `"one_level"`)
-  - `keywords`: string[] - Optional search terms
-  - `filter`: RFC4515 structured filter expression
-  - `sortBy`: Object property for sorting
-  - `sortDirection`: `"asc"` | `"desc"` (default: `"asc"`)
-
-### 📊 Collection Objects
-*Objects representing collections of records*
-
-**Capabilities**: `["collection"]`
-
-**Properties**:
-- `collectionSchema`: Schema ID describing collection elements (optional)
-- `collectionSize`: Number of elements in collection (optional)
-
-**Required Operations**:
-- **`collectionElements()`** - Returns paged collection data
-  - `sortBy`: Property name for sorting
-  - `sortDirection`: `"ascending"` | `"descending"` (default: `"ascending"`)
-
-**Optional Operations**:
-- **`collectionSearch()`** - Filtered collection search
-  - `filter`: RFC4515 structured filter expression
-  - `sortBy` / `sortDirection`: Sorting parameters
-
-### ⚡ Function Objects
-*Objects that can be invoked with parameters*
-
-**Capabilities**: `["function"]`
-
-**Properties**:
-- `inputSchema`: Schema ID for function inputs (optional)
-- `outputSchema`: Schema ID for function outputs (optional)  
-- `throws`: Map of HTTP error codes to error Schema IDs (optional)
-
-**Required Operations**:
-- **`invoke()`** - Execute function with input parameters
-  - Input must conform to `inputSchema` (if specified)
-  - Output conforms to `outputSchema` (if specified)
-  - May raise errors as defined in `throws` or standard errors
-
-### 📄 Document Objects
-*Objects representing structured documents*
-
-**Capabilities**: `["document"]`
-
-**Properties**:
-- `documentSchema`: Schema ID describing document structure
-
-**Required Operations**:
-- **`documentData()`** - Returns JSON document conforming to `documentSchema`
-
-### 📎 Binary Objects
-*Objects containing binary data (files, etc.)*
-
-**Capabilities**: `["binary"]`
-
-**Properties**:
-- `mimeType`: MIME type of the binary content
-- `fileName`: Original filename
-- `size`: Content size in bytes
-
-**Required Operations**:
-- **`download()`** - Download binary content
-  - Supports HTTP Range headers for resumable downloads
-  - Uses streaming interface to prevent memory allocation for large files
-  - See `../fileproducer` for OpenAPI implementation pattern
-
----
-
-## 📐 Schema Resource Specification
-
-### Schema Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `id` | string | Unique, immutable schema identifier |
-| `dataTypes` | DataType[] | Array of all DataType entities used by this schema |
-| `properties` | Property[] | Array of property definitions |
-
-### Property Definition
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `name` | string | - | JavaScript-compatible property name |
-| `description` | string | - | Optional property description |
-| `required` | boolean | `false` | Whether property is required |
-| `multi` | boolean | `false` | Whether property accepts multiple values |
-| `dataType` | string | - | Name of DataType entity |
-| `references` | object | - | Schema ID and property name for relationships |
-
-### DataType Entities
-
-DataType entities are defined in `@zerobias-org/types-core` and provide validated, standardized type definitions across the zerobias platform.
-
-#### Finding Available DataTypes
-
-**Complete Type List**: Located at `node_modules/@zerobias-org/types-core/data/types/types.json`
-
-**Programmatic Access**:
 ```typescript
-import { CoreType } from '@zerobias-org/types-core-js';
+import { ObjectsApi, CollectionsApi, SchemasApi } from '@zerobias-org/module-interface-dataproducer/api';
 
-// List all available type names
-const allTypes = CoreType.listTypes();
+// 1. Start at the root
+const root = await new ObjectsApi(config).getRootObject();
+//    → { id: '/', name: '/', objectClass: ['container'], ... }
 
-// Get type metadata by name
-const emailType = new CoreType('email');
-console.log(emailType.description); // "A valid email"
-console.log(emailType.examples);    // ["john.doe01@gmail.com", ...]
+// 2. Browse the tree
+const children = await new ObjectsApi(config).getChildren(root.id, { pageSize: 50 });
 
-// Get type metadata by format alias
-const urlType = new CoreType(undefined, 'uri');
-console.log(urlType.name); // "url"
+// 3. Pick a collection and fetch its schema
+const customers = children.find(c => c.objectClass.includes('collection'));
+const schema    = await new SchemasApi(config).getSchema(customers.collectionSchema);
+//    schema.id === customers.collectionSchema, e.g. 'schema:table:mydb.public.customers'
+
+// 4. Query elements with an RFC4515 filter
+const rows = await new CollectionsApi(config).searchCollectionElements(
+  customers.id,
+  { filter: '(&(active=true)(country=US))', pageSize: 100 }
+);
 ```
 
-#### Common DataTypes for Schema Properties
+## Core Concepts (one-liners)
 
-| DataType | JSON Type | Description | Example Values |
-|----------|-----------|-------------|----------------|
-| `string` | string | General text values | "any text" |
-| `integer` | number | Integer numbers | 42, -100, 999 |
-| `decimal` | number | Decimal numbers (for currency, precise math) | 19.99, 100.50 |
-| `boolean` | boolean | True/false values | true, false |
-| `date` | string | ISO 8601 dates (YYYY-MM-DD) | "2025-10-24" |
-| `date-time` | string | ISO 8601 timestamps (RFC3339) | "2025-10-24T10:30:00.000Z" |
-| `email` | string | Validated email addresses | "user@example.com" |
-| `phoneNumber` | string | International phone numbers | "+12673103464" |
-| `url` | string | URLs and URIs | "https://example.com" |
-| `geoCountry` | string | ISO 3166-1 alpha-2 country codes | "US", "DE", "FR" |
-| `geoSubdivision` | string | ISO 3166-2 subdivision codes | "US-CA", "DE-BE" |
-| `byte` | string | Base64-encoded binary data | "SGVsbG8sIHdvcmxkCg==" |
-| `mimeType` | string | MIME type identifiers | "application/json", "text/xml" |
-| `uuid` | string | UUID identifiers | "b7168568-af49-11ea-8b0b-47ecc4197a7f" |
-| `ipAddress` | string | IPv4 or IPv6 addresses | "192.168.1.1", "::1" |
-| `hostname` | string | DNS hostnames | "github.com" |
-| `duration` | string | ISO 8601 durations | "P3Y6M4DT12H30M5S", "12h" |
+| Concept                                                                | One-liner                                                                                  |
+|------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
+| **Object** ([Concepts](documentation/Concepts.md))                     | A node in the browseable tree, identified by `id`, capable of one or more `objectClass` operations. |
+| **ObjectClass** ([Concepts](documentation/Concepts.md))                | One of `container`, `collection`, `function`, `document`, `binary` — gates which operations are valid. |
+| **Schema** ([SchemaIds](documentation/SchemaIds.md))                   | Structure for an object's content. Always referenced by an opaque ID, fetched via `getSchema`. |
+| **Schema ID**  ([SchemaIds](documentation/SchemaIds.md))               | Canonical form `schema:{type}:{catalog}.{schema}.{name}[:{direction}]`. Discriminator-prefixed to avoid ambiguity. |
+| **Property / DataType** ([CoreDataTypes](documentation/CoreDataTypes.md)) | Each schema property names a `dataType` from `@zerobias-org/types-core`.                  |
+| **Filter** ([FilterSyntax](documentation/FilterSyntax.md))             | RFC4515 filter expressions for structured queries; LDAP-native, translated for other backends via `lite-filter`. |
+| **Errors** ([Errors](documentation/Errors.md))                         | Standard platform errors plus per-function `throws` schemas.                                |
 
-#### Choosing the Right DataType
+## Common Use Cases
 
-**Use specific types instead of generic ones:**
+- **Browse a database** — connect a SQL implementation; databases become
+  containers, schemas containers, tables collections, functions Function
+  objects with declared input/output schemas. See
+  [SQL mapping](documentation/mappings/SQL.md).
+- **Treat a directory as a tree** — LDAP/AD entries map directly to the object
+  model with native RFC4515 filtering. See
+  [LDAP mapping](documentation/mappings/LDAP.md).
+- **Surface a REST API** — an implementation that pairs DataProducer with
+  HTTP-specific routing on a sub-interface (`HttpModule`). See
+  [OpenAPI mapping](documentation/mappings/OpenAPI.md).
+- **Build a generic UI** — a single component over `getRootObject` /
+  `getChildren` / `getCollectionElements` works for every implementation.
 
-❌ **Avoid**:
-```yaml
-properties:
-  - name: "country"
-    dataType: "string"
-    format: "iso3166-alpha2"  # DON'T use custom formats
+## Reference
+
+| Topic                                                                 | Document                                                |
+|-----------------------------------------------------------------------|---------------------------------------------------------|
+| Object model, classes, operations matrix, lifecycle                   | [`documentation/Concepts.md`](documentation/Concepts.md) |
+| Schema ID format and `getSchema` contract                             | [`documentation/SchemaIds.md`](documentation/SchemaIds.md) |
+| Choosing the right `dataType`                                          | [`documentation/CoreDataTypes.md`](documentation/CoreDataTypes.md) |
+| RFC4515 filters and per-backend translation                            | [`documentation/FilterSyntax.md`](documentation/FilterSyntax.md) |
+| Error taxonomy and the `throws` mechanism                              | [`documentation/Errors.md`](documentation/Errors.md) |
+| Per-source mapping guides (SQL, LDAP, GraphQL, …)                      | [`documentation/mappings/`](documentation/mappings/) |
+| Design rationale and per-source assessment                             | [`documentation/Analysis.md`](documentation/Analysis.md) |
+
+The `api.yml` OpenAPI spec is the on-the-wire contract. The documents above
+are normative for what an implementation must provide; `api.yml` reflects them.
+
+## Pagination and Property Selection
+
+Every list/search operation supports both pagination modes and dot-notation
+property projection:
+
+```typescript
+// Cursor-based — pageToken comes from the previous response header
+collectionsApi.getCollectionElements(id, { pageToken, pageSize: 100 });
+
+// Offset-based — pageNumber, 1-indexed
+collectionsApi.getCollectionElements(id, { pageNumber: 2, pageSize: 100 });
+
+// Project only certain fields (fuzzy-matched: 'email' matches 'e_mail', 'emailAddress', …)
+collectionsApi.searchCollectionElements(id, {
+  properties: ['id', 'name', 'contact.email'],
+});
 ```
 
-✅ **Prefer**:
-```yaml
-properties:
-  - name: "country"
-    dataType: "geoCountry"  # Use defined core type
-    description: "Country code (ISO 3166-1 alpha-2)"
-```
+See [`PagedResults`](https://github.com/zerobias/types-core-js) and
+`PropertySelector` in `@zerobias-org/types-core-js`.
 
-**Benefits of using core types:**
-- ✅ Automatic validation against type rules
-- ✅ Consistent behavior across all modules
-- ✅ Built-in examples and documentation
-- ✅ Type-specific parsing and formatting
-- ✅ IDE autocomplete and type checking
+## FAQ
 
-#### DataType Properties
+**Why are schemas referenced by ID instead of inlined?** Browsing a database
+with 100 tables would otherwise return ~500KB of duplicate schema bodies.
+Schema IDs are 60 bytes each; the full body is fetched on demand and cached.
+See [SchemaIds.md](documentation/SchemaIds.md).
 
-Each DataType entity includes:
-- `name` - Type identifier (lowerCamel convention)
-- `jsonType` - JSON primitive type (`string`, `number`, `boolean`, `object`)
-- `isEnum` - Whether type has enumerated values
-- `formats` - Alternative format names (e.g., `url` has format alias `uri`)
-- `description` - Human-readable description
-- `examples` - Array of valid example values
-- `pattern` - Regex pattern for validation (if applicable)
-- `htmlInput` - HTML input type hint (e.g., `email`, `tel`, `url`)
+**Why RFC4515 instead of, say, JSON-based filter trees?** It's compact, has a
+spec, and a single shared parser (`@zerobias-org/util-lite-filter`) means
+every implementation interprets it the same way. See
+[FilterSyntax.md](documentation/FilterSyntax.md).
+
+**Why can't I find HTTP method/path on a Function object?** The base
+DataProducer is transport-agnostic. HTTP-specific properties belong on a
+sub-interface (e.g. `HttpModule`) that an implementation can adopt alongside
+DataProducer. See [OpenAPI.md](documentation/mappings/OpenAPI.md).
+
+**How do I add a new data source?** Implement the operations relevant to your
+source's classes and start with the matching mapping document in
+`documentation/mappings/`. If your source category isn't covered, follow the
+template in [`documentation/mappings/README.md`](documentation/mappings/README.md).
 
 ---
 
-## 🔄 Schema Composition and Reuse
-
-The DataProducer interface supports schema composition through **schema ID references**, enabling three key benefits:
-
-### 1. Composition and Sharing
-
-Reuse common schema definitions across multiple properties, avoiding duplication and ensuring consistency.
-
-**Example: Shared Address Schema**
-
-```json
-{
-  "id": "schema:shared:address",
-  "dataTypes": [
-    { "name": "string", "jsonType": "string" },
-    { "name": "geoCountry", "jsonType": "string" },
-    { "name": "geoSubdivision", "jsonType": "string" }
-  ],
-  "properties": [
-    {
-      "name": "street",
-      "dataType": "string",
-      "required": true,
-      "description": "Street address"
-    },
-    {
-      "name": "city",
-      "dataType": "string",
-      "required": true,
-      "description": "City name"
-    },
-    {
-      "name": "state",
-      "dataType": "geoSubdivision",
-      "required": true,
-      "description": "State or province code (ISO 3166-2)"
-    },
-    {
-      "name": "country",
-      "dataType": "geoCountry",
-      "required": true,
-      "description": "Country code (ISO 3166-1 alpha-2)"
-    },
-    {
-      "name": "postalCode",
-      "dataType": "string",
-      "required": true,
-      "description": "Postal/ZIP code"
-    }
-  ]
-}
-```
-
-**Usage: Customer Schema Referencing Address**
-
-```json
-{
-  "id": "schema:table:mydb.public.customers",
-  "dataTypes": [
-    { "name": "integer", "jsonType": "number" },
-    { "name": "string", "jsonType": "string" },
-    { "name": "email", "jsonType": "string" }
-  ],
-  "properties": [
-    {
-      "name": "id",
-      "dataType": "integer",
-      "primaryKey": true,
-      "required": true,
-      "description": "Customer ID"
-    },
-    {
-      "name": "name",
-      "dataType": "string",
-      "required": true,
-      "description": "Customer name"
-    },
-    {
-      "name": "email",
-      "dataType": "email",
-      "required": true,
-      "description": "Contact email"
-    },
-    {
-      "name": "billingAddress",
-      "dataType": "string",
-      "required": true,
-      "description": "Billing address",
-      "references": {
-        "schemaId": "schema:shared:address"
-      }
-    },
-    {
-      "name": "shippingAddress",
-      "dataType": "string",
-      "required": false,
-      "description": "Shipping address (if different)",
-      "references": {
-        "schemaId": "schema:shared:address"
-      }
-    }
-  ]
-}
-```
-
-**Benefits:**
-- ✅ Single source of truth for address structure
-- ✅ Both `billingAddress` and `shippingAddress` reference same schema
-- ✅ Changes to address schema automatically apply to all uses
-- ✅ Client can fetch `schema:shared:address` once and cache it
-
-### 2. Simplifying Nested Objects
-
-Each layer is a flat map of key/value pairs with schema ID references, avoiding deeply nested JSON structures.
-
-**❌ Without Schema Composition (Deeply Nested):**
-
-```json
-{
-  "id": "schema:table:mydb.public.orders",
-  "properties": [
-    {
-      "name": "customer",
-      "dataType": "object",
-      "properties": [
-        {
-          "name": "billingAddress",
-          "dataType": "object",
-          "properties": [
-            { "name": "street", "dataType": "string" },
-            { "name": "city", "dataType": "string" },
-            { "name": "state", "dataType": "string" }
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
-
-**✅ With Schema Composition (Flat References):**
-
-```json
-{
-  "id": "schema:table:mydb.public.orders",
-  "properties": [
-    {
-      "name": "customerId",
-      "dataType": "integer",
-      "references": {
-        "schemaId": "schema:table:mydb.public.customers",
-        "propertyName": "id"
-      }
-    }
-  ]
-}
-```
-
-**Benefits:**
-- ✅ Flat, simple structure at each level
-- ✅ References instead of deep nesting
-- ✅ Client loads schemas on-demand as needed
-- ✅ Easier to parse and validate
-
-### 3. Cheap Calls (Avoid Materializing Full Schemas)
-
-Object metadata returns schema **IDs** instead of full schema objects, minimizing payload size and allowing clients to fetch schemas only when needed.
-
-**Collection Object with Schema ID:**
-
-```json
-{
-  "id": "/db:mydb/schema:public/table:customers",
-  "name": "customers",
-  "description": "Customer records",
-  "objectClass": ["collection"],
-  "collectionSchema": "schema:table:mydb.public.customers",
-  "collectionSize": 1543
-}
-```
-
-**Client Workflow:**
-
-1. **Browse objects** - Gets lightweight metadata with schema IDs
-2. **Display list** - Shows object names, counts, descriptions
-3. **User selects object** - Only then fetch full schema via `getSchema()`
-4. **Cache schema** - Reuse for multiple data queries
-
-**Performance Benefits:**
-
-| Operation | Without Schema IDs | With Schema IDs |
-|-----------|-------------------|----------------|
-| List 100 tables | 500KB+ (full schemas) | 15KB (IDs only) |
-| Browse hierarchy | All schemas loaded | Zero schemas loaded |
-| View table data | Schema already loaded | Fetch schema once |
-| View related table | Duplicate schema | Reuse cached schema |
-
-### Schema ID Naming Convention
-
-Schema IDs follow a structured format with **type discriminators** to handle naming conflicts in databases where tables, views, types, and enums can share the same name.
-
-**Format:** `schema:{type}:{catalog}.{schema}.{name}[:{direction}]`
-
-**Examples:**
-
-```
-# Tables
-schema:table:mydb.public.customers
-schema:table:mydb.sales.orders
-
-# Views
-schema:view:mydb.public.active_customers
-schema:view:mydb.analytics.monthly_revenue
-
-# Functions (with direction)
-schema:function:mydb.public.calculate_tax:input
-schema:function:mydb.public.calculate_tax:output
-
-# Custom Types
-schema:type:mydb.public.address
-schema:type:mydb.public.contact_info
-
-# Enums
-schema:enum:mydb.public.order_status
-schema:enum:mydb.public.payment_method
-
-# Shared Types (not database-specific)
-schema:shared:address
-schema:shared:pagination_params
-```
-
-**Why Discriminators Are Required:**
-
-PostgreSQL allows naming conflicts:
-```sql
--- All of these can coexist in the same schema:
-CREATE TABLE public.address (...);
-CREATE TYPE public.address AS (...);
-CREATE VIEW public.address AS SELECT ...;
-```
-
-Without discriminators, `schema:mydb.public.address` would be ambiguous. With discriminators:
-- `schema:table:mydb.public.address` - Unambiguous table reference
-- `schema:type:mydb.public.address` - Unambiguous type reference
-- `schema:view:mydb.public.address` - Unambiguous view reference
-
-### Foreign Key vs Composition Patterns
-
-**Foreign Key Pattern** - Property references another collection:
-
-```json
-{
-  "name": "customerId",
-  "dataType": "integer",
-  "references": {
-    "schemaId": "schema:table:mydb.public.customers",
-    "propertyName": "id"
-  }
-}
-```
-
-Client knows:
-- ✅ `customerId` is a foreign key to `customers` table
-- ✅ Can fetch `customers` collection schema to understand the referenced entity
-- ✅ Can navigate: order → customer → customer details
-
-**Composition Pattern** - Property is a structured sub-object:
-
-```json
-{
-  "name": "billingAddress",
-  "dataType": "string",
-  "references": {
-    "schemaId": "schema:shared:address"
-  }
-}
-```
-
-Client knows:
-- ✅ `billingAddress` is an embedded object (no separate collection)
-- ✅ Schema defines structure of the nested object
-- ✅ No navigation to separate entity (it's contained data)
-
-**Key Difference:** `propertyName` indicates foreign key relationship; absence indicates composition.
-
----
-
-## ⚙️ Implementation Guidelines
-
-### Error Handling
-
-| Error Type | When | Response |
-|------------|------|----------|
-| `noSuchObjectError` | Object ID not found | 404 with object type and ID |
-| `noSuchObjectError` | Invalid schema reference | 404 with schema details |
-| `UnsupportedOperationException` | Operation not supported by object class | 400 with operation details |
-| Custom Function Errors | Function execution fails | As defined in function's `throws` property |
-
-**Note**: Error definitions come from `@zerobias-org/types-core`. Circular reference detection is the caller's responsibility.
-
-### Paging and Filtering
-
-- **Default Page Size**: 100 items
-- **Paging Structure**: Uses `@zerobias-org/types-core` paging model
-  - `count`: Total items available
-  - `pageCount`: Total pages
-  - `pageNumber`: Current page (1-indexed)
-  - `pageSize`: Items per page
-- **Filters**: Use RFC4515 syntax for structured expressions
-- **NPM Library**: Available for filter creation and parsing with sanity checking
-
-### Security and Access Control
-
-- **Authentication**: Inherited from underlying product connections
-- **Authorization**: Uses permissions of the principal that established the connection
-- **Function Limits**: Applied by underlying runtime components
-- **Binary Downloads**: No size limits, but must support streaming/chunking
-
-### Binary Download Implementation
-
-For binary objects, implement downloads using the pattern from `../fileproducer`:
-
-```yaml
-responses:
-  '200':
-    description: Binary file download
-    content:
-      '*/*':
-        schema:
-          type: string
-          format: binary
-```
-
-This enables:
-- ✅ Streaming downloads (standard HTTP)
-- ✅ Resumable downloads (HTTP Range headers)  
-- ✅ Any MIME type support
-- ✅ Memory efficient processing
-
----
-
-## 🔗 Dependencies
-
-- **`@zerobias-org/types-core`** - Core data types and error models
-- **RFC4515 Filter Library** - For structured filter expressions (NPM package available)
-
----
-
-## 📝 Exception Handling
-
-When objects are no longer present, operations return 404 status with `noSuchObjectError` containing the same structure that would be returned by browsing the object's parent with matching filters.
-
-All error responses conform to the error model definitions in `@zerobias-org/types-core`, providing consistent error handling across the platform.<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
 - [Apis](#apis)

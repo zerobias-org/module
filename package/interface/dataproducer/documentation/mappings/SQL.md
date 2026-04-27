@@ -1,341 +1,267 @@
-# PostgreSQL RDBMS Mapping to Dynamic Data Producer Interface
+# SQL Mapping
 
 ## Overview
 
-This document describes how PostgreSQL database concepts map to the Dynamic Data Producer Interface, enabling unified access to relational database structures through the generic object model. The interface is implemented via a translation layer that converts generic operations (RFC4515 filters, object hierarchy navigation) into appropriate SQL operations (WHERE clauses, JOINs, etc.).
+How a relational database (PostgreSQL is the canonical example; this generalizes
+to MySQL, SQL Server, Oracle, etc.) surfaces through the DataProducer
+interface. A producer translates between RFC4515 filters / object operations
+and the database's native query language; the interface contract is the same
+regardless of dialect.
+
+For the foundational rules this mapping follows, see
+[`../Concepts.md`](../Concepts.md), [`../SchemaIds.md`](../SchemaIds.md),
+[`../CoreDataTypes.md`](../CoreDataTypes.md), and
+[`../FilterSyntax.md`](../FilterSyntax.md).
 
 ## Conceptual Mapping
 
-### PostgreSQL Hierarchy → Object Model
+| Native concept       | DataProducer concept                       | Notes                                    |
+|----------------------|--------------------------------------------|------------------------------------------|
+| Server               | Root container                              | `id == name == "/"`                      |
+| Database / catalog   | Container                                    |                                          |
+| Schema               | Container                                    | Direct child of database                  |
+| Table                | Collection (read+write if PK declared)        | `collectionSchema` is `schema:table:...` |
+| View                 | Collection (read-only)                       | `collectionSchema` is `schema:view:...`  |
+| Function / proc      | Function                                     | `inputSchema` / `outputSchema` carry direction |
+| Custom type          | (referenced by `schema:type:...`)            | Returned via `getSchema`, not a top-level Object |
+| Enum type            | (referenced by `schema:enum:...`)            | Same — surfaces inside schemas, not as a browseable Object |
+| Index, constraint    | Not exposed                                  | Implementation detail; doesn't shape the public model |
 
-```
-PostgreSQL Server (Root)
-├── Database 1                    → Container Object
-│   ├── Schema "public"          → Container Object  
-│   │   ├── Table "customers"    → Collection Object
-│   │   ├── View "active_users"  → Collection Object (read-only)
-│   │   ├── Function "calc_tax"  → Function Object
-│   │   └── Enum "status_type"   → Document Object
-│   └── Schema "analytics"       → Container Object
-│       └── Table "reports"      → Collection Object
-└── Database 2                   → Container Object
-    └── ...
-```
+## Object Mappings
 
-## Detailed Object Mappings
+### Database (Container)
 
-### 1. PostgreSQL Server (Root Container)
 ```yaml
 Object:
-  id: "/"
-  name: "PostgreSQL Server"
-  objectClass: ["container"]
-  description: "PostgreSQL database server instance"
-  # Server metadata
-  tags: ["postgresql", "rdbms"]
-```
-
-### 2. Database → Container Object
-```yaml
-Object:
-  id: "db_ecommerce"
+  id: "/db:ecommerce"
   name: "ecommerce"
   objectClass: ["container"]
   description: "E-commerce application database"
-  # Database-specific metadata
   tags: ["database"]
 ```
 
-### 3. Schema → Container Object
+### Schema (Container)
+
 ```yaml
 Object:
-  id: "schema_public"
+  id: "/db:ecommerce/schema:public"
   name: "public"
   objectClass: ["container"]
-  description: "Default PostgreSQL schema"
   path: ["ecommerce", "public"]
   tags: ["schema"]
 ```
 
-### 4. Table → Collection Object
+### Table (Collection)
+
 ```yaml
 Object:
-  id: "table_customers"
+  id: "/db:ecommerce/schema:public/table:customers"
   name: "customers"
   objectClass: ["collection"]
-  description: "Customer information table"
+  description: "Customer master records"
   path: ["ecommerce", "public", "customers"]
-  collectionSchema: "customers_schema"
+  collectionSchema: "schema:table:ecommerce.public.customers"
   collectionSize: 15000
   tags: ["table", "master-data"]
+```
 
+The `collectionSchema` is fetched via `getSchema`:
+
+```yaml
 Schema:
-  id: "customers_schema"
+  id: "schema:table:ecommerce.public.customers"
+  dataTypes:
+    - name: "integer"
+    - name: "string"
+    - name: "email"
+    - name: "date-time"
   properties:
     - name: "customer_id"
       dataType: "integer"
       primaryKey: true
       required: true
-      description: "Primary key"
+      description: "Customer ID"
     - name: "email"
-      dataType: "string"
-      format: "email"
+      dataType: "email"
       required: true
+      description: "Primary contact email"
     - name: "created_at"
-      dataType: "timestamp"
-      format: "ISO8601"
+      dataType: "date-time"
+      required: true
+      description: "Row creation timestamp"
     - name: "status"
-      dataType: "enum"
+      dataType: "string"
+      description: "Lifecycle status"
       references:
-        schemaId: "status_enum_schema"
+        schemaId: "schema:enum:ecommerce.public.customer_status"
 ```
 
-### 5. View → Collection Object (Read-only)
+### View (Read-only Collection)
+
 ```yaml
 Object:
-  id: "view_active_customers"
+  id: "/db:ecommerce/schema:public/view:active_customers"
   name: "active_customers"
   objectClass: ["collection"]
-  description: "View of currently active customers"
-  collectionSchema: "active_customers_schema"
-  # Views are read-only - no primary key properties
+  description: "Customers with status = 'active'"
+  collectionSchema: "schema:view:ecommerce.public.active_customers"
   tags: ["view", "derived"]
 ```
 
-### 6. Function → Function Object
+A view's collection schema declares no `primaryKey: true` properties, which
+implicitly disables element-level CRUD.
+
+### Function (Function)
+
 ```yaml
 Object:
-  id: "func_calculate_tax"
+  id: "/db:ecommerce/schema:public/function:calculate_tax"
   name: "calculate_tax"
   objectClass: ["function"]
-  description: "Calculate tax for given amount and region"
-  inputSchema: "calc_tax_input_schema"
-  outputSchema: "calc_tax_output_schema"
+  description: "Compute tax for an amount in a region"
+  inputSchema:  "schema:function:ecommerce.public.calculate_tax:input"
+  outputSchema: "schema:function:ecommerce.public.calculate_tax:output"
   throws:
-    "400": "invalid_input_schema"
+    invalid_region:    "schema:shared:invalid_input_error"
+    rate_unavailable:  "schema:shared:upstream_error"
   tags: ["function", "business-logic"]
+```
 
-# Input Schema
+```yaml
 Schema:
-  id: "calc_tax_input_schema"
+  id: "schema:function:ecommerce.public.calculate_tax:input"
+  dataTypes:
+    - name: "decimal"
+    - name: "geoSubdivision"
   properties:
     - name: "amount"
       dataType: "decimal"
       required: true
-    - name: "region_code"
-      dataType: "string"
+      description: "Pre-tax amount"
+    - name: "region"
+      dataType: "geoSubdivision"
       required: true
+      description: "ISO 3166-2 subdivision code"
 
-# Output Schema  
 Schema:
-  id: "calc_tax_output_schema"
+  id: "schema:function:ecommerce.public.calculate_tax:output"
+  dataTypes:
+    - name: "decimal"
   properties:
     - name: "tax_amount"
       dataType: "decimal"
+      required: true
     - name: "total_amount"
       dataType: "decimal"
+      required: true
 ```
 
-### 7. Enum Type → Document Object
-```yaml
-Object:
-  id: "enum_status_type"
-  name: "status_type"
-  objectClass: ["document"]
-  description: "Customer status enumeration"
-  documentSchema: "enum_schema"
-  tags: ["enum", "type-definition"]
+## Operation Mappings
 
-# Enum values stored as document
-Document Data:
-{
-  "type": "enum",
-  "values": ["active", "inactive", "pending", "suspended"],
-  "default": "pending"
-}
+### Browsing
+
+| Operation                          | SQL                                                                |
+|------------------------------------|--------------------------------------------------------------------|
+| `getRootObject`                    | (synthetic — server identity)                                      |
+| `getChildren` on root              | `SELECT datname FROM pg_database WHERE datistemplate = false`      |
+| `getChildren` on database          | `SELECT schema_name FROM information_schema.schemata`              |
+| `getChildren` on schema            | `SELECT table_name, table_type FROM information_schema.tables …`   |
+| `getObject`                        | `information_schema` lookup by name                                |
+| `searchChildObjects`               | `information_schema` lookup with RFC4515 filter applied to metadata |
+
+### Collection (table) operations
+
+| Operation                          | SQL                                                                |
+|------------------------------------|--------------------------------------------------------------------|
+| `getCollectionElements`            | `SELECT * FROM "schema"."table" ORDER BY pk LIMIT pageSize OFFSET …`|
+| `searchCollectionElements`         | `SELECT * FROM "schema"."table" WHERE <translated filter> …`        |
+| `getCollectionElement(key)`        | `SELECT * FROM "schema"."table" WHERE pk = $1`                      |
+| `addCollectionElement`             | `INSERT INTO "schema"."table" (...) VALUES (...) RETURNING *`       |
+| `updateCollectionElement(key)`     | `UPDATE "schema"."table" SET ... WHERE pk = $1 RETURNING *`         |
+| `deleteCollectionElement(key)`     | `DELETE FROM "schema"."table" WHERE pk = $1`                        |
+| `executeBulkOperations`            | Wrapped in a single transaction; rolls back on first error if `atomic:true`. |
+
+### Function operations
+
+| Operation                          | SQL                                                                |
+|------------------------------------|--------------------------------------------------------------------|
+| `invokeFunction`                   | `SELECT "schema"."function"($1, $2, …)`                             |
+| `validateFunctionInput`            | Type-check input against `inputSchema` without executing            |
+
+## Filter Translation Example
+
+Translation uses the parsed RFC4515 AST from `@zerobias-org/util-lite-filter`.
+The producer walks the AST and emits parameterized SQL.
+
+```
+Filter:    (&(active=true)(|(country=US)(country=CA))(created_at>=2025-01-01))
+
+AST (lite-filter):
+  AND
+    EQ active true
+    OR
+      EQ country "US"
+      EQ country "CA"
+    GTE created_at "2025-01-01"
+
+Emitted SQL:
+  WHERE active = $1
+    AND (country = $2 OR country = $3)
+    AND created_at >= $4
+  -- params: [true, 'US', 'CA', '2025-01-01']
 ```
 
+Substring/prefix patterns map to `LIKE`:
 
-## API Usage Examples
+| RFC4515            | SQL                              |
+|--------------------|----------------------------------|
+| `(name=A*)`        | `name LIKE 'A%'`                  |
+| `(name=*ice)`      | `name LIKE '%ice'`                |
+| `(name=*ice*)`     | `name LIKE '%ice%'`               |
+| `(email=*)`        | `email IS NOT NULL`               |
+| `(!(active=true))` | `NOT (active = true)`             |
 
-### Database Operations
+Producers must always parameterize values to avoid SQL injection — the lite-filter
+AST never returns raw text, so emitting `$1`-style placeholders is straightforward.
 
-**List Databases:**
-```http
-GET /objects/children
-```
+## Core Types Reference
 
-**Create Database:**
-```http
-POST /objects/children
-{
-  "name": "analytics_db",
-  "objectClass": ["container"],
-  "description": "Analytics database"
-}
-```
+Common mappings from PostgreSQL types to DataProducer core dataTypes. See
+[`../CoreDataTypes.md`](../CoreDataTypes.md) for the full catalog.
 
-### Table Operations
+| PostgreSQL type            | `dataType`         | Notes                                          |
+|----------------------------|--------------------|------------------------------------------------|
+| `int2`, `int4`, `int8`     | `integer`          |                                                |
+| `numeric`, `decimal`       | `decimal`          | Use for money — never `float`/`double`.        |
+| `float4`, `float8`         | `decimal` or generic number, depending on need  | Currency must be `decimal`.                    |
+| `text`, `varchar`, `char`  | `string`           | If the text is an email/URL/etc., use that core type instead. |
+| `boolean`                  | `boolean`          |                                                |
+| `date`                     | `date`             |                                                |
+| `timestamp`, `timestamptz` | `date-time`        |                                                |
+| `interval`                 | `duration`         |                                                |
+| `uuid`                     | `uuid`             |                                                |
+| `bytea`                    | `byte`             | Base64-encoded over the wire.                  |
+| `inet`, `cidr`             | `ipAddress`        |                                                |
+| `json`, `jsonb`            | `string` (with composition reference) | Prefer modeling structure via a referenced shared schema. |
+| `array` (e.g. `int[]`)     | parent `dataType` + `multi: true` | E.g. `dataType: integer, multi: true`. |
+| user-defined enum          | `string` + `references.schemaId` to a `schema:enum:…`   | The schema body lists the allowed values. |
+| user-defined composite     | `string` + `references.schemaId` to a `schema:type:…`   | Schema body lists the fields.            |
 
-**List Tables in Schema:**
-```http
-GET /objects/schema_public/children?type=collection
-```
+For PostGIS or other extension types, model via composition: define a
+`schema:shared:point` (or similar), and have properties reference it.
 
-**List Only Tables (not views):**
-```http
-GET /objects/schema_public/children?tags=table
-```
+## Edge Cases
 
-**List Only Views:**
-```http
-GET /objects/schema_public/children?tags=view
-```
-
-**Get Table Rows (with pagination):**
-```http
-GET /objects/table_customers/collection/elements?pageSize=50&pageNumber=1
-```
-
-**Query Table with Filter (RFC4515 → SQL WHERE):**
-```http
-GET /objects/table_customers/collection/search?filter=(status=active)
-# Translates to: SELECT * FROM customers WHERE status = 'active'
-```
-
-**Complex Filter (RFC4515 → SQL WHERE):**
-```http
-GET /objects/table_customers/collection/search?filter=(&(status=active)(created_at>=2024-01-01))
-# Translates to: SELECT * FROM customers WHERE status = 'active' AND created_at >= '2024-01-01'
-```
-
-**Get Specific Row:**
-```http
-GET /objects/table_customers/collection/elements/12345
-```
-
-**Insert Row:**
-```http
-POST /objects/table_customers/collection/elements
-{
-  "email": "john@example.com",
-  "status": "active",
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
-
-**Update Row:**
-```http
-PUT /objects/table_customers/collection/elements/12345
-{
-  "status": "inactive"
-}
-```
-
-### Function Operations
-
-**Execute Function:**
-```http
-POST /objects/func_calculate_tax/invoke
-{
-  "amount": 100.00,
-  "region_code": "CA"
-}
-```
-
-## Translation Layer Capabilities
-
-### 1. **RFC4515 Filter → SQL WHERE Translation**
-- **Capability**: Standard RFC4515 predicates map directly to SQL WHERE clauses
-- **Examples**:
-  - `(name=John)` → `WHERE name = 'John'`
-  - `(&(age>=18)(status=active))` → `WHERE age >= 18 AND status = 'active'`
-  - `(|(dept=sales)(dept=marketing))` → `WHERE dept IN ('sales', 'marketing')`
-
-### 2. **Object Hierarchy → SQL Schema Navigation**
-- **Capability**: Container/Collection hierarchy maps to database/schema/table structure
-- **Implementation**: Translation layer maintains metadata about database structure
-
-### 3. **Tag-based Filtering**
-- **Capability**: Filter children by tags enables semantic grouping
-- **Examples**:
-  - `?tags=table` returns only tables, not views or functions
-  - `?tags=master-data` returns core business entities
-  - `?tags=temporary` returns temporary or staging tables
-
-## Implementation Considerations
-
-### 1. **Complex Query Patterns**
-- **Challenge**: Multi-table JOINs, subqueries, window functions
-- **Solution**: Use Function objects to encapsulate complex SQL patterns
-- **Example**: Create a function object for "customer_orders_with_totals" that performs the necessary JOINs
-
-### 2. **Transaction Management**
-- **Approach**: Implementation layer handles transaction boundaries
-- **Strategy**: Single API calls are atomic; multi-call operations rely on application-level coordination
-
-### 3. **Schema Evolution**
-- **Approach**: DDL operations (CREATE, ALTER, DROP) handled outside the data access interface
-- **Rationale**: Schema changes are administrative operations, not data access operations
-
-### 4. **Performance Optimization**
-- **Indexes**: Not exposed through the interface since they're implementation details
-- **Query Plans**: Translation layer can optimize based on usage patterns
-- **Caching**: Implementation can cache frequently accessed metadata and data
-
-### 5. **Data Type Handling**
-- **Strategy**: Use `format` field to capture PostgreSQL-specific type information
-- **Examples**:
-  - `dataType: "array", format: "integer[]"`
-  - `dataType: "json", format: "jsonb"`
-  - `dataType: "geometry", format: "point"`
-
-## Recommended Extensions
-
-### 1. **Query Function Objects**
-Create standardized function objects for common SQL patterns:
-```yaml
-Object:
-  id: "query_customer_orders"
-  name: "customer_orders_join"
-  objectClass: ["function"]
-  description: "JOIN customers with orders"
-  inputSchema: "customer_filter_schema"
-  outputSchema: "customer_orders_schema"
-```
-
-### 2. **Relationship Metadata**
-Extend Schema properties to include relationship information:
-```yaml
-Property:
-  name: "customer_id"
-  dataType: "integer"
-  references:
-    schemaId: "customers_schema"
-    propertyName: "customer_id"
-    relationshipType: "foreign_key"
-```
-
-### 3. **Constraint Objects**
-Model constraints as Document objects:
-```yaml
-Object:
-  id: "constraint_customers_email_unique"
-  name: "customers_email_unique"
-  objectClass: ["document"]
-  documentSchema: "constraint_schema"
-```
-
-## Conclusion
-
-The Dynamic Data Producer Interface provides an effective abstraction for PostgreSQL databases through a translation layer that converts generic operations into appropriate SQL. The interface successfully abstracts core database operations into a consistent, RESTful API that integrates seamlessly with other data sources in the Zerobias platform.
-
-**Key Benefits:**
-- **Unified Interface**: Same API patterns work across databases, spreadsheets, and files
-- **Translation Layer**: RFC4515 filters translate naturally to SQL WHERE clauses
-- **Tag-based Organization**: Semantic grouping enables filtering tables vs views vs functions
-- **Schema Flexibility**: `format` field captures database-specific type information
-- **Function Encapsulation**: Complex SQL patterns wrapped in reusable function objects
-
-**Implementation Strategy:**
-The translation layer handles the complexity of converting generic object operations into efficient SQL, while maintaining the abstraction that allows the same client code to work across multiple data source types. Performance optimizations, indexing, and query planning remain implementation details hidden from the interface consumers.
+- **Quoted identifiers.** PostgreSQL identifiers can contain any character if
+  quoted (`"My Table"`). Schema IDs do not encode quotes — the producer is
+  responsible for round-tripping the original casing/quoting when emitting SQL.
+- **Schema search path.** `getChildren` on a schema reflects only that schema;
+  it does not honor the session's `search_path`.
+- **Materialized views.** Treated like views for the purposes of this mapping
+  (read-only Collection); refresh is administrative and not exposed.
+- **Triggers and rules.** Not exposed. They run server-side as a side effect
+  of `INSERT`/`UPDATE`/`DELETE` operations.
+- **DDL.** Out of scope. Creating/altering/dropping tables is administrative,
+  not a DataProducer operation.
+- **Row-Level Security.** Inherited from the connection's principal; the
+  interface adds no separate authorization layer.

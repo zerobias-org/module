@@ -581,43 +581,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidationResult'
-  /objects/{objectId}/rest:
-    post:
-      tags:
-        - functions
-      summary: Execute raw REST request
-      description: Execute low-level REST request (function objects with httpMethod only)
-      operationId: executeRestRequest
-      parameters:
-        - $ref: '#/components/parameters/objectId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RestRequest'
-      responses:
-        '200':
-          description: REST response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RestResponse'
   # Schema Operations
   /schemas/{schemaId}:
     get:
       tags:
         - schemas
       summary: Get schema by ID
-      description: Retrieve schema metadata and structure
+      description: |
+        Retrieve schema metadata and structure for a given schema ID.
+
+        The `schemaId` path parameter must be URL-encoded because canonical
+        schema IDs contain `:` and `.` characters (e.g.
+        `schema:table:mydb.public.customers`).
+
+        Implementations are expected to cache schema lookups (recommended TTL: 5 minutes).
       operationId: getSchema
       parameters:
         - name: schemaId
           in: path
           required: true
-          description: Unique schema identifier
+          description: |
+            URL-encoded canonical schema identifier. See the `SchemaId` schema
+            for the full format specification.
           schema:
-            type: string
+            $ref: '#/components/schemas/SchemaId'
       responses:
         '200':
           description: Schema details
@@ -722,6 +709,25 @@ components:
           schema:
             $ref: './node_modules/@zerobias-org/types-core/schema/errors/illegalArgumentError.yml'
   schemas:
+    SchemaId:
+      type: string
+      description: |
+        Canonical schema identifier in the form `schema:{type}:{catalog}.{schema}.{name}[:{direction}]`.
+
+        Type discriminators:
+          - `table`    — database table  (e.g. `schema:table:mydb.public.customers`)
+          - `view`     — database view   (e.g. `schema:view:mydb.public.active_customers`)
+          - `function` — function input/output, requires `:input` or `:output` suffix
+                         (e.g. `schema:function:mydb.public.calc_tax:input`)
+          - `type`     — custom/composite type     (e.g. `schema:type:mydb.public.address`)
+          - `enum`     — enumerated type           (e.g. `schema:enum:mydb.public.order_status`)
+          - `shared`   — reusable, non-database-scoped schema, form `schema:shared:{name}`
+                         (e.g. `schema:shared:address`)
+
+        Discriminators are required because databases allow a table, view, type, and
+        domain to share the same name; a discriminator-less ID would be ambiguous.
+      pattern: '^(schema:(table|view|type|enum):[^:.]+\.[^:.]+\.[^:.]+|schema:function:[^:.]+\.[^:.]+\.[^:.]+:(input|output)|schema:shared:[^:]+)$'
+      example: 'schema:table:mydb.public.customers'
     Object:
       type: object
       required:
@@ -773,7 +779,8 @@ components:
         # Container properties
         # Collection properties
         collectionSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for collection elements (collection objects only)
         collectionSize:
           type: integer
@@ -781,19 +788,22 @@ components:
           description: Number of elements in collection (collection objects only)
         # Function properties
         inputSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for function inputs (function objects only)
         outputSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for function outputs (function objects only)
         throws:
           type: object
           additionalProperties:
-            type: string
-          description: Map of HTTP error codes to error Schema IDs (function objects only)
+            $ref: '#/components/schemas/SchemaId'
+          description: Map of error codes to error Schema IDs (function objects only)
         # Document properties
         documentSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for document structure (document objects only)
         # Binary properties
         mimeType:
@@ -806,40 +816,6 @@ components:
           type: integer
           format: int64
           description: Content size in bytes (binary objects only)
-        # HTTP properties (function objects only)
-        httpMethod:
-          type: string
-          enum: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS]
-          description: HTTP method for REST operations (function objects only)
-        httpPath:
-          type: string
-          description: HTTP path template for REST operations (function objects only)
-        httpHeaders:
-          type: object
-          additionalProperties:
-            type: string
-          description: Default HTTP headers for REST operations (function objects only)
-        timeout:
-          type: integer
-          description: Default timeout in milliseconds (function objects only)
-        retryPolicy:
-          type: object
-          properties:
-            maxRetries:
-              type: integer
-              default: 3
-              description: Maximum number of retry attempts
-            backoffStrategy:
-              type: string
-              enum: [exponential, linear, fixed]
-              default: exponential
-              description: Strategy for calculating delay between retries
-            retryableErrors:
-              type: array
-              items:
-                type: string
-              description: List of error codes that trigger a retry
-          description: Retry configuration (function objects only)
     ObjectClass:
       type: string
       description: Object capability indicator
@@ -865,7 +841,8 @@ components:
         - properties
       properties:
         id:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Unique, immutable schema identifier
         dataTypes:
           type: array
@@ -911,135 +888,13 @@ components:
           type: object
           properties:
             schemaId:
-              type: string
+              allOf:
+                - $ref: '#/components/schemas/SchemaId'
               description: Referenced schema ID
             propertyName:
               type: string
               description: Referenced property name
           description: Schema and property reference for relationships
-    RestRequest:
-      type: object
-      required:
-        - method
-        - path
-      properties:
-        method:
-          type: string
-          enum: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS]
-          description: HTTP method
-        path:
-          type: string
-          description: The relative path to call
-        headers:
-          type: object
-          description: The headers to send with the request
-          additionalProperties:
-            type: string
-        body:
-          description: The body to send with the request
-          additionalProperties: true
-        params:
-          type: object
-          description: The query parameters to send with the request
-          additionalProperties:
-            type: string
-        timeout:
-          type: integer
-          description: Request timeout in milliseconds
-        retries:
-          type: integer
-          description: Number of retries
-        followRedirects:
-          type: boolean
-          description: Follow HTTP redirects
-          default: true
-    RestResponse:
-      type: object
-      required:
-        - status
-      properties:
-        status:
-          type: integer
-          description: The HTTP status code
-        headers:
-          type: object
-          description: The headers returned by the server
-          additionalProperties:
-            type: string
-        body:
-          description: The body returned by the server
-          additionalProperties: true
-        timing:
-          type: object
-          description: Request timing information
-          properties:
-            total:
-              type: integer
-              description: Total request time in milliseconds
-            dns:
-              type: integer
-              description: DNS resolution time
-            connect:
-              type: integer
-              description: Connection establishment time
-            ttfb:
-              type: integer
-              description: Time to first byte
-    EnhancedFunctionResponse:
-      type: object
-      properties:
-        data:
-          description: Response data
-          additionalProperties: true
-        schema:
-          $ref: '#/components/schemas/Schema'
-          description: Response schema (if dynamic)
-        context:
-          type: object
-          description: Execution metadata
-          properties:
-            requestId:
-              type: string
-              description: Unique request identifier
-            timestamp:
-              type: string
-              format: date-time
-              description: Execution timestamp
-            duration:
-              type: integer
-              description: Execution time in milliseconds
-            retryCount:
-              type: integer
-              description: Number of retries attempted
-            cached:
-              type: boolean
-              description: Whether response was cached
-            warnings:
-              type: array
-              items:
-                type: string
-              description: Non-fatal warnings
-        links:
-          type: object
-          description: HATEOAS-style navigation links
-          properties:
-            self:
-              type: string
-              format: uri
-              description: Link to this operation
-            related:
-              type: array
-              description: Links to related operations
-              items:
-                type: object
-                properties:
-                  rel:
-                    type: string
-                    description: Relationship type
-                  href:
-                    type: string
-                    format: uri
-                    description: Related operation link
     ValidationResult:
       type: object
       properties:
@@ -1175,23 +1030,27 @@ components:
           description: Capability indicators
         # Collection properties
         collectionSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for collection elements (collection objects only)
-        # Function properties  
+        # Function properties
         inputSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for function inputs (function objects only)
         outputSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for function outputs (function objects only)
         throws:
           type: object
           additionalProperties:
-            type: string
-          description: Map of HTTP error codes to error Schema IDs (function objects only)
+            $ref: '#/components/schemas/SchemaId'
+          description: Map of error codes to error Schema IDs (function objects only)
         # Document properties
         documentSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for document structure (document objects only)
         # Binary properties
         mimeType:
@@ -1223,23 +1082,27 @@ components:
           description: Optional organizational tags
         # Collection properties
         collectionSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for collection elements (collection objects only)
         # Function properties
         inputSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for function inputs (function objects only)
         outputSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for function outputs (function objects only)
         throws:
           type: object
           additionalProperties:
-            type: string
-          description: Map of HTTP error codes to error Schema IDs (function objects only)
+            $ref: '#/components/schemas/SchemaId'
+          description: Map of error codes to error Schema IDs (function objects only)
         # Document properties
         documentSchema:
-          type: string
+          allOf:
+            - $ref: '#/components/schemas/SchemaId'
           description: Schema ID for document structure (document objects only)
         # Binary properties
         mimeType:

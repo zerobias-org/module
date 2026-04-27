@@ -2,6 +2,15 @@ name: "@zerobias-org/module"
 version: "1.0.0"
 
 env:
+
+  VAULT_ADDR:
+    type: string
+    default: "https://vault.zerobias.com"
+
+  ZB_TOKEN:
+    type: string
+    mask: true
+
   AWS_ACCESS_KEY_ID:
     source: vault
     vault: "aws-auth/tools/ecr/creds/ecr-push.access_key"

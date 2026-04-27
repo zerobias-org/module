@@ -1,7 +1,7 @@
 {
-  "version": "2.1.0-uat.0",
+  "version": "2.1.0",
   "branch": "dataproducer_2_1",
-  "timestamp": "2026-04-27T22:13:41.016021488Z",
+  "timestamp": "2026-04-27T22:27:14.461976116Z",
   "sourceHash": "98c1c4a6349402db680b174771bbd7e76ba012be9457408c9d35d9595978d0ad",
   "testHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "tasks": {

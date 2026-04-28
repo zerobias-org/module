@@ -67,9 +67,12 @@ paths:
       summary: Get child objects
       description: Returns paged results of objects that are children of the specified object
       operationId: getChildren
+      # Parameter order is load-bearing: codegen mirrors it into TypeScript
+      # positional args. New optional params (pageTokenParam) are appended
+      # at the end so existing callers from 1.2.x / 2.0.x continue to
+      # compile against 2.1.x. Don't insert in the middle.
       parameters:
         - $ref: '#/components/parameters/objectId'
-        - $ref: '#/components/parameters/pageTokenParam'
         - $ref: '#/components/parameters/pageNumberParam'
         - $ref: '#/components/parameters/pageSizeParam'
         - $ref: '#/components/parameters/sortByParam'
@@ -90,6 +93,7 @@ paths:
             type: array
             items:
               type: string
+        - $ref: '#/components/parameters/pageTokenParam'
       responses:
         '200':
           description: List of child objects
@@ -156,14 +160,15 @@ paths:
       summary: Search objects
       description: Performs keyword search or filtered search within object hierarchy. Either keywords or filter must be provided, but not both.
       operationId: objectSearch
+      # New optional params (pageTokenParam, propertiesParam) appended at
+      # the end to keep the positional TS signature stable for 1.2.x / 2.0.x
+      # callers. See note on getChildren above.
       parameters:
         - $ref: '#/components/parameters/objectId'
-        - $ref: '#/components/parameters/pageTokenParam'
         - $ref: '#/components/parameters/pageNumberParam'
         - $ref: '#/components/parameters/pageSizeParam'
         - $ref: '#/components/parameters/sortByParam'
         - $ref: '#/components/parameters/sortDirParam'
-        - $ref: '#/components/parameters/propertiesParam'
         - $ref: '#/components/parameters/scopeParam'
         - name: keywords
           in: query
@@ -179,6 +184,8 @@ paths:
           description: RFC4515 structured filter expression (mutually exclusive with keywords)
           schema:
             type: string
+        - $ref: '#/components/parameters/pageTokenParam'
+        - $ref: '#/components/parameters/propertiesParam'
       responses:
         '200':
           description: Search results
@@ -208,14 +215,15 @@ paths:
         - /children: Simple listing with basic type/tag filters
         - /searchChildren: Advanced RFC4515 filtering + property projection
       operationId: searchChildObjects
+      # New endpoint in 2.x — no positional compat to preserve, but ordering
+      # follows the same convention as the other paginated ops: opt-in
+      # cursor/projection params at the end.
       parameters:
         - $ref: '#/components/parameters/objectId'
-        - $ref: '#/components/parameters/pageTokenParam'
         - $ref: '#/components/parameters/pageNumberParam'
         - $ref: '#/components/parameters/pageSizeParam'
         - $ref: '#/components/parameters/sortByParam'
         - $ref: '#/components/parameters/sortDirParam'
-        - $ref: '#/components/parameters/propertiesParam'
         - name: filter
           in: query
           required: false
@@ -224,6 +232,8 @@ paths:
             type: string
           example: "(&(objectClass=document)(tags=*important*)(modified>=2023-01-01))"
         - $ref: '#/components/parameters/scopeParam'
+        - $ref: '#/components/parameters/pageTokenParam'
+        - $ref: '#/components/parameters/propertiesParam'
         - name: includeCount
           in: query
           required: false
@@ -255,13 +265,14 @@ paths:
       summary: Get collection elements
       description: Returns paged collection data for collection objects
       operationId: getCollectionElements
+      # New optional params appended; see note on getChildren above.
       parameters:
         - $ref: '#/components/parameters/objectId'
-        - $ref: '#/components/parameters/pageTokenParam'
         - $ref: '#/components/parameters/pageNumberParam'
         - $ref: '#/components/parameters/pageSizeParam'
         - $ref: '#/components/parameters/sortByParam'
         - $ref: '#/components/parameters/sortDirParam'
+        - $ref: '#/components/parameters/pageTokenParam'
         - $ref: '#/components/parameters/propertiesParam'
       responses:
         '200':
@@ -406,9 +417,9 @@ paths:
       summary: Search collection elements
       description: Filtered search within collection data
       operationId: searchCollectionElements
+      # New optional params appended; see note on getChildren above.
       parameters:
         - $ref: '#/components/parameters/objectId'
-        - $ref: '#/components/parameters/pageTokenParam'
         - $ref: '#/components/parameters/pageNumberParam'
         - $ref: '#/components/parameters/pageSizeParam'
         - name: filter
@@ -419,6 +430,7 @@ paths:
             type: string
         - $ref: '#/components/parameters/sortByParam'
         - $ref: '#/components/parameters/sortDirParam'
+        - $ref: '#/components/parameters/pageTokenParam'
         - $ref: '#/components/parameters/propertiesParam'
       responses:
         '200':

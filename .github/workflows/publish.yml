@@ -91,6 +91,10 @@ jobs:
     needs: detect
     if: needs.detect.outputs.modules != '[]' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      # Ephemeral slot for the version step. zbb lifecycle commands require
+      # a loaded slot; this slot only needs npm registry tokens (no ECR/Neon).
+      ZB_SLOT: ci-version-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       sha: ${{ steps.bump.outputs.sha }}
     steps:
@@ -99,6 +103,20 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Vault auth — only the npm tokens. Version step does not push images
+      # or hit Neon, so ECR/AWS/Neon secrets aren't needed here.
+      - name: Authenticate to Vault
+        id: vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: jwt
+          role: publishing-role
+          path: gh-actions
+          secrets: |
+            operations-kv/data/ci/github writePackagesToken | NPM_TOKEN;
+            operations-kv/data/ci/github readPackagesToken | READ_TOKEN;
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -129,6 +147,17 @@ jobs:
           cp .npmrc $HOME/.npmrc
           cp .npmrc $NPM_CONFIG_USERCONFIG
           npm i -g @zerobias-org/zbb
+
+      # Bootstrap an ephemeral slot for this CI run. CI mode (auto-detected
+      # from CI=true) snapshots process.env as slot overrides — vault
+      # secrets exported above are picked up directly. Same pattern as the
+      # publish matrix job below.
+      - name: Bootstrap zbb slot
+        run: |
+          zbb slot create $ZB_SLOT --ephemeral
+          zbb stack add .
+        env:
+          CI: 'true'
 
       - name: Bump versions
         id: bump

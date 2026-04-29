@@ -1,5 +1,6 @@
 {
   "name": "@zerobias-org/module",
+  "description": "",
   "private": true,
   "type": "module",
   "engines": {

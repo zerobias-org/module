@@ -307,13 +307,22 @@ jobs:
           zbb publish -PversionAlreadyCommitted=true
 
       # -- Generate packages file for release announcement --
+      # Includes both the module package and its hub-sdk sibling (when
+      # present) so both get a Slack notification + release event.
       - name: Generate packages file
         if: success()
         run: |
           cd package/${{ matrix.module }}
           VERSION=$(node -p "require('./package.json').version")
           NAME=$(node -p "require('./package.json').name")
-          echo "[{\"name\":\"$NAME\",\"version\":\"$VERSION\",\"location\":\"$(pwd)\"}]" > /tmp/published-packages.json
+          PKGS="[{\"name\":\"$NAME\",\"version\":\"$VERSION\",\"location\":\"$(pwd)\"}]"
+          if [ -f "hub-sdk/package.json" ]; then
+            HUB_NAME=$(node -p "require('./hub-sdk/package.json').name")
+            HUB_LOCATION="$(pwd)/hub-sdk"
+            PKGS=$(echo "$PKGS" | jq --arg n "$HUB_NAME" --arg v "$VERSION" --arg l "$HUB_LOCATION" \
+              '. + [{name: $n, version: $v, location: $l}]')
+          fi
+          echo "$PKGS" > /tmp/published-packages.json
 
       # -- Release announcement: Slack + event router --
       - name: Release Announcement

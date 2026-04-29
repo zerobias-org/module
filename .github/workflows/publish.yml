@@ -122,7 +122,12 @@ jobs:
 
       - name: Install global tools
         run: |
+          # setup-node writes its own .npmrc to $NPM_CONFIG_USERCONFIG that
+          # points at GitHub Packages. The repo .npmrc routes @zerobias-org
+          # to pkg.zerobias.org (where zbb actually lives) — copy to BOTH
+          # locations so npm picks it up regardless of which path it reads.
           cp .npmrc $HOME/.npmrc
+          cp .npmrc $NPM_CONFIG_USERCONFIG
           npm i -g @zerobias-org/zbb
 
       - name: Bump versions

@@ -191,6 +191,16 @@ jobs:
           # the triggering ref.
           ref: ${{ needs.version.outputs.sha || github.sha }}
 
+      # The checkout above lands in detached-HEAD state when given a SHA.
+      # zb.base.gradle.kts reads `git rev-parse --abbrev-ref HEAD` to decide
+      # whether the publish flow is running on main — detached HEAD returns
+      # the literal "HEAD", which makes bumpVersion / commitVersion /
+      # publishNpmExec / publishHubSdkExec all skip with the wrong branch
+      # gate AND triggers a `-uat.0` pre-release suffix from the non-main
+      # path. Recreate the local branch so gradle sees the right name.
+      - name: Restore branch name
+        run: git checkout -B "${{ github.ref_name }}"
+
       # -- Vault: authenticate via GitHub OIDC and fetch credentials --
       - name: Authenticate to Vault
         id: vault

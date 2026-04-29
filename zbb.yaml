@@ -69,6 +69,7 @@ lifecycle:
   test:        ./gradlew test
   gate:        ./gradlew gate
   gateCheck:   ./gradlew gaateCheck
+  version:     ./gradlew versionStandardPackages
   publish:     ./gradlew publish
   dockerBuild: ./gradlew dockerBuild
 

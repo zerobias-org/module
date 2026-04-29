@@ -16,7 +16,7 @@
     "registry": "https://npm.pkg.github.com/"
   },
   "scripts": {
-    "clean": "rm -rf build/ dist/ generated/ hub-sdk/generated module-avigilon-alta-access.yml full.yml"
+    "clean": "rm -rf build/ dist/ generated/ hub-sdk/generated hub-sdk/dist hub-sdk/tsconfig.json module-avigilon-alta-access.yml full.yml"
   },
   "files": [
     "dist",

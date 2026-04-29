@@ -3,8 +3,27 @@
   "version": "0.0.0",
   "description": "Hub SDK for Ready Player Me module",
   "type": "module",
-  "main": "generated/api/index.ts",
-  "types": "generated/api/index.ts",
-  "files": ["generated/**/*.ts"],
+  "main": "dist/api/index.js",
+  "types": "dist/api/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/api/index.d.ts",
+      "import": "./dist/api/index.js"
+    },
+    "./api": {
+      "types": "./dist/api/index.d.ts",
+      "import": "./dist/api/index.js"
+    },
+    "./model": {
+      "types": "./dist/model/index.d.ts",
+      "import": "./dist/model/index.js"
+    }
+  },
+  "files": ["dist"],
+  "peerDependencies": {
+    "@zerobias-org/types-core-js": "^1.2.19",
+    "@zerobias-org/util-connector": "^1.0.38",
+    "axios": "^1.0.0"
+  },
   "publishConfig": { "access": "restricted" }
 }

@@ -83,8 +83,60 @@ jobs:
           echo "modules=$MODULES" >> $GITHUB_OUTPUT
           echo "Changed modules: $MODULES"
 
-  publish:
+  # Single-writer version job. Bumps every changed module's package.json +
+  # gate-stamp.json in one commit and pushes once, BEFORE the publish matrix
+  # fans out. Without this, every matrix job would race on `git push` to main.
+  # Outputs the resulting SHA so the matrix checks out the bumped state.
+  version:
     needs: detect
+    if: needs.detect.outputs.modules != '[]' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.bump.outputs.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Configure git user
+        run: |
+          git config --global user.email "ci@neverfail.com"
+          git config --global user.name "@$GITHUB_ACTOR"
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Install global tools
+        run: |
+          cp .npmrc $HOME/.npmrc
+          npm i -g @zerobias-org/zbb
+
+      - name: Bump versions
+        id: bump
+        run: |
+          # detect emits a JSON array (["foo/bar","baz/qux"]); zbb expects a
+          # comma-separated list. Convert with jq.
+          MODULES=$(echo '${{ needs.detect.outputs.modules }}' | jq -r 'join(",")')
+          echo "Versioning: $MODULES"
+          zbb version --modules="$MODULES"
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+  publish:
+    needs: [detect, version]
     if: needs.detect.outputs.modules != '[]'
     runs-on: ubuntu-latest
     env:
@@ -100,6 +152,10 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Pick up the version-bump commit produced by the `version` job.
+          # On non-main branches the version job is skipped, so fall back to
+          # the triggering ref.
+          ref: ${{ needs.version.outputs.sha || github.sha }}
 
       # -- Vault: authenticate via GitHub OIDC and fetch credentials --
       - name: Authenticate to Vault
@@ -197,10 +253,14 @@ jobs:
           CI: 'true'
 
       # -- Publish: preflight verifies gate stamp, skips tests, builds + publishes --
+      # versionAlreadyCommitted=true: the `version` job already wrote and pushed
+      # the version-bump commit, so commitVersion / pushVersion in this matrix
+      # run are no-ops. tagVersion + pushTag still fire per-matrix because each
+      # tag is a unique ref → no race on tag push.
       - name: Publish ${{ matrix.module }}
         run: |
           cd package/${{ matrix.module }}
-          zbb publish
+          zbb publish -PversionAlreadyCommitted=true
 
       # -- Generate packages file for release announcement --
       - name: Generate packages file

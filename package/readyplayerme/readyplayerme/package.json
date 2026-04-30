@@ -16,7 +16,7 @@
     "registry": "https://pkg.zerobias.org/"
   },
   "scripts": {
-    "clean": "rm -rf build/ dist/ generated/ hub-sdk/generated hub-sdk/dist hub-sdk/tsconfig.json module-readyplayerme-readyplayerme.yml full.yml"
+    "clean": "rm -rf build/ dist/ generated/ hub-sdk/generated hub-sdk/tsconfig.json hub-sdk/dist module-readyplayerme-readyplayerme.yml full.yml"
   },
   "files": [
     "dist",

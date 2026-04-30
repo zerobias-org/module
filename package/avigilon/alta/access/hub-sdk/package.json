@@ -22,7 +22,7 @@
   "files": ["dist"],
   "peerDependencies": {
     "@zerobias-org/types-core-js": "^1.2.19",
-    "@zerobias-org/util-connector": "^1.0.38",
+    "@zerobias-org/util-connector": "^1.0.40",
     "axios": "^1.0.0"
   },
   "publishConfig": { "access": "restricted" }

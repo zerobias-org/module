@@ -12,78 +12,60 @@ Set `ZB_TOKEN` in your environment variables to authenticate with npm registry.
 ## Getting Started
 
 ## Commit conventions and Version management
-### Versioning: [lerna](https://github.com/lerna/lerna)
 
-#### Module versioning
-Module versions are managed by `lerna`. 
-* Add it to [lerna.json](./lerna.json) to enable lerna for a module.
-* The starting version of a module should be `0.0.0`
-* There should be no version bumps inside of pull requests.
+### Versioning: gradle + zbb
 
-Lerna will automatically version, generate changelogs and publish modules in `lerna.json` via our github actions workflows.
+Module versions are managed by **gradle** through **zbb**. Lerna and `lerna.json` have been removed — the `version` job in the reusable publish workflow handles all bumps.
 
-This works well for any starting version higher or equals to `1.0.0`. For versions that haven't had a major bump yet an additional step is required.
+* Per-module marker: `package/<vendor>/<product>/build.gradle.kts` (one-line `plugins { id("zb.module") }`).
+* Auto-discovery: `settings.gradle.kts` walks `package/**` and includes any directory with the marker.
+* Bumps are conventional-commit driven (feat → minor, fix → patch, BREAKING CHANGE → major).
+* The `version` job in the reusable workflow bumps every changed module's version and pushes ONE commit before the per-module matrix fans out — eliminates the historical pushVersion race.
+* No version bumps inside of pull requests; let CI do it on push to `main`/`qa`/`dev`/`uat`.
 
-In order for a module/package to bump to `1.0.0` it must be explicitely told to do so via `premajor` and `conventional graduation`.
-These are two lerna terms and re leveraged by our workflows described below.
+#### Migration major-bump rule
 
-The former will happen inside of a pull request and generate a release candidate.
-The latter will graduate and publish it.
+Modules that pre-date the gradle migration are on `1.x.x` (or older). When migrating a module to gradle (adding the `build.gradle.kts` marker), bump to `2.0.0` so the version line is unambiguous about which lifecycle owns the package. Skip the bump for modules already on `2.x`. Same rule applied across `org/vendor`, `org/suite`, `zerobias-com/tag`.
 
-#### Lerna dry run
+#### Local dry-run
 
-What lerna does can be simulated using `dry-run`.
-* `npm run lerna:dry-run` will generate changelog as well as do local version bumps.
-* You may also run `dry-run` on pull requests, for piece of mind, by assigning the p.r. to `nfci`
-
-You may also run the following command to generate a local changelog without using `lerna version`:
-```
-npx lerna exec --concurrency 1 --no-sort --stream -- \
-  conventional-changelog \
-    --preset angular \
-    --infile CHANGELOG.md \
-    --same-file \
-    --release-count 0 \
-    --lerna-package \$LERNA_PACKAGE_NAME \
-    --commit-path \$PWD
+```bash
+# From the module dir
+zbb publish --dry-run
+# Or from repo root
+./gradlew :<vendor>:<product>:publish -PdryRun=true
 ```
 
-### Github Actions workflows.
+### GitHub Actions workflows
 
-Each module should have one workflow that runs tests on Pull Request.
-There are 3 other workflows involved in the publishing process.
-* `pull_request.yml`
-* `lerna_publish.yml`
-* `lerna_post_publish.yml`
+The repo has **one** workflow — `.github/workflows/publish.yml` — a thin caller that delegates to the reusable `zerobias-org/devops/.github/workflows/zbb-publish-reusable.yml@main`.
 
-#### Pull Request
-The `pull_request` workflow triggers when a pull request is `assigned` or `labeled` or `closed`.
-* assigned to nfci: runs `lerna dry run`
-* labeled as `premajor`: runs `lerna premajor`
-* closed by merging:  triggers the `lerna-publish` workflow
+**Job graph** (from the reusable):
 
-#### Lerna Publish
-This workflow will run lerna publish against all registered modules.
-Modules that have changed are first bootstraped then tagged and published.
-Implicitely this calls the following 2 package.json `scripts`
-* `version`: before lerna commits the version change. There, we make sure `api.yml` is also included in said commit.
-* `postpublish`: after lerna has published the npm. This triggers the final workflow. `post-publish`
+1. **`detect`** — diffs `package/**/build.gradle.kts` against the base ref → list of changed modules.
+2. **`version`** — single-writer: bumps every changed module's version and pushes ONE commit before the matrix fans out.
+3. **`publish`** — matrix per module: `zbb publish` runs the gate preflight (validate + tests + dataloader + image build/test), publishes the npm package, publishes the docker image (if applicable), creates the git tag, posts a release announcement.
+4. **`sync`** — propagates `main → uat → qa → dev` after a successful main publish.
 
-#### Lerna Post Publish
-This workflow is used to finalize module publication. At the moment it:
-<!-- * Publishes docs to [docs_cms]( TODO add new docs location here ). -->
-* Sends a slack notification.
+**zbb decides per-module** whether to publish an npm package, a docker image, or both — adding a TypeScript client publish or a Java HTTP image is a property of the module's gradle/zbb config, not a separate workflow.
 
-#### Check commit Message Format against conventional commits
+#### Caller workflow
 
-Any commit that does not comply with conventional commits will be rejected.
+```yaml
+jobs:
+  publish:
+    uses: zerobias-org/devops/.github/workflows/zbb-publish-reusable.yml@main
+    with:
+      package-depth: 2          # package/<vendor>/<product>/build.gradle.kts
+      ghcr-namespace: zerobias-org
+      dispatch-input-name: module
+      dispatch-input-value: ${{ inputs.module }}
+    secrets: inherit
+```
 
-#### Build module affected by change
+#### Commit message linting
 
-The affected module(s) will be built via `npm run build` and `unit` tested.
-Additionally, `eslint` will be executed to catch any linting errors before they make it to a pull request.
-
-The commit will be rejected if any of this fails.
+Husky + commitlint runs on `pre-commit` and rejects commits that don't follow Conventional Commits. The affected module(s) are also built via `npm run build` and unit-tested before the commit is allowed.
 
 *Example: good commit*
 ```

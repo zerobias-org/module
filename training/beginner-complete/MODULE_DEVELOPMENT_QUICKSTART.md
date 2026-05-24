@@ -54,7 +54,7 @@ cat response.json | jq .
 
 ```bash
 # From repo root
-yo @auditmation/hub-module \
+yo @com/hub-module \
   --productPackage '@zerobias-org/product-vendor-service' \
   --modulePackage '@zerobias-org/module-vendor-service' \
   --packageVersion '0.0.0' \

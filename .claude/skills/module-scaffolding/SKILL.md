@@ -39,8 +39,8 @@ The module-scaffolder agent should parse this file and extract the email automat
 # Navigate to repository root
 cd /Users/ctamas/code/zborg/module
 
-# Run @auditmation/hub-module generator with parameters
-yo @auditmation/hub-module \
+# Run @com/hub-module generator with parameters
+yo @com/hub-module \
   --productPackage '@zerobias-org/product-{vendor}-{product}' \
   --modulePackage '@zerobias-org/module-{vendor}-{product}' \
   --packageVersion '0.0.0' \
@@ -52,7 +52,7 @@ yo @auditmation/hub-module \
 ### Example: Bitbucket Module
 
 ```bash
-yo @auditmation/hub-module \
+yo @com/hub-module \
   --productPackage '@zerobias-org/product-bitbucket-bitbucket' \
   --modulePackage '@zerobias-org/module-bitbucket-bitbucket' \
   --packageVersion '0.0.0' \
@@ -297,7 +297,7 @@ EOF
     "suite": null,
     "service": "github"
   },
-  "yeomanCommand": "yo @auditmation/hub-module --productPackage '@auditlogic/product-github-github' --modulePackage '@zerobias-org/module-github-github' --packageVersion '0.0.0' --description 'GitHub' --repository 'https://github.com/zerobias-org/module' --author '<email-from-global-CLAUDE.md>'",
+  "yeomanCommand": "yo @com/hub-module --productPackage '@auditlogic/product-github-github' --modulePackage '@zerobias-org/module-github-github' --packageVersion '0.0.0' --description 'GitHub' --repository 'https://github.com/zerobias-org/module' --author '<email-from-global-CLAUDE.md>'",
   "generatedFiles": {
     "packageJson": "package/github/github/package.json",
     "apiYml": "package/github/github/api.yml",
@@ -411,8 +411,8 @@ npm run | grep create-module
 ### Execute Generator
 
 ```bash
-# Yeoman @auditmation/hub-module generator
-yo @auditmation/hub-module \
+# Yeoman @com/hub-module generator
+yo @com/hub-module \
   --productPackage '@zerobias-org/product-bitbucket-bitbucket' \
   --modulePackage '@zerobias-org/module-bitbucket-bitbucket' \
   --packageVersion '0.0.0' \
@@ -468,15 +468,15 @@ Scaffolding MUST meet all criteria:
 ### Issue: Generator Not Found
 
 ```bash
-# Install @auditmation/hub-module generator globally
-npm install -g @auditmation/hub-module
+# Install @com/hub-module generator globally
+npm install -g @com/hub-module
 
 # Or install Yeoman if not present
 npm install -g yo
 
 # Verify installation
 yo --version
-yo --generators  # Should show @auditmation/hub-module
+yo --generators  # Should show @com/hub-module
 ```
 
 ### Issue: Symlinks Broken
@@ -544,7 +544,7 @@ API_VERSION=$(grep "^version:" api.yml | awk '{print $2}')
 **Fix:** Follow EXACT sequence:
 
 ```bash
-1. yo @auditmation/hub-module ...  # Yeoman
+1. yo @com/hub-module ...  # Yeoman
 2. npm run sync-meta               # Sync (CRITICAL!)
 3. npm install                     # Dependencies
 4. npm run build                   # Build

@@ -272,7 +272,7 @@ EOF
 
 **AI will execute:**
 ```bash
-yo @auditmation/hub-module ...
+yo @com/hub-module ...
 cd package/vendor/service
 npm run sync-meta
 npm install

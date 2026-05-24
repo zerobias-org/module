@@ -72,7 +72,7 @@ Where:
   "timestamp": "2025-10-08T10:30:00Z",
   "modulePath": "package/github/github",
   "moduleIdentifier": "github-github",
-  "yeomanCommand": "yo @auditmation/hub-module ...",
+  "yeomanCommand": "yo @com/hub-module ...",
   "validations": {
     "1_directoryStructure": { "status": "passed" },
     "2_packageJsonMetadata": { "status": "passed" },

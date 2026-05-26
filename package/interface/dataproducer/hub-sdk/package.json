@@ -21,7 +21,7 @@
   },
   "files": ["dist"],
   "peerDependencies": {
-    "@zerobias-org/types-core-js": "^1.2.19",
+    "@zerobias-org/types-core-js": "^2.0.3",
     "@zerobias-org/util-connector": "^1.0.40",
     "axios": "^1.0.0"
   },

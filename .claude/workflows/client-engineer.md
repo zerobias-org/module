@@ -37,7 +37,7 @@ This workflow covers implementing the Client class that handles ONLY connection 
 - Identify authentication method (token, OAuth, basic, etc.)
 - Determine required vs optional fields
 - Check if core profile can be used
-- **Core profiles:** See "Core Profile Usage" in @.claude/rules/connection-profile-design.md
+- **Core profiles:** See "Core Profile Usage" in @.claude/skills/connection-profile/SKILL.md
 
 ### Step 2: Review Connection State
 
@@ -45,7 +45,7 @@ This workflow covers implementing the Client class that handles ONLY connection 
 - Identify what state needs persistence
 - Check if token expiration is involved (expiresIn required)
 - Determine if refresh token needed
-- **State patterns:** See "ConnectionState Pattern" in @.claude/rules/implementation.md
+- **State patterns:** See "ConnectionState Pattern" in @.claude/skills/implementation-core/SKILL.md
 
 ### Step 3: Create Client File
 
@@ -59,7 +59,7 @@ Import required modules:
 - Generated connector interface
 - Producer classes
 - Core error types (NotConnectedError, etc.)
-- **Import patterns:** See "Client Class Structure" in @.claude/rules/implementation.md
+- **Import patterns:** See "Client Class Structure" in @.claude/skills/implementation-core/SKILL.md
 
 ### Step 5: Create Client Class Structure
 
@@ -68,7 +68,7 @@ Import required modules:
 - Declare producer instances as private fields
 - Define method signatures: connect(), isConnected(), disconnect()
 - Add delegation methods for all operations
-- **Structure template:** See "Client Class Pattern" in @.claude/rules/implementation.md
+- **Structure template:** See "Client Class Pattern" in @.claude/skills/implementation-core/SKILL.md
 
 ### Step 6: Implement connect() Method
 
@@ -79,8 +79,8 @@ Import required modules:
 - Add error interceptors
 - Initialize all producer instances with HTTP client
 - Store connection state (include expiresIn if tokens expire)
-- **connect() patterns:** See "connect() Implementation" in @.claude/rules/implementation.md
-- **HTTP client setup:** See "Client Configuration" in @.claude/rules/http-client-patterns.md
+- **connect() patterns:** See "connect() Implementation" in @.claude/skills/implementation-core/SKILL.md
+- **HTTP client setup:** See "Client Configuration" in @.claude/skills/http-client/SKILL.md
 
 ### Step 7: Implement isConnected()
 
@@ -88,7 +88,7 @@ Import required modules:
 - Make real API call to verify connection (NOT just state check)
 - Return true if API call succeeds
 - Return false if API call fails
-- **isConnected() patterns:** See "isConnected() Implementation" in @.claude/rules/implementation.md
+- **isConnected() patterns:** See "isConnected() Implementation" in @.claude/skills/implementation-core/SKILL.md
 
 ### Step 8: Implement disconnect()
 
@@ -96,7 +96,7 @@ Import required modules:
 - Clean up all producer instances
 - Clear connection state
 - Clear connection profile
-- **disconnect() patterns:** See "disconnect() Implementation" in @.claude/rules/implementation.md
+- **disconnect() patterns:** See "disconnect() Implementation" in @.claude/skills/implementation-core/SKILL.md
 
 ### Step 9: Delegate Operations to Producers
 
@@ -105,7 +105,7 @@ For each operation in connector interface:
 - Delegate to appropriate producer method
 - Pass through parameters unchanged
 - Return producer result directly
-- **Delegation patterns:** See "Operation Delegation" in @.claude/rules/implementation.md
+- **Delegation patterns:** See "Operation Delegation" in @.claude/skills/implementation-core/SKILL.md
 
 ### Step 10: Validate Implementation
 
@@ -115,12 +115,12 @@ Run validation checks:
 - Check no environment variables used
 - Verify producers initialized with HTTP client
 - Confirm connection state includes expiresIn (if tokens expire)
-- **Validation scripts:** See "Client Validation" in @.claude/rules/implementation.md
+- **Validation scripts:** See "Client Validation" in @.claude/skills/implementation-core/SKILL.md
 
 ### Step 11: Build and Test
 
-- Run npm run build (must pass)
-- Run npm run test:unit (unit tests must pass)
+- Run `zbb build` (must pass)
+- Run `zbb test --slot local` (unit tests must pass)
 - Fix any compilation or test errors
 
 ## Connection State Patterns
@@ -131,19 +131,19 @@ Run validation checks:
 - Static API token that never expires
 - No connection state needed
 - Just configure HTTP client with token
-- **Pattern:** See "Simple Token Pattern" in @.claude/rules/implementation.md
+- **Pattern:** See "Simple Token Pattern" in @.claude/skills/implementation-core/SKILL.md
 
 **OAuth with Refresh:**
 - Token expires and needs refresh
 - Connection state MUST include: accessToken, refreshToken, expiresIn
 - Framework persists state automatically
-- **Pattern:** See "OAuth Pattern" in @.claude/rules/implementation.md
+- **Pattern:** See "OAuth Pattern" in @.claude/skills/implementation-core/SKILL.md
 
 **Using Core Profiles:**
 - When service matches core profile type (TokenProfile, OAuthClientProfile, etc.)
 - Import from @zerobias-org/types-core-js
 - Reduces code duplication
-- **Pattern:** See "Core Profile Usage" in @.claude/rules/connection-profile-design.md
+- **Pattern:** See "Core Profile Usage" in @.claude/skills/connection-profile/SKILL.md
 
 ## Success Criteria
 
@@ -164,11 +164,11 @@ Client implementation is complete when:
 ## Related Documentation
 
 **Primary Rules:**
-- @.claude/rules/implementation.md - Client patterns, connection state rules, delegation
-- @.claude/rules/http-client-patterns.md - HTTP client configuration and error handling
-- @.claude/rules/connection-profile-design.md - Profile patterns and core profiles
+- @.claude/skills/implementation-core/SKILL.md - Client patterns, connection state rules, delegation
+- @.claude/skills/http-client/SKILL.md - HTTP client configuration and error handling
+- @.claude/skills/connection-profile/SKILL.md - Profile patterns and core profiles
 
 **Supporting Rules:**
-- @.claude/rules/error-handling.md - Core error usage
-- @.claude/rules/security.md - Secure authentication implementation
-- @.claude/rules/failure-conditions.md - Common implementation failures
+- @.claude/skills/error-handling/SKILL.md - Core error usage
+- @.claude/skills/security/SKILL.md - Secure authentication implementation
+- @.claude/skills/failure-conditions/SKILL.md - Common implementation failures

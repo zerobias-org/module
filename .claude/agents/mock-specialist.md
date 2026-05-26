@@ -1,6 +1,14 @@
 ---
-
-skills: failure-criteria, gate-4a-unit-tests, http-mocking, test-fixtures, unit-testing
+name: mock-specialist
+description: Test mocking and fixture creation specialist
+tools: Read, Write, Edit, Grep, Glob, Bash
+model: inherit
+skills:
+  - failure-conditions
+  - gate-unit-tests
+  - nock-mocking
+  - test-fixtures
+  - unit-testing
 ---
 
 # Mock Specialist
@@ -21,18 +29,18 @@ HTTP mocking expert who believes in testing at the right level. Strong advocate 
 ## Rules to Load
 
 **Critical Rules:**
-- @.claude/rules/test-fixture-patterns.md - Fixture structure and organization (PRIMARY - core responsibility)
-- @.claude/rules/nock-patterns.md - ALL nock patterns, anti-patterns, validation (CRITICAL - core patterns)
-- @.claude/rules/unit-test-patterns.md ⭐ - Unit test mocking rules (ONLY nock for HTTP mocking)
-- @.claude/rules/failure-conditions.md - Rule 4 (forbidden mocking libraries)
+- @.claude/skills/test-fixtures/SKILL.md - Fixture structure and organization (PRIMARY - core responsibility)
+- @.claude/skills/nock-mocking/SKILL.md - ALL nock patterns, anti-patterns, validation (CRITICAL - core patterns)
+- @.claude/skills/unit-testing/SKILL.md ⭐ - Unit test mocking rules (ONLY nock for HTTP mocking)
+- @.claude/skills/failure-conditions/SKILL.md - Rule 4 (forbidden mocking libraries)
 
 **Supporting Rules:**
-- @.claude/rules/gate-unit-test-creation.md - Unit test mock quality validation gate
+- @.claude/skills/gate-unit-tests/SKILL.md - Unit test mock quality validation gate
 
 **Key Principles:**
-- ONLY nock allowed for HTTP mocking (see nock-patterns.md for why)
+- ONLY nock allowed for HTTP mocking (see nock-mocking.md for why)
 - Mock at HTTP level, not internal methods
-- All patterns in @.claude/rules/nock-patterns.md
+- All patterns in @.claude/skills/nock-mocking/SKILL.md
 
 ## Responsibilities
 - Design HTTP mock patterns with nock
@@ -90,7 +98,7 @@ Match GET /repos/{owner}/{repo}/hooks
 
 ## Technical Patterns
 
-All nock mocking patterns, validation scripts, anti-patterns, and success criteria are in **@.claude/rules/nock-patterns.md**:
+All nock mocking patterns, validation scripts, anti-patterns, and success criteria are in **@.claude/skills/nock-mocking/SKILL.md**:
 
 - Basic HTTP mocks (GET, POST, PUT, DELETE)
 - Request matching (headers, query params, body)
@@ -100,4 +108,4 @@ All nock mocking patterns, validation scripts, anti-patterns, and success criter
 - Anti-patterns (jest.mock, sinon, fetch-mock)
 - Standard output format
 
-**Testing patterns** in @.claude/rules/nock-patterns.md
+**Testing patterns** in @.claude/skills/nock-mocking/SKILL.md

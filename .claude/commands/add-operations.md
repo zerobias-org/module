@@ -1,43 +1,44 @@
 ---
-description: Add multiple operations to an existing module
+description: Add multiple operations to an existing module (one /add-operation pass per operation)
 argument-hint: <module-identifier> <operation1,operation2,operation3>
 ---
 
 Execute the Add Multiple Operations workflow for module: $1
+Operations to add: $2 (comma-separated)
 
-**Operations to add:** $2 (comma-separated)
+## How it runs
 
-Split the operations from $2 by comma, then for EACH operation:
+Split `$2` by comma into operations. For **each** operation:
 
-1. **Execute /add-operation workflow** with full validation
-2. **Wait for completion** before starting next operation
-3. **Track progress** - mark each operation complete before next
+1. Run the full `/add-operation $1 <op>` flow (6 gates).
+2. Wait for completion before starting the next.
+3. If a gate fails, stop the whole sequence — fix and retry that operation, then resume.
 
-**Execution Pattern:**
-```
-For each operation in [$2]:
-  1. Check credentials (once at start)
-  2. Research & Analysis
-  3. API Specification Design → Gate 1
-  4. Type Generation → Gate 2
-  5. Implementation → Gate 3
-  6. Testing → Gates 4 & 5
-  7. Build → Gate 6
-  8. Validate all gates passed
+The first operation pays the cost of Phase 0 (credential check); subsequent operations skip it as long as the slot state hasn't changed.
 
-  Move to next operation only after current is complete.
-```
+## What stays the same across operations
 
-**Example:**
+- The gradle project path: `:<vendor>:[<suite>:]<service>`
+- The slot's credentials (set once before starting)
+- The base test files (`test/unit/<Tag>ProducerTest.test.ts`, `test/e2e/<name>.test.ts`) — operations are added to existing files, not new ones, unless a new tag is introduced
+
+## What gets re-run per operation
+
+- `:bundleSpec` + `:generate` (cheap, gradle caches)
+- The relevant `:test` + `zbb testDirect` slices
+- Mapper runtime validation pass for the new mapper
+- `zbb gate --slot local` is run **once at the end** of the whole batch, not after each operation — that's the one expensive step. The intermediate gates per operation are checked by the gate skills, not by re-running `zbb gate` each time.
+
+## Example
+
 ```
 /add-operations github-github listWebhooks,getWebhook,createWebhook
 ```
 
-This will add 3 operations sequentially with full validation for each.
+Adds three operations sequentially. Each goes through Gates 1–5; Gate 6 (`zbb gate`) runs once at the end and writes the final `gate-stamp.json`. Commit one batch or a sequence of conventional commits (one per operation) — your call.
 
-**Important:**
-- Each operation goes through ALL 6 gates
-- No skipping steps
-- Full test coverage for each
-- Build after each operation
-- Stop on any gate failure
+## Failure handling
+
+- If operation N fails a gate, stop. Operations 1..N-1 are complete and committable; N is in progress.
+- Resume after fixing: re-run `/add-operations $1 <opN>,<opN+1>,...` from the failing operation onward.
+- Never run `zbb gate` until every operation has cleared Gates 1–5 — running it earlier just wastes a long build that you'll redo.

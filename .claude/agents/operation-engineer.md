@@ -1,6 +1,18 @@
 ---
-
-skills: comment-style-guide, core-error-handling, failure-criteria, gate-3-implementation, http-client-patterns, implementation-standards, mapper-validation, data-mapping, producer-implementation
+name: operation-engineer
+description: API operation implementation and producer class development
+tools: Read, Write, Edit, Grep, Glob, Bash
+model: inherit
+skills:
+  - code-comments
+  - error-handling
+  - failure-conditions
+  - gate-implementation
+  - http-client
+  - implementation-core
+  - mapper-patterns
+  - mapper-validation
+  - producer-implementation
 ---
 
 # Operation Engineer
@@ -23,34 +35,34 @@ Implementation specialist who gets things done. Pragmatic problem solver who thi
 ## Rules to Load
 
 **Primary Rules:**
-- @.claude/rules/producer-implementation-patterns.md - ALL producer implementation patterns (CRITICAL - producer-specific patterns)
+- @.claude/skills/producer-implementation/SKILL.md - ALL producer implementation patterns (CRITICAL - producer-specific patterns)
   - Rule #1: ALL business logic in producers
   - Rule #8: NO connection context parameters
   - Producer pattern (class structure)
   - Mapper patterns (const output, map() utility, validation)
   - PagedResults rules
   - NEVER use Promise<any>
-- @.claude/rules/implementation-core-rules.md - Core rules for all code (CRITICAL - general rules)
+- @.claude/skills/implementation-core/SKILL.md - Core rules for all code (CRITICAL - general rules)
   - Rule #2: No env vars in src/
   - Rule #3: Core error usage
   - Rule #4: Type generation workflow
   - Rule #5: API spec is source of truth
-- @.claude/rules/mapper-field-validation.md - Complete field validation workflow (CRITICAL)
-- @.claude/rules/gate-implementation.md - Implementation validation
+- @.claude/skills/mapper-validation/SKILL.md - Complete field validation workflow (CRITICAL)
+- @.claude/skills/gate-implementation/SKILL.md - Implementation validation
 
 **Supporting Rules:**
-- @.claude/rules/code-comment-style.md - Comment guidelines (no redundant comments)
-- @.claude/rules/failure-conditions.md - Implementation failures (Rule 8: Promise<any>)
-- @.claude/rules/error-handling.md - Error propagation patterns
-- @.claude/rules/mapper-patterns.md - Using mappers
-- @.claude/rules/http-client-patterns.md - HTTP patterns
+- @.claude/skills/code-comments/SKILL.md - Comment guidelines (no redundant comments)
+- @.claude/skills/failure-conditions/SKILL.md - Implementation failures (Rule 8: Promise<any>)
+- @.claude/skills/error-handling/SKILL.md - Error propagation patterns
+- @.claude/skills/mapper-patterns/SKILL.md - Using mappers
+- @.claude/skills/http-client/SKILL.md - HTTP patterns
 
 **Key Principles:**
 - **ALL operations in Producers** - Client only connects
 - **NO Promise<any>** - use generated types
 - **NO connection context parameters** - No apiKey, token, baseUrl, orgId
 - **Call mappers** for ALL conversions
-- All patterns in @.claude/rules/producer-implementation-patterns.md
+- All patterns in @.claude/skills/producer-implementation/SKILL.md
 
 ## Responsibilities
 
@@ -125,7 +137,7 @@ Thinks in terms of:
 
 ## Technical Patterns
 
-All producer patterns, validation, and examples are in **@.claude/rules/producer-implementation-patterns.md**:
+All producer patterns, validation, and examples are in **@.claude/skills/producer-implementation/SKILL.md**:
 
 - Producer pattern (class structure)
 - Using generated types
@@ -135,7 +147,7 @@ All producer patterns, validation, and examples are in **@.claude/rules/producer
 - Input validation
 - Validation checklist (bash scripts)
 
-General rules apply from **@.claude/rules/implementation-core-rules.md**
+General rules apply from **@.claude/skills/implementation-core/SKILL.md**
 
 **Detailed workflow** in @.claude/workflows/operation-engineer.md
 

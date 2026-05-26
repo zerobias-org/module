@@ -1,73 +1,93 @@
 ---
-description: Diagnose and fix module issues (15 min - 2 hours)
+description: Diagnose and fix a problem in an existing ESM/gradle module (15 min – 2 hours)
 argument-hint: <module-identifier> [issue-description]
 ---
 
-Execute the Fix Issue workflow for module: $1
+Diagnose + fix a module: $1
 
-**Issue Description:** $2 (optional - will diagnose if not provided)
+`$1` is `<vendor>-[<suite>-]<service>` (e.g. `github-github`, `amazon-aws-s3`).
+`$2` (optional) is a free-text description of the symptom.
 
-**Workflow:**
+If `$2` is empty, start with the diagnostic pass and let the symptom emerge.
 
-1. **Phase 1: Diagnosis**
-   - Run `npm test` to identify failing tests
-   - Run `npm run build` to identify compilation errors
-   - Check TypeScript diagnostics
-   - Invoke @build-reviewer to analyze errors
-   - Categorize issue: API spec, implementation, tests, or build
+## Phase 1 — Diagnose
 
-2. **Phase 2: Root Cause Analysis**
-   - If API spec issue: Invoke @api-reviewer
-   - If type issue: Invoke @typescript-expert
-   - If implementation issue: Invoke @operation-engineer
-   - If test issue: Invoke @test-orchestrator
-   - If build issue: Invoke @build-validator
+Run, in order:
 
-3. **Phase 3: Fix Implementation**
-   - Route to appropriate specialist agent:
-     - API changes → @api-architect + regenerate types
-     - Code fixes → @operation-engineer or @mapping-engineer
-     - Test fixes → @mock-specialist or test engineers
-     - Build fixes → @build-reviewer
+```bash
+cd package/<vendor>/[<suite>/]<service>
 
-4. **Phase 4: Validation**
-   - Re-run affected tests
-   - Verify fix doesn't break other tests
-   - Run full test suite
-   - Run build
-   - Invoke @gate-controller to validate all gates
-
-5. **Phase 5: Regression Check**
-   - Ensure no new issues introduced
-   - Verify all gates still pass
-   - Confirm fix is complete
-
-**Common Issue Types:**
-
-**Type Errors:**
-- Missing type generation → Run `npm run clean && npm run generate`
-- Using `any` types → Use generated types
-- Import errors → Fix import paths
-
-**Test Failures:**
-- Mock configuration → Invoke @mock-specialist
-- Integration test credentials → Check .env
-- Test data issues → Update test fixtures
-
-**Build Errors:**
-- TypeScript compilation → Invoke @typescript-expert
-- Missing dependencies → Run `npm install`
-- Configuration issues → Check tsconfig.json
-
-**Success Criteria:**
-- Issue identified and fixed
-- All tests passing
-- Build successful
-- No regressions introduced
-- All 6 gates still pass
-
-**Example:**
+zbb gateCheck                                             # is the stamp consistent with source?
+zbb bundleSpec                                            # does the spec still bundle?
+zbb generate                                              # does codegen still succeed?
+zbb compile                                               # does it compile?
+zbb lint                                                  # does eslint pass?
+zbb test --slot local                                     # unit tests
+zbb testDirect --slot local                               # e2e direct (if credentials)
 ```
-/fix-issue github-github "getWebhook returns undefined"
+
+The first failing step localizes the issue. Don't run later steps until earlier ones pass.
+
+## Phase 2 — Categorize
+
+| Failing step               | Probable cause                                    | Specialist                       |
+|----------------------------|---------------------------------------------------|----------------------------------|
+| `zbb gateCheck` exits 1    | Source changed since last `zbb gate`              | (just re-run `zbb gate`)         |
+| `zbb bundleSpec`           | `$ref` won't resolve / malformed YAML             | @api-reviewer + @api-architect   |
+| `zbb generate`             | Spec parses, codegen rejects (inline schemas, bad operationId) | @api-reviewer            |
+| `zbb compile`              | Source uses removed/renamed generated type, or impl drift | @typescript-expert + @operation-engineer |
+| `zbb lint`                 | Eslint violation                                  | @style-reviewer                  |
+| `zbb test`                 | Unit test failing — nock URL mismatch, mapper drift, or impl bug | @producer-ut-engineer + the relevant impl owner |
+| `zbb testDirect`           | Real API shape changed or fixture missing         | @producer-it-engineer            |
+| `zbb testDocker`           | Packaging issue / env not on slot                 | @connection-it-engineer + @build-reviewer |
+
+## Phase 3 — Fix
+
+Route the fix to the specialist. Common shapes:
+
+- **Spec needs change → regen → impl follow-up**: @api-architect edits `api.yml`, then run `zbb generate`, then @operation-engineer / @mapping-engineer absorbs the new types
+- **Mapper drift**: run the runtime validation pass in `@.claude/skills/mapper-runtime/SKILL.md`, surface the missing/renamed field, fix the mapper or the spec
+- **Test cross-talk**: check `nock.pendingMocks()` and `nock.cleanAll()` per `@.claude/skills/nock-mocking/SKILL.md`
+
+## Phase 4 — Validate
+
+After the fix:
+
+```bash
+# Re-run the failing step + everything downstream
+zbb <failing-task>
+# ... then upward through the chain ...
+zbb gate --slot local
+```
+
+`zbb gate` re-runs from cold. If it goes green and writes a new `gate-stamp.json`, the fix sticks.
+
+## Phase 5 — Regression check
+
+- Confirm `gate-stamp.json` updated and committed
+- Confirm no sibling-module files touched
+- Re-run the original failing command to prove the fix
+- Check that other test cases the impl touches still pass
+
+## Common patterns
+
+- **`Cannot find module './X'`** at compile or runtime — relative import missing `.js`. ESM rule.
+- **`Got 404 against https://…`** in unit test — nock URL doesn't match producer URL. Print `nock.activeMocks()` and the producer's URL side by side.
+- **`expiresIn` missing on connection refresh** — `connectionState.yml` doesn't extend `baseConnectionState`. Add the `allOf` wrapper.
+- **`InlineResponse200` types appearing** — inline schema in `api.yml`. Hoist to `components/schemas/` and `$ref` it.
+- **CI fails with `gate-stamp.json is missing or invalid`** — you didn't run `zbb gate` after the fix, or you edited a tracked file after running it. Run again, commit the new stamp.
+
+## Success criteria
+
+- All lifecycle tasks green from cold (`zbb clean && zbb build`)
+- `zbb gate --slot local` green
+- `gate-stamp.json` current and committed
+- No regression in tests that previously passed
+- Only files inside the target module path were touched
+
+## Example
+
+```
+/fix-issue github-github "listWebhooks returns empty array on docker mode"
 /fix-issue amazon-aws-s3
 ```

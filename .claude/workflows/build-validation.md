@@ -19,10 +19,10 @@ Both gates are MANDATORY and must pass to proceed.
 
 1. **Clean previous generation**
    - Remove generated/ directory
-   - **Commands:** See "Gate 2 Validation" in @.claude/rules/build-quality.md
+   - **Commands:** See "Gate 2 Validation" in @.claude/skills/build-quality/SKILL.md
 
 2. **Run type generation**
-   - Execute npm run clean && npm run generate
+   - Execute `zbb generate` from the module directory
    - Verify exit code is 0
    - If fails: BLOCK and report error
 
@@ -33,11 +33,11 @@ Both gates are MANDATORY and must pass to proceed.
 
 4. **Check for InlineResponse types**
    - Search all generated files for InlineResponse/InlineRequestBody
-   - **Detection script:** See "InlineResponse Detection" in @.claude/rules/build-quality.md
+   - **Detection script:** See "InlineResponse Detection" in @.claude/skills/build-quality/SKILL.md
    - If found: FAIL - API spec has inline schemas that must be moved to components/schemas
 
 5. **Validate TypeScript compilation**
-   - Run npm run build to verify types compile
+   - Run `zbb compile` to verify types compile
    - If fails: Report type errors and BLOCK
 
 6. **Report results**
@@ -74,17 +74,17 @@ Both gates are MANDATORY and must pass to proceed.
 ### Process
 
 1. **Source code linting** (MANDATORY)
-   - Execute npm run lint:src (or eslint src/)
+   - Execute `zbb lint`
    - **MUST** have 0 errors
    - Warnings are acceptable if documented
    - If errors found: BLOCK and fix immediately
 
 2. **Clean previous build**
    - Remove dist/ directory
-   - **Commands:** See "Gate 6 Validation" in @.claude/rules/build-quality.md
+   - **Commands:** See "Gate 6 Validation" in @.claude/skills/build-quality/SKILL.md
 
 3. **Run build**
-   - Execute npm run build
+   - Execute `zbb build`
    - Verify exit code is 0
    - If fails: BLOCK and report errors
 
@@ -93,26 +93,21 @@ Both gates are MANDATORY and must pass to proceed.
    - Count JavaScript files
    - Verify entry point (dist/index.js)
    - Count declaration files (.d.ts)
-   - **Validation script:** See "Artifact Validation" in @.claude/rules/build-quality.md
+   - **Validation script:** See "Artifact Validation" in @.claude/skills/build-quality/SKILL.md
 
-5. **Run dependency locking**
-   - Execute npm run shrinkwrap
-   - Verify exit code is 0
-   - Confirms npm-shrinkwrap.json created
+5. **Verify gate stamp**
+   - Confirm gate-stamp.json exists (produced by `zbb gate`)
+   - npm-shrinkwrap.json is FORBIDDEN in the gradle/zbb world
 
-6. **Verify shrinkwrap file**
-   - Check npm-shrinkwrap.json exists
-   - Verify file is not empty
-
-7. **Optional type check**
-   - Run npm run type-check if available
+6. **Type check**
+   - Run `zbb compile`
    - Report any TypeScript errors
 
-8. **Report results**
+7. **Report results**
    - Lint status: errors/warnings count
    - Build status: PASSED/FAILED
    - Artifact count (JS files, .d.ts files)
-   - Shrinkwrap status
+   - gate-stamp.json status
    - Any TypeScript errors
 
 ### Success Criteria
@@ -121,8 +116,7 @@ Both gates are MANDATORY and must pass to proceed.
 - ✅ dist/ directory created
 - ✅ JavaScript files generated
 - ✅ Declaration files (.d.ts) generated
-- ✅ Shrinkwrap exit code 0
-- ✅ npm-shrinkwrap.json exists
+- ✅ gate-stamp.json exists (no npm-shrinkwrap.json)
 - ✅ NO TypeScript errors
 - ✅ NO linting errors
 
@@ -136,9 +130,9 @@ Both gates are MANDATORY and must pass to proceed.
 - Cause: Build didn't complete
 - Fix: Check build output for errors
 
-**Shrinkwrap failed:**
-- Cause: Corrupted node_modules
-- Fix: Clean install and retry
+**Missing gate-stamp.json:**
+- Cause: `zbb gate` not run after build
+- Fix: Run `zbb gate` from the module directory
 
 ## Output Format
 
@@ -152,7 +146,7 @@ Report should include:
 - **Compilation:** Build success/failure
 - **Decision:** Whether to proceed with implementation
 
-**Format template:** See "Gate 2 Output Format" in @.claude/rules/build-quality.md
+**Format template:** See "Gate 2 Output Format" in @.claude/skills/build-quality/SKILL.md
 
 ### Gate 6 Output
 
@@ -160,16 +154,18 @@ Report should include:
 - **Status:** PASSED or FAILED
 - **Build execution:** Exit code, errors if any
 - **Artifacts generated:** File tree and counts
-- **Dependency locking:** Shrinkwrap status
+- **Gate stamp:** gate-stamp.json status
 - **Decision:** Whether task is ready for completion
 
-**Format template:** See "Gate 6 Output Format" in @.claude/rules/build-quality.md
+**Format template:** See "Gate 6 Output Format" in @.claude/skills/build-quality/SKILL.md
 
 ## Tools Used
 
-- npm run clean && npm run generate
-- npm run build
-- npm run shrinkwrap
+- `zbb generate`
+- `zbb build`
+- `zbb lint`
+- `zbb compile`
+- `zbb gate --slot local` (produces gate-stamp.json)
 - grep (for InlineResponse detection)
 - find (for file counting)
 - ls (for verification)
@@ -177,10 +173,10 @@ Report should include:
 ## Related Documentation
 
 **Primary Rules:**
-- @.claude/rules/build-quality.md - All validation scripts, commands, and output formats
-- @.claude/rules/gate-build.md - Gate 6 specification
-- @.claude/rules/gate-type-generation.md - Gate 2 specification
+- @.claude/skills/build-quality/SKILL.md - All validation scripts, commands, and output formats
+- @.claude/skills/gate-build/SKILL.md - Gate 6 specification
+- @.claude/skills/gate-type-generation/SKILL.md - Gate 2 specification
 
 **Supporting Rules:**
-- @.claude/rules/failure-conditions.md - Build-related failure conditions
-- @.claude/rules/implementation.md - TypeScript compilation standards
+- @.claude/skills/failure-conditions/SKILL.md - Build-related failure conditions
+- @.claude/skills/implementation-core/SKILL.md - TypeScript compilation standards

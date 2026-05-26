@@ -1,191 +1,130 @@
 # Module Scaffolder Workflow
 
 ## Purpose
-Scaffold new module structure using Yeoman generator, validate output, and prepare for Phase 3 design work.
+Run `@zerobias-org/module` (Yeoman) for a new module, verify its output, and write the Phase 2 memory entry. The generator does install, gradle build, and symlinks itself — this workflow's job is *feeding it correct inputs and verifying afterwards*, not orchestrating each step.
 
 ## Input Required
-- `workflow`: Workflow type (e.g., create-module, add-operation)
-- `moduleId`: Module identifier (e.g., github-github)
-- `inputFile`: Path to phase-01-discovery.json in localmemory
-- `outputFile`: Path to write phase-02-scaffolding.json
+- `workflow`: e.g. `create-module`
+- `moduleId`: e.g. `github-github`, `amazon-aws-s3`
+- `inputFile`: `phase-01-discovery.json` (Phase 1 output)
+- `outputFile`: `phase-02-scaffolding.json` (this phase's output)
 
 ## Step-by-Step Process
 
-### Step 1: Read Input Parameters
+### Step 1 — Read Phase 1 output
 
-- Read discovery output JSON from .claude/.localmemory/{workflow}-{moduleId}/{inputFile}
-- Extract vendor and product names
-- Extract suite (if applicable)
-- Extract packageName and packageScope
-- Determine target directory structure
-- **Input format:** See "Discovery Output" in @.claude/rules/scaffolding-patterns.md
+Read `.claude/.localmemory/{workflow}-{moduleId}/{inputFile}`.
 
-### Step 2: Determine Module Path
+Extract:
+- `productPackage` — must start with `@zerobias-org/product-`
+- Display name (becomes `--description`)
+- Auth requirement (drives `--moduleType` = `connector` | `plain`)
 
-Calculate correct module path based on suite:
-- With suite: package/{vendor}/{suite}/{product}
-- Without suite: package/{vendor}/{product}
-- **Path patterns:** See "Module Path Determination" in @.claude/rules/scaffolding-patterns.md
+### Step 2 — Derive remaining inputs
 
-### Step 3: Execute Yeoman Generator
+| Input            | Source                                                                 |
+|------------------|------------------------------------------------------------------------|
+| `modulePackage`  | `productPackage.replace('product-','module-').replace('@zerobias-org/','@zerobias-org/')` |
+| `packageVersion` | `0.0.0` (always for new modules)                                       |
+| `repository`     | `git config remote.origin.url`                                         |
+| `author`         | `git config user.email`                                                |
+| `moduleType`     | `connector` if auth required else `plain`                              |
 
-- Navigate to package directory
-- Run Yeoman generator with correct parameters
-- Use exact command format for vendor/product or vendor/suite/product
-- Yeoman will prompt for package name, scope, description, author, license
-- **Generator commands:** See "Yeoman Generator Execution" in @.claude/rules/scaffolding-patterns.md
+### Step 3 — Compute paths
 
-### Step 4: Run sync-meta (CRITICAL)
+| Path           | Rule                                                                   |
+|----------------|------------------------------------------------------------------------|
+| `modulePath`   | `package/` + `modulePackage.split('/module-')[1].split('-').join('/')` |
+| `gradleProject`| `:` + same path with `:` instead of `/`                                 |
 
-**NEVER SKIP THIS STEP**
+Example: `@zerobias-org/module-amazon-aws-s3` → `package/amazon/aws/s3` → `:amazon:aws:s3`.
 
-- Navigate to module directory
-- Execute npm run sync-meta
-- This syncs package.json metadata to api.yml (title and version)
-- MUST run BEFORE npm install
-- **Why critical:** See "sync-meta Usage" in @.claude/rules/scaffolding-patterns.md
+### Step 4 — Verify preconditions
 
-### Step 5: Validate Yeoman Output
+Fail fast if any are missing:
 
-Run 11-point comprehensive validation checklist:
-1. Core structure (src/, tests/, generated/ directories exist)
-2. Key files exist (package.json, api.yml, connectionProfile.yml)
-3. Source files present (Client.ts, Mappers.ts, index.ts)
-4. Test structure (tests/unit/, tests/integration/)
-5. TypeScript config (tsconfig.json)
-6. api.yml title synced with package.json
-7. api.yml version synced with package.json
-8. connectionProfile.yml has stub
-9. connectionState.yml exists
-10. Build scripts present in package.json
-11. Dependencies correct in package.json
+1. CWD's `package.json.name` ends with `/module` (this repo)
+2. `./gradlew` exists at CWD (zbb drives it; you should not invoke it directly)
+3. `docker info` exits 0 (Docker Desktop is running)
+4. `node -v` is `v22.*`
+5. `which yo` succeeds and `@zerobias-org/module` is installed
+6. `${modulePath}` does **not** already exist
 
-**All validation scripts:** See "11-Point Validation Checklist" in @.claude/rules/scaffolding-patterns.md
+### Step 5 — Invoke the generator
 
-### Step 6: Install Dependencies
+```bash
+yo @zerobias-org/module \
+  --productPackage "${productPackage}" \
+  --modulePackage  "${modulePackage}" \
+  --packageVersion '0.0.0' \
+  --description    "${displayName}" \
+  --repository     "$(git config remote.origin.url)" \
+  --author         "$(git config user.email)" \
+  --moduleType     "${moduleType}"
+```
 
-- Navigate to module directory
-- Run npm install
-- Verify node_modules created
-- Verify package-lock.json created
-- **Installation:** See "Dependency Installation" in @.claude/rules/scaffolding-patterns.md
+The generator will:
+- Create `${modulePath}/`
+- Emit the file set listed in `@.claude/skills/scaffolding/SKILL.md` ("What the generator does for you")
+- Symlink `${modulePath}/.nvmrc` and `.npmrc` to repo root
+- Run `zbb build` from `${modulePath}` (validate → generate → compile → test → buildImage)
 
-### Step 7: Validate TypeScript Configuration
+If the generator exits non-zero, **stop**. Surface stderr to the caller. Do not retry; do not "fix" partial output.
 
-**Do NOT build yet** - just validate tsconfig.json:
-- Check tsconfig.json exists and is valid JSON
-- Verify key settings present (target, module, outDir)
-- Do NOT run build - that comes later in Phase 5
+### Step 6 — Verify output
 
-### Step 8: Create Required Symlinks
+Run the post-generator checklist from `@.claude/skills/scaffolding/SKILL.md`. In particular:
 
-- Link .npmrc from root if not present
-- Link .nvmrc from root if not present
-- **Symlink commands:** See "Symlink Creation" in @.claude/rules/scaffolding-patterns.md
+- Required scaffolded files exist
+- Symlinks `.nvmrc` / `.npmrc` resolve
+- `dist/`, `generated/`, `hub-sdk/generated/` populated (skip if generator was run with `--no-install`)
+- `generated/api/manifest.json` exists
+- `src/<Class>Impl.ts` exists and implements the `<Class>Connector` interface (TODO bodies are fine)
+- `src/index.ts` re-exports the impl, factory, and generated model/api types
+- `package.json` has only the `clean` script
 
-### Step 9: Validate Complete Structure
+### Step 7 — Write Phase 2 output
 
-**Final verification** that all stub files are present:
-- List all critical files in src/, tests/, root
-- Verify stubs only (not design)
-- Check for TODO markers in connectionProfile.yml
-- Confirm api.yml paths are empty (ready for Phase 3 design)
-- **Structure validation:** See "Structure Validation" in @.claude/rules/scaffolding-patterns.md
+Write `.claude/.localmemory/{workflow}-{moduleId}/{outputFile}` in the shape documented in `@.claude/skills/scaffolding/SKILL.md` ("Memory output").
 
-### Step 10: Write Output File
+### Step 8 — Hand off
 
-Create phase-02-scaffolding.json with:
-- workflow and moduleId
-- phase: "scaffolding"
-- status: "success" or "failed"
-- modulePath (absolute path to module)
-- validation results (all checks with status)
-- nextPhase: "design"
-- notes about what's ready and what's deferred
+Do **not** commit. The first commit happens in Phase 6 after design + impl + tests + gate-stamp are all ready, so the module enters git as a coherent unit (or as a "scaffold baseline" if Phase 6 explicitly splits commits — that decision is owned by the workflow caller, not this agent).
 
-**Output format:** See "Output File JSON Format" in @.claude/rules/scaffolding-patterns.md
+## What this workflow does NOT do
 
-### Step 11: Create Git Commit
-
-- Navigate to module directory
-- Stage all new files (git add .)
-- Create commit with descriptive message
-- Include module structure summary
-- Use HEREDOC for multi-line commit message
-- Add Claude Code attribution
-- **Commit format:** See "Git Commit" in @.claude/rules/scaffolding-patterns.md
-
-## Critical Sequence
-
-**MUST follow this order:**
-
-1. Yeoman generator
-2. `npm run sync-meta` ← NEVER SKIP
-3. `npm install`
-4. Validation
-
-**Violating this sequence causes:**
-- api.yml title/version out of sync
-- Build failures later
-- Test failures later
+- ❌ Create `.npmrc` / `.nvmrc` symlinks manually (generator does it)
+- ❌ Create `connectionState.yml` (deferred to Phase 3, only if needed)
+- ❌ Create `Dockerfile` (gradle `buildImage` doesn't need one)
+- ❌ Create `test/integration/` (use `test/e2e/`)
+- ❌ Touch files outside `${modulePath}`
 
 ## Success Criteria
 
-- ✓ All 11 validation checks pass
-- ✓ Module directory created at correct path
-- ✓ All stub files present
-- ✓ api.yml title/version synced with package.json
-- ✓ Dependencies installed (node_modules present)
-- ✓ No build errors (validation only, not full build)
-- ✓ Git commit created
-- ✓ Output JSON written to localmemory
-
-## What NOT to Do
-
-**DO NOT:**
-- ❌ Design connectionProfile.yml schema (Phase 3)
-- ❌ Design connectionState.yml schema (Phase 3)
-- ❌ Design api.yml paths/operations (Phase 3)
-- ❌ Make authentication decisions (Phase 3)
-- ❌ Skip `npm run sync-meta`
-- ❌ Run `npm run build` (premature)
-
-**ONLY:**
-- ✓ Scaffold structure
-- ✓ Validate stubs exist
-- ✓ Prepare for Phase 3
+- Generator exited 0
+- All files listed in `scaffolding` skill's verification checklist exist
+- Gradle auto-build succeeded (or `--no-install` was explicitly requested by the caller)
+- `phase-02-scaffolding.json` written
 
 ## Troubleshooting
 
-See @.claude/rules/scaffolding-patterns.md for 6 common scenarios:
-1. Generator not found → Install generator globally
-2. Sync-meta fails → Check package.json validity
-3. npm install fails → Check registry access
-4. Missing directories → Re-run generator
-5. api.yml not synced → Run sync-meta again
-6. TypeScript errors → Check tsconfig.json
+See `@.claude/skills/scaffolding/SKILL.md` § "When the generator fails".
 
-## Handoff to Next Phase
+## Handoff to Phase 3
 
-**Phase 3 (Design) agents will:**
-- Design connectionProfile.yml (@connection-profile-guardian + @credential-manager)
-- Design connectionState.yml (@credential-manager)
-- Design api.yml operations (@api-architect + @schema-specialist)
-- Select authentication methods (@security-auditor)
+Phase 3 agents pick up from a tree that contains:
+- `api.yml` stub with empty `paths`
+- `connectionProfile.yml` stub with a single `apiToken` (connector only)
+- A compiled but functionally empty `src/<Class>Impl.ts`
+- A passing `zbb build` (stub-level)
+- Empty `test/unit/`, a `describeModule<T>` skeleton in `test/e2e/`
 
-**You handed them:**
-- ✓ Clean module structure
-- ✓ Valid stub files
-- ✓ Installed dependencies
-- ✓ Ready for design work
+Phase 3 owns: real `api.yml`, real `connectionProfile.yml`, optional `connectionState.yml`, security review.
 
-## Related Documentation
+## Related
 
-**Primary Rules:**
-- @.claude/rules/scaffolding-patterns.md - ALL technical patterns, commands, validation scripts, troubleshooting
-
-**Supporting Rules:**
-- @.claude/rules/tool-requirements.md - Required generator tools
-- @.claude/rules/prerequisites.md - Setup requirements
-- @.claude/rules/execution-protocol.md - Phase transitions
-- @.claude/rules/implementation.md - Module structure standards
+- @.claude/skills/scaffolding/SKILL.md — commands, file emission, verification, troubleshooting
+- @.claude/skills/prerequisites/SKILL.md — environment requirements
+- @.claude/skills/tool-requirements/SKILL.md — CLI tooling
+- @.claude/skills/module-exports/SKILL.md — what `src/index.ts` should look like
+- @.claude/skills/typescript-config/SKILL.md — `tsconfig.json` shape

@@ -1,6 +1,18 @@
 ---
-
-skills: comment-style-guide, connection-schema-design, core-error-handling, failure-criteria, gate-3-implementation, http-client-patterns, implementation-standards, http-mocking, security-standards
+name: integration-engineer
+description: API integration patterns and error handling
+tools: Read, Write, Edit, Grep, Glob, Bash
+model: inherit
+skills:
+  - code-comments
+  - connection-profile
+  - error-handling
+  - failure-conditions
+  - gate-implementation
+  - http-client
+  - implementation-core
+  - nock-mocking
+  - security
 ---
 
 # Integration Engineer
@@ -22,23 +34,23 @@ Pragmatic HTTP communication expert who thinks in request/response cycles. Obses
 ## Rules to Load
 
 **Primary Rules:**
-- @.claude/rules/http-client-patterns.md - ALL HTTP patterns, client setup, error handling (CRITICAL - all technical patterns)
-- @.claude/rules/error-handling.md - Error mapping to core types (CRITICAL)
-- @.claude/rules/implementation-core-rules.md - Client and producer patterns
+- @.claude/skills/http-client/SKILL.md - ALL HTTP patterns, client setup, error handling (CRITICAL - all technical patterns)
+- @.claude/skills/error-handling/SKILL.md - Error mapping to core types (CRITICAL)
+- @.claude/skills/implementation-core/SKILL.md - Client and producer patterns
 
 **Supporting Rules:**
-- @.claude/rules/code-comment-style.md - Comment guidelines (no redundant comments)
-- @.claude/rules/gate-implementation.md - Implementation validation
-- @.claude/rules/connection-profile-design.md - Connection management patterns
-- @.claude/rules/security.md - Secure communication and credential handling
-- @.claude/rules/failure-conditions.md - Implementation failures (Rule 8: Promise<any>)
-- @.claude/rules/nock-patterns.md - Testing HTTP with nock
+- @.claude/skills/code-comments/SKILL.md - Comment guidelines (no redundant comments)
+- @.claude/skills/gate-implementation/SKILL.md - Implementation validation
+- @.claude/skills/connection-profile/SKILL.md - Connection management patterns
+- @.claude/skills/security/SKILL.md - Secure communication and credential handling
+- @.claude/skills/failure-conditions/SKILL.md - Implementation failures (Rule 8: Promise<any>)
+- @.claude/skills/nock-mocking/SKILL.md - Testing HTTP with nock
 
 **Key Principles:**
 - **ALL errors mapped to core types** - never generic Error
 - **Real connection validation** - not just state checks
 - **Response validation** before mapping
-- All patterns in @.claude/rules/http-client-patterns.md
+- All patterns in @.claude/skills/http-client/SKILL.md
 
 ## Responsibilities
 
@@ -138,7 +150,7 @@ Thinks in terms of:
 
 ## Technical Patterns
 
-All HTTP client patterns, error handling, retry logic, and examples are in **@.claude/rules/http-client-patterns.md**:
+All HTTP client patterns, error handling, retry logic, and examples are in **@.claude/skills/http-client/SKILL.md**:
 
 - Client class structure (connect/isConnected/disconnect)
 - HTTP client configuration (axios)
@@ -151,9 +163,9 @@ All HTTP client patterns, error handling, retry logic, and examples are in **@.c
 - Timeout configuration
 - Common anti-patterns
 
-**Error mapping reference** in @.claude/rules/error-handling.md
+**Error mapping reference** in @.claude/skills/error-handling/SKILL.md
 
-**Testing patterns** in @.claude/rules/nock-patterns.md
+**Testing patterns** in @.claude/skills/nock-mocking/SKILL.md
 
 ## Confidence Thresholds
 

@@ -1,68 +1,68 @@
 ---
-description: Add a single operation to an existing module (45-70 min)
+description: Add a single operation to an existing ESM/gradle module (45-70 min, 6 gates)
 argument-hint: <module-identifier> <operation-name>
 ---
 
 Execute the Add Operation workflow for module: $1, operation: $2
 
-**Workflow Steps:**
+`$1` is `<vendor>-[<suite>-]<service>` (e.g. `github-github`, `amazon-aws-s3`).
+`$2` is the new operationId (must match `^[a-z][a-zA-Z0-9]+$` and start with `list`, `get`, `create`, `update`, `delete`, or `search`).
 
-1. **Phase 0: Credential Check (MANDATORY)**
-   - Check for credentials in .env, .connectionProfile.json
-   - If missing, ASK user before proceeding
-   - Only continue with explicit permission
+All commands run from inside the module directory (`cd package/<vendor>/[<suite>/]<service>`).
 
-2. **Phase 1: Research & Analysis**
-   - Invoke @api-researcher for **TARGETED SCOPE** API research
-     - Research ONLY the specific operation endpoint
-     - Test the endpoint with real API call
-     - Document parameters and response format
-     - Save example response
-   - Invoke @operation-analyst to analyze operation priority
+## Phase 0 — Credentials (mandatory)
 
-3. **Phase 2: API Specification Design**
-   - Invoke @api-architect to design OpenAPI spec
-   - Invoke @schema-specialist for schema design
-   - Invoke @api-reviewer to review specification
-   - **Gate 1: API Specification** - Validate before proceeding
+- Check that the target slot has the credentials/secrets the operation needs: `zbb secret list --slot local` and `zbb env list --slot local`
+- If anything is missing, **ask the user** before continuing
+- Never put credentials in code or in a `.env` file
 
-4. **Phase 3: Type Generation**
-   - Invoke @build-validator to run `npm run clean && npm run generate`
-   - **Gate 2: Type Generation** - Validate types created
+## Phase 1 — Research
 
-5. **Phase 4: Implementation**
-   - Invoke @operation-engineer to implement the operation
-   - Invoke @mapping-engineer for data mapping
-   - Invoke @style-reviewer for code quality
-   - **Gate 3: Implementation** - Validate no `any` types
-   - **Mapper Runtime Validation** - Add [TEMP-RAW-API] logs, run tests with LOG_LEVEL=debug, validate ZERO missing fields
+- @api-researcher: **targeted-scope** research for *this one endpoint only*. Test it against the real API with the slot's credentials. Document parameters, response shape, pagination style, error responses. Save a sanitized sample response.
+- @operation-engineer: confirm operationId, naming, and whether the operation belongs in an existing producer tag or a new one
 
-6. **Phase 5: Testing**
-   - Invoke @test-orchestrator to plan tests
-   - Invoke @mock-specialist for test fixtures
-   - Invoke @producer-ut-engineer for unit tests
-   - Invoke @producer-it-engineer for integration tests
-   - Invoke @ut-reviewer and @it-reviewer
-   - **Gate 4: Test Creation** - Validate tests exist
-   - **Gate 5: Test Execution** - Run `npm test`, all must pass
+## Phase 2 — API design
 
-7. **Phase 6: Build & Finalization**
-   - Invoke @build-reviewer to run `npm run build`
-   - Run `npm run shrinkwrap` to lock dependencies
-   - **Gate 6: Build** - Validate successful
+- @api-architect: add the path + operationId to `api.yml`, define the response component schema if new
+- @schema-specialist: complex schema design (`$ref` composition, polymorphism) if needed
+- @api-reviewer: validate against `@.claude/skills/gate-api-spec/SKILL.md`
+- Run: `zbb bundleSpec` — must exit 0
+- **Gate 1** — API spec passes the checklist
 
-8. **Final Validation**
-   - Invoke @gate-controller to validate all 6 gates passed
+## Phase 3 — Type generation
 
-**Success Criteria:**
-- All 6 gates passed
-- Operation fully implemented
-- Tests created and passing
-- Build successful
-- Ready for commit
+- Run: `zbb generate`
+- Verify `generated/api/manifest.json` includes the new operation
+- Verify `hub-sdk/generated/api/index.ts` exports the new method
+- **Gate 2** — `@.claude/skills/gate-type-generation/SKILL.md` clean
 
-**Module Identifier Format:** vendor-service or vendor-suite-service
-Examples: github-github, amazon-aws-s3, avigilon-alta-access
+## Phase 4 — Implementation
 
-**Operation Name Pattern:** Must start with: list, get, create, update, delete, or search
-Examples: listWebhooks, getUser, createRepository
+- @operation-engineer: add the method to the appropriate `<Tag>ProducerImpl.ts`
+- @mapping-engineer: write or extend the mapper; use `map()` from `@zerobias-org/util-hub-module-utils`
+- @style-reviewer: run `zbb lint`
+- Run mapper runtime validation per `@.claude/skills/mapper-runtime/SKILL.md` — zero missing fields
+- **Gate 3** — `@.claude/skills/gate-implementation/SKILL.md` clean
+
+## Phase 5 — Tests
+
+- @mock-specialist: sanitized fixtures for the new operation
+- @producer-ut-engineer: extend `test/unit/<Tag>ProducerTest.test.ts` with happy + at least one error path
+- @producer-it-engineer: extend `test/e2e/<name>.test.ts` with a `describeModule<T>`-driven case for the new operation
+- @ut-reviewer + @it-reviewer: run gates
+- Run: `zbb test --slot local` and `zbb testDirect --slot local`; connectors also `zbb testDocker --slot local`
+- **Gate 4** — tests exist and are shaped right
+- **Gate 5** — tests pass
+
+## Phase 6 — Build & gate
+
+- Run: `zbb gate --slot local`
+- **Gate 6** — `gate-stamp.json` updated; commit it alongside the new code
+- @build-reviewer: confirm Gate 6 closed
+
+## Success criteria
+
+- All 6 gates green
+- One commit (or a clean conventional-commits sequence) staged
+- Only files under `package/<vendor>/[<suite>/]<service>/` + the module's `gate-stamp.json` modified
+- New operation tested in unit and at least direct-mode e2e

@@ -41,8 +41,8 @@ Create base schemas for common properties when:
 - 3+ schemas share the same properties
 - Properties are truly identical (same type, format, meaning)
 
-**When to create base:** See "Base Schema Pattern" in @.claude/rules/api-spec-schemas.md
-**Example structure:** See "ResourceBase Pattern" in @.claude/rules/api-spec-schemas.md
+**When to create base:** See "Base Schema Pattern" in @.claude/skills/api-schemas/SKILL.md
+**Example structure:** See "ResourceBase Pattern" in @.claude/skills/api-schemas/SKILL.md
 
 ### Step 3: Create Full Schemas with Composition
 
@@ -51,8 +51,8 @@ Use allOf for composition:
 - Compose Summary + additional fields to create Full schemas
 - Reuse common property sets
 
-**Composition patterns:** See "Schema Composition with allOf" in @.claude/rules/api-spec-schemas.md
-**When to use allOf:** See "Composition Strategy" in @.claude/rules/api-spec-schemas.md
+**Composition patterns:** See "Schema Composition with allOf" in @.claude/skills/api-schemas/SKILL.md
+**When to use allOf:** See "Composition Strategy" in @.claude/skills/api-schemas/SKILL.md
 
 ### Step 4: Create Nested Object Schemas
 
@@ -64,7 +64,7 @@ For each nested object:
 - Mark required fields
 - Reference using $ref from parent schema
 
-**Nested patterns:** See "Nested Object References" in @.claude/rules/api-spec-schemas.md
+**Nested patterns:** See "Nested Object References" in @.claude/skills/api-schemas/SKILL.md
 
 ### Step 5: Apply Formats
 
@@ -74,8 +74,8 @@ Apply appropriate formats to properties:
 - **uri**: For URLs
 - **email**: For email addresses
 
-**All formats:** See @.claude/rules/type-mapping.md for complete format reference
-**Format application:** See "Format Usage" in @.claude/rules/api-spec-schemas.md
+**All formats:** See @.claude/skills/type-mapping/SKILL.md for complete format reference
+**Format application:** See "Format Usage" in @.claude/skills/api-schemas/SKILL.md
 
 ### Step 6: Consider Context Separation
 
@@ -85,8 +85,8 @@ If schema is used in BOTH nested and direct contexts AND has 10+ properties:
 - **Summary schema:** Minimal fields for nested usage (id, name, key properties)
 - **Full schema:** Extends summary with all additional fields
 
-**When to separate:** See "Summary vs Full Decision" in @.claude/rules/api-spec-schemas.md
-**Pattern:** See "Context Separation Pattern" in @.claude/rules/api-spec-schemas.md
+**When to separate:** See "Summary vs Full Decision" in @.claude/skills/api-schemas/SKILL.md
+**Pattern:** See "Context Separation Pattern" in @.claude/skills/api-schemas/SKILL.md
 
 ### Step 7: Document External API Mapping
 
@@ -95,7 +95,7 @@ Add comments documenting how each field maps to external API:
 - Document any transformations or conversions
 - Note format changes (string → date-time, etc.)
 
-**Mapping comments:** See "External API Mapping" in @.claude/rules/api-spec-schemas.md
+**Mapping comments:** See "External API Mapping" in @.claude/skills/api-schemas/SKILL.md
 
 ### Step 8: Validate Schema Quality
 
@@ -106,11 +106,11 @@ Run validation scripts:
 4. Ensure nested objects use $ref (not inline)
 5. Verify formats applied correctly
 
-**All validation scripts:** See "Schema Validation" in @.claude/rules/api-spec-schemas.md
+**All validation scripts:** See "Schema Validation" in @.claude/skills/api-schemas/SKILL.md
 
 ### Step 9: Review Against Rules
 
-Check compliance with schema rules (Rules 14-24 in @.claude/rules/implementation.md):
+Check compliance with schema rules (Rules 14-24 in @.claude/skills/implementation-core/SKILL.md):
 
 - [ ] Responses reference main business object only (not envelope)
 - [ ] NO nullable anywhere
@@ -121,7 +121,7 @@ Check compliance with schema rules (Rules 14-24 in @.claude/rules/implementation
 - [ ] Composition with allOf where appropriate
 - [ ] External API mapping documented
 
-**Complete checklist:** See "Schema Quality Checklist" in @.claude/rules/api-spec-schemas.md
+**Complete checklist:** See "Schema Quality Checklist" in @.claude/skills/api-schemas/SKILL.md
 
 ## Common Decisions
 
@@ -135,7 +135,7 @@ Check compliance with schema rules (Rules 14-24 in @.claude/rules/implementation
 - Only 1-2 schemas share properties
 - Shared properties have different meanings
 
-**Decision guide:** See "Base Schema Decision" in @.claude/rules/api-spec-schemas.md
+**Decision guide:** See "Base Schema Decision" in @.claude/skills/api-schemas/SKILL.md
 
 ### When to Separate Summary vs Full?
 
@@ -149,7 +149,7 @@ Check compliance with schema rules (Rules 14-24 in @.claude/rules/implementation
 - Schema has fewer than 10 properties
 - All fields needed in nested usage
 
-**Decision guide:** See "Context Separation Decision" in @.claude/rules/api-spec-schemas.md
+**Decision guide:** See "Context Separation Decision" in @.claude/skills/api-schemas/SKILL.md
 
 ### When to Use allOf?
 
@@ -162,7 +162,7 @@ Check compliance with schema rules (Rules 14-24 in @.claude/rules/implementation
 - Simple schemas without extension
 - When properties are unique to one schema
 
-**Decision guide:** See "allOf Usage" in @.claude/rules/api-spec-schemas.md
+**Decision guide:** See "allOf Usage" in @.claude/skills/api-schemas/SKILL.md
 
 ## Output Format
 
@@ -174,7 +174,7 @@ Document schema design decisions:
 - **Validation Results:** All checks passed
 - **External API Mapping:** Field-by-field mapping
 
-**Template:** See "Schema Design Output Format" in @.claude/rules/api-spec-schemas.md
+**Template:** See "Schema Design Output Format" in @.claude/skills/api-schemas/SKILL.md
 
 ## Success Criteria
 
@@ -201,9 +201,9 @@ Schema design is complete when:
 ## Related Documentation
 
 **Primary Rules:**
-- @.claude/rules/api-spec-schemas.md - ALL schema patterns, composition, validation scripts
+- @.claude/skills/api-schemas/SKILL.md - ALL schema patterns, composition, validation scripts
 
 **Supporting Rules:**
-- @.claude/rules/type-mapping.md - Format reference and core type mappings
-- @.claude/rules/gate-api-spec.md - Schema validation requirements for Gate 1
-- @.claude/rules/implementation.md - Schema rules (Rules 14-24)
+- @.claude/skills/type-mapping/SKILL.md - Format reference and core type mappings
+- @.claude/skills/gate-api-spec/SKILL.md - Schema validation requirements for Gate 1
+- @.claude/skills/implementation-core/SKILL.md - Schema rules (Rules 14-24)

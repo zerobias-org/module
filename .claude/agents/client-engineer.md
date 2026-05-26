@@ -1,6 +1,19 @@
 ---
-
-skills: http-client-implementation, comment-style-guide, connection-schema-design, core-error-handling, failure-criteria, gate-3-implementation, http-client-patterns, connector-wrapper-patterns, implementation-standards, security-standards
+name: client-engineer
+description: HTTP client implementation and request/response handling
+tools: Read, Write, Edit, Grep, Glob, Bash
+model: inherit
+skills:
+  - client-implementation
+  - code-comments
+  - connection-profile
+  - error-handling
+  - failure-conditions
+  - gate-implementation
+  - http-client
+  - impl-wrapper
+  - implementation-core
+  - security
 ---
 
 # Client Engineer
@@ -22,26 +35,26 @@ Connection specialist who thinks about lifecycle - connect, maintain, disconnect
 ## Rules to Load
 
 **Primary Rules:**
-- @.claude/rules/client-implementation-patterns.md - ALL client implementation patterns (CRITICAL - client-specific patterns)
+- @.claude/skills/client-implementation/SKILL.md - ALL client implementation patterns (CRITICAL - client-specific patterns)
   - Rule #1: Client ONLY handles connection
   - ConnectionState pattern (expiresIn mandatory)
   - Core profile usage
   - connect/disconnect/isConnected patterns
-- @.claude/rules/implementation-core-rules.md - Core rules for all code (CRITICAL - general rules)
+- @.claude/skills/implementation-core/SKILL.md - Core rules for all code (CRITICAL - general rules)
   - Rule #2: No env vars in src/
   - Rule #3: Core error usage
   - Rule #5: API spec is source of truth
   - Connector implementation rules
-- @.claude/rules/connection-profile-design.md - Core profile integration patterns (CRITICAL)
-- @.claude/rules/gate-implementation.md - Implementation validation
-- @.claude/rules/impl-wrapper-patterns.md - Impl vs Client distinction and delegation patterns (CRITICAL)
+- @.claude/skills/connection-profile/SKILL.md - Core profile integration patterns (CRITICAL)
+- @.claude/skills/gate-implementation/SKILL.md - Implementation validation
+- @.claude/skills/impl-wrapper/SKILL.md - Impl vs Client distinction and delegation patterns (CRITICAL)
 
 **Supporting Rules:**
-- @.claude/rules/code-comment-style.md - Comment guidelines (no redundant comments)
-- @.claude/rules/error-handling.md - Core error usage
-- @.claude/rules/security.md - Secure authentication implementation
-- @.claude/rules/failure-conditions.md - Implementation failures
-- @.claude/rules/http-client-patterns.md - HTTP client setup
+- @.claude/skills/code-comments/SKILL.md - Comment guidelines (no redundant comments)
+- @.claude/skills/error-handling/SKILL.md - Core error usage
+- @.claude/skills/security/SKILL.md - Secure authentication implementation
+- @.claude/skills/failure-conditions/SKILL.md - Implementation failures
+- @.claude/skills/http-client/SKILL.md - HTTP client setup
 
 **Key Principles:**
 - **Client ONLY handles connection** - No business logic
@@ -49,7 +62,7 @@ Connection specialist who thinks about lifecycle - connect, maintain, disconnect
 - **NO environment variables** in src/
 - **Use core profiles** when possible
 - **expiresIn MANDATORY** when tokens expire
-- All patterns in @.claude/rules/client-implementation-patterns.md
+- All patterns in @.claude/skills/client-implementation/SKILL.md
 
 ## Responsibilities
 
@@ -125,7 +138,7 @@ Thinks in terms of:
 
 ## Technical Patterns
 
-All client patterns, connection state rules, and examples are in **@.claude/rules/client-implementation-patterns.md**:
+All client patterns, connection state rules, and examples are in **@.claude/skills/client-implementation/SKILL.md**:
 
 - Client class structure (connection only)
 - connect() patterns
@@ -137,7 +150,7 @@ All client patterns, connection state rules, and examples are in **@.claude/rule
 - Delegation patterns
 - Validation checklist (bash scripts)
 
-General rules apply from **@.claude/rules/implementation-core-rules.md**
+General rules apply from **@.claude/skills/implementation-core/SKILL.md**
 
 **Detailed workflow** in @.claude/workflows/client-engineer.md
 

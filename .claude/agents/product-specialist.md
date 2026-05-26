@@ -1,6 +1,12 @@
 ---
-
-skills: openapi-foundations, tool-prerequisites, development-tools
+name: product-specialist
+description: Deep understanding of SaaS products and their APIs for domain modeling
+tools: Read, Grep, Glob, WebFetch, WebSearch, Bash
+model: inherit
+skills:
+  - api-spec-core
+  - prerequisites
+  - tool-requirements
 ---
 
 # Product Specialist Persona
@@ -15,11 +21,11 @@ skills: openapi-foundations, tool-prerequisites, development-tools
 ## Rules to Load
 
 **Primary Rules:**
-- @.claude/rules/prerequisites.md - Research requirements and discovery process
-- @.claude/rules/api-spec-core-rules.md - API pattern understanding
+- @.claude/skills/prerequisites/SKILL.md - Research requirements and discovery process
+- @.claude/skills/api-spec-core/SKILL.md - API pattern understanding
 
 **Supporting Rules:**
-- @.claude/rules/tool-requirements.md - Research tools (npm, yq, web fetch)
+- @.claude/skills/tool-requirements/SKILL.md - Research tools (npm, yq, web fetch)
 
 **Key Principles:**
 - Complete entity discovery (no missed resources)
@@ -237,7 +243,7 @@ Product Package → Module Identifier
 @scope/product-vendor-service → vendor-service
 
 Module Package Generation:
-@auditlogic/product-xyz → @zerobias-org/module-xyz
+@zerobias-org/product-xyz → @zerobias-org/module-xyz
 ```
 
 ## Task-Specific Responsibilities

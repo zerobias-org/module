@@ -21,7 +21,6 @@ jobs:
   publish:
     uses: zerobias-org/devops/.github/workflows/zbb-publish-reusable.yml@main
     with:
-      package-depth: 2
       ghcr-namespace: zerobias-org
       dispatch-input-name: module
       dispatch-input-value: ${{ inputs.module }}

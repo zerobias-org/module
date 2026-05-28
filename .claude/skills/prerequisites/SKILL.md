@@ -18,7 +18,7 @@ The repo is a **gradle multi-project** of ESM TypeScript modules built and teste
 | Gradle wrapper       | present at root   | `test -x ./gradlew`    | zbb drives the wrapper for you; you should never need to invoke it directly. |
 | Java (for the wrapper) | 17 LTS+         | `java -version`        | Gradle wrapper needs a JVM; Adoptium Temurin 17 works.                |
 | Yeoman               | ≥ 5               | `yo --version`         | Only for new module creation. `npm i -g yo`.                          |
-| `@zerobias-org/generator-module` | latest | `npm ls -g @zerobias-org/generator-module` | `npm i -g @zerobias-org/generator-module`. Invoked as `yo @zerobias-org/module`. |
+| `@zerobias-org/generator-module` | 0.25.2 | `npm ls -g @zerobias-org/generator-module` | `npm i -g @zerobias-org/generator-module@0.25.2`. Invoked as `yo @zerobias-org/module`. |
 | zbb                  | latest            | `zbb --version`        | `npm i -g @zerobias-org/zbb`. Owns `test`, `testDirect`, `testDocker`, `testHub`, `gate`, `secret`, slots, env. |
 | jq                   | any               | `jq --version`         | JSON in scripts/agent checks.                                         |
 | yq                   | v4.x              | `yq --version`         | YAML in scripts/agent checks.                                         |
@@ -132,7 +132,7 @@ docker info >/dev/null 2>&1 && echo "✓ docker running" || { echo "✗ docker n
 # Generator
 npm ls -g @zerobias-org/generator-module >/dev/null 2>&1 \
   && echo "✓ @zerobias-org/generator-module installed" \
-  || { echo "✗ install: npm i -g @zerobias-org/generator-module"; fail=1; }
+  || { echo "✗ install: npm i -g @zerobias-org/generator-module@0.25.2"; fail=1; }
 
 # Repo root
 if [ -f ./gradlew ] && jq -r .name < ./package.json 2>/dev/null | grep -q '/module$'; then

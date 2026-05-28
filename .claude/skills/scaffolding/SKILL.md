@@ -10,8 +10,8 @@ The generator is the single source of truth for what a fresh module looks like. 
 ## Generator
 
 - **Package:** `@zerobias-org/generator-module` (registered name `module`, invoked as `yo @zerobias-org/module`)
-- **Source:** `/Users/ctamas/code/zborg/util/packages/generator-module/` (read-only reference for what's scaffolded)
-- **Install:** `npm i -g @zerobias-org/generator-module`
+- **Source:** https://github.com/zerobias-org/util/tree/main/packages/generator-module (read-only reference for what's scaffolded)
+- **Install:** `npm i -g @zerobias-org/generator-module@0.25.2`
 
 ## Preconditions
 

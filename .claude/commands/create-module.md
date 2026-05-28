@@ -47,7 +47,7 @@ Preconditions (the generator will fail otherwise):
 - CWD must be the module repo root (its `package.json.name` ends with `/module`)
 - Docker Desktop running (gradle's `buildImage` requires it)
 - Node 22.21.x active (`.nvmrc` at root)
-- Generator installed: `npm i -g @zerobias-org/generator-module`
+- Generator installed: `npm i -g @zerobias-org/generator-module@0.25.2`
 
 Invoke @module-scaffolder. It will:
 1. Compute `productPackage`, `modulePackage`, `description`, `moduleType` (`connector` if auth required, `plain` otherwise) from Phase 1 output

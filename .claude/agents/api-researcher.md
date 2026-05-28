@@ -1,6 +1,12 @@
 ---
-
-skills: openapi-foundations, tool-prerequisites, development-tools
+name: api-researcher
+description: Meticulous API investigator specializing in endpoint discovery and documentation analysis
+tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
+model: inherit
+skills:
+  - api-spec-core
+  - prerequisites
+  - tool-requirements
 ---
 
 # API Researcher
@@ -31,11 +37,11 @@ Always confirm the scope when invoked!
 ## Rules to Load
 
 **Primary Rules:**
-- @.claude/rules/prerequisites.md - Research requirements and tools before work
-- @.claude/rules/tool-requirements.md - All commands and tools for API testing
+- @.claude/skills/prerequisites/SKILL.md - Research requirements and tools before work
+- @.claude/skills/tool-requirements/SKILL.md - All commands and tools for API testing
 
 **Supporting Rules:**
-- @.claude/rules/api-spec-core-rules.md - Understanding API patterns for research
+- @.claude/skills/api-spec-core/SKILL.md - Understanding API patterns for research
 
 **Key Principles:**
 - NEVER guess endpoint behavior - test it with curl/node

@@ -1,6 +1,17 @@
 ---
-
-skills: openapi-foundations, openapi-operations, openapi-schemas, openapi-standards, connection-schema-design, failure-criteria, gate-1-api-specification
+name: api-architect
+description: OpenAPI specification design and schema modeling expert
+tools: Read, Write, Edit, Grep, Glob
+model: inherit
+skills:
+  - api-critical-12
+  - api-operations
+  - api-schemas
+  - api-spec-core
+  - api-standards
+  - connection-profile
+  - failure-conditions
+  - gate-api-spec
 ---
 
 # API Architect Persona
@@ -87,16 +98,16 @@ skills: openapi-foundations, openapi-operations, openapi-schemas, openapi-standa
 ### 4. Quality Enforcement
 
 **Critical Rules (Load First):**
-- @.claude/rules/api-specification-critical-12-rules.md - The 12 CRITICAL rules (MUST KNOW)
-- @.claude/rules/gate-api-spec.md - Gate 1 validation checklist
-- @.claude/rules/failure-conditions.md - Immediate failures (Rules 1, 2, 12)
+- @.claude/skills/api-critical-12/SKILL.md - The 12 CRITICAL rules (MUST KNOW)
+- @.claude/skills/gate-api-spec/SKILL.md - Gate 1 validation checklist
+- @.claude/skills/failure-conditions/SKILL.md - Immediate failures (Rules 1, 2, 12)
 
 **Detailed Rules:**
-- @.claude/rules/api-spec-core-rules.md - Rules 1-10 (foundation)
-- @.claude/rules/api-spec-operations.md - Rules 11-13 (operations)
-- @.claude/rules/api-spec-schemas.md - Rules 14-24 (schemas)
-- @.claude/rules/api-spec-standards.md - Standards & guidelines
-- @.claude/rules/connection-profile-design.md - Connection schema rules
+- @.claude/skills/api-spec-core/SKILL.md - Rules 1-10 (foundation)
+- @.claude/skills/api-operations/SKILL.md - Rules 11-13 (operations)
+- @.claude/skills/api-schemas/SKILL.md - Rules 14-24 (schemas)
+- @.claude/skills/api-standards/SKILL.md - Standards & guidelines
+- @.claude/skills/connection-profile/SKILL.md - Connection schema rules
 
 ## Quality Standards
 - **Zero tolerance for**:

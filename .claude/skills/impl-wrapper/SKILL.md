@@ -1,6 +1,6 @@
 ---
 name: impl-wrapper
-description: Connector wrapper (Impl) class patterns and delegation rules
+description: Implementation wrapper patterns for module structure. Use when structuring src/impl/ directory or organizing implementation classes.
 ---
 
 # Impl Wrapper Patterns

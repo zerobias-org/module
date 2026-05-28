@@ -19,7 +19,7 @@ Implement data mappers that transform external API responses to internal typed o
 - Document field names (typically snake_case in API)
 - List data types (string, number, boolean, object, array)
 - Identify candidates for core types (UUID, Email, URL, DateTime)
-- **Schema patterns:** See @.claude/rules/api-spec-schemas.md
+- **Schema patterns:** See @.claude/skills/api-schemas/SKILL.md
 
 ### Step 2: Review Target Interface
 
@@ -28,7 +28,7 @@ Implement data mappers that transform external API responses to internal typed o
 - Review type annotations
 - Identify optional (?) vs required fields
 - Note any nested interfaces
-- **Type reference:** See @.claude/rules/type-mapping.md
+- **Type reference:** See @.claude/skills/type-mapping/SKILL.md
 
 ### Step 3: Create Mapper Function Signature
 
@@ -36,7 +36,7 @@ Implement data mappers that transform external API responses to internal typed o
 - Use naming convention: `mapApi{Type}ArrayTo{Type}Array` for arrays
 - Accept ApiType parameter
 - Return internal Type
-- **Signature patterns:** See "Single Object Mapper" in @.claude/rules/mapper-patterns.md
+- **Signature patterns:** See "Single Object Mapper" in @.claude/skills/mapper-patterns/SKILL.md
 
 ### Step 4: Validate Required Fields
 
@@ -44,7 +44,7 @@ Implement data mappers that transform external API responses to internal typed o
 - Add validation checks at start of mapper function
 - Throw InvalidInputError for missing required fields
 - Document which fields are required
-- **Validation workflow:** See @.claude/rules/mapper-field-validation.md
+- **Validation workflow:** See @.claude/skills/mapper-validation/SKILL.md
 
 ### Step 5: Implement Field Mappings
 
@@ -55,8 +55,8 @@ Implement data mappers that transform external API responses to internal typed o
 - Convert snake_case to camelCase
 - Map nested objects recursively
 - Map arrays using Array.map()
-- **Field mapping patterns:** See "Field Mapping" in @.claude/rules/mapper-patterns.md
-- **Core type usage:** See @.claude/rules/type-mapping.md
+- **Field mapping patterns:** See "Field Mapping" in @.claude/skills/mapper-patterns/SKILL.md
+- **Core type usage:** See @.claude/skills/type-mapping/SKILL.md
 
 ### Step 6: Handle Core Type Conversions
 
@@ -66,7 +66,7 @@ Implement data mappers that transform external API responses to internal typed o
 - Convert string to URL using map(input.url, URL)
 - Convert string to DateTime using map(input.created_at, DateTime)
 - Handle optional core types with ternary operators
-- **All conversions:** See "Core Type Conversions" in @.claude/rules/type-mapping.md
+- **All conversions:** See "Core Type Conversions" in @.claude/skills/type-mapping/SKILL.md
 
 ### Step 7: Handle Nested Objects
 
@@ -74,7 +74,7 @@ Implement data mappers that transform external API responses to internal typed o
 - Map arrays of nested objects with Array.map()
 - Handle deeply nested structures
 - Use optional chaining for nested optionals
-- **Nested patterns:** See "Nested Object Mapping" in @.claude/rules/mapper-patterns.md
+- **Nested patterns:** See "Nested Object Mapping" in @.claude/skills/mapper-patterns/SKILL.md
 
 ### Step 8: Handle Optional Fields
 
@@ -82,7 +82,7 @@ Use appropriate strategy for each case:
 - Ternary operator for single optional fields
 - Nullish coalescing (??) for defaults
 - Optional chaining + map for nested optionals
-- **Optional handling:** See "Optional Field Handling" in @.claude/rules/mapper-patterns.md
+- **Optional handling:** See "Optional Field Handling" in @.claude/skills/mapper-patterns/SKILL.md
 
 ### Step 9: Validate Field Coverage
 
@@ -91,14 +91,14 @@ CRITICAL: Ensure zero missing fields
 - Count fields in mapper const output
 - Numbers MUST match exactly
 - Run field coverage validation script
-- **Validation:** See "Field Coverage Validation" in @.claude/rules/mapper-field-validation.md
+- **Validation:** See "Field Coverage Validation" in @.claude/skills/mapper-validation/SKILL.md
 
 ### Step 10: Add Array Mapper (if needed)
 
 - Create array mapper function if operation returns arrays
 - Use naming: `mapApi{Type}ArrayTo{Type}Array`
 - Simply map over array calling single object mapper
-- **Array pattern:** See "Array Mapper" in @.claude/rules/mapper-patterns.md
+- **Array pattern:** See "Array Mapper" in @.claude/skills/mapper-patterns/SKILL.md
 
 ### Step 11: Document and Export
 
@@ -106,11 +106,11 @@ CRITICAL: Ensure zero missing fields
 - Document parameters and return type
 - Note any thrown errors (InvalidInputError)
 - Export function from Mappers.ts
-- **Documentation:** See "Mapper Documentation" in @.claude/rules/mapper-patterns.md
+- **Documentation:** See "Mapper Documentation" in @.claude/skills/mapper-patterns/SKILL.md
 
 ## Field Validation Workflow
 
-Follow complete validation from @.claude/rules/mapper-field-validation.md:
+Follow complete validation from @.claude/skills/mapper-validation/SKILL.md:
 
 1. Read API spec → Identify required fields
 2. Check generated interface → Count fields
@@ -121,7 +121,7 @@ Follow complete validation from @.claude/rules/mapper-field-validation.md:
 
 ## Common Patterns
 
-All patterns with code examples in @.claude/rules/mapper-patterns.md:
+All patterns with code examples in @.claude/skills/mapper-patterns/SKILL.md:
 
 - **Pattern 1:** Simple Field Rename (snake_case → camelCase)
 - **Pattern 2:** Type Conversion (string → UUID)
@@ -135,7 +135,7 @@ All patterns with code examples in @.claude/rules/mapper-patterns.md:
 - Import InvalidInputError from @zborg/module-utils
 - Throw for missing required fields
 - map() utility throws automatically for invalid type conversions
-- **Error patterns:** See @.claude/rules/error-handling.md
+- **Error patterns:** See @.claude/skills/error-handling/SKILL.md
 
 ## Testing Strategy
 
@@ -144,7 +144,7 @@ All patterns with code examples in @.claude/rules/mapper-patterns.md:
 - Test optional fields handled properly
 - Test missing required field throws InvalidInputError
 - Test invalid formats throw appropriate errors
-- **Test patterns:** See @.claude/rules/nock-patterns.md and @.claude/rules/gate-test-creation.md
+- **Test patterns:** See @.claude/skills/nock-mocking/SKILL.md and @.claude/skills/gate-unit-tests/SKILL.md
 
 ## Success Criteria
 
@@ -183,11 +183,11 @@ All patterns with code examples in @.claude/rules/mapper-patterns.md:
 ## Reference Files
 
 **Primary Rules:**
-- @.claude/rules/mapper-patterns.md - All mapper implementation patterns, examples, validation
-- @.claude/rules/mapper-field-validation.md - Complete field validation workflow
-- @.claude/rules/type-mapping.md - All core type usage and conversion reference
+- @.claude/skills/mapper-patterns/SKILL.md - All mapper implementation patterns, examples, validation
+- @.claude/skills/mapper-validation/SKILL.md - Complete field validation workflow
+- @.claude/skills/type-mapping/SKILL.md - All core type usage and conversion reference
 
 **Supporting Rules:**
-- @.claude/rules/error-handling.md - InvalidInputError for missing required fields
-- @.claude/rules/implementation.md - Rule #5 (API spec is source of truth)
-- @.claude/rules/gate-implementation.md - Implementation validation
+- @.claude/skills/error-handling/SKILL.md - InvalidInputError for missing required fields
+- @.claude/skills/implementation-core/SKILL.md - Rule #5 (API spec is source of truth)
+- @.claude/skills/gate-implementation/SKILL.md - Implementation validation

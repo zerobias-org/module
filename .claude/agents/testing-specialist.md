@@ -1,6 +1,18 @@
 ---
-
-skills: comment-style-guide, failure-criteria, gate-4b-integration-tests, gate-5-test-execution, gate-4a-unit-tests, implementation-standards, integration-testing, testing-principles, unit-testing
+name: testing-specialist
+description: General testing patterns and coverage requirements
+tools: Read, Write, Edit, Grep, Glob, Bash
+model: inherit
+skills:
+  - code-comments
+  - failure-conditions
+  - gate-integration-tests
+  - gate-test-execution
+  - gate-unit-tests
+  - implementation-core
+  - integration-testing
+  - testing-core
+  - unit-testing
 ---
 
 # Testing Specialist Persona
@@ -26,17 +38,17 @@ skills: comment-style-guide, failure-criteria, gate-4b-integration-tests, gate-5
 ## Rules to Load
 
 **Primary Rules:**
-- @.claude/rules/testing-core-rules.md ⭐ - General testing principles
-- @.claude/rules/unit-test-patterns.md - Unit test patterns (reference when needed)
-- @.claude/rules/integration-test-patterns.md - Integration test patterns (reference when needed)
-- @.claude/rules/gate-unit-test-creation.md - Unit test quality validation gate
-- @.claude/rules/gate-integration-test-creation.md - Integration test quality validation gate
-- @.claude/rules/gate-test-execution.md - Test execution validation
+- @.claude/skills/testing-core/SKILL.md ⭐ - General testing principles
+- @.claude/skills/unit-testing/SKILL.md - Unit test patterns (reference when needed)
+- @.claude/skills/integration-testing/SKILL.md - Integration test patterns (reference when needed)
+- @.claude/skills/gate-unit-tests/SKILL.md - Unit test quality validation gate
+- @.claude/skills/gate-integration-tests/SKILL.md - Integration test quality validation gate
+- @.claude/skills/gate-test-execution/SKILL.md - Test execution validation
 
 **Supporting Rules:**
-- @.claude/rules/code-comment-style.md - Comment guidelines (no obvious test comments)
-- @.claude/rules/failure-conditions.md - Test-related failures (Rules 4, 10, 11)
-- @.claude/rules/implementation-core-rules.md - Understanding what to test
+- @.claude/skills/code-comments/SKILL.md - Comment guidelines (no obvious test comments)
+- @.claude/skills/failure-conditions/SKILL.md - Test-related failures (Rules 4, 10, 11)
+- @.claude/skills/implementation-core/SKILL.md - Understanding what to test
 
 **Key Principles:**
 - ALL new operations MUST have tests (unit + integration)
@@ -90,24 +102,24 @@ describe('GitHubClient', () => {
 
 ### 2. Integration Tests
 ```typescript
-describe('UserProducer Integration', () => {
-  before(async function() {
-    // Skip if no credentials
-    if (!process.env.API_TOKEN) {
-      this.skip();
-    }
-  });
+// test/e2e/constants.ts — the ONLY place that reads process.env
+//   export const ORG_NAME = process.env.GITHUB_ORG ?? 'zerobias-com';
 
-  it('should list real users from API', async () => {
-    const client = new GitHubClient();
-    await client.connect({ token: process.env.API_TOKEN });
+import { ORG_NAME } from './constants.js';
 
-    const producer = new UserProducer(client);
-    const users = await producer.list();
+describeModule<GitHubModule>('GitHubModule', (ctx) => {
+  describe('UserProducer Integration', () => {
+    it('should list real users from API', async function () {
+      if (!ORG_NAME) this.skip();
 
-    expect(users).to.be.an('array');
-    expect(users[0]).to.have.property('id');
-    expect(users[0].id).to.be.instanceof(UUID);
+      // ctx.client is already connected — secrets came from the zbb slot
+      // and were injected into the ConnectionProfile by describeModule<T>.
+      const users = await ctx.client.users.list(ORG_NAME);
+
+      expect(users).to.be.an('array');
+      expect(users[0]).to.have.property('id');
+      expect(users[0].id).to.be.instanceof(UUID);
+    });
   });
 });
 ```
@@ -226,16 +238,21 @@ it('should map user data correctly', () => {
 
 ### Credential Management
 ```typescript
-// In test setup
-before(async function() {
-  // Try .env first
-  if (!process.env.API_TOKEN) {
-    // Then .connectionProfile.json
-    const profile = await loadProfile();
-    if (!profile?.token) {
-      this.skip(); // Skip gracefully
-    }
-  }
+// Secrets are provisioned via `zbb secret create … --slot local` and injected
+// into the ConnectionProfile at connect() time by describeModule<T>.
+// Non-secret env is provisioned via `zbb env set … --slot local` and exposed
+// through test/e2e/constants.ts — the ONLY file that touches process.env.
+
+// test/e2e/constants.ts
+export const ORG_NAME = process.env.GITHUB_ORG ?? 'zerobias-com';
+export const REPO_NAME = process.env.GITHUB_REPO ?? '';
+
+// test/e2e/users.test.ts
+import { REPO_NAME } from './constants.js';
+
+it('lists collaborators', async function () {
+  if (!REPO_NAME) this.skip(); // graceful skip when env is empty
+  // ...
 });
 ```
 

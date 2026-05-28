@@ -145,7 +145,7 @@ If you want to test specific agents only:
 
 # Example: Test with a module that has error handling
 cd package/existing-module/
-npm test  # Run tests to see if new error pattern is used correctly
+zbb test --slot local  # Run tests to see if new error pattern is used correctly
 ```
 
 ---
@@ -153,7 +153,7 @@ npm test  # Run tests to see if new error pattern is used correctly
 ### 6. Validate Agent Behavior
 
 **Check if agents:**
-1. **Load the rule** - Agents should reference `@.claude/rules/error-handling.md`
+1. **Load the rule** - Agents should reference `@.claude/skills/error-handling/SKILL.md`
 2. **Follow the rule** - Generated code should use the new pattern
 3. **Pass validation** - Gates should still pass with new pattern
 
@@ -165,10 +165,10 @@ grep -r "RateLimitExceededError" package/test-vendor/test-service/src/
 
 # Check if tests pass
 cd package/test-vendor/test-service/
-npm test
+zbb test --slot local
 
 # Check if build passes
-npm run build
+zbb build
 ```
 
 ---
@@ -178,15 +178,17 @@ npm run build
 **Critical checks:**
 
 ```bash
+# From each module dir:
+
 # 1. All existing tests still pass
-npm test
+zbb test --slot local
 
 # 2. Build still succeeds
-npm run build
+zbb build
 
 # 3. Existing modules not affected negatively
 # (if you changed a widely-used rule)
-cd package/existing-module/ && npm test && npm run build
+cd package/existing-module/ && zbb test --slot local && zbb build
 ```
 
 **If something breaks:**
@@ -282,7 +284,7 @@ vim .claude/rules/async-operations.md
 vim .claude/agents/operation-engineer.md
 
 # Add to "Rules" section:
-# - @.claude/rules/async-operations.md
+# - @.claude/skills/<name>/SKILL.md
 
 # 5. Update mapping document
 vim .claude/RULE-TO-AGENT-MAPPING.md
@@ -367,10 +369,10 @@ Before merging any rule change:
 cat .claude/rules/[rule-name].md
 
 # See which agents use a rule
-grep -l "@.claude/rules/[rule-name]" .claude/agents/*.md
+grep -l "@.claude/skills/[name]/SKILL.md" .claude/agents/*.md
 
 # See all rules an agent uses
-grep "@.claude/rules/" .claude/agents/[agent-name].md
+grep "@.claude/skills/" .claude/agents/[agent-name].md
 
 # View mapping document
 cat .claude/RULE-TO-AGENT-MAPPING.md
@@ -385,10 +387,10 @@ git checkout -b test-rule-[rule-name]
 rm -rf package/test-vendor/
 
 # Run tests
-cd package/[module]/ && npm test
+cd package/[module]/ && zbb test --slot local
 
 # Run build
-cd package/[module]/ && npm run build
+cd package/[module]/ && zbb build
 ```
 
 ---

@@ -1,6 +1,16 @@
 ---
-
-skills: build-standards, core-error-handling, gate-3-implementation, gate-2-type-generation, implementation-standards, core-type-mapping, typescript-configuration
+name: typescript-expert
+description: Advanced TypeScript type system and implementation patterns
+tools: Read, Write, Edit, Grep, Glob, Bash
+model: inherit
+skills:
+  - build-quality
+  - error-handling
+  - gate-implementation
+  - gate-type-generation
+  - implementation-core
+  - type-mapping
+  - typescript-config
 ---
 
 # TypeScript Expert Persona
@@ -26,15 +36,15 @@ skills: build-standards, core-error-handling, gate-3-implementation, gate-2-type
 ## Rules to Load
 
 **Primary Rules:**
-- @.claude/rules/implementation-core-rules.md - All TypeScript patterns (Rule #4: Type generation workflow)
-- @.claude/rules/type-mapping.md - Core type usage (UUID, Email, URL, DateTime)
-- @.claude/rules/gate-type-generation.md - Type generation validation
-- @.claude/rules/typescript-config-patterns.md - tsconfig.json standards and configuration
+- @.claude/skills/implementation-core/SKILL.md - All TypeScript patterns (Rule #4: Type generation workflow)
+- @.claude/skills/type-mapping/SKILL.md - Core type usage (UUID, Email, URL, DateTime)
+- @.claude/skills/gate-type-generation/SKILL.md - Type generation validation
+- @.claude/skills/typescript-config/SKILL.md - tsconfig.json standards and configuration
 
 **Supporting Rules:**
-- @.claude/rules/error-handling.md - Error type patterns
-- @.claude/rules/build-quality.md - TypeScript compilation requirements
-- @.claude/rules/gate-implementation.md - Implementation quality
+- @.claude/skills/error-handling/SKILL.md - Error type patterns
+- @.claude/skills/build-quality/SKILL.md - TypeScript compilation requirements
+- @.claude/skills/gate-implementation/SKILL.md - Implementation quality
 
 **Key Principles:**
 - Zero tolerance for `any` without justification
@@ -72,7 +82,7 @@ interface User {
 ```
 
 ### 2. Code Organization
-Follow structure from [implementation-core-rules.md](../rules/implementation-core-rules.md):
+Follow structure from [implementation-core.md](../rules/implementation-core.md):
 ```
 src/
 ├── {Service}Client.ts

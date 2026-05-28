@@ -1,6 +1,6 @@
 ---
 name: producer-implementation
-description: Producer implementation patterns for API operations and business logic
+description: Producer class implementation patterns and business logic rules. Use when implementing Producer classes, operation methods, or business logic.
 ---
 
 # Producer Implementation Patterns
@@ -151,10 +151,8 @@ class UserProducer {
 ```typescript
 // ✅ REQUIRED PATTERN
 export function toUser(data: any): User {
-  // Validate required fields first
-  if (!data?.id || !data?.name) {
-    throw new InvalidInputError('user', 'Missing required fields');
-  }
+  // Validate required fields first using ensureProperties
+  ensureProperties(data, ['id', 'name']);
 
   const output: User = {
     id: map(UUID, data.id),           // Required - validated above
@@ -491,7 +489,7 @@ grep "ingest(" src/*Producer.ts && echo "❌ Found ingest()!" || echo "✅ No in
 
 ## Comment Style for Producers
 
-**See [code-comment-style skill](./code-comment-style.md) for complete guidelines**
+**See [@.claude/skills/code-comments/SKILL.md](./code-comment-style.md) for complete guidelines**
 
 ### Key Rules for Producer Code
 

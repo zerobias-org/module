@@ -1,6 +1,6 @@
 ---
 name: test-fixtures
-description: Test fixture organization, sanitization, and realistic response patterns
+description: Test fixture creation and management patterns. Use when creating test data, mock objects, or test setup utilities.
 ---
 
 # Test Fixture Patterns
@@ -337,8 +337,8 @@ test/unit/resources/
 **Step 1: Record real API interactions during integration test**
 
 ```typescript
-// test/integration/RecordFixtures.ts (temporary file)
-import * as nock from 'nock';
+// test/e2e/fixtures/recordFixtures.ts (temporary file)
+import nock from 'nock';
 import * as fs from 'fs';
 import { getConnectedInstance } from './Common';
 
@@ -432,7 +432,7 @@ const mockUser = loadFixture('users', 'mockResponse1');
 ### Using Fixtures with nock
 
 ```typescript
-import * as nock from 'nock';
+import nock from 'nock';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -461,9 +461,9 @@ describe('UserProducer', () => {
     const user = await api.getUser('usr_123');
 
     // Assertions
-    expect(user.id).toBeDefined();
+    expect(user.id).to.not.be.undefined;
     expect(user.name).to.equal('Jane Doe');
-    expect(nock.isDone()).toBe(true);
+    expect(nock.pendingMocks()).to.be.empty;
   });
 
   it('should handle user not found error', async () => {
@@ -484,11 +484,14 @@ describe('UserProducer', () => {
     const connector = await getConnectedInstance();
     const api = connector.getUserApi();
 
-    await expect(
-      api.getUser('usr_999')
-    ).rejects.toThrow(NoSuchObjectError);
+    try {
+      await api.getUser('usr_999');
+      assert.fail('should have thrown');
+    } catch (e) {
+      expect(e).to.be.instanceOf(NoSuchObjectError);
+    }
 
-    expect(nock.isDone()).toBe(true);
+    expect(nock.pendingMocks()).to.be.empty;
   });
 });
 ```
@@ -501,7 +504,7 @@ describe('UserProducer', () => {
 // test/unit/FixtureHelpers.ts
 import * as fs from 'fs';
 import * as path from 'path';
-import * as nock from 'nock';
+import nock from 'nock';
 
 export function loadFixture(resourceType: string, fixtureName: string): any {
   const fixturePath = path.join(

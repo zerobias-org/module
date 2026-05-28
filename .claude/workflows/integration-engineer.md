@@ -36,7 +36,7 @@ This workflow covers implementing HTTP client classes and API integration for a 
 - Identify where auth token is stored
 - Note connection parameters
 - Identify required vs optional fields
-- **Connection patterns:** See "Core Profile Usage" in @.claude/rules/connection-profile-design.md
+- **Connection patterns:** See "Core Profile Usage" in @.claude/skills/connection-profile/SKILL.md
 
 ### Step 3: Implement Client Class
 
@@ -66,7 +66,7 @@ This workflow covers implementing HTTP client classes and API integration for a 
 - HTTP methods: get(path), post(path, data), put(path, data), delete(path)
 - Error handler: handleApiError(error) - Map HTTP errors to core types
 
-**Patterns:** See "Client Implementation" in @.claude/rules/http-client-patterns.md
+**Patterns:** See "Client Implementation" in @.claude/skills/http-client/SKILL.md
 
 ### Step 4: Implement Error Handling
 
@@ -83,8 +83,8 @@ This workflow covers implementing HTTP client classes and API integration for a 
 - Call handleApiError()
 - NEVER let generic Error escape
 
-**Error mapping:** See "Error Mapping" in @.claude/rules/error-handling.md
-**Interceptor setup:** See "Response Interceptors" in @.claude/rules/http-client-patterns.md
+**Error mapping:** See "Error Mapping" in @.claude/skills/error-handling/SKILL.md
+**Interceptor setup:** See "Response Interceptors" in @.claude/skills/http-client/SKILL.md
 
 ### Step 5: Implement Producer Classes
 
@@ -109,8 +109,8 @@ This workflow covers implementing HTTP client classes and API integration for a 
    - Use Array.map() for collections
    - Handle nested objects
 
-**Producer patterns:** See "Producer Implementation" in @.claude/rules/http-client-patterns.md
-**Validation:** See "Response Validation" in @.claude/rules/implementation.md
+**Producer patterns:** See "Producer Implementation" in @.claude/skills/http-client/SKILL.md
+**Validation:** See "Response Validation" in @.claude/skills/implementation-core/SKILL.md
 
 ### Step 6: Configure Timeouts and Retries
 
@@ -124,7 +124,7 @@ This workflow covers implementing HTTP client classes and API integration for a 
 - Use exponential backoff
 - Limit to 3 attempts
 
-**Retry patterns:** See "Retry Logic" in @.claude/rules/http-client-patterns.md
+**Retry patterns:** See "Retry Logic" in @.claude/skills/http-client/SKILL.md
 
 ### Step 7: Validate Implementation
 
@@ -134,11 +134,11 @@ This workflow covers implementing HTTP client classes and API integration for a 
 - Confirm disconnect() method exists and returns Promise<void>
 - Verify response validation before mapping (Array.isArray checks)
 
-**Validation scripts:** See "Integration Validation" in @.claude/rules/http-client-patterns.md
+**Validation scripts:** See "Integration Validation" in @.claude/skills/http-client/SKILL.md
 
 ### Step 8: Run Unit Tests
 
-**Execute unit tests:** npm run test:unit
+**Execute unit tests:** zbb test --slot local
 
 **Verify:**
 - All HTTP calls mocked with nock
@@ -151,11 +151,11 @@ This workflow covers implementing HTTP client classes and API integration for a 
 - Fix implementation issues
 - Re-run tests until passing
 
-**Testing patterns:** See @.claude/rules/nock-patterns.md
+**Testing patterns:** See @.claude/skills/nock-mocking/SKILL.md
 
 ### Step 9: Run Integration Tests
 
-**Execute integration tests:** npm run test:integration
+**Execute e2e tests:** zbb testDirect --slot local
 
 **Verify:**
 - Real API calls succeed
@@ -169,7 +169,7 @@ This workflow covers implementing HTTP client classes and API integration for a 
 - Check network connectivity
 - Fix issues and re-run
 
-**Integration testing:** See @.claude/rules/gate-test-creation.md
+**Integration testing:** See @.claude/skills/gate-unit-tests/SKILL.md
 
 ### Step 10: Document Decisions
 
@@ -187,17 +187,17 @@ Create .claude/.localmemory/{workflow}-{module}/integration-decisions.md with:
 **Issue 1: Generic errors being thrown**
 - Symptom: throw new Error() used instead of core types
 - Fix: Map all errors to appropriate core error types
-- Reference: @.claude/rules/error-handling.md
+- Reference: @.claude/skills/error-handling/SKILL.md
 
 **Issue 2: No response validation**
 - Symptom: Mapping responses without checking format
 - Fix: Validate Array.isArray() or object type before mapping
-- Reference: @.claude/rules/implementation.md
+- Reference: @.claude/skills/implementation-core/SKILL.md
 
 **Issue 3: State-based connection check**
 - Symptom: isConnected() just checks if token exists
 - Fix: Make real API call to verify connection
-- Reference: @.claude/rules/http-client-patterns.md
+- Reference: @.claude/skills/http-client/SKILL.md
 
 ## Success Criteria
 
@@ -224,11 +224,11 @@ Integration implementation is complete when:
 ## Related Documentation
 
 **Primary Rules:**
-- @.claude/rules/http-client-patterns.md - All client and producer code patterns
-- @.claude/rules/error-handling.md - Error mapping and core error usage
-- @.claude/rules/implementation.md - General implementation rules
+- @.claude/skills/http-client/SKILL.md - All client and producer code patterns
+- @.claude/skills/error-handling/SKILL.md - Error mapping and core error usage
+- @.claude/skills/implementation-core/SKILL.md - General implementation rules
 
 **Supporting Rules:**
-- @.claude/rules/nock-patterns.md - Unit testing with mocks
-- @.claude/rules/gate-test-creation.md - Integration testing
-- @.claude/rules/connection-profile-design.md - Profile patterns
+- @.claude/skills/nock-mocking/SKILL.md - Unit testing with mocks
+- @.claude/skills/gate-unit-tests/SKILL.md - Integration testing
+- @.claude/skills/connection-profile/SKILL.md - Profile patterns

@@ -1,6 +1,6 @@
 ---
 name: agent-invocation
-description: Agent invocation syntax and boundary rules
+description: Agent invocation protocols and delegation patterns. Use when spawning specialized agents or coordinating agent-based workflows.
 ---
 
 # Agent Invocation Rules
@@ -26,7 +26,7 @@ When passing context between agents:
 1. Save output to memory folder
 2. Reference previous phase outputs
 3. Include all necessary context
-4. Use agent-parameter-passing skill
+4. Use @.claude/skills/agent-parameters/SKILL.md
 
 ## Agent Loading
 

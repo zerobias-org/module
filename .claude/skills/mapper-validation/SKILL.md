@@ -1,6 +1,6 @@
 ---
 name: mapper-validation
-description: Mapper field validation process ensuring zero missing fields
+description: Complete field validation workflow for mappers. Use when validating that mappers handle all required and optional fields correctly.
 ---
 
 # Mapper Field Validation Process
@@ -16,7 +16,7 @@ Every mapper MUST follow this validation process:
 **READ the target interface** from `generated/api/index.ts`:
 
 ```typescript
-// Example: After running npm run clean && npm run generate
+// Example: After running zbb generate
 interface UserInfo {
   id: UUID;           // Required
   name: string;       // Required
@@ -95,7 +95,6 @@ export function toUserInfo(raw: any): UserInfo {
 - ✅ ALL mapper parameters use `any` for simplicity
 - ✅ Use `ensureProperties()` helper for validating required fields
 - ✅ Add `/* eslint-disable */` at top of mapper file
-```
 
 **VALIDATION**:
 - **ZERO MISSING FIELDS**: Interface field count = Mapped field count
@@ -394,7 +393,7 @@ export function toOrganization(data: any): Organization {
 
 1. **Run generation**:
    ```bash
-   npm run clean && npm run generate
+   zbb generate
    ```
 
 2. **Open generated interface**:
@@ -465,7 +464,7 @@ After implementing mapper, you MUST perform runtime validation to detect:
 
 2. **Run tests with debug logging:**
    ```bash
-   env LOG_LEVEL=debug npm run test:integration > /tmp/debug.log 2>&1
+   LOG_LEVEL=debug zbb testDirect --slot local > /tmp/debug.log 2>&1
    ```
 
 3. **Compare raw API vs mapped output:**
@@ -481,13 +480,13 @@ After implementing mapper, you MUST perform runtime validation to detect:
 
 **RULE**: Mapper validation is NOT complete until runtime validation shows ZERO missing fields.
 
-See complete process: mapper-runtime-validation skill
+See complete process: @.claude/skills/mapper-runtime/SKILL.md
 
 ## References
 
-- Mapper Pattern: implementation skill (Mapper Pattern section)
-- Runtime Validation: mapper-runtime-validation skill
-- Type Mapping: type-mapping skill
-- Error Handling: error-handling skill
+- Mapper Pattern: @.claude/skills/implementation-core/SKILL.md (Mapper Pattern section)
+- Runtime Validation: @.claude/skills/mapper-runtime/SKILL.md
+- Type Mapping: @.claude/skills/type-mapping/SKILL.md
+- Error Handling: @.claude/skills/error-handling/SKILL.md
 - Operation Engineer agent: @.claude/agents/operation-engineer.md
 - Mapping Engineer agent: @.claude/agents/mapping-engineer.md

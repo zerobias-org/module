@@ -1,744 +1,143 @@
 ---
 name: module-exports
-description: Module export patterns including factory functions and public API design
+description: src/index.ts shape and package.json export wiring for ESM Hub modules. Use when defining or reviewing a module's public API.
 ---
 
-# Module Exports Patterns
+# Module exports
 
-## 🚨 CRITICAL RULES
+The generator scaffolds the canonical `src/index.ts`. Public API surface is small on purpose: a factory function, the generated API + model types, and nothing else unless a real consumer needs it.
 
-### 1. Factory Function is Primary Export
-Every module's `src/index.ts` MUST export a factory function:
+## Canonical `src/index.ts`
 
 ```typescript
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
+import { <Class>Impl } from './<Class>Impl.js';
+
+export * from '../generated/api/index.js';
+export * from '../generated/model/index.js';
+
+export function new<Class>() {
+  return new <Class>Impl();
 }
 ```
 
-**Rules:**
-- ✅ Named export (NOT default export)
-- ✅ Function name starts with `new`
-- ✅ Returns Impl instance (which implements Connector)
-- ✅ No parameters
-- ❌ NEVER use default export
+Rules baked into that shape:
 
-### 2. Re-export Generated Types
-MUST re-export all generated types:
+- **ESM imports end in `.js`** — `./<Class>Impl.js`, `../generated/api/index.js`, etc. Required by `module: NodeNext`.
+- **Named exports only** — no `export default`. The factory is `export function new<Class>()`.
+- **Wildcards from `generated/`** — re-export everything the codegen produced. Consumers need `ConnectionProfile`, the API interfaces, resource types, enums. Cherry-picking causes consumer churn every time we add a model.
+- **Order matches the generator template** — generated re-exports above the factory. Not a load-bearing rule, just consistency.
 
-```typescript
-// Re-export all generated API interfaces and wrappers
-export * from '../generated/api';
+The generator's factory has no explicit return type. That's fine — TypeScript infers `<Class>Impl`. Add a return type only if you also change what the factory returns (e.g. wrap it in something that satisfies an interface).
 
-// Re-export all generated models
-export * from '../generated/model';
-```
+## `package.json` wiring
 
-**Why:**
-- Consumers need access to types
-- ConnectionProfile, ConnectionState, etc.
-- Resource models (User, Group, etc.)
-- Don't pick specific types - export all
+The generator's `package.template.json` sets:
 
-### 3. Minimal Public API
-ONLY export what consumers actually need:
-
-**Export:**
-- ✅ Factory function
-- ✅ Generated types (api.ts, model.ts)
-- ✅ Custom profile types (if any)
-- ✅ Custom error types (if any)
-
-**DO NOT export:**
-- ❌ Client class (internal implementation)
-- ❌ Producer implementation classes (internal)
-- ❌ Mapper functions (internal)
-- ❌ Helper/utility functions (internal)
-- ❌ HTTP interceptors (internal)
-
-## 🟡 STANDARD RULES
-
-### Standard index.ts Template
-
-**Basic pattern:**
-
-```typescript
-// src/index.ts
-
-// Import Impl class
-import { ServiceImpl } from './ServiceImpl';
-
-// ========================================
-// Factory Function (Primary Export)
-// ========================================
-
-/**
- * Creates a new Service connector instance
- * @returns ServiceImpl instance that implements ServiceConnector
- */
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-
-// ========================================
-// Generated Exports
-// ========================================
-
-// Re-export all generated API interfaces and wrappers
-export * from '../generated/api';
-
-// Re-export all generated models
-export * from '../generated/model';
-
-// ========================================
-// Custom Type Exports (if needed)
-// ========================================
-
-// Export custom profile types if you have them
-// export type { CustomProfile } from './ServiceClient';
-
-// Export custom error types if you have them
-// export type { CustomError } from './errors';
-```
-
-### Factory Function Naming
-
-**Pattern:** `new` + PascalCase service name
-
-**Examples:**
-```typescript
-// GitHub module
-export function newGitHub(): GitHubImpl
-
-// Avigilon Alta Access module
-export function newAvigilonAltaAccess(): AccessImpl
-
-// Slack module
-export function newSlack(): SlackImpl
-
-// Azure Active Directory module
-export function newAzureActiveDirectory(): AzureActiveDirectoryImpl
-```
-
-**Rules:**
-- ✅ Always starts with `new`
-- ✅ Service name in PascalCase
-- ✅ Full service name (not abbreviated)
-- ✅ Returns Impl class
-- ❌ No abbreviations (newAAD ❌, newAzureActiveDirectory ✅)
-
-### What Gets Re-exported from generated/
-
-**From `../generated/api.ts`:**
-```typescript
-export * from '../generated/api';
-```
-
-This exports:
-- `ServiceConnector` interface
-- `<Resource>Api` interfaces (UserApi, GroupApi, etc.)
-- `wrap<Resource>Producer` functions
-- Type definitions for all operations
-
-**From `../generated/model.ts`:**
-```typescript
-export * from '../generated/model';
-```
-
-This exports:
-- `ConnectionProfile` type
-- `ConnectionState` type
-- Resource types (User, Group, Acu, etc.)
-- Request/Response types
-- Enum types
-
-### Optional Exports
-
-**Export Impl class (optional):**
-```typescript
-// Export implementation class for advanced usage
-export { ServiceImpl } from './ServiceImpl';
-```
-
-**When to export:**
-- ✅ If consumers might need to extend it
-- ✅ If consumers need type for instance checks
-- ⚠️ Usually not necessary - factory function is enough
-
-**Export Client class (rarely):**
-```typescript
-// Export client for advanced/testing usage
-export { ServiceClient } from './ServiceClient';
-```
-
-**When to export:**
-- ⚠️ Rarely needed
-- ⚠️ Only if consumers need direct access for testing
-- ⚠️ Generally keep Client internal
-
-**Export mappers (for testing):**
-```typescript
-// Export mappers for testing/debugging
-export * from './Mappers';
-```
-
-**When to export:**
-- ✅ If consumers might need to test mappings
-- ✅ If mappers are useful utilities
-- ⚠️ Consider if mappers should be internal
-
-### Custom Type Exports
-
-**If you have custom ConnectionProfile extensions:**
-```typescript
-// ServiceClient.ts
-export interface ServiceProfile extends ConnectionProfile {
-  region?: string;
-  customSetting?: boolean;
-}
-
-// index.ts
-export type { ServiceProfile } from './ServiceClient';
-```
-
-**If you have custom error types:**
-```typescript
-// errors.ts
-export class ServiceSpecificError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ServiceSpecificError';
-  }
-}
-
-// index.ts
-export { ServiceSpecificError } from './errors';
-```
-
-### Export Organization
-
-**Group exports by purpose with comments:**
-
-```typescript
-// src/index.ts
-
-import { ServiceImpl } from './ServiceImpl';
-
-// ========================================
-// Factory Function
-// ========================================
-
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-
-// ========================================
-// Implementation Classes (for advanced usage)
-// ========================================
-
-export { ServiceImpl } from './ServiceImpl';
-// export { ServiceClient } from './ServiceClient';  // Uncomment if needed
-
-// ========================================
-// Generated Types
-// ========================================
-
-export * from '../generated/api';
-export * from '../generated/model';
-
-// ========================================
-// Mappers (for testing)
-// ========================================
-
-export * from './Mappers';
-
-// ========================================
-// Custom Types
-// ========================================
-
-// export type { ServiceProfile } from './ServiceClient';
-// export { ServiceSpecificError } from './errors';
-```
-
-## 🟢 GUIDELINES
-
-### Type Safety in Exports
-
-**Factory function should have return type:**
-```typescript
-// ✅ GOOD: Explicit return type
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-
-// ⚠️ OK but less clear
-export function newServiceName() {
-  return new ServiceImpl();
+```json
+{
+  "type": "module",
+  "main": "dist/src/index.js",
+  "files": [
+    "dist",
+    "generated/api/manifest.json",
+    "api.yml",
+    "connectionProfile.yml"
+  ]
 }
 ```
 
-**Why:**
-- Explicit type helps consumers
-- IDE autocomplete works better
-- Catches return type errors
+- `"type": "module"` — module is ESM. Non-negotiable.
+- `"main"` — `dist/src/index.js` because TypeScript's `outDir: dist` preserves the `src/` prefix.
+- `"files"` — what ends up in the published tarball. Everything else (`node_modules`, `test/`, `generated/api/index.*` minus the manifest, `hub-sdk/`) stays local.
+- `"exports"` — not used at the top level today. The codegen-emitted hub-sdk uses `exports`, the module itself relies on `main`.
 
-### Default Exports (Don't Use)
+`connectionProfile.yml` is in `files` only for connector modules; the generator omits it from `package.template.json` when `--moduleType=plain`.
 
-**❌ WRONG: Default export**
-```typescript
-export default function newServiceName() {
-  return new ServiceImpl();
-}
-```
+## What to add (when actually needed)
 
-**✅ CORRECT: Named export**
-```typescript
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-```
-
-**Why:**
-- Named exports are more explicit
-- Better for tree-shaking
-- Easier to find usages
-- Consistent with TypeScript best practices
-
-### Consumer Usage Pattern
-
-**How consumers use your module:**
+The factory + generated wildcards cover ~95% of modules. Add the rest only when a real consumer needs it.
 
 ```typescript
-// Consumer code
-import {
-  newServiceName,
-  ConnectionProfile,
-  UserApi,
-  User
-} from '@auditmation/connector-vendor-service';
+// Custom error class — only if you throw it and want consumers to catch by type
+export { ServiceSpecificError } from './errors.js';
 
-// Create connector using factory
-const connector = newServiceName();
+// Custom profile extension — only if the connection profile is augmented in code
+export type { ServiceProfile } from './<Class>Client.js';
 
-// Use ConnectionProfile type
-const profile: ConnectionProfile = {
-  apiKey: process.env.API_KEY!
-};
-
-// Connect
-await connector.connect(profile);
-
-// Get typed API
-const userApi: UserApi = connector.getUserApi();
-
-// Get typed resources
-const users: User[] = await userApi.listUsers();
+// Impl class — only if a consumer needs `instanceof` or wants to extend it
+export { <Class>Impl } from './<Class>Impl.js';
 ```
 
-**What they need:**
-1. Factory function - `newServiceName()`
-2. Profile type - `ConnectionProfile`
-3. API interfaces - `UserApi`
-4. Resource types - `User`
+Each addition needs:
+- A real, named consumer (e.g. another module, an integration test in another repo)
+- The `.js` extension on the relative import
+- A line in the PR explaining the consumer
 
-All of these come from your exports!
+## What NOT to export
 
-### Documentation Comments
+These are implementation details; consumers should not depend on them:
 
-**Add JSDoc to factory function:**
+- Producer classes (`<Tag>ProducerImpl`) — internal
+- HTTP client wrappers (`<Class>Client`) — internal, leaks `axios` types
+- Mappers (`src/mappers/*`) — internal, generated-type-shaped
+- Helpers / interceptors / retry utilities — internal
+
+If a test legitimately needs one of these, import the file directly:
 
 ```typescript
-/**
- * Creates a new Service connector instance.
- *
- * @returns A new connector instance that implements ServiceConnector
- *
- * @example
- * ```typescript
- * import { newServiceName } from '@auditmation/connector-vendor-service';
- *
- * const connector = newServiceName();
- * await connector.connect({ apiKey: 'your-key' });
- * ```
- */
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
+// In test/unit/UserMapperTest.ts
+import { mapUser } from '../../src/mappers/userMapper.js';
 ```
 
-**Benefits:**
-- Shows up in IDE tooltips
-- Documents usage
-- Provides example
+That keeps the file private to the module's tarball while still letting in-repo tests reach it.
 
-### Impl Class Export Pattern
+## Consumer usage shape
 
-**If exporting Impl, also export it directly:**
+This is what consumers see when they do `import … from '@zerobias-org/module-<vendor>-<service>'`:
 
 ```typescript
-// Option 1: Export from source
-export { ServiceImpl } from './ServiceImpl';
+import { new<Class>, ConnectionProfile, <Tag>Api, <Resource> }
+  from '@zerobias-org/module-<vendor>-<service>';
 
-// Option 2: Re-export from factory
-import { ServiceImpl } from './ServiceImpl';
+const api = new<Class>();
+const profile: ConnectionProfile = { /* … */ };
+await api.connect(profile);
 
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-
-export { ServiceImpl };  // Also export class
+const tagApi: <Tag>Api = api.get<Tag>Api();
+const resources: <Resource>[] = await tagApi.list<Resource>();
 ```
 
-**Enables type checking:**
-```typescript
-// Consumer code
-import { newServiceName, ServiceImpl } from '@auditmation/connector';
-
-const connector = newServiceName();
-
-if (connector instanceof ServiceImpl) {
-  // TypeScript knows the type
-}
-```
+Everything in that snippet comes from the four exports above (factory + two wildcards). If a consumer needs anything else, that's a signal that either the API spec is missing an operation or we're exporting the wrong layer.
 
 ## Validation
 
-### Check Factory Function Exists
 ```bash
-# Check factory function exists
-if [ -f src/index.ts ]; then
-  if grep -q "export function new" src/index.ts; then
-    echo "✅ PASS: Factory function exists"
-  else
-    echo "❌ FAIL: No factory function found"
-    exit 1
-  fi
-else
-  echo "❌ FAIL: src/index.ts not found"
-  exit 1
-fi
+# Factory exists, named, prefixed `new`
+grep -nE "^export function new[A-Z]" src/index.ts \
+  && echo "✓ factory" || echo "✗ no factory function"
+
+# No default exports
+! grep -n "^export default" src/index.ts \
+  && echo "✓ no default exports" || echo "✗ default export present"
+
+# Generated re-exports present
+grep -nE "export \* from ['\"]\.\./generated/(api|model)/index\.js['\"]" src/index.ts | wc -l
+# Expect: 2
+
+# ESM extensions on all relative imports
+grep -rnE "from '\.\.?\/[^']*'" src/ | grep -v "\.js'" \
+  && echo "✗ missing .js extension" || echo "✓ ESM imports OK"
 ```
 
-### Check Factory Function Naming
-```bash
-# Check factory function follows naming convention
-FACTORY_NAME=$(grep "export function new" src/index.ts | sed -E 's/.*function (new[A-Za-z]+).*/\1/')
+## Common issues
 
-if [[ "$FACTORY_NAME" =~ ^new[A-Z] ]]; then
-  echo "✅ PASS: Factory function named: $FACTORY_NAME"
-else
-  echo "❌ FAIL: Factory function must start with 'new' + PascalCase"
-  exit 1
-fi
-```
+- **`Cannot find module './<Class>Impl'`** at compile or test time — missing `.js` extension.
+- **`'newFoo' is not exported from …`** — factory was renamed or moved. Use `new<Class>` exactly; that's what the generator emits and what consumers/test fixtures grep for.
+- **Consumer can't import `ConnectionProfile`** — `export * from '../generated/model/index.js'` was removed or replaced with a cherry-pick.
+- **Dataloader fails with "missing manifest"** — `generated/api/manifest.json` not in `files`. Restore the canonical `files` array.
 
-### Check Generated Exports
-```bash
-# Check re-exports from generated/
-if grep -q "export \* from.*generated" src/index.ts; then
-  echo "✅ PASS: Re-exports generated types"
-else
-  echo "❌ FAIL: Must re-export from ../generated/"
-  exit 1
-fi
+## Related
 
-# Check both api and model exports
-if grep -q "export \* from.*generated/api" src/index.ts; then
-  echo "✅ PASS: Exports generated/api"
-else
-  echo "⚠️ WARN: Should export from ../generated/api"
-fi
-
-if grep -q "export \* from.*generated/model" src/index.ts; then
-  echo "✅ PASS: Exports generated/model"
-else
-  echo "⚠️ WARN: Should export from ../generated/model"
-fi
-```
-
-### Check No Internal Exports
-```bash
-# Check NOT exporting Client class (usually internal)
-if grep -q "export.*Client.*from.*Client" src/index.ts | grep -v "//"; then
-  echo "⚠️ WARN: Exporting Client class (usually should be internal)"
-else
-  echo "✅ PASS: Client class not exported (good - keep internal)"
-fi
-
-# Check for default exports (should not use)
-if grep -q "export default" src/index.ts; then
-  echo "❌ FAIL: Using default export (use named exports)"
-  exit 1
-else
-  echo "✅ PASS: No default exports (good)"
-fi
-```
-
-### Check Return Type
-```bash
-# Check factory function has return type
-if grep -q "export function new.*().*:" src/index.ts; then
-  echo "✅ PASS: Factory function has return type"
-else
-  echo "⚠️ WARN: Factory function should have explicit return type"
-fi
-```
-
-### Complete Validation Script
-```bash
-#!/bin/bash
-# validate-exports.sh - Validate index.ts exports
-
-echo "=== Module Exports Validation ==="
-echo ""
-
-if [ ! -f src/index.ts ]; then
-  echo "❌ FAIL: src/index.ts not found"
-  exit 1
-fi
-
-echo "Checking: src/index.ts"
-echo ""
-
-ERRORS=0
-
-# 1. Factory function
-echo "1. Factory Function:"
-if grep -q "export function new" src/index.ts; then
-  FACTORY=$(grep "export function new" src/index.ts | head -1)
-  echo "  ✅ Found: $FACTORY"
-
-  # Check naming
-  if echo "$FACTORY" | grep -q "export function new[A-Z]"; then
-    echo "  ✅ Correct naming (new + PascalCase)"
-  else
-    echo "  ❌ Wrong naming (must be new + PascalCase)"
-    ERRORS=$((ERRORS + 1))
-  fi
-
-  # Check return type
-  if echo "$FACTORY" | grep -q "):"; then
-    echo "  ✅ Has return type"
-  else
-    echo "  ⚠️  Should have explicit return type"
-  fi
-else
-  echo "  ❌ Factory function missing"
-  ERRORS=$((ERRORS + 1))
-fi
-echo ""
-
-# 2. Generated exports
-echo "2. Generated Exports:"
-if grep -q "export \* from.*generated" src/index.ts; then
-  echo "  ✅ Re-exports from generated/"
-
-  if grep -q "export \* from.*generated/api" src/index.ts; then
-    echo "  ✅ Exports ../generated/api"
-  else
-    echo "  ⚠️  Should export ../generated/api"
-  fi
-
-  if grep -q "export \* from.*generated/model" src/index.ts; then
-    echo "  ✅ Exports ../generated/model"
-  else
-    echo "  ⚠️  Should export ../generated/model"
-  fi
-else
-  echo "  ❌ Must re-export from generated/"
-  ERRORS=$((ERRORS + 1))
-fi
-echo ""
-
-# 3. Export style
-echo "3. Export Style:"
-if grep -q "export default" src/index.ts; then
-  echo "  ❌ Uses default export (should use named exports)"
-  ERRORS=$((ERRORS + 1))
-else
-  echo "  ✅ No default exports (good)"
-fi
-
-# Count named exports
-EXPORT_COUNT=$(grep -c "^export" src/index.ts)
-echo "  ✅ $EXPORT_COUNT export statements"
-echo ""
-
-# 4. Internal exports check
-echo "4. Internal Exports (warnings):"
-if grep -q "export.*Client" src/index.ts | grep -v "^//"; then
-  echo "  ⚠️  Exporting Client (usually internal)"
-else
-  echo "  ✅ Client not exported"
-fi
-
-if grep -q "export.*Mapper" src/index.ts | grep -v "^//"; then
-  echo "  ⚠️  Exporting Mappers (check if needed)"
-else
-  echo "  ✅ Mappers not exported"
-fi
-echo ""
-
-# 5. File size check (should be small)
-LINE_COUNT=$(wc -l < src/index.ts)
-if [ "$LINE_COUNT" -lt 50 ]; then
-  echo "5. File Size: ✅ $LINE_COUNT lines (good - index.ts should be small)"
-else
-  echo "5. File Size: ⚠️ $LINE_COUNT lines (large - consider if all exports are needed)"
-fi
-echo ""
-
-# Summary
-if [ $ERRORS -eq 0 ]; then
-  echo "=== ✅ VALIDATION PASSED ==="
-  exit 0
-else
-  echo "=== ❌ VALIDATION FAILED ($ERRORS errors) ==="
-  exit 1
-fi
-```
-
-## Common Issues
-
-### Issue: No factory function
-**Problem:**
-```typescript
-// index.ts
-export { ServiceImpl } from './ServiceImpl';
-```
-
-**Solution:**
-```typescript
-import { ServiceImpl } from './ServiceImpl';
-
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-
-export * from '../generated/api';
-export * from '../generated/model';
-```
-
-### Issue: Using default export
-**Problem:**
-```typescript
-export default function newServiceName() {
-  return new ServiceImpl();
-}
-```
-
-**Solution:**
-```typescript
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-```
-
-### Issue: Not re-exporting generated types
-**Problem:**
-```typescript
-// Only exports factory
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-```
-
-**Solution:**
-```typescript
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-
-// Add these
-export * from '../generated/api';
-export * from '../generated/model';
-```
-
-### Issue: Exporting too much
-**Problem:**
-```typescript
-// Exporting everything
-export * from './ServiceImpl';
-export * from './ServiceClient';
-export * from './helpers';
-export * from './utils';
-export * from './mappers';
-export * from './errors';
-```
-
-**Solution:**
-```typescript
-// Minimal public API
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-
-export * from '../generated/api';
-export * from '../generated/model';
-
-// Only export what consumers truly need
-```
-
-## Anti-Patterns
-
-### ❌ BAD: Complex factory with parameters
-```typescript
-export function newServiceName(config: ServiceConfig): ServiceImpl {
-  return new ServiceImpl(config);
-}
-```
-
-### ✅ GOOD: Simple factory, no parameters
-```typescript
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-```
-
-### ❌ BAD: Multiple factory functions
-```typescript
-export function newServiceName(): ServiceImpl { ... }
-export function createServiceName(): ServiceImpl { ... }
-export function makeServiceName(): ServiceImpl { ... }
-```
-
-### ✅ GOOD: Single factory function
-```typescript
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-```
-
-### ❌ BAD: Selective type exports
-```typescript
-// Don't cherry-pick types
-export { ConnectionProfile, UserApi } from '../generated/api';
-export { User, Group } from '../generated/model';
-```
-
-### ✅ GOOD: Export all generated types
-```typescript
-// Export everything
-export * from '../generated/api';
-export * from '../generated/model';
-```
-
-### ❌ BAD: Exporting implementation details
-```typescript
-export { ServiceClient } from './ServiceClient';
-export { httpInterceptor } from './interceptors';
-export { mapUser, mapGroup } from './mappers';
-export { validateProfile } from './validators';
-```
-
-### ✅ GOOD: Minimal public API
-```typescript
-export function newServiceName(): ServiceImpl {
-  return new ServiceImpl();
-}
-
-export * from '../generated/api';
-export * from '../generated/model';
-
-// Keep internals private
-```
+- @.claude/skills/typescript-config/SKILL.md — ESM compile rules
+- @.claude/skills/scaffolding/SKILL.md — generator output reference
+- @.claude/skills/impl-wrapper/SKILL.md — Impl class structure (consumed by the factory)

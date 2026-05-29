@@ -213,14 +213,32 @@ public final class StructureWalker {
      * Build {fieldNumber → beanName} from HAPI's generated positional accessors
      * (e.g. {@code getPid3_PatientIdentifierList}). These encode the authoritative
      * 1-based index and the bean name a HAPI client sees (DESIGN §2.3).
+     *
+     * <p>Only accessors that return an HL7 {@link Type} (or {@code Type[]}) are
+     * considered. HAPI also generates a {@code getPidN_FieldReps()} method that
+     * returns the repetition <em>count</em> ({@code int}) and matches the same
+     * name pattern; filtering by return type excludes it (otherwise repeating
+     * fields would nondeterministically pick up a {@code ...Reps} bean name,
+     * depending on reflection method order).
      */
     private static Map<Integer, String> positionalBeanNames(Class<?> structureClass) {
         final Map<Integer, String> map = new HashMap<>();
         for (Method m : structureClass.getMethods()) {
+            if (!returnsHl7Type(m)) {
+                continue;
+            }
             HapiNames.parseAccessor(m.getName())
                 .ifPresent(a -> map.putIfAbsent(a.index(), a.beanName()));
         }
         return map;
+    }
+
+    private static boolean returnsHl7Type(Method m) {
+        final Class<?> rt = m.getReturnType();
+        if (Type.class.isAssignableFrom(rt)) {
+            return true;
+        }
+        return rt.isArray() && Type.class.isAssignableFrom(rt.getComponentType());
     }
 
     private Message instantiateMessage(String messageSimpleName) throws Exception {

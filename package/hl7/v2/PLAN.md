@@ -115,17 +115,23 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   - `SchemaGenerator` — orchestration: appends the buffer envelope to message
     table schemas (§2.3), fills `dataTypes[]`, emits enum stubs + the shared
     `message-envelope`, writes the tree via pretty Gson.
-- ✅ Verified now (toolchain-independent): 27 helper assertions pass via javac;
-  `PureHelpersTest` (JUnit) locks them in. `StructureWalkerIT` encodes the §2.3
-  acceptance traversal (`ADT_A01 → PID → CX → HD → HL70203`).
-- **Remaining (needs the build toolchain — mvn + hapi-structures-v251):**
-  1. Run `mvn -f java/codegen/pom.xml test` → `StructureWalkerIT` green.
-  2. Run the generator (`-Pregen-schemas` or directly) → inspect emitted JSON →
-     **commit the generated `schemas/` + `structure-index/` tree.**
-  3. Widen the message list beyond the `ADT_A01`/`ORU_R01` default to target coverage.
+- ✅ **Validated against real HAPI v2.5.1** (jars fetched from Maven Central, run
+  with javac/java + the JUnit console): `PureHelpersTest` (4) + `StructureWalkerIT`
+  (1, the §2.3 `ADT_A01 → PID → CX → HD → HL70203` traversal) pass. The generator
+  runs end-to-end and emits **254 schemas, 0 non-canonical ids** for ADT_A01+ORU_R01
+  (2 messages, 9 groups, 33 segments, 47 datatypes, 162 table stubs) + the shared
+  envelope + structure-index. Spot-checked: CX/PID/ADT_A01 match the design.
+- 🐞 **Bug found + fixed by this run:** HAPI emits a `getPidN_FieldReps()` count
+  accessor (returns `int`) alongside the field accessor; reflection was picking
+  it up nondeterministically, giving repeating fields `...Reps` names. Fixed by
+  filtering positional accessors to those returning an HL7 `Type`.
+- **Remaining:**
+  1. **Decide + commit the generated `schemas/` + `structure-index/` tree** (open
+     question: include the 162 table *stubs*? widen message coverage first?).
+  2. Widen the message list beyond the `ADT_A01`/`ORU_R01` default.
 - **Follow-up (flagged):** HL7 **table value-sets** are emitted as stubs — HAPI's
-  structure jars carry the table *number* (captured) but not always the code
-  lists; populating `tables/HL7nnnn.json` values needs a table data source.
+  structure jars carry the table *number* (captured) but not the code lists;
+  populating `tables/HL7nnnn.json` values needs a table data source.
 - Optional: republish generated schemas as `@auditlogic/hl7-v2-schemas` (DESIGN §6).
 
 ### Phase 2 — Buffer (SQLite + WAL) 🟢 🚧 *(foundation laid 2026-05-29)*

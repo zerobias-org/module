@@ -140,18 +140,27 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   populating `tables/HL7nnnn.json` values needs a table data source.
 - Optional: republish generated schemas as `@auditlogic/hl7-v2-schemas` (DESIGN §6).
 
-### Phase 2 — Buffer (SQLite + WAL) 🟢 🚧 *(foundation laid 2026-05-29)*
-- ✅ Foundation (pure, compile-verified): `buffer/schema.sql` (the §8 DDL +
-  indexes + WAL pragmas, verbatim, as a committed resource), `MessageStatus`
-  enum (wire `new|in_flight|acked` + `fromWire`), `BufferRow` record.
-- **Remaining (needs sqlite-jdbc to test):**
-  - `BufferStore`: load `schema.sql`, `insert` = `ON CONFLICT(control_id) DO NOTHING`.
-  - `LeaseManager`: the `BEGIN IMMEDIATE … UPDATE … RETURNING` drain
-    (DESIGN §8.2); TTL default PT5M, cap 1h.
-  - `RetentionSweeper`: 10-min thread, `maxBytes`/`maxAge` whichever fires first (§8.3).
-  - `ackDurability` toggles `synchronous=NORMAL|FULL` (§8.1).
-- **Done when:** unit tests cover insert/dedup, take→lease, ack, release,
-  TTL revert, purge, retention eviction — against a temp SQLite file, no HL7.
+### Phase 2 — Buffer (SQLite + WAL) 🟢 ✅ *(done & validated 2026-05-29)*
+- ✅ `BufferStore` — opens SQLite, applies `buffer/schema.sql` (+ `auto_vacuum`
+  before tables), `ackDurability` toggles `synchronous=NORMAL|FULL` (§8.1),
+  `insert` = `ON CONFLICT(control_id) DO NOTHING` (ack-on-persist), counts,
+  purge, deletion primitives. Timestamps stored as epoch-millis (correct
+  ordering; avoids ISO lexicographic mis-sort).
+- ✅ `LeaseManager` — `take` (select→mark in_flight→fetch, race-free via single
+  synchronized connection; TTL default PT5M cap 1h; returns `Lease{leaseId,
+  messages, remaining}`), `ack` (full + partial subset), `release`,
+  `reclaimExpired` (TTL revert). DESIGN §8.2.
+- ✅ `RetentionSweeper` — `sweep()` (maxAge + maxBytes via incremental_vacuum,
+  acked-only) + scheduled `start(interval)`/`stop()`. DESIGN §8.3.
+- ✅ **Validated against real SQLite (sqlite-jdbc 3.45):** `BufferStoreTest` —
+  **8 tests pass** covering insert/dedup + round-trip, lease ordering, full +
+  partial ack, release, TTL revert + re-take, purge (acked-only), retention by
+  max-age (un-acked never evicted), schema-id filtering. `MutableClock` drives
+  TTL/retention deterministically.
+- **Deferred (not blocking):** `take`'s RFC4515 filter (Phase 5 — currently
+  filters by schema-id only); a reader connection pool for browse concurrency
+  (Phase 4/6); precise byte-bounded eviction is implemented but only the
+  max-age path is unit-tested.
 
 ### Phase 3 — Materializer 🟢 🚧 *(normalization kernel done 2026-05-29)*
 - ✅ `materializer/Hl7Normalizer` — pure, verified (30 checks + `Hl7NormalizerTest`):

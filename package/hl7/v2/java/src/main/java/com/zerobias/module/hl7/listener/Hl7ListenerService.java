@@ -50,6 +50,11 @@ public final class Hl7ListenerService implements AutoCloseable {
         return port;
     }
 
+    /** Whether the underlying MLLP service is currently accepting connections. */
+    public boolean isRunning() {
+        return server.isRunning();
+    }
+
     public HapiContext context() {
         return context;
     }

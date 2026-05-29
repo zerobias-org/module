@@ -9,6 +9,7 @@
 #   java/scripts/manual-test.sh demo       # buffer-only: insert/take/ack, leave a buffer.db
 #   java/scripts/manual-test.sh listener   # start the MLLP listener, send a real HL7 message
 #   java/scripts/manual-test.sh filter     # show RFC4515 filters -> SQLite WHERE -> matching rows
+#   java/scripts/manual-test.sh producer   # drive the DataProducer read ops over a seeded buffer
 #
 # After demo/listener, inspect the database by hand:
 #   sqlite3 /tmp/hl7-demo/buffer.db 'SELECT control_id,status,mapped_json FROM messages;'
@@ -47,7 +48,8 @@ javac -cp "$CP" -d "$OUT" \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/materializer/MessageMaterializer.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/materializer/EnvelopeMaterializer.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/listener/*.java \
-  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/filter/*.java
+  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/filter/*.java \
+  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/producer/*.java
 
 run_junit() {  # run_junit <fully.qualified.ClassName>...
   local sel=(); for c in "$@"; do sel+=(--select-class="$c"); done
@@ -61,12 +63,14 @@ case "$MODE" in
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/buffer/BufferStoreTest.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/materializer/Hl7NormalizerTest.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/listener/Hl7ListenerIT.java \
-      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/filter/Hl7SqlAdapterIT.java
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/filter/Hl7SqlAdapterIT.java \
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/producer/Hl7ProducerIT.java
     echo "running tests..."
     run_junit com.zerobias.module.hl7.buffer.BufferStoreTest \
               com.zerobias.module.hl7.materializer.Hl7NormalizerTest \
               com.zerobias.module.hl7.listener.Hl7ListenerIT \
-              com.zerobias.module.hl7.filter.Hl7SqlAdapterIT
+              com.zerobias.module.hl7.filter.Hl7SqlAdapterIT \
+              com.zerobias.module.hl7.producer.Hl7ProducerIT
     ;;
   demo)
     DB="/tmp/hl7-demo/buffer.db"; rm -f /tmp/hl7-demo/buffer.db*; mkdir -p /tmp/hl7-demo
@@ -216,6 +220,62 @@ JAVA
     echo; echo "running filter demo..."; echo
     java -cp "${CP}${OUT}:${RES}" FDemo "$DB" 2>&1 | grep -v SLF4J
     ;;
+  producer)
+    GEN="$(mktemp -d)"
+    cat > "$OUT/PDemo.java" <<'JAVA'
+import com.zerobias.module.hl7.buffer.*;
+import com.zerobias.module.hl7.producer.*;
+import com.google.gson.Gson;
+import java.nio.file.*;
+import java.time.*; import java.util.*;
+public class PDemo {
+  static final Gson G = new Gson();
+  static void schema(Path dir, String rel, String id) throws Exception {
+    Path f = dir.resolve(rel); Files.createDirectories(f.getParent());
+    Files.writeString(f, "{\"id\":\""+id+"\",\"dataTypes\":[],\"properties\":[]}\n");
+  }
+  static void row(BufferStore b, String cid, String struct, String code, String app,
+                  String status, String family) throws Exception {
+    b.insert(new BufferRow(0, Instant.parse("2026-05-28T10:00:00Z"), cid, struct, code, "A01",
+      app, "HOSP", "2.5.1", "schema:table:hl7v2.v251."+struct, ("raw-"+cid).getBytes(),
+      "{\"pid\":{\"patientFamilyName\":\""+family+"\"}}", MessageStatus.fromWire(status), null, null, null));
+  }
+  static String op(Hl7ProducerFacade f, String m, Object... kv) throws Exception {
+    Map<String,Object> a = new LinkedHashMap<>();
+    for (int i=0;i<kv.length;i+=2) a.put((String)kv[i], kv[i+1]);
+    return OperationRouter.executeOperation(f, m, a);
+  }
+  public static void main(String[] a) throws Exception {
+    Path gen = Path.of(a[0]);
+    schema(gen, "schemas/shared/message-envelope.json", "schema:shared:hl7v2.message-envelope");
+    schema(gen, "schemas/v251/messages/ADT_A01.json", "schema:table:hl7v2.v251.ADT_A01");
+    schema(gen, "schemas/v251/messages/ORU_R01.json", "schema:table:hl7v2.v251.ORU_R01");
+    try (BufferStore b = new BufferStore(gen.resolve("buffer.db").toString(), false)) {
+      row(b,"M1","ADT_A01","ADT","EPIC","new","SMITH");
+      row(b,"M2","ADT_A01","ADT","EPIC","acked","ASHWORTH");
+      row(b,"M3","ORU_R01","ORU","CERNER","new","BOOTH");
+      SchemaRegistry reg = SchemaRegistry.fromDirectory(gen);
+      Hl7ProducerFacade f = new Hl7ProducerFacade(b, new ObjectTree(b, reg, "v251"), reg);
+      System.out.println("seeded 3 messages (M1,M2 ADT/EPIC; M3 ORU/CERNER)\n");
+      System.out.println("getRootObject              -> " + op(f,"ObjectsApi.getRootObject"));
+      System.out.println("getChildren /hl7-v2-receiver-> " + op(f,"ObjectsApi.getChildren","objectId","/hl7-v2-receiver"));
+      System.out.println("getObject  /messages        -> " + op(f,"ObjectsApi.getObject","objectId","/hl7-v2-receiver/messages"));
+      System.out.println("children   /by-type         -> " + op(f,"ObjectsApi.getChildren","objectId","/hl7-v2-receiver/by-type"));
+      System.out.println("children   /by-sender       -> " + op(f,"ObjectsApi.getChildren","objectId","/hl7-v2-receiver/by-sender"));
+      System.out.println("search /by-type/ADT_A01     -> " + op(f,"CollectionsApi.searchCollectionElements","objectId","/hl7-v2-receiver/by-type/ADT_A01"));
+      System.out.println("  + filter (status=new)     -> " + op(f,"CollectionsApi.searchCollectionElements","objectId","/hl7-v2-receiver/by-type/ADT_A01","filter","(status=new)"));
+      System.out.println("getElement /messages/M2     -> " + op(f,"CollectionsApi.getCollectionElement","objectId","/hl7-v2-receiver/messages","elementKey","M2"));
+      System.out.println("getSchema  message-envelope -> " + op(f,"SchemasApi.getSchema","objectId","schema:shared:hl7v2.message-envelope"));
+      try { op(f,"CollectionsApi.addCollectionElement","objectId","/hl7-v2-receiver/messages","element",Map.of("x",1)); }
+      catch (ProducerException e) { System.out.println("addCollectionElement (rejected)-> "+e.httpStatus()+" "+e.code()+": "+e.getMessage()); }
+    }
+  }
+}
+JAVA
+    javac -cp "$CP$OUT" -d "$OUT" "$OUT/PDemo.java"
+    echo; echo "running producer demo..."; echo
+    java -cp "${CP}${OUT}:${RES}" PDemo "$GEN" 2>&1 | grep -v SLF4J
+    ;;
   *)
-    echo "usage: $0 [test|demo|listener|filter]" >&2; exit 2 ;;
+    echo "usage: $0 [test|demo|listener|filter|producer]" >&2; exit 2 ;;
 esac

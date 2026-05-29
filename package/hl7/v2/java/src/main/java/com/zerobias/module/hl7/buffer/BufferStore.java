@@ -173,13 +173,19 @@ public final class BufferStore implements AutoCloseable {
      * {@code expression.as(...)} contract, which has no parameter seam.
      */
     public synchronized List<BufferRow> search(String whereClause, int limit) throws SQLException {
+        return search(whereClause, limit, 0);
+    }
+
+    /** As {@link #search(String, int)} but with an OFFSET for page-number paging. */
+    public synchronized List<BufferRow> search(String whereClause, int limit, int offset) throws SQLException {
         StringBuilder sql = new StringBuilder("SELECT ").append(COLS).append(" FROM messages");
         if (whereClause != null && !whereClause.isBlank()) {
             sql.append(" WHERE ").append(whereClause);
         }
-        sql.append(" ORDER BY received_at DESC, id DESC LIMIT ?");
+        sql.append(" ORDER BY received_at DESC, id DESC LIMIT ? OFFSET ?");
         try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
             ps.setInt(1, limit);
+            ps.setInt(2, Math.max(0, offset));
             try (ResultSet rs = ps.executeQuery()) {
                 List<BufferRow> out = new ArrayList<>();
                 while (rs.next()) {
@@ -189,6 +195,36 @@ public final class BufferStore implements AutoCloseable {
             }
         }
     }
+
+    /** Row count matching a pre-rendered WHERE clause (null/blank = all). */
+    public synchronized long countWhere(String whereClause) throws SQLException {
+        String sql = "SELECT count(*) FROM messages"
+            + (whereClause != null && !whereClause.isBlank() ? " WHERE " + whereClause : "");
+        return queryLong(sql);
+    }
+
+    /**
+     * Distinct non-null values of a column, used to enumerate dynamic object-tree
+     * children (e.g. {@code /by-sender/<app>}). Only an allow-listed set of columns
+     * is permitted — the name is interpolated, so it must never be caller-derived.
+     */
+    public synchronized List<String> distinctValues(String column) throws SQLException {
+        if (!ALLOWED_DISTINCT_COLUMNS.contains(column)) {
+            throw new IllegalArgumentException("distinctValues not allowed for column: " + column);
+        }
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT DISTINCT " + column + " FROM messages WHERE "
+                 + column + " IS NOT NULL ORDER BY " + column)) {
+            List<String> out = new ArrayList<>();
+            while (rs.next()) {
+                out.add(rs.getString(1));
+            }
+            return out;
+        }
+    }
+
+    private static final java.util.Set<String> ALLOWED_DISTINCT_COLUMNS =
+        java.util.Set.of("sending_app", "sending_facility", "message_structure", "message_code");
 
     /** Delete acked rows acked longer ago than {@code olderThan} (ops/purge, DESIGN §2.5). */
     public synchronized int purge(Duration olderThan) throws SQLException {

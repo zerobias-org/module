@@ -236,18 +236,43 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
 - Decision (DESIGN §11.6): SQLite adapter lives **here** for v1 (the
   epoch-millis + json_extract specifics are module-local).
 
-### Phase 6 — DataProducer HTTP surface 🔵 *(seam: contract dep `module-interface-dataproducer`)*
-- `Hl7ApiServer` (Javalin, internal 8889) + `OperationRouter` mirroring
-  the SQL module; `Hl7ProducerFacade` implements the read ops.
-- `SchemaRegistry` serves `/schemas/{id}` from classpath. `ObjectTree`
-  builds the hierarchy (DESIGN §2.1): root → `/hl7-v2-receiver` →
-  `/messages`, `/by-type/<X>`, `/by-sender/<X>`, `/stats`, `/ops`.
-- `searchCollectionElements` is read-only over the buffer, using the
-  Phase-5 filter; `addCollectionElement` on `/messages` → 400
-  `UnsupportedOperationError` (DESIGN §2.7).
-- Error mapping per DESIGN §2.7 / `Errors.md`.
-- **Done when:** HTTP tests cover getRootObject/getObject/getChildren/
-  searchCollectionElements/getSchema against a seeded buffer.
+### Phase 6 — DataProducer HTTP surface 🔵 ✅ *(done & validated 2026-05-29)*
+- ✅ **Wire contract discovered + locked:** the java-http module surface is NOT
+  the literal api.yml `/objects` paths — nginx proxies everything to Javalin,
+  which serves the SQL module's RPC envelope: `GET /`, `POST /connections`,
+  `PUT /connections/{id}/disconnect`, `GET /connections/{id}/metadata`,
+  `GET /connections/{id}/isSupported/{op}`, `POST /connections/{id}/{method}`
+  (`{method}` = `ApiClass.methodName`, body `{argMap}`). api.yml is the logical
+  contract for type-gen + the platform's operation catalog; the Hub Node's
+  invoker maps operationIds onto that RPC route. (The SQL module's own api.yml
+  likewise doesn't match its Javalin routes — same split.)
+- ✅ `producer/OperationRouter` (mirrors SQL dispatch) + `Hl7ProducerFacade`
+  (read ops), `ObjectTree` (DESIGN §2.1 hierarchy: root → `/hl7-v2-receiver` →
+  `/messages`, `/by-type/<X>` from `SchemaRegistry`, `/by-sender/<X>` from
+  distinct `sending_app`, `/stats` doc, `/ops` functions), `SchemaRegistry`
+  (scans the generated tree, indexes by parsed `id`, serves `getSchema` +
+  enumerates message structures), `ProducerException` (Errors.md envelope
+  `{code,message,details}` + HTTP status). `Hl7ApiServer` rewritten: boots the
+  daemon (buffer + listener) and registers the RPC routes + exception handlers.
+- ✅ `searchCollectionElements` is read-only over the buffer: collection scope
+  (`message_structure`/`sending_app`) AND the Phase-5 RFC4515 filter, composed
+  into `BufferStore.search(where, limit, offset)`. Write surface
+  (`addCollectionElement`/update/delete) → 400 `UnsupportedOperationError`
+  (receive-only). `invokeFunction` deferred to Phase 7. Error mapping:
+  unknown object/schema → 404 `noSuchObjectError`, bad input → 400
+  `illegalArgumentError`.
+- ✅ **Validated:** `Hl7ProducerIT` — 8 tests through
+  `OperationRouter.executeOperation` (the exact HTTP code path) against a real
+  seeded SQLite buffer + a generated schema tree: root/containers,
+  collection+size, by-type (from registry), by-sender (from buffer), scoped +
+  filtered + json-path search, element-by-controlId, getSchema, and all four
+  error mappings (404/400). **26 tests green** overall. `manual-test.sh
+  producer` drives the read ops from the terminal.
+- **Deferred:** the Javalin/Jetty route-glue itself is validated under the real
+  gradle build (~30 lines mirroring the proven SQL module; the jetty+kotlin jar
+  fan-out isn't worth fetching by hand). `sortBy`/`sortDir` accepted but
+  ignored (received_at DESC default); `pageToken` cursor paging (offset only);
+  `getDocumentData` for `/stats` (Phase 9).
 
 ### Phase 7 — Function objects 🟢
 - `ops/take|ack|release|replay|purge` behind `invokeFunction`, with

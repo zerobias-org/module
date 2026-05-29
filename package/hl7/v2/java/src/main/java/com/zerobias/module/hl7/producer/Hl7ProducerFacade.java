@@ -1,0 +1,194 @@
+package com.zerobias.module.hl7.producer;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.zerobias.module.hl7.buffer.BufferRow;
+import com.zerobias.module.hl7.buffer.BufferStore;
+import com.zerobias.module.hl7.filter.Hl7Filter;
+
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Implements the read-only DataProducer operations (DESIGN §2) over the durable
+ * buffer. All methods return JSON strings (the HTTP layer passes them through
+ * verbatim) and raise {@link ProducerException} for the standard error cases.
+ *
+ * <p>The producer is <b>receive-only</b>: messages arrive over MLLP (Phase 4),
+ * never through the DataProducer write surface — so every mutating op
+ * ({@code addCollectionElement}, update/delete) is rejected with
+ * {@code UnsupportedOperationError} (DESIGN §2.7). Draining is the {@code ops/take}
+ * function (Phase 7), not element mutation.
+ */
+public final class Hl7ProducerFacade {
+
+    private static final Gson GSON = new Gson();
+    private static final int MAX_PAGE_SIZE = 1000;
+
+    private final BufferStore buffer;
+    private final ObjectTree tree;
+    private final SchemaRegistry schemas;
+
+    public Hl7ProducerFacade(BufferStore buffer, ObjectTree tree, SchemaRegistry schemas) {
+        this.buffer = buffer;
+        this.tree = tree;
+        this.schemas = schemas;
+        Hl7Filter.register();
+    }
+
+    // --- Objects -----------------------------------------------------------
+
+    public String getRootObject() throws SQLException {
+        return GSON.toJson(tree.object(ObjectTree.ROOT));
+    }
+
+    public String getObject(String objectId) throws SQLException {
+        requireId(objectId);
+        return GSON.toJson(tree.object(objectId));
+    }
+
+    public String getChildren(String objectId, int pageSize, int pageNumber) throws SQLException {
+        requireId(objectId);
+        List<Map<String, Object>> children = tree.children(objectId);
+        int size = clampPageSize(pageSize);
+        int from = Math.max(0, pageNumber) * size;
+        if (from >= children.size()) {
+            return "[]";
+        }
+        int to = Math.min(children.size(), from + size);
+        return GSON.toJson(children.subList(from, to));
+    }
+
+    // --- Collections (read-only browse) -----------------------------------
+
+    public String getCollectionElements(String objectId, String filter, String sortBy,
+            String sortDir, int pageSize, int pageNumber, String pageToken) throws SQLException {
+        requireId(objectId);
+        ObjectTree.Collection coll = tree.resolveCollection(objectId);
+        int size = clampPageSize(pageSize);
+        int offset = Math.max(0, pageNumber) * size;
+        String where = composeWhere(coll, filter);
+
+        List<BufferRow> rows = buffer.search(where, size, offset);
+        List<Map<String, Object>> elements = new ArrayList<>(rows.size());
+        for (BufferRow r : rows) {
+            elements.add(toElement(r));
+        }
+        return GSON.toJson(elements);
+    }
+
+    public String getCollectionElement(String objectId, String elementKey) throws SQLException {
+        requireId(objectId);
+        if (elementKey == null || elementKey.isBlank()) {
+            throw ProducerException.illegalArgument("elementKey is required");
+        }
+        ObjectTree.Collection coll = tree.resolveCollection(objectId);
+        String where = and(scopeWhere(coll), "control_id = " + sql(elementKey));
+        List<BufferRow> rows = buffer.search(where, 1, 0);
+        if (rows.isEmpty()) {
+            throw ProducerException.noSuchObject(objectId + " / " + elementKey);
+        }
+        return GSON.toJson(toElement(rows.get(0)));
+    }
+
+    // --- Schemas -----------------------------------------------------------
+
+    public String getSchema(String schemaId) {
+        if (schemaId == null || schemaId.isBlank()) {
+            throw ProducerException.illegalArgument("schemaId is required");
+        }
+        return schemas.getSchema(schemaId);
+    }
+
+    // --- Write surface: rejected (receive-only) ---------------------------
+
+    public String createCollectionElement(String objectId, String elementJson) {
+        throw ProducerException.unsupported(
+            "Collection is receive-only; messages arrive over MLLP, not via addCollectionElement");
+    }
+
+    public String updateCollectionElement(String objectId, String elementKey, String elementJson) {
+        throw ProducerException.unsupported("Collection is read-only");
+    }
+
+    public void deleteCollectionElement(String objectId, String elementKey) {
+        throw ProducerException.unsupported("Collection is read-only; use ops/purge to evict acked rows");
+    }
+
+    // --- Functions: wired in Phase 7 --------------------------------------
+
+    public String invokeFunction(String objectId, String inputJson) throws SQLException {
+        requireId(objectId);
+        tree.object(objectId); // 404 if the function id is unknown
+        throw ProducerException.unsupported("Function invocation lands in Phase 7: " + objectId);
+    }
+
+    // --- helpers -----------------------------------------------------------
+
+    /** Build a buffer element from a row: typed body overlaid with authoritative envelope. */
+    private Map<String, Object> toElement(BufferRow r) {
+        Map<String, Object> element = new LinkedHashMap<>();
+        JsonObject body = GSON.fromJson(r.mappedJson(), JsonObject.class);
+        if (body != null) {
+            for (String k : body.keySet()) {
+                element.put(k, GSON.fromJson(body.get(k), Object.class));
+            }
+        }
+        // Envelope columns are authoritative (DESIGN §2.3 shared schema).
+        element.put("controlId", r.controlId());
+        element.put("receivedAt", r.receivedAt().toString());
+        element.put("status", r.status().wire());
+        element.put("leaseId", r.leaseId());
+        return element;
+    }
+
+    private String composeWhere(ObjectTree.Collection coll, String filter) {
+        String scope = scopeWhere(coll);
+        String userFilter = null;
+        if (filter != null && !filter.isBlank()) {
+            try {
+                userFilter = Hl7Filter.toWhereClause(filter);
+            } catch (RuntimeException e) {
+                throw ProducerException.illegalArgument("Malformed filter: " + e.getMessage());
+            }
+        }
+        return and(scope, userFilter);
+    }
+
+    private String scopeWhere(ObjectTree.Collection coll) {
+        return coll.scopeColumn() == null ? null : coll.scopeColumn() + " = " + sql(coll.scopeValue());
+    }
+
+    private static String and(String a, String b) {
+        if (a == null || a.isBlank()) {
+            return b;
+        }
+        if (b == null || b.isBlank()) {
+            return a;
+        }
+        return "(" + a + ") AND (" + b + ")";
+    }
+
+    private int clampPageSize(int pageSize) {
+        if (pageSize <= 0) {
+            return 100;
+        }
+        if (pageSize > MAX_PAGE_SIZE) {
+            throw ProducerException.illegalArgument("pageSize exceeds maximum of " + MAX_PAGE_SIZE);
+        }
+        return pageSize;
+    }
+
+    private static void requireId(String objectId) {
+        if (objectId == null || objectId.isBlank()) {
+            throw ProducerException.illegalArgument("objectId is required");
+        }
+    }
+
+    private static String sql(String value) {
+        return "'" + value.replace("'", "''") + "'";
+    }
+}

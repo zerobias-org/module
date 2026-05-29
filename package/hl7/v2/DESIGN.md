@@ -660,13 +660,23 @@ runtimeConfig:
 Hub Node:
 
 1. Resolves each `(artifact, version)` via pkg-proxy → tarball URL.
-2. Pulls tarball, extracts to `/var/lib/zerobias/extensions/<deployment-id>/<artifact>@<version>/`.
-3. Mounts that directory into the container at `/opt/module/extensions:ro` via `-v`.
+2. Pulls tarball, extracts to `/var/lib/zerobias/extensions/<deployment-id>/<artifact>@<version>/`
+   (the extracted package root — `package.json` + `extensions/` at its top).
+3. Mounts each per-artifact directory into its **own uniquely-named
+   subdirectory** under `/opt/module/extensions/` (read-only), one `-v` per
+   extension — e.g.
+   `…/<artifact>@<version>/:/opt/module/extensions/<artifact>@<version>:ro`.
+   Never a single shared mount at `/opt/module/extensions` itself: N
+   artifacts would collide, and it would not match the boot glob below.
+   (Matches `Container.ts` in PLATFORM_UPDATES §5.1:
+   `-v ${dir}:/opt/module/extensions/${path.basename(dir)}:ro`.)
 4. Sets `EXTENSION_DIR=/opt/module/extensions` if not already.
 
 Module at boot:
 
-1. Loads `/opt/module/extensions/*/extensions/manifest.json`.
+1. Loads `/opt/module/extensions/*/extensions/manifest.json` — one match
+   per mounted extension subdir (the inner `extensions/` is the package's
+   own `extensions/` directory from §7.1).
 2. Validates: namespace ownership, HL7 version compatibility (`hl7.version` matches the module's configured version), schema-ID format, no duplicate IDs.
 3. Merges schemas into the in-memory schema registry.
 4. Merges structure-index entries into the materializer driver.

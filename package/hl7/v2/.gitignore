@@ -1,0 +1,24 @@
+node_modules/
+dist/
+generated/
+docs/
+
+# Java build output
+java/target/
+java/codegen/target/
+java/dependency-reduced-pom.xml
+
+# Ephemeral build artifacts
+eslint.config.js
+eslint.config.mjs
+module-*.yml
+test-results.json
+
+# Local buffer / runtime artifacts (should never be committed)
+*.db
+*.db-wal
+*.db-shm
+
+# Editor / OS
+*.swp
+.DS_Store

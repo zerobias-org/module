@@ -1,0 +1,174 @@
+openapi: 3.0.3
+info:
+  version: "0.0.0"
+  description: "HL7 v2.x MLLP receiver (DataProducer)"
+  title: '@auditlogic/module-hl7-v2'
+  x-impl-name: hl7
+# This module implements the DataProducer interface defined in
+# @zerobias-org/module-interface-dataproducer. Interface paths are referenced
+# directly from the interface module; the implementation is Java (see java/).
+paths:
+  # ---- DataProducer interface paths ----
+  /objects:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects'
+  /objects/{objectId}:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}'
+  /objects/{objectId}/children:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1children'
+  /objects/{objectId}/search:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1search'
+  /objects/{objectId}/searchChildren:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1searchChildren'
+  /objects/{objectId}/collection/elements:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1elements'
+  /objects/{objectId}/collection/elements/{elementKey}:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1elements~1{elementKey}'
+  /objects/{objectId}/collection/search:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1search'
+  /objects/{objectId}/invoke:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1invoke'
+  /objects/{objectId}/validate:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1validate'
+  /objects/{objectId}/document:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1document'
+  /schemas/{schemaId}:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1schemas~1{schemaId}'
+  # ---- Connection lifecycle (required for Docker-based modules) ----
+  /connect:
+    post:
+      tags: [connection]
+      summary: Establish a receiver session
+      description: >-
+        Validates the connection profile and binds the producer session. The
+        MLLP listener and buffer are daemon-owned and already running; connect
+        is the DataProducer handshake the pipeline uses before browse/drain.
+      operationId: connect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionProfile'
+      responses:
+        '200':
+          description: Connected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: connected
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Connection failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /disconnect:
+    post:
+      tags: [connection]
+      summary: Close the receiver session
+      description: >-
+        Releases the producer session. Does NOT stop the MLLP listener or flush
+        the buffer — those are daemon-owned and survive disconnect.
+      operationId: disconnect
+      responses:
+        '200':
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: disconnected
+  /metadata:
+    get:
+      tags: [connection]
+      summary: Connection metadata and health
+      operationId: getConnectionMetadata
+      responses:
+        '200':
+          description: Connection metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [On, Off, Error]
+                  connected:
+                    type: string
+                    format: date-time
+  /healthz:
+    get:
+      tags: [health]
+      summary: Daemon health probe
+      description: >-
+        Liveness/health for the always-on daemon. Hub Node polls this every 30s
+        for daemon-mode deployments (DESIGN §9). Returns listener state, buffer
+        depth, WAL stats, and loaded extensions.
+      operationId: getHealth
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: Degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+components:
+  schemas:
+    ConnectionProfile:
+      $ref: './connectionProfile.yml'
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Error type
+        message:
+          type: string
+          description: Error message
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error details
+    HealthStatus:
+      type: object
+      properties:
+        listener:
+          type: object
+          properties:
+            up: { type: boolean }
+            lastReceived: { type: string, format: date-time }
+            bufferDepth: { type: integer }
+            oldestUnackedSec: { type: integer }
+        db:
+          type: object
+          properties:
+            walBytes: { type: integer }
+            lastCheckpoint: { type: string, format: date-time }
+        extensions:
+          type: array
+          items:
+            type: object
+            properties:
+              artifact: { type: string }
+              schemasLoaded: { type: integer }

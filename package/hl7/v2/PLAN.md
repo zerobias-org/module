@@ -128,26 +128,30 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   lists; populating `tables/HL7nnnn.json` values needs a table data source.
 - Optional: republish generated schemas as `@auditlogic/hl7-v2-schemas` (DESIGN §6).
 
-### Phase 2 — Buffer (SQLite + WAL) 🟢
-- `BufferStore` + `BufferRow`: the `messages` DDL, indexes, WAL pragmas
-  (DESIGN §8). `insert` = `ON CONFLICT(control_id) DO NOTHING`.
-- `LeaseManager`: the `BEGIN IMMEDIATE … UPDATE … RETURNING` drain
-  (DESIGN §8.2); TTL default PT5M, cap 1h.
-- `RetentionSweeper`: 10-min thread, `maxBytes`/`maxAge` whichever fires
-  first (DESIGN §8.3).
-- `ackDurability` toggles `synchronous=NORMAL|FULL` (DESIGN §8.1).
+### Phase 2 — Buffer (SQLite + WAL) 🟢 🚧 *(foundation laid 2026-05-29)*
+- ✅ Foundation (pure, compile-verified): `buffer/schema.sql` (the §8 DDL +
+  indexes + WAL pragmas, verbatim, as a committed resource), `MessageStatus`
+  enum (wire `new|in_flight|acked` + `fromWire`), `BufferRow` record.
+- **Remaining (needs sqlite-jdbc to test):**
+  - `BufferStore`: load `schema.sql`, `insert` = `ON CONFLICT(control_id) DO NOTHING`.
+  - `LeaseManager`: the `BEGIN IMMEDIATE … UPDATE … RETURNING` drain
+    (DESIGN §8.2); TTL default PT5M, cap 1h.
+  - `RetentionSweeper`: 10-min thread, `maxBytes`/`maxAge` whichever fires first (§8.3).
+  - `ackDurability` toggles `synchronous=NORMAL|FULL` (§8.1).
 - **Done when:** unit tests cover insert/dedup, take→lease, ack, release,
-  TTL revert, purge, retention eviction — all against an in-memory/temp
-  SQLite file, no HL7 involved.
+  TTL revert, purge, retention eviction — against a temp SQLite file, no HL7.
 
-### Phase 3 — Materializer 🟢
-- `Materializer` walks a generic-parsed message against `StructureIndex`
-  → typed JSON with HAPI-bean field names (DESIGN §5).
-- Normalization: HL7 dates → ISO 8601; escapes → literals;
-  `""` vs unset → `null` vs absent. Composites recurse (CX→HD); tables
-  tagged, not resolved.
-- **Done when:** the §5 worked example (`PID|||5551212^^^EPIC…`) produces
-  the exact JSON shown; round-trips for ADT_A01 + ORU_R01 fixtures.
+### Phase 3 — Materializer 🟢 🚧 *(normalization kernel done 2026-05-29)*
+- ✅ `materializer/Hl7Normalizer` — pure, verified (30 checks + `Hl7NormalizerTest`):
+  HL7 DT/DTM/TM → ISO 8601 (precision-preserving, no fabricated midnight/zone),
+  escape decoding (`\F\ \S\ \T\ \R\ \E\ \.br\ \Xhh\`, formatting toggles stripped),
+  and the `""` explicit-null sentinel.
+- **Remaining (needs HAPI generic parser + generated structure-index from Phase 1):**
+  `Materializer` walks a generic-parsed message against `StructureIndex` → typed
+  JSON with HAPI-bean field names; composites recurse (CX→HD); tables tagged,
+  not resolved.
+- **Done when:** the §5 worked example (`PID|||5551212^^^EPIC…`) produces the
+  exact JSON shown; round-trips for ADT_A01 + ORU_R01 fixtures.
 
 ### Phase 4 — MLLP receiver / BufferingApp 🟢
 - `Hl7ListenerService`: HAPI `DefaultHapiContext` (allowUnknownVersions,

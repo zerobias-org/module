@@ -194,17 +194,41 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   the `MSA|AE` failure path is implemented but not yet unit-tested; reading the
   port from `LISTENER_PORT_MLLP` env happens in `Hl7ApiServer` wiring (Phase 6).
 
-### Phase 5 — lite-filter SQL adapter 🟢
-- Lift `SqlAdapter.java` from
-  [`…/generic/sql/java/…/SqlAdapter.java`](../../../../auditlogic/module/package/auditmation/generic/sql/java/src/main/java/com/zerobias/module/sql/SqlAdapter.java)
-  verbatim (ANSI ops, `:contains:`/`:startsWith:`/`:endsWith:`/`:between:`).
-- Add the two HL7 extras (DESIGN §2.6): nested-composite JSON paths via
-  `json_extract(mapped_json, '$.…')`, and `:withinDays:`/`:year:` →
-  SQLite-native `datetime('now','-N days')` / `strftime`.
-- **Done when:** parity tests vs lite-filter's in-memory `matches()`
-  evaluator; the three §2.6 example filters compile and run on SQLite.
-- Decision (DESIGN §11.6): does the SQLite adapter live here or get
-  contributed back to lite-filter? Default: here for v1.
+### Phase 5 — lite-filter SQL adapter 🟢 ✅ *(done & validated 2026-05-29)*
+- ✅ `filter/Hl7SqlAdapter` — NOT a verbatim lift. The SQL module's
+  `SqlAdapter` reflects `Clause`/`Grouping` **private fields** and casts
+  `expressions` to `Expression[]`; against this lite-filter version that field
+  is a `List<Expression>`, so the verbatim cast would `ClassCastException`.
+  Ours reflects the **public getters** (the classes are package-private but
+  their getters return the public `ComparisonOperator`/`LogicalOperator`
+  enums) and switches on the enums — same SQL, robust to AST shape. ANSI ops
+  + `:contains:`/`:startsWith:`/`:endsWith:`/`:between:`/`:matches:`/`~=`,
+  AND/OR/NOT, presence/null.
+- ✅ HL7 extras (DESIGN §2.6): envelope props (`controlId`/`receivedAt`/
+  `status`/`leaseId`) → real columns, everything else → `json_extract(
+  mapped_json,'$.…')`; string `=` emitted `COLLATE NOCASE` to match the
+  evaluator's case-insensitive default; date extensions emitted for
+  **epoch-millis** storage (`received_at` is INTEGER): `:withinDays:N` →
+  `received_at >= (unixepoch('now','-N days')*1000)`, `:year:Y` →
+  `strftime('%Y', received_at/1000,'unixepoch')`, absolute
+  `receivedAt>=2026-05-27` → `(unixepoch('2026-05-27')*1000)`.
+  `filter/Hl7Filter` registers the adapter + parse/render facade;
+  `BufferStore.search(where, limit)` is the read-only browse primitive.
+- ✅ **Validated** (lite-filter compiled from source — see toolchain note —
+  no GH auth needed): `Hl7SqlAdapterIT` 4 tests — 14-filter parity vs the
+  in-memory `matches()` evaluator over a shared seeded buffer, the three §2.6
+  examples executed on SQLite, the epoch-millis `:withinDays:` form, and a
+  locked-in test of the parser constraint below. **18 tests green** overall.
+- 🐞 **Finding (parser constraint, DESIGN §2.6 updated):** lite-filter's
+  RFC4515 parser treats the first `:` as a `:function:` operator, so a full
+  ISO datetime value (`2026-05-27T00:00:00Z`) in a `>=` clause is rejected
+  (operator `:00:`). Use **date-only** `>=` (as the interface FilterSyntax.md
+  documents) or `:withinDays:`/`:year:`. Also: the evaluator's `>`/`>=` are
+  numeric-only and throw on date strings → absolute-date `>=` is
+  **SQL-adapter-only** here (fine; the producer always pushes to SQLite). A
+  fuller fix belongs in `org/util/lite-filter`.
+- Decision (DESIGN §11.6): SQLite adapter lives **here** for v1 (the
+  epoch-millis + json_extract specifics are module-local).
 
 ### Phase 6 — DataProducer HTTP surface 🔵 *(seam: contract dep `module-interface-dataproducer`)*
 - `Hl7ApiServer` (Javalin, internal 8889) + `OperationRouter` mirroring

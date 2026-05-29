@@ -290,10 +290,10 @@ not HL7 positional codes (no `MSH-3` on the wire — that's the
 backend's column name). Consumers see clean, traversable names:
 
 ```
-# All ADT messages from EPIC, last 24h, un-acked
+# All ADT messages from EPIC since a date, un-acked
 (&(msh.sendingApplication.namespaceId=EPIC)
   (msh.messageType.messageCode=ADT)
-  (receivedAt>=2026-05-27T00:00:00Z)
+  (receivedAt>=2026-05-27)
   (status=new))
 
 # Multiple message types
@@ -301,32 +301,62 @@ backend's column name). Consumers see clean, traversable names:
 
 # Patient lookup across messages (case-insensitive prefix)
 (pid.patientIdentifierList.idNumber=5551*)
+
+# Time-of-day precision / relative windows use the date extensions, NOT >=
+(receivedAt:withinDays:1)
 ```
+
+> **Parser constraint (verified Phase 5).** lite-filter's RFC4515 parser
+> treats the first `:` in a clause as the start of a `:function:` operator,
+> so a **full ISO datetime** value (`2026-05-27T00:00:00Z`) in a `>=`/`<=`
+> clause is mis-read (operator `:00:`) and rejected. Use the **date-only**
+> form (`receivedAt>=2026-05-27`, as the interface's `FilterSyntax.md`
+> documents) for absolute cutoffs, or the colon-delimited
+> `:withinDays:`/`:year:` extensions for windows. Note also that the
+> in-memory `matches()` evaluator's `>`/`>=` are numeric-only and throw on
+> date strings — so absolute-date `>=` is a **SQL-adapter-only** capability
+> here (fine for this producer, which always pushes the filter to SQLite).
+> A fuller fix (time-of-day in comparisons) belongs in `org/util/lite-filter`.
 
 The producer parses with `@zerobias-org/util-lite-filter`
 (`org/util/packages/lite-filter`), which provides the RFC4515 parser,
 the `Expression` AST, the in-memory `matches()` evaluator, and the
 **adapter framework** (`Expression.addAdapter(key, desc, impl)` +
 `expression.as("SQL")`). The package does **not** ship a built-in SQL
-adapter — each consumer registers its own. We lift the working ANSI-SQL
-adapter from the SQL generic module at
-[`auditlogic/module/package/auditmation/generic/sql/java/src/main/java/com/zerobias/module/sql/SqlAdapter.java`](../../../../auditlogic/module/package/auditmation/generic/sql/java/src/main/java/com/zerobias/module/sql/SqlAdapter.java)
-— ANSI operators (`=`, `!=`, `>=`, `<=`, `LIKE`, `IS NOT NULL`, AND/OR/NOT
-grouping, `:contains:` / `:startsWith:` / `:endsWith:` / `:between:`)
-all run unchanged against SQLite.
+adapter — each consumer registers its own. The implementation is
+`filter/Hl7SqlAdapter`: ANSI operators (`=`, `!=`, `>=`, `<=`, `LIKE`,
+`IS NOT NULL`, AND/OR/NOT grouping, `:contains:` / `:startsWith:` /
+`:endsWith:` / `:between:`) all run against SQLite.
 
-Two HL7-specific additions on top of the lifted adapter:
+> **Implementation note (Phase 5).** The SQL generic module's
+> [`SqlAdapter.java`](../../../../auditlogic/module/package/auditmation/generic/sql/java/src/main/java/com/zerobias/module/sql/SqlAdapter.java)
+> reads `Clause`/`Grouping` **private fields** by reflection and casts
+> `expressions` to `Expression[]`. Against this lite-filter version that
+> field is a `List<Expression>` (and the public getters return the public
+> `ComparisonOperator`/`LogicalOperator` enums), so a verbatim lift would
+> `ClassCastException`. `Hl7SqlAdapter` instead reflects the **public
+> getters** and switches on the enums — the same SQL output, but robust to
+> the AST's internal shape. (`Clause`/`Grouping` are package-private, so
+> reflection is still required to reach them from our package.)
+
+Three HL7-specific behaviors on top of the ANSI core:
 
 - **Nested composite paths.** `msh.sendingApplication.namespaceId=EPIC`
   emits a JSON path against the `mapped_json` column using SQLite's
-  JSON1: `json_extract(mapped_json, '$.msh.sendingApplication.namespaceId') = 'EPIC'`.
-- **Date extensions.** lite-filter exposes `:withinDays:`, `:year:`
-  with evaluator semantics defined in the README. The lifted adapter
-  doesn't implement them (sql module hasn't needed them yet). We
-  emit SQLite native: `:withinDays:30` → `received_at >= datetime('now', '-30 days')`;
-  `:year:2026` → `strftime('%Y', received_at) = '2026'`. These let the
-  pipeline issue "drain everything in the last hour" without
-  client-side date math.
+  JSON1: `json_extract(mapped_json, '$.msh.sendingApplication.namespaceId') = 'EPIC' COLLATE NOCASE`.
+  Only the four envelope properties (`controlId`, `receivedAt`, `status`,
+  `leaseId`) resolve to real columns; everything else is a `mapped_json`
+  path. String equality is emitted `COLLATE NOCASE` to match the in-memory
+  evaluator's default case-insensitive `MatchOptions`.
+- **Date extensions over epoch-millis storage.** `received_at` is stored as
+  an epoch-millis INTEGER, so the naive `datetime('now',…)` forms don't
+  compare. We emit: `:withinDays:30` → `received_at >= (unixepoch('now', '-30 days') * 1000)`;
+  `:year:2026` → `strftime('%Y', received_at / 1000, 'unixepoch') = '2026'`;
+  and an absolute `receivedAt>=2026-05-27` → `received_at >= (unixepoch('2026-05-27') * 1000)`.
+  (For `mapped_json` date paths, which hold ISO strings, the extensions
+  fall back to `unixepoch(json_extract(…))` / `strftime('%Y', json_extract(…))`.)
+  These let the pipeline issue "drain everything in the last day" without
+  client-side date math — and without tripping the parser constraint noted above.
 
 ### 2.7 Errors
 

@@ -5,9 +5,10 @@
 # compiles the buffer + materializer + listener, and runs tests or a demo.
 #
 # Usage:
-#   java/scripts/manual-test.sh test       # run the JUnit suite (buffer + listener + normalizer)
+#   java/scripts/manual-test.sh test       # run the JUnit suite (buffer + listener + normalizer + filter)
 #   java/scripts/manual-test.sh demo       # buffer-only: insert/take/ack, leave a buffer.db
 #   java/scripts/manual-test.sh listener   # start the MLLP listener, send a real HL7 message
+#   java/scripts/manual-test.sh filter     # show RFC4515 filters -> SQLite WHERE -> matching rows
 #
 # After demo/listener, inspect the database by hand:
 #   sqlite3 /tmp/hl7-demo/buffer.db 'SELECT control_id,status,mapped_json FROM messages;'
@@ -20,6 +21,7 @@ LIB="${HL7_LIB:-/tmp/hl7-validate/lib}"
 OUT="$(mktemp -d)"
 RES="$JAVA_DIR/src/main/resources"
 BASE="https://repo1.maven.org/maven2"
+LITEFILTER_SRC="$JAVA_DIR/../../../../../util/packages/lite-filter/java/src/main/java"
 
 mkdir -p "$LIB"
 fetch() {
@@ -31,18 +33,21 @@ fetch org/slf4j/slf4j-api/2.0.9/slf4j-api-2.0.9.jar
 fetch com/google/code/gson/gson/2.10.1/gson-2.10.1.jar
 fetch ca/uhn/hapi/hapi-base/2.5.1/hapi-base-2.5.1.jar
 fetch ca/uhn/hapi/hapi-structures-v251/2.5.1/hapi-structures-v251-2.5.1.jar
+fetch me/xdrop/fuzzywuzzy/1.4.0/fuzzywuzzy-1.4.0.jar
 fetch org/junit/platform/junit-platform-console-standalone/1.10.0/junit-platform-console-standalone-1.10.0.jar
 
 CP="$(ls "$LIB"/*.jar | grep -v junit-platform | tr '\n' ':')"
 JUNIT="$(ls "$LIB"/junit-platform-console-standalone-*.jar)"
 
-echo "compiling buffer + materializer + listener..."
+echo "compiling lite-filter (from source) + buffer + materializer + listener + filter..."
 javac -cp "$CP" -d "$OUT" \
+  "$LITEFILTER_SRC"/com/zerobias/litefilter/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/buffer/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/materializer/Hl7Normalizer.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/materializer/MessageMaterializer.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/materializer/EnvelopeMaterializer.java \
-  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/listener/*.java
+  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/listener/*.java \
+  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/filter/*.java
 
 run_junit() {  # run_junit <fully.qualified.ClassName>...
   local sel=(); for c in "$@"; do sel+=(--select-class="$c"); done
@@ -55,11 +60,13 @@ case "$MODE" in
     javac -cp "${CP}${JUNIT}:${OUT}" -d "$OUT" \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/buffer/BufferStoreTest.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/materializer/Hl7NormalizerTest.java \
-      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/listener/Hl7ListenerIT.java
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/listener/Hl7ListenerIT.java \
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/filter/Hl7SqlAdapterIT.java
     echo "running tests..."
     run_junit com.zerobias.module.hl7.buffer.BufferStoreTest \
               com.zerobias.module.hl7.materializer.Hl7NormalizerTest \
-              com.zerobias.module.hl7.listener.Hl7ListenerIT
+              com.zerobias.module.hl7.listener.Hl7ListenerIT \
+              com.zerobias.module.hl7.filter.Hl7SqlAdapterIT
     ;;
   demo)
     DB="/tmp/hl7-demo/buffer.db"; rm -f /tmp/hl7-demo/buffer.db*; mkdir -p /tmp/hl7-demo
@@ -154,6 +161,61 @@ JAVA
     java -cp "${CP}${OUT}:${RES}" LDemo "$DB" 2>&1 | grep -v SLF4J
     echo; echo "inspect: sqlite3 $DB 'SELECT control_id, status, mapped_json FROM messages;'"
     ;;
+  filter)
+    DB="/tmp/hl7-demo/buffer.db"; rm -f /tmp/hl7-demo/buffer.db*; mkdir -p /tmp/hl7-demo
+    cat > "$OUT/FDemo.java" <<'JAVA'
+import com.zerobias.module.hl7.buffer.*;
+import com.zerobias.module.hl7.filter.*;
+import com.google.gson.Gson;
+import java.time.*; import java.util.*;
+public class FDemo {
+  static final Gson G = new Gson();
+  static BufferRow row(String cid, String recvIso, String status, String app,
+                       String code, String family, int age, String idNum) {
+    Map<String,Object> o = new LinkedHashMap<>();
+    o.put("controlId", cid); o.put("status", status); o.put("receivedAt", recvIso);
+    o.put("msh", Map.of("messageType", Map.of("messageCode", code),
+                        "sendingApplication", Map.of("namespaceId", app)));
+    o.put("pid", Map.of("patientFamilyName", family, "ageYears", age,
+                        "patientIdentifierList", Map.of("idNumber", idNum)));
+    return new BufferRow(0, Instant.parse(recvIso), cid, "ADT_A01", code, "A01",
+      app, "HOSP", "2.5.1", "schema:table:hl7v2.v251.ADT_A01",
+      ("raw-"+cid).getBytes(), G.toJson(o), MessageStatus.fromWire(status), null, null, null);
+  }
+  public static void main(String[] a) throws Exception {
+    String db = a[0];
+    try (BufferStore s = new BufferStore(db, false)) {
+      s.insert(row("M1","2026-05-28T10:00:00Z","new","EPIC","ADT","SMITH",45,"5551212"));
+      s.insert(row("M2","2026-05-28T11:00:00Z","new","CERNER","ORU","SMYTHE",30,"9001234"));
+      s.insert(row("M3","2026-05-28T12:00:00Z","acked","epic","ADT","ASHWORTH",60,"5559999"));
+      s.insert(row("M4","2025-12-31T23:59:59Z","new","EPIC","ORM","BOOTH",48,"5551313"));
+      System.out.println("seeded 4 messages: M1..M4\n");
+      String[] filters = {
+        "(status=new)",
+        "(msh.sendingApplication.namespaceId=epic)",
+        "(pid.patientIdentifierList.idNumber=5551*)",
+        "(&(msh.messageType.messageCode=ADT)(status=new))",
+        "(|(msh.messageType.messageCode=ADT)(msh.messageType.messageCode=ORM))",
+        "(receivedAt>=2026-05-27)",
+        "(pid.ageYears:between:40,50)",
+        "(receivedAt:year:2026)",
+      };
+      for (String f : filters) {
+        String where = Hl7Filter.toWhereClause(f);
+        List<String> ids = new ArrayList<>();
+        for (BufferRow r : s.search(where, 100)) ids.add(r.controlId());
+        System.out.println("filter : " + f);
+        System.out.println("  SQL  : " + where);
+        System.out.println("  rows : " + ids + "\n");
+      }
+    }
+  }
+}
+JAVA
+    javac -cp "$CP$OUT" -d "$OUT" "$OUT/FDemo.java"
+    echo; echo "running filter demo..."; echo
+    java -cp "${CP}${OUT}:${RES}" FDemo "$DB" 2>&1 | grep -v SLF4J
+    ;;
   *)
-    echo "usage: $0 [test|demo|listener]" >&2; exit 2 ;;
+    echo "usage: $0 [test|demo|listener|filter]" >&2; exit 2 ;;
 esac

@@ -163,6 +163,33 @@ public final class BufferStore implements AutoCloseable {
         }
     }
 
+    /**
+     * Read-only browse over the buffer using a pre-rendered SQLite WHERE-clause
+     * fragment (built by {@code Hl7SqlAdapter} from an RFC4515 filter, DESIGN §2.6).
+     * Returns up to {@code limit} rows, newest first. A null/blank clause matches all.
+     *
+     * <p>The clause is interpolated, not bound — the adapter is the only producer and
+     * it single-quote-escapes every literal — mirroring lite-filter's
+     * {@code expression.as(...)} contract, which has no parameter seam.
+     */
+    public synchronized List<BufferRow> search(String whereClause, int limit) throws SQLException {
+        StringBuilder sql = new StringBuilder("SELECT ").append(COLS).append(" FROM messages");
+        if (whereClause != null && !whereClause.isBlank()) {
+            sql.append(" WHERE ").append(whereClause);
+        }
+        sql.append(" ORDER BY received_at DESC, id DESC LIMIT ?");
+        try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                List<BufferRow> out = new ArrayList<>();
+                while (rs.next()) {
+                    out.add(mapRow(rs));
+                }
+                return out;
+            }
+        }
+    }
+
     /** Delete acked rows acked longer ago than {@code olderThan} (ops/purge, DESIGN §2.5). */
     public synchronized int purge(Duration olderThan) throws SQLException {
         final long cutoff = nowMillis() - olderThan.toMillis();

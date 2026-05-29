@@ -8,6 +8,11 @@ java/target/
 java/codegen/target/
 java/dependency-reduced-pom.xml
 
+# Generated HL7 schema content — build artifact produced by java/codegen,
+# generated into the jar's resources at build time / by CI (not committed).
+java/src/main/resources/schemas/
+java/src/main/resources/structure-index/
+
 # Ephemeral build artifacts
 eslint.config.js
 eslint.config.mjs

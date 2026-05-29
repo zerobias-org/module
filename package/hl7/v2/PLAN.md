@@ -125,10 +125,16 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   accessor (returns `int`) alongside the field accessor; reflection was picking
   it up nondeterministically, giving repeating fields `...Reps` names. Fixed by
   filtering positional accessors to those returning an HL7 `Type`.
-- **Remaining:**
-  1. **Decide + commit the generated `schemas/` + `structure-index/` tree** (open
-     question: include the 162 table *stubs*? widen message coverage first?).
-  2. Widen the message list beyond the `ADT_A01`/`ORU_R01` default.
+- **Decision (2026-05-29):** the generated tree is a **build artifact, NOT
+  committed** (git-ignored) — a deliberate deviation from DESIGN §6's "checked
+  into git." Implication: the build/CI MUST run the generator before packaging
+  so `schemas/`+`structure-index/` land in the jar's resources (runtime serves
+  them from the classpath). The listener pom's `regen-schemas` profile currently
+  shells to the codegen; wire it (or a CI step) into the normal build when the
+  toolchain is available, and confirm the resources end up in `target/classes`.
+- **Remaining:** widen the message list beyond the `ADT_A01`/`ORU_R01` default
+  to the target coverage (the walk discovers all transitively-referenced
+  structures, so this is just the seed list).
 - **Follow-up (flagged):** HL7 **table value-sets** are emitted as stubs — HAPI's
   structure jars carry the table *number* (captured) but not the code lists;
   populating `tables/HL7nnnn.json` values needs a table data source.

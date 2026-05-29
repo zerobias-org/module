@@ -1,10 +1,17 @@
 # Generated schema content
 
-This directory holds the **committed** output of the build-time schema codegen
-(DESIGN §6, PLAN.md Phase 1). It is generated, but checked into git so diffs
-across HL7 versions are reviewable and request-time has zero reflection.
+This directory holds the output of the build-time schema codegen (DESIGN §6,
+PLAN.md Phase 1). It is a **build artifact**: the `schemas/` and
+`structure-index/` trees are generated into the jar's resources at build time
+(by CI / the toolchain) and are **git-ignored**, not committed. Request-time
+still serves them from the classpath with zero reflection.
 
-Layout once Phase 1 lands:
+> Note: this is a deliberate deviation from DESIGN §6 ("Generated JSON is
+> checked into git") — decided 2026-05-29 to keep the tree out of version
+> control. The build/CI MUST run the generator before packaging so the
+> resources land in the jar (see PLAN.md Phase 1).
+
+Layout produced under this directory:
 
 ```
 schemas/

@@ -27,3 +27,6 @@ test-results.json
 # Editor / OS
 *.swp
 .DS_Store
+
+# HAPI default message-ID generator writes this to the cwd at runtime
+id_file

@@ -1,0 +1,69 @@
+package com.zerobias.module.hl7.listener;
+
+import ca.uhn.hl7v2.DefaultHapiContext;
+import ca.uhn.hl7v2.HapiContext;
+import ca.uhn.hl7v2.app.HL7Service;
+import ca.uhn.hl7v2.model.Message;
+import ca.uhn.hl7v2.protocol.ReceivingApplication;
+import ca.uhn.hl7v2.validation.impl.ValidationContextFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * The always-on MLLP receiver (DESIGN §4.1). Wraps a HAPI {@link HL7Service}
+ * bound to the listener port, registered to hand every inbound message to a
+ * {@link ReceivingApplication} (the {@link BufferingApp}).
+ *
+ * <p>Configured to accept real-world dirty feeds: validation is disabled
+ * (lenient parse), and the MLLP layer + parser handle framing and partial
+ * frames. The typed structure jars are NOT needed here at runtime — generic
+ * parsing + Terser is enough for the receive/buffer path (DESIGN §4.1).
+ */
+public final class Hl7ListenerService implements AutoCloseable {
+
+    private static final Logger LOG = LoggerFactory.getLogger(Hl7ListenerService.class);
+
+    private final HapiContext context;
+    private final HL7Service server;
+    private final int port;
+
+    public Hl7ListenerService(int port, ReceivingApplication<Message> app) {
+        this.port = port;
+        this.context = new DefaultHapiContext();
+        this.context.setValidationContext(ValidationContextFactory.noValidation());
+        this.server = context.newServer(port, false);
+        this.server.registerApplication("*", "*", app);
+    }
+
+    /** Bind and start accepting connections; returns once the service is up. */
+    public void start() throws InterruptedException {
+        server.startAndWait();
+        LOG.info("MLLP listener up on port {}", port);
+    }
+
+    public void stop() {
+        server.stopAndWait();
+        LOG.info("MLLP listener on port {} stopped", port);
+    }
+
+    public int port() {
+        return port;
+    }
+
+    public HapiContext context() {
+        return context;
+    }
+
+    @Override
+    public void close() {
+        try {
+            stop();
+        } finally {
+            try {
+                context.close();
+            } catch (Exception ignore) {
+                // best-effort
+            }
+        }
+    }
+}

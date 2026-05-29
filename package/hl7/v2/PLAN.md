@@ -167,23 +167,32 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   HL7 DT/DTM/TM → ISO 8601 (precision-preserving, no fabricated midnight/zone),
   escape decoding (`\F\ \S\ \T\ \R\ \E\ \.br\ \Xhh\`, formatting toggles stripped),
   and the `""` explicit-null sentinel.
-- **Remaining (needs HAPI generic parser + generated structure-index from Phase 1):**
-  `Materializer` walks a generic-parsed message against `StructureIndex` → typed
-  JSON with HAPI-bean field names; composites recurse (CX→HD); tables tagged,
-  not resolved.
+- ✅ Interim `EnvelopeMaterializer` (+ `MessageMaterializer` seam) emits the
+  common envelope + patient basics via Terser, normalized — wired into the
+  Phase 4 listener so the receive→buffer→browse path works now.
+- **Remaining (needs the generated structure-index from Phase 1):** the full
+  `Materializer` walks a generic-parsed message against `StructureIndex` → the
+  complete typed JSON with HAPI-bean field names; composites recurse (CX→HD);
+  tables tagged, not resolved. Replaces `EnvelopeMaterializer`.
 - **Done when:** the §5 worked example (`PID|||5551212^^^EPIC…`) produces the
   exact JSON shown; round-trips for ADT_A01 + ORU_R01 fixtures.
 
-### Phase 4 — MLLP receiver / BufferingApp 🟢
-- `Hl7ListenerService`: HAPI `DefaultHapiContext` (allowUnknownVersions,
-  non-validating), `HL7Service` on `LISTENER_PORT_MLLP`, register `*`/`*`.
-- `BufferingApp.processMessage`: Terser-extract envelope fields →
-  `materializer.toTypedJson` → `bufferStore.insert` → **ack after commit**
-  (`MSA|AA` only once durable; `MSA|AE` on failure). (DESIGN §4.2)
-- `AckBuilder`, `MetricsConnectionListener`.
-- **Done when:** a synthetic MLLP client sends ADT/ORU; assert buffer rows,
-  typed JSON, `AA`/`AE` semantics, and duplicate-controlId silent-drop.
-  For standalone runs, default `LISTENER_PORT_MLLP` via test config.
+### Phase 4 — MLLP receiver / BufferingApp 🟢 ✅ *(done & validated 2026-05-29)*
+- ✅ `Hl7ListenerService`: HAPI `DefaultHapiContext` + `noValidation` (lenient
+  parse), `HL7Service` on the listener port, registers `*`/`*` → `BufferingApp`.
+- ✅ `BufferingApp.processMessage`: Terser-extracts the envelope → materializes
+  JSON → `buffer.insert` → **ack after commit** (`MSA|AA` only once durable;
+  `MSA|AE` on failure → sender retries). Duplicate `controlId` deduped, still AA.
+- ✅ `AckBuilder` (AA/AE via HAPI `generateACK`); interim `EnvelopeMaterializer`
+  wired in (Phase 3 will replace with the index-driven walk).
+- ✅ **Validated against real HAPI MLLP:** `Hl7ListenerIT` — a real client sends
+  ADT^A01, asserts AA + echoed control id, the buffered row's envelope +
+  normalized JSON (`dateOfBirth: 1980-01-01`), and duplicate dedup. Also
+  runnable by hand: `java/scripts/manual-test.sh listener`.
+- **Deferred (not blocking):** `MetricsConnectionListener`; mapping
+  `connectionProfile.hl7Version` → schema slot (hardcoded `v251` for now);
+  the `MSA|AE` failure path is implemented but not yet unit-tested; reading the
+  port from `LISTENER_PORT_MLLP` env happens in `Hl7ApiServer` wiring (Phase 6).
 
 ### Phase 5 — lite-filter SQL adapter 🟢
 - Lift `SqlAdapter.java` from

@@ -78,6 +78,12 @@ that returns + leases rows in one atomic step.
 Canonical form (per [`SchemaIds.md`](../../interface/dataproducer/documentation/SchemaIds.md)):
 `schema:{type}:{catalog}.{schema}.{name}[:{direction}]`
 
+> **Scope:** these `schema:…` IDs are the module's **internal** schema-content
+> addressing, served by `getSchema`. They are **not** platform package/artifact
+> identity — the dataloader/catalog identify packages by their standard parsed
+> npm name, never by this scheme. Nothing here is consumed by the platform's
+> identity layer.
+
 | Schema ID | Purpose |
 |---|---|
 | `schema:table:hl7v2.v251.ADT_A01` | Collection schema for `/by-type/ADT_A01` |
@@ -90,16 +96,18 @@ Canonical form (per [`SchemaIds.md`](../../interface/dataproducer/documentation/
 | `schema:enum:hl7v2.v251.HL70001` | Administrative Sex value set |
 | `schema:enum:hl7v2.v251.HL70003` | Event Type value set |
 | `schema:enum:hl7v2.v251.HL70076` | Message Type value set |
-| `schema:type:hl7v2.epic.ZPV` | Epic Z-segment (from `@auditlogic/hl7-extensions-epic-adt`) |
-| `schema:enum:hl7v2.local.HL79001` | Customer local enum (from a `@hospital-x/hl7-extensions-*` pack) |
+| `schema:type:hl7v2.epic.ZPV` | Epic Z-segment (from `@zerobias-org/hl7_extension-epic-adt`) |
+| `schema:enum:hl7v2.local.HL79001` | Customer local enum (from a `@<customer-scope>/hl7_extension-*` pack) |
 | `schema:shared:hl7v2.message-envelope` | Common envelope fields across all message types (`controlId`, `receivedAt`, `status`, `leaseId`) |
 | `schema:function:hl7v2.ops.take:input` / `:output` | `ops/take` I/O |
 | `schema:function:hl7v2.ops.ack:input` / `:output` | `ops/ack` I/O |
 | `schema:function:hl7v2.ops.purge:input` / `:output` | `ops/purge` I/O |
 
 The catalog token is always `hl7v2`. The schema slot is `v251`, `v25`, … for
-HL7-spec content; for extensions, it's a namespace owned by the extension
-package (`epic`, `cerner`, `nhs-uk`, `local`). Names mirror HAPI's
+HL7-spec content; for extensions, it's a namespace the extension package
+declares (`epic`, `cerner`, `nhs-uk`, `local`). This is an internal addressing
+convention only — the module keeps the namespaces from colliding (below); there
+is no platform-level "namespace ownership" rule. Names mirror HAPI's
 structure-class names — `ADT_A01`, `PID`, `CX`, `HL70001`.
 
 Extension packages contribute schemas in **their own namespace**.
@@ -553,22 +561,39 @@ time. Generated JSON is checked into git — diffs across HL7 versions are
 reviewable.
 
 A separate maintenance task can republish the generated schemas as
-`@auditlogic/hl7-v2-schemas` for consumers that want the schemas without
+`@zerobias-org/hl7-v2-schemas` for consumers that want the schemas without
 deploying the receiver module.
 
 ## 7. Extensions — published NPM artifacts
 
 Customer / vendor-specific HL7 content (Z-segments, custom tables,
-augmented message structures) lives in versioned NPM packages,
-referenced from `runtimeConfig.extensions` on the deployment. This
-matches the platform's content distribution model — extensions are
-first-class artifacts like modules, frameworks, and benchmarks.
+augmented message structures) lives in versioned NPM packages.
+
+> **⚠️ Delivery model under review (2026-05-29).** Per platform review
+> (Scarola/McCarthy): HL7 extension/schema packages are **not** processed by
+> the dataloader and are **not** platform catalog artifacts — "they're their
+> own deal; they just get into the module via `npm install`." That points at
+> **build/install-time delivery** (extensions are npm dependencies baked into
+> the module image) rather than the **per-deployment runtime resolution** that
+> §7.3 describes. The two models differ materially (per-deployment mounting
+> enables one image to serve different vendor packs; install-time bakes them
+> in). **§7.3 is retained as provisional** pending that decision; if
+> install-time wins, the dataloader processor (PLATFORM_UPDATES §6) and the
+> pkg-proxy fetch/mount flow drop out, and extensions arrive purely via the
+> module's `package.json` deps. The schema *content* design (§7.1–§7.2) holds
+> either way — only how the files reach the container changes.
 
 ### 7.1 Package shape
 
+Package names follow the dataloader's **universal** format
+(`@{scope}/{type}-{vendor}-{name…}`), with the registered type token
+`hl7_extension` first — never an invented `hl7-extensions-…` token (which
+would collide the type+vendor fields and not parse positionally). Compare
+`@zerobias-org/schema-zerobias-zerobias-base` ↔ `zerobias.zerobias.base.schema`.
+
 ```
-@auditlogic/hl7-extensions-epic-adt/
-├── package.json
+@zerobias-org/hl7_extension-epic-adt/      # type=hl7_extension, vendor=epic, name=adt
+├── package.json                           #   package code: epic.adt.hl7_extension
 └── extensions/
     ├── manifest.json
     ├── messages/ADT_A01_with_ZPV.json    # schema:table:hl7v2.epic.ADT_A01_with_ZPV
@@ -582,9 +607,9 @@ first-class artifacts like modules, frameworks, and benchmarks.
 
 ```json
 {
-  "name": "@auditlogic/hl7-extensions-epic-adt",
+  "name": "@zerobias-org/hl7_extension-epic-adt",
   "version": "1.2.4",
-  "zerobias": { "import-artifact": "hl7-extension" },
+  "zerobias": { "import-artifact": "hl7_extension" },
   "auditmation": {
     "hl7": {
       "version": "2.5.1",
@@ -596,12 +621,18 @@ first-class artifacts like modules, frameworks, and benchmarks.
 }
 ```
 
-`namespace` becomes the schema slot (`schema:type:hl7v2.<namespace>.<name>`).
-The platform validates namespace ownership — packages under
-`@auditlogic/*` can claim any namespace; packages under
-`@<customer-scope>/*` are constrained to `local` or `<customer-scope>`.
+> Hyphen-vs-underscore for the `hl7_extension` token in the npm name: match
+> however existing multi-word types (`compliance_feature`, `dev_user`,
+> `catalog_overview`) are published; HL7 follows that precedent, it doesn't set
+> one. Scope is `@zerobias-org` (open content), not `@auditlogic`.
 
-### 7.2 How extensions appear in the catalog
+`namespace` is the module's internal schema slot
+(`schema:type:hl7v2.<namespace>.<name>`) — see the §2.2 scope note. The module
+keeps namespaces from colliding at load time (§7.2). There is **no** platform
+"namespace ownership" validation: the platform identifies a package only by its
+standard parsed name, with no namespace-subpath rule.
+
+### 7.2 How extensions appear in the receiver
 
 Extensions don't modify base schemas. They contribute *new* schemas
 under their own namespace. `schema:table:hl7v2.epic.ADT_A01_with_ZPV`
@@ -625,7 +656,7 @@ Schema:
 ```
 
 Collisions impossible — `epic.ADT_A01_with_ZPV` and `v251.ADT_A01` are
-peer schemas in the catalog.
+peer schemas in the module's in-memory schema registry (not the platform catalog).
 
 The receiver's hierarchy reflects what's loaded. With the Epic extension
 pulled in, `/hl7-v2-receiver/by-type` lists both:
@@ -641,7 +672,12 @@ for Z-extended structures), discriminator rules in the extension's
 `manifest.json` decide (e.g. "if MSH-3 == 'EPIC' and ADT, use
 `epic.ADT_A01_with_ZPV`").
 
-### 7.3 Resolution on EnsureDeployment
+### 7.3 Resolution on EnsureDeployment *(provisional — see the §7 review note)*
+
+This per-deployment runtime-resolution model is **under review**: if extensions
+are delivered at `npm install` time instead, this whole subsection (and the
+`runtimeConfig.extensions` field, pkg-proxy fetch, and the dataloader processor)
+is superseded by plain module dependencies. Retained here pending that decision.
 
 ```yaml
 runtimeConfig:
@@ -652,9 +688,9 @@ runtimeConfig:
     - { volumeName: hl7-buffer, mountPath: /var/lib/module,
         retention: { maxBytes: 10737418240, maxAge: P7D } }
   extensions:
-    - { artifact: "@auditlogic/hl7-extensions-epic-base", version: "^1.0.0" }
-    - { artifact: "@auditlogic/hl7-extensions-epic-adt",  version: "^1.2.0" }
-    - { artifact: "@hospital-a/hl7-extensions-internal",  version: "0.3.1" }
+    - { artifact: "@zerobias-org/hl7_extension-epic-base", version: "^1.0.0" }
+    - { artifact: "@zerobias-org/hl7_extension-epic-adt",  version: "^1.2.0" }
+    - { artifact: "@hospital-a/hl7_extension-internal",    version: "0.3.1" }
 ```
 
 Hub Node:
@@ -677,19 +713,20 @@ Module at boot:
 1. Loads `/opt/module/extensions/*/extensions/manifest.json` — one match
    per mounted extension subdir (the inner `extensions/` is the package's
    own `extensions/` directory from §7.1).
-2. Validates: namespace ownership, HL7 version compatibility (`hl7.version` matches the module's configured version), schema-ID format, no duplicate IDs.
+2. Validates (module-internal, not platform identity): HL7 version
+   compatibility (`hl7.version` matches the module's configured version),
+   schema-ID format, and no duplicate schema IDs across loaded packs. (No
+   "namespace ownership" check — that rule does not exist.)
 3. Merges schemas into the in-memory schema registry.
 4. Merges structure-index entries into the materializer driver.
 5. Registers additional `/by-type/<name>` collection objects.
 
-Server-side validation at deploy time (`DeploymentProducerImpl.create`):
-
-- Every `extensions[*].artifact` exists in the catalog at the requested version.
-- Extension `hl7.version` matches the module's configured `hl7Version`.
-- No duplicate namespace claims within the extension set.
-
-This catches misconfigured extensions at the API boundary instead of an
-hour later on a failed `ensureDeployment` round-trip.
+Server-side validation at deploy time (only if the per-deployment model
+survives the §7 review): the single check is a **presence** check — every
+`extensions[*].artifact` resolves at the requested version. There is no
+namespace-subpath or namespace-ownership validation; the HL7-version and
+schema-ID checks are the module's own, applied at boot (above). All deeper
+validation is module-internal, not a platform concern.
 
 ## 8. Buffer — SQLite + WAL
 
@@ -783,7 +820,7 @@ daemon may sit with zero pipeline calls for hours. Two layers:
   ```json
   { "listener": { "up": true, "lastReceived": "...", "bufferDepth": 142, "oldestUnackedSec": 3 },
     "db":       { "walBytes": 12345, "lastCheckpoint": "..." },
-    "extensions": [ { "artifact": "@auditlogic/hl7-extensions-epic-adt@1.2.4", "schemasLoaded": 7 } ] }
+    "extensions": [ { "artifact": "@zerobias-org/hl7_extension-epic-adt@1.2.4", "schemasLoaded": 7 } ] }
   ```
   Hub Node polls every 30s for daemon deployments.
 
@@ -856,9 +893,11 @@ health-check flap). Operator-driven restart only.
    `com/hydra/core/schemas/hub/` + server resolution + node honor
    (daemon mode, listener ports, durability, extensions). This module
    is unbuildable without it.
-2. **Land the `hl7-extension` dataloader processor** in
-   `com/platform/dataloader/src/processors/`. Mirrors the `module`
-   processor; catalogs `@*/hl7-extensions-*` packages.
+2. **(Under review — likely dropped.)** Per the §7 platform review, the
+   dataloader does **not** process HL7 extension/schema packages; they reach
+   the module via `npm install`. If that holds, there is no `hl7_extension`
+   dataloader processor to land. (Was: a processor under
+   `com/platform/dataloader/src/processors/` cataloguing `@*/hl7_extension-*`.)
 3. **Build-time schema codegen.** Maven sub-module that walks
    `hapi-structures-v251`, emits `schemas/v251/*.json` and
    `structure-index/v251.json`. Standalone — verifiable against the

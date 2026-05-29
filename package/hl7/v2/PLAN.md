@@ -100,16 +100,33 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   run `npm i` + `npm run generate` (emits `generated/` TS types from `api.yml`)
   and a full `gradle`/`mvn package` to confirm the uber jar builds end-to-end.
 
-### Phase 1 — Build-time schema codegen 🟢  *(highest leverage; start here)*
-- `SchemaGenerator.java` walks `hapi-structures-v251` class graph → emits
-  `schemas/v251/{messages,segments,datatypes,tables}/*.json` and
-  `structure-index/v251.json`. (DESIGN §6)
-- Apply the core-dataType mapping table (DESIGN §2.4) and the SchemaId
-  namespace rules (DESIGN §2.2).
-- **Done when:** generated JSON validates against the canonical SchemaId
-  format and a spot-check of `ADT_A01 → MSH/PID/CX/HD/HL70203` matches
-  the worked traversal in DESIGN §2.3. Commit the generated tree.
-- Optional follow-up: republish as `@auditlogic/hl7-v2-schemas` (DESIGN §6).
+### Phase 1 — Build-time schema codegen 🟢 🚧 *(in progress, started 2026-05-29)*
+- ✅ Generator implemented in `java/codegen/`:
+  - Pure helpers — `SchemaIds` (id construction + canonical-pattern validation),
+    `CoreTypes` (§2.4 HL7-primitive → core dataType + DataType definitions),
+    `HapiNames` (parses HAPI positional accessors `getPid3_PatientIdentifierList`
+    → `{3, patientIdentifierList}`, the contract-accurate property naming).
+  - JSON model — `Schema`/`Property`/`Reference`/`DataType` (wire-ordered,
+    nullable Booleans so false/absent fields are omitted) + `StructureIndex`
+    (materializer driver: messages, groups, segments, datatypes layouts).
+  - `StructureWalker` — composition-all-the-way-down traversal (message → segments
+    /groups → composite datatypes → primitives), enum refs for ID/IS table-bound
+    fields, dedup by simple name, cycle-safe.
+  - `SchemaGenerator` — orchestration: appends the buffer envelope to message
+    table schemas (§2.3), fills `dataTypes[]`, emits enum stubs + the shared
+    `message-envelope`, writes the tree via pretty Gson.
+- ✅ Verified now (toolchain-independent): 27 helper assertions pass via javac;
+  `PureHelpersTest` (JUnit) locks them in. `StructureWalkerIT` encodes the §2.3
+  acceptance traversal (`ADT_A01 → PID → CX → HD → HL70203`).
+- **Remaining (needs the build toolchain — mvn + hapi-structures-v251):**
+  1. Run `mvn -f java/codegen/pom.xml test` → `StructureWalkerIT` green.
+  2. Run the generator (`-Pregen-schemas` or directly) → inspect emitted JSON →
+     **commit the generated `schemas/` + `structure-index/` tree.**
+  3. Widen the message list beyond the `ADT_A01`/`ORU_R01` default to target coverage.
+- **Follow-up (flagged):** HL7 **table value-sets** are emitted as stubs — HAPI's
+  structure jars carry the table *number* (captured) but not always the code
+  lists; populating `tables/HL7nnnn.json` values needs a table data source.
+- Optional: republish generated schemas as `@auditlogic/hl7-v2-schemas` (DESIGN §6).
 
 ### Phase 2 — Buffer (SQLite + WAL) 🟢
 - `BufferStore` + `BufferRow`: the `messages` DDL, indexes, WAL pragmas

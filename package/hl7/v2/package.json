@@ -1,5 +1,5 @@
 {
-  "name": "@auditlogic/module-hl7-v2",
+  "name": "@zerobias-org/module-hl7-v2",
   "version": "0.0.0",
   "description": "HL7 v2.x MLLP receiver (DataProducer)",
   "type": "module",
@@ -29,7 +29,7 @@
     "java/target/hl7-listener-1.0.0.jar"
   ],
   "zerobias": {
-    "package": "auditlogic.hl7.v2.module",
+    "package": "hl7.v2.module",
     "dataloader-version": "1.0.0",
     "import-artifact": "module"
   },

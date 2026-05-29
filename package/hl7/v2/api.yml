@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   version: "0.0.0"
   description: "HL7 v2.x MLLP receiver (DataProducer)"
-  title: '@auditlogic/module-hl7-v2'
+  title: '@zerobias-org/module-hl7-v2'
   x-impl-name: hl7
 # This module implements the DataProducer interface defined in
 # @zerobias-org/module-interface-dataproducer. Interface paths are referenced

@@ -1,4 +1,4 @@
-# Platform updates required to support `@auditlogic/module-hl7-v2`
+# Platform updates required to support `@zerobias-org/module-hl7-v2`
 
 This module is the first user of three new platform capabilities:
 

@@ -1,4 +1,4 @@
-# `@auditlogic/module-hl7-v2` — Design
+# `@zerobias-org/module-hl7-v2` — Design
 
 HL7 v2.x real-time message listener, exposed through the standard
 **DataProducer** interface. Inbound MLLP messages persist into a durable
@@ -841,8 +841,8 @@ health-check flap). Operator-driven restart only.
 - **Routing / transformation.** The module materializes HL7 → typed
   JSON conforming to schemas in the catalog. Mapping that typed JSON
   into AuditgraphDB objects is a downstream collectorbot.
-- **HL7 v3 / FHIR.** Different module — `@auditlogic/module-hl7-v3` or
-  `@auditlogic/module-fhir`.
+- **HL7 v3 / FHIR.** Different module — `@zerobias-org/module-hl7-v3` or
+  `@zerobias-org/module-fhir`.
 - **TLS-MLLP.** v1: `tls: false`. v2: terminate TLS in HAPI with a
   cert from a separately-mounted secret.
 - **High availability.** Single-instance, single-host. Multi-node

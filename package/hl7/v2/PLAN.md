@@ -1,4 +1,4 @@
-# Build Plan — `@auditlogic/module-hl7-v2`
+# Build Plan — `@zerobias-org/module-hl7-v2`
 
 Module-side implementation plan. Owner: Daniel. Platform updates
 (daemon mode, listener ports, durability, extension resolution) are owned
@@ -82,7 +82,7 @@ hl7/v2/
 Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 blocked on platform.
 
 ### Phase 0 — Scaffolding & build pipeline 🟢 ✅ *(done 2026-05-29)*
-- ✅ Package config from the SQL module: `package.json` (`@auditlogic/module-hl7-v2`,
+- ✅ Package config from the SQL module: `package.json` (`@zerobias-org/module-hl7-v2`,
   java-http, moduleId, interface-dataproducer dep), `build.gradle.kts`
   (`zb.java-module`), `tsconfig.json`, `src/index.ts`, `.gitignore`.
 - ✅ `api.yml` ($ref's DataProducer paths + connect/disconnect/metadata/healthz),
@@ -138,7 +138,7 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
 - **Follow-up (flagged):** HL7 **table value-sets** are emitted as stubs — HAPI's
   structure jars carry the table *number* (captured) but not the code lists;
   populating `tables/HL7nnnn.json` values needs a table data source.
-- Optional: republish generated schemas as `@auditlogic/hl7-v2-schemas` (DESIGN §6).
+- Optional: republish generated schemas as `@zerobias-org/hl7-v2-schemas` (DESIGN §6).
 
 ### Phase 2 — Buffer (SQLite + WAL) 🟢 ✅ *(done & validated 2026-05-29)*
 - ✅ `BufferStore` — opens SQLite, applies `buffer/schema.sql` (+ `auto_vacuum`
@@ -232,7 +232,7 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   HL7 version compat, SchemaId format, no dup IDs), merges schemas +
   structure-index, registers extra `/by-type/<name>` objects (DESIGN §7.3
   "Module at boot"). Discriminator rules from `manifest.json` (DESIGN §7.2).
-- **Done when:** mounting a sample `@auditlogic/hl7-extensions-epic-adt`
+- **Done when:** mounting a sample `@zerobias-org/hl7_extension-epic-adt`
   dir by hand surfaces `/by-type/ADT_A01_with_ZPV` and routes EPIC ADT to
   it. (The deploy-time *tarball pull* is platform — not tested here.)
 

@@ -420,6 +420,17 @@ Callers in `Dispatcher.ts:getExecutionContext` need to look up the deployment's 
 
 Path: [`com/hub/node-lib/src/`](../../../../com/hub/node-lib/src/)
 
+> **Sibling change in build-tools (added 2026-06-01).** The same port/env-injection
+> logic is needed in **two** places, not just the live node: the **CI gate** also
+> starts the module container (its `startModule`/`testDocker` step), and it had the
+> identical gap — it mapped only the 8888 ops port and never injected
+> `LISTENER_PORT_MLLP`, so the daemon refused to boot under `./gradlew :hl7:v2:gate`.
+> Fixed in `org/util` **PR #86** (`feat/daemon-listener-ports`): build-tools
+> `DockerRunner`/`startModuleExec` now read the module's `runtimeConfig.yml`, map each
+> `listenerPorts[]` 1:1, inject `LISTENER_PORT_<NAME>`, and pass `config` as
+> `MODULE_CONFIG` — mirroring §5.1 below. The node-lib change (§5.1) and the
+> build-tools change (PR #86) should stay in sync.
+
 ### 5.1 `docker/Container.ts` — generalize port + volume
 
 [`com/hub/node-lib/src/docker/Container.ts:298-310`](../../../../com/hub/node-lib/src/docker/Container.ts) hardcodes one port:

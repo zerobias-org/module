@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 #
+# ─────────────────────────────────────────────────────────────────────────────
+# DEV / LOCAL TOOL — NOT part of the build or CI gate, and nothing references it.
+# The standardized test surface is the JUnit suite under java/src/test, run by the
+# real gate:  ./gradlew :hl7:v2:gate  (see CLAUDE.md). These scripts are optional
+# conveniences for hand-exploration and are safe to delete.
+# ─────────────────────────────────────────────────────────────────────────────
+#
 # Standalone end-to-end test (Phase 11): runs the REAL module container, sends a
 # real HL7 v2 message into the MLLP listener over the wire, then drives the
 # DataProducer API to watch the full path — receive -> ack-on-persist ->

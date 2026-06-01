@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 #
+# ─────────────────────────────────────────────────────────────────────────────
+# DEV / LOCAL TOOL — NOT part of the build or CI gate, and nothing references it.
+# The standardized test surface is the JUnit suite under java/src/test, run by the
+# real gate:  ./gradlew :hl7:v2:gate  (see CLAUDE.md). These scripts are optional
+# conveniences for hand-exploration and are safe to delete.
+# ─────────────────────────────────────────────────────────────────────────────
+#
 # Manual test harness for the HL7 v2 module (Phases 2-4), runnable without the
 # project's gradle/maven toolchain. Fetches the public deps it needs (cached),
 # compiles the buffer + materializer + listener, and runs tests or a demo.

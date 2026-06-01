@@ -6,9 +6,34 @@ persists them to a durable buffer, materializes them to typed JSON, and the Hub
 pipeline drains them via the same container/collection/function model every other
 DataProducer uses.
 
-> Design canon: [`DESIGN.md`](DESIGN.md). Interface canon:
-> [`../interface/dataproducer/documentation/`](../interface/dataproducer/documentation/).
-> Operator runbook: [`USERGUIDE.md`](USERGUIDE.md).
+> Design canon: [`DESIGN.md`](DESIGN.md) · Build plan + phase status: [`PLAN.md`](PLAN.md) ·
+> Operator runbook: [`USERGUIDE.md`](USERGUIDE.md) · Working on the code? [`CLAUDE.md`](CLAUDE.md) ·
+> Platform-side dependencies: [`PLATFORM_UPDATES.md`](PLATFORM_UPDATES.md) ·
+> Interface canon: [`../interface/dataproducer/documentation/`](../interface/dataproducer/documentation/).
+
+## Core purpose
+
+ZeroBias collects compliance evidence from API-enabled systems. **Hospitals don't
+work that way** — their clinical systems (EHRs, labs, ADT feeds) emit **HL7 v2.x**
+messages over **MLLP**, pushing them out on their own schedule rather than exposing
+a REST API to poll. This module is the bridge: it makes a stream of pushed HL7
+messages look, to the rest of the platform, like an ordinary pollable
+**DataProducer**.
+
+Concretely, it is **the ZeroBias ingestion endpoint for HL7 v2**. Its one job:
+
+1. **Accept** HL7 v2 messages over MLLP, continuously, on a fixed port.
+2. **Never lose one** — persist to a durable buffer and only then send the `MSA|AA`
+   the sending system is waiting for (ack-on-persist).
+3. **Normalize** the cryptic pipe-encoded ER7 into clean, typed JSON (`pid.patientName[0].familyName.surname`, ISO dates, …).
+4. **Offer** the messages to the platform's pipeline through the standard
+   DataProducer surface, with an at-least-once **lease/drain** cycle.
+
+What it is **not**: it is not a parser library, not a router/forwarder, and not a
+write target — it's receive-only (messages enter via MLLP, never via the API). The
+*module* ends at "durably buffered and drainable"; *what* consumes the messages,
+*how often*, and *where they go* is a separate platform pipeline/collector config
+(see [Consuming](#how-a-pipeline-consumes-it) below).
 
 ## Why this module is different
 
@@ -72,6 +97,28 @@ names are schema property names (dotted into the typed body), not HL7 positions:
 (receivedAt>=2026-05-27)          # date-only; see DESIGN §2.6 on time-of-day
 ```
 
+## How a pipeline consumes it
+
+The module has **two independent halves** that the durable buffer decouples:
+
+```
+HOSPITAL SIDE (push in)                         PLATFORM SIDE (pull out)
+EHR / lab / ADT system  ── MLLP ──▶  [ buffer ]  ──DataProducer ops──▶  pipeline
+(continuous, their schedule)                     (scheduled, via the Hub)
+```
+
+- **Receiving** is driven by the hospital systems — configured to dial the listener
+  port; nothing on the ZeroBias side triggers it.
+- **Consuming** is a **scheduled pipeline / collector bot** on the platform that, each
+  run, calls (through Hub Server → Hub Node → this module's RPC):
+  `connect` → `ops/take` (lease a batch of typed messages) → process them (e.g. load
+  into AuditgraphDB) → `ops/ack` (confirm). A crash before `ack` simply re-delivers
+  on the next run — at-least-once, no lost data.
+
+The drain cadence, filter, and destination live in **that pipeline config, not in
+this module**. The local tools below stand in for both halves so you can exercise
+the whole flow by hand.
+
 ## Deployment
 
 This is a daemon module — its deployment shape is declared in
@@ -134,18 +181,35 @@ operator-driven.
 
 ## Local development & validation
 
-There is no local mvn/gradle in every environment, so the Java behavior is
-validated with a self-contained harness that fetches public deps and runs the
-JUnit suites + demos:
+Two layers — a no-toolchain harness for fast iteration, and the real gate for the
+truth. (Working on the code? Read [`CLAUDE.md`](CLAUDE.md) first.)
+
+**Fast, no maven/gradle needed** — compiles from source against fetched public deps:
 
 ```bash
-java/scripts/manual-test.sh test       # full JUnit suite (buffer, materializer, listener, filter, producer, ops, health, extensions)
-java/scripts/manual-test.sh listener   # start the MLLP listener, send a real HL7 message, see the ACK + stored JSON
+java/scripts/manual-test.sh test       # full JUnit suite (45): buffer, materializer, listener, filter, producer, ops, health, extensions
+java/scripts/manual-test.sh listener   # in-process: send a real HL7 message, see the ACK + stored JSON
 java/scripts/manual-test.sh producer   # drive the DataProducer read ops + the take→ack→purge drain cycle
 java/scripts/manual-test.sh filter     # show RFC4515 → SQLite WHERE → matching rows
-java/scripts/container-smoke.sh        # build the image + smoke-test the container plumbing (needs Docker)
 ```
 
-The production build is gradle (`zb.java-module`) → maven uber jar (with the schema
-codegen run at `generate-resources`) → Docker image, published by the shared
-`zbb` pipeline like every other module.
+**Run the real container** (needs Docker + the built jar):
+
+```bash
+(cd java && mvn -DskipTests package)   # build the uber jar (needs GitHub Packages auth — see CLAUDE.md)
+java/scripts/e2e-local.sh              # one-shot E2E: real MLLP message → receive → materialize → take → ack → purge
+java/scripts/hl7-live.sh up            # interactive: bring the listener up and drive it by hand (send/peek/take/ack/...)
+```
+
+**The real CI gate** (the source of truth — needs maven, the gradle wrapper, and
+GitHub Packages auth; see [`CLAUDE.md`](CLAUDE.md) for the exact vault/env setup):
+
+```bash
+cd <repo-root> && ./gradlew :hl7:v2:gate     # validate → build → 45 tests → image → start container → dataloader
+```
+
+The production build is gradle (`zb.java-module`) → maven uber jar (schema codegen
+runs at `generate-resources`) → Docker image, published by the shared `zbb` pipeline
+like every other module. **Status**: the gate passes through container-start; the
+`dataloader` step needs a platform credential CI supplies, and starting the daemon
+in the gate needs `org/util` PR #86 (listener-port injection). See `CLAUDE.md`.

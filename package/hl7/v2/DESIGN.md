@@ -571,6 +571,15 @@ escape sequences (`\F\`, `\R\`, …) → literal chars; nulls
 Composites recurse — CX → HD; tables get tagged but not resolved (the
 consumer follows the `schema:enum:…` reference to get display values).
 
+> **Implementation note (verified 2026-06-01).** The field names above
+> (`idNumber`, `surname`, `dateOfBirth: …T00:00:00Z`) are **illustrative**. The
+> actual materialized keys are HAPI's bean names — `IDNumber`, `namespaceID`,
+> `dateTimeOfBirth`, etc. — and they match the generated schemas exactly (both come
+> from the same structure index). Two real consequences: `TS` is a *composite* in
+> v2.5.1, so timestamps nest under `time` (`dateTimeOfBirth.time`); and dates are
+> precision-preserving (no fabricated midnight/zone) per the validated
+> `Hl7Normalizer`. Treat the generated schema as the contract, not this example.
+
 ## 6. Schema content — build-time generation
 
 HL7's spec content (segments, datatypes, tables, message structures) is

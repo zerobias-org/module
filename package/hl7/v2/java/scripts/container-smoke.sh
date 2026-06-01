@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 #
+# ─────────────────────────────────────────────────────────────────────────────
+# DEV / LOCAL TOOL — NOT part of the build or CI gate, and nothing references it.
+# The standardized test surface is the JUnit suite under java/src/test, run by the
+# real gate:  ./gradlew :hl7:v2:gate  (see CLAUDE.md). These scripts are optional
+# conveniences for hand-exploration and are safe to delete.
+# ─────────────────────────────────────────────────────────────────────────────
+#
 # Container plumbing smoke test (Phase 10). Validates the Dockerfile + startup.sh
 # + nginx.conf wiring WITHOUT the real application jar: it builds the image with a
 # tiny stub jar (JDK HttpServer that serves /healthz on INTERNAL_PORT and binds

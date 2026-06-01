@@ -425,14 +425,19 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
 - **Deferred:** the full `docker run` with the **real** uber jar (needs the
   maven/gradle build) — that's Phase 11's job; smoke covers the plumbing.
 
-### Phase 11 — Standalone E2E (simulated node) 🟢
-- TS e2e in `test/e2e/`: launch the container by hand (the `docker run`
-  above), drive a `simhospital`/HAPI test feed into MLLP, run the
-  pipeline-style `take`→`ack` cycle over HTTP, with one extension pack baked
-  into the image (or staged into `EXTENSION_DIR`). This is DESIGN §12 step 6
-  **minus** the real node.
-- **Done when:** full receive→buffer→take→ack→purge cycle passes against
-  the running container with zero platform code present.
+### Phase 11 — Standalone E2E (simulated node) 🟢 ✅ *(done 2026-06-01)*
+- ✅ `java/scripts/e2e-local.sh` (dev tool): builds the image, runs the real
+  container (simulating the node — `docker run` with `LISTENER_PORT_MLLP`
+  injected), sends a real ADT^A01 into the MLLP listener over the wire, then
+  drives the full pipeline-style cycle over the DataProducer API:
+  receive → ack-on-persist (`MSA|AA`) → materialize (typed JSON in `/messages`)
+  → `take` → `ack` → `purge`, with `bufferDepth` 0→1→0. `hl7-live.sh` is the
+  interactive variant. **Validated live** with the real shaded jar.
+- 🐞 This is where the **executor-poisoning bug** was caught (commit 657d0b7) —
+  only sending a real message to a running container after startup exposed it.
+- **Deferred:** running it as the gate's own `testDocker` step needs the
+  listener-port injection (see status note below); a packaged TS `test/e2e/` +
+  `simhospital` feed is optional polish.
 
 ### Phase 12 — Live Hub Node E2E 🔴 *(blocked on PLATFORM_UPDATES §10 steps 1–9)*
 - Real `EnsureDeployment` carrying `runtimeConfig`; node injects ports +
@@ -488,6 +493,32 @@ left side (1–11) is independent of the platform track.
 - **§11.6 date-extension adapter home** — here vs lite-filter. Phase 5.
 - **§11.1 (ports) / §11.5 (version pinning)** — overlap the platform
   `runtimeConfig`/`connectionProfile` design; coordinate with Chris.
+
+## Gate / CI status (verified 2026-06-01)
+
+The real `./gradlew :hl7:v2:gate` was run end-to-end (maven + vault-sourced
+GitHub Packages auth; see [`CLAUDE.md`](CLAUDE.md) for the setup). It clears:
+**validate → lint → generate → transpile → mavenBuild (codegen + shade) →
+45 tests (0 skipped) → buildImage → startModule (daemon boots healthy)** — and
+stops only at **`dataloaderExec` (401)**, which needs the platform/dataloader-service
+token `zbb` resolves from vault in CI (not a code issue).
+
+Running the gate (and a real container) surfaced — and fixed — a series of CI-fit
+defects the hand-harness had masked: codegen wired into the default build (not an
+opt-in profile); `types-core` peer major-bump; `x-product-infos` + product deps;
+`axios` pin; the `lite-filter` dep + GitHub-Packages `<repositories>` block (was
+commented out); schemas served from the **classpath** not a filesystem dir; the
+nginx insecure-mode rewrite; and the **executor-poisoning** bug (self-test killed
+the listener). All committed on `hl7`.
+
+**Remaining, both platform-side (NOT module code):**
+1. **Listener-port injection** — the gate's `startModule` (and the live Hub Node)
+   must read `runtimeConfig.listenerPorts` and inject `LISTENER_PORT_MLLP`. Gate
+   side = `org/util` **PR #86** (`feat/daemon-listener-ports`, build-tools
+   `DockerRunner`); live side = `com/hub/node-lib/Container.ts` (PLATFORM_UPDATES
+   §5.1). Validated locally via `publishToMavenLocal` — with it, `startModule`
+   boots the daemon and the gate advances.
+2. **`dataloaderExec` token** — supplied by CI/`zbb`.
 
 ## Definition of done (module v1)
 

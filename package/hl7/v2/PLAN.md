@@ -135,9 +135,14 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   committed** (git-ignored) — a deliberate deviation from DESIGN §6's "checked
   into git." Implication: the build/CI MUST run the generator before packaging
   so `schemas/`+`structure-index/` land in the jar's resources (runtime serves
-  them from the classpath). The listener pom's `regen-schemas` profile currently
-  shells to the codegen; wire it (or a CI step) into the normal build when the
-  toolchain is available, and confirm the resources end up in `target/classes`.
+  them from the classpath).
+- 🐞 **CI-correctness fix (2026-06-01):** the codegen was wired only under the
+  opt-in `-Pregen-schemas` profile while the tree is git-ignored — so the standard
+  `mvn package` (what `zbb`/CI runs) would have shipped an uber jar with **no
+  schemas**, silently degrading the producer + materializer (SchemaRegistry empty
+  → EnvelopeMaterializer fallback) while CI stayed green. Moved the codegen exec to
+  the **default build** (`generate-resources` phase); removed the profile. NOT
+  locally exercisable (no mvn/gradle/zbb here) — the real gradle gate confirms it.
 - **Remaining:** widen the message list beyond the `ADT_A01`/`ORU_R01` default
   to the target coverage (the walk discovers all transitively-referenced
   structures, so this is just the seed list).

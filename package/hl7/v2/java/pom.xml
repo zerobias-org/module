@@ -102,6 +102,39 @@
                 <version>3.11.0</version>
             </plugin>
 
+            <!-- Generate the HL7 schema tree + structure index into resources BEFORE
+                 packaging. The output is a BUILD ARTIFACT (git-ignored — see .gitignore,
+                 a deliberate deviation from DESIGN §6's "committed" model), so it MUST be
+                 produced on every build: otherwise the shaded jar ships with no schemas
+                 and the producer/getSchema/by-type surface + materializer silently
+                 degrade. Runs the codegen submodule (which carries the build-time-only
+                 hapi-structures-v251 dep). -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>run-codegen</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>mvn</executable>
+                            <arguments>
+                                <argument>-f</argument>
+                                <argument>codegen/pom.xml</argument>
+                                <argument>compile</argument>
+                                <argument>exec:java</argument>
+                                <argument>-Dexec.mainClass=com.zerobias.module.hl7.codegen.SchemaGenerator</argument>
+                                <argument>-Dexec.args=v251 ${project.basedir}/src/main/resources</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -158,42 +191,7 @@
         </plugins>
     </build>
 
-    <!-- Schema regeneration (DESIGN §6). Opt-in: generated JSON is committed to
-         src/main/resources, so a normal build does NOT require hapi-structures.
-         Run `mvn -Pregen-schemas generate-resources` to refresh the committed
-         schema/structure-index tree from the codegen submodule. -->
-    <profiles>
-        <profile>
-            <id>regen-schemas</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.codehaus.mojo</groupId>
-                        <artifactId>exec-maven-plugin</artifactId>
-                        <version>3.1.0</version>
-                        <executions>
-                            <execution>
-                                <id>run-codegen</id>
-                                <phase>generate-resources</phase>
-                                <goals>
-                                    <goal>exec</goal>
-                                </goals>
-                                <configuration>
-                                    <executable>mvn</executable>
-                                    <arguments>
-                                        <argument>-f</argument>
-                                        <argument>codegen/pom.xml</argument>
-                                        <argument>compile</argument>
-                                        <argument>exec:java</argument>
-                                        <argument>-Dexec.mainClass=com.zerobias.module.hl7.codegen.SchemaGenerator</argument>
-                                        <argument>-Dexec.args=v251 ${project.basedir}/src/main/resources</argument>
-                                    </arguments>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
+    <!-- NOTE: schema codegen runs in the DEFAULT build (generate-resources phase,
+         see the exec-maven-plugin above), not an opt-in profile — the generated
+         tree is git-ignored, so CI must regenerate it every build. -->
 </project>

@@ -68,6 +68,22 @@ public final class StructureIndex {
         public Integer table;
     }
 
+    /**
+     * Fold an extension pack's structure index into this one (DESIGN §7.3 step 5):
+     * the extension's augmented messages (e.g. {@code ADT_A01_with_ZPV}) and its new
+     * segments/datatypes (e.g. {@code ZPV}). Base entries win on collision — extensions
+     * contribute NEW structures, they don't redefine base ones.
+     */
+    public void merge(StructureIndex other) {
+        if (other == null) {
+            return;
+        }
+        other.messages.forEach(messages::putIfAbsent);
+        other.groups.forEach(groups::putIfAbsent);
+        other.segments.forEach(segments::putIfAbsent);
+        other.datatypes.forEach(datatypes::putIfAbsent);
+    }
+
     public MessageEntry message(String structure) {
         return messages.get(structure);
     }

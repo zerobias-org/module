@@ -48,7 +48,8 @@ javac -encoding UTF-8 -cp "$CP" -d "$OUT" \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/listener/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/filter/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/producer/*.java \
-  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/health/*.java
+  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/health/*.java \
+  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/ext/*.java
 
 run_junit() {  # run_junit <fully.qualified.ClassName>...
   local sel=(); for c in "$@"; do sel+=(--select-class="$c"); done
@@ -76,7 +77,8 @@ case "$MODE" in
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/producer/Hl7ProducerIT.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/producer/Hl7OperationsIT.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/health/HealthCheckTest.java \
-      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/health/HealthSelfTestIT.java
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/health/HealthSelfTestIT.java \
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/ext/ExtensionLoaderIT.java
     echo "running tests..."
     run_junit com.zerobias.module.hl7.buffer.BufferStoreTest \
               com.zerobias.module.hl7.materializer.Hl7NormalizerTest \
@@ -86,7 +88,8 @@ case "$MODE" in
               com.zerobias.module.hl7.producer.Hl7ProducerIT \
               com.zerobias.module.hl7.producer.Hl7OperationsIT \
               com.zerobias.module.hl7.health.HealthCheckTest \
-              com.zerobias.module.hl7.health.HealthSelfTestIT
+              com.zerobias.module.hl7.health.HealthSelfTestIT \
+              com.zerobias.module.hl7.ext.ExtensionLoaderIT
     ;;
   demo)
     DB="/tmp/hl7-demo/buffer.db"; rm -f /tmp/hl7-demo/buffer.db*; mkdir -p /tmp/hl7-demo

@@ -91,7 +91,7 @@ public final class Hl7ProducerFacade {
             throw ProducerException.illegalArgument("elementKey is required");
         }
         ObjectTree.Collection coll = tree.resolveCollection(objectId);
-        String where = and(scopeWhere(coll), "control_id = " + sql(elementKey));
+        String where = and(coll.scopeWhere(), "control_id = " + sql(elementKey));
         List<BufferRow> rows = buffer.search(where, 1, 0);
         if (rows.isEmpty()) {
             throw ProducerException.noSuchObject(objectId + " / " + elementKey);
@@ -162,7 +162,6 @@ public final class Hl7ProducerFacade {
     }
 
     private String composeWhere(ObjectTree.Collection coll, String filter) {
-        String scope = scopeWhere(coll);
         String userFilter = null;
         if (filter != null && !filter.isBlank()) {
             try {
@@ -171,11 +170,7 @@ public final class Hl7ProducerFacade {
                 throw ProducerException.illegalArgument("Malformed filter: " + e.getMessage());
             }
         }
-        return and(scope, userFilter);
-    }
-
-    private String scopeWhere(ObjectTree.Collection coll) {
-        return coll.scopeColumn() == null ? null : coll.scopeColumn() + " = " + sql(coll.scopeValue());
+        return and(coll.scopeWhere(), userFilter);
     }
 
     private static String and(String a, String b) {

@@ -341,16 +341,34 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   `lease_expired`/`not_found` (a 0 count is the signal). Function I/O **schemas**
   (`schema:function:hl7v2.ops.*`) are served once the codegen emits them.
 
-### Phase 8 — Extension boot-loader 🟢 *(no platform seam — extensions are baked in)*
-- `ExtensionLoader` scans `EXTENSION_DIR` (an in-image path; packs are baked in
-  at build, §7.3), optionally filters to `config.activeExtensions` from
-  `MODULE_CONFIG`, validates (HL7 version compat, SchemaId format, no dup IDs —
-  **no** namespace-ownership check, that rule doesn't exist), merges schemas +
-  structure-index, registers extra `/by-type/<name>` objects (DESIGN §7.3
-  "Module at boot"). Discriminator rules from `manifest.json` (DESIGN §7.2).
-- **Done when:** baking a sample `@zerobias-org/hl7-extension-epic-adt` pack into
-  `EXTENSION_DIR` (or staging it there by hand) surfaces `/by-type/ADT_A01_with_ZPV`
-  and routes EPIC ADT to it. No platform tarball pull/mount exists to test.
+### Phase 8 — Extension boot-loader 🟢 ✅ *(done & validated 2026-06-01)*
+- ✅ `ext/ExtensionLoader` scans `EXTENSION_DIR/<pack>/extensions/manifest.json`
+  (in-image, baked at build §7.3), filters to `MODULE_CONFIG.activeExtensions`
+  (empty = all), validates HL7 version compat + no-dup-schema-id across packs
+  (**no** namespace-ownership check — that rule doesn't exist), merges the pack's
+  schemas into `SchemaRegistry` and its `structure-index.json` into the
+  materializer `StructureIndex`, and returns the discriminators + per-pack health
+  info. `ext/ExtensionManifest` (module-defined manifest shape: namespace,
+  hl7Version, vendor, discriminators[]) + `ext/Discriminator` (record:
+  matches(code,sender) for routing, whereClause() for by-type scope).
+- ✅ Integration seams (kept decoupled — no `ext` import in producer/materializer,
+  so no package cycle): `SchemaRegistry.mergeExtension` (dup-id → fail fast) +
+  `messageStructureIds()` (namespace-agnostic name→id); `StructureIndex.merge`
+  (base wins on collision); `Materializer` takes a `StructureResolver` (routes an
+  EPIC ADT → `ADT_A01_with_ZPV`); `ObjectTree` takes `extensionScopes`
+  (structure→discriminator WHERE) and lists by-type across all namespaces;
+  `ModuleRuntimeConfig` parses `MODULE_CONFIG` for `activeExtensions`.
+  `Hl7ApiServer` wires it all at boot; `HealthCheck.extensions[]` now populated.
+- ✅ **Validated:** `ExtensionLoaderIT` (4) against the REAL base index — stages a
+  sample `epic-adt` pack and asserts: merge surfaces
+  `/by-type/ADT_A01_with_ZPV` (scoped by `message_code='ADT' AND sending_app='EPIC'`,
+  not message_structure), an EPIC ADT routes to it and materializes the `ZPV`
+  segment (`zpv.epicVisitId`), the activeExtensions filter excludes, duplicate
+  schema-id across packs is rejected, version mismatch is rejected. **45 tests
+  green** overall. No bugs surfaced on first run.
+- **Deferred:** the actual `npm install` → `extensions-staging/` → image bake is a
+  Dockerfile step (Phase 10). Discriminator key is MSH-3 only (§11.4 default;
+  MSH-4 override not implemented). One image = one extension set (§7 tradeoff).
 
 ### Phase 9 — Health & MLLP self-test 🟢 ✅ *(done & validated 2026-06-01)*
 - ✅ `health/HealthCheck` builds the DESIGN §9 `/healthz` payload from the buffer:

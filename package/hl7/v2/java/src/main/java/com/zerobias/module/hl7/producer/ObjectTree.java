@@ -45,18 +45,34 @@ public final class ObjectTree {
     private final BufferStore buffer;
     private final SchemaRegistry schemas;
     private final String version;
+    /** Extension structures → buffer scope (discriminator WHERE clause), DESIGN §7.2. */
+    private final Map<String, String> extensionScopes;
 
     public ObjectTree(BufferStore buffer, SchemaRegistry schemas, String version) {
+        this(buffer, schemas, version, Map.of());
+    }
+
+    public ObjectTree(BufferStore buffer, SchemaRegistry schemas, String version,
+            Map<String, String> extensionScopes) {
         this.buffer = buffer;
         this.schemas = schemas;
         this.version = version;
+        this.extensionScopes = extensionScopes;
     }
 
-    /** A collection's buffer scope: which rows it exposes, and its element schema. */
-    public record Collection(String id, String scopeColumn, String scopeValue, String schemaId) {
-        boolean scoped() {
-            return scopeColumn != null;
-        }
+    /** A collection's buffer scope (a WHERE fragment over the buffer; null = all rows) + element schema. */
+    public record Collection(String id, String scopeWhere, String schemaId) {
+    }
+
+    /** by-type structures (all namespaces) → collection schema id. */
+    private Map<String, String> byTypeStructures() {
+        return schemas.messageStructureIds();
+    }
+
+    /** The buffer scope for a by-type structure: discriminator WHERE for extensions, else message_structure. */
+    private String byTypeScope(String struct) {
+        String ext = extensionScopes.get(struct);
+        return ext != null ? ext : "message_structure = " + sql(struct);
     }
 
     /**
@@ -66,22 +82,22 @@ public final class ObjectTree {
      */
     public Collection resolveCollection(String id) throws SQLException {
         if (MESSAGES.equals(id)) {
-            return new Collection(id, null, null, ENVELOPE_SCHEMA);
+            return new Collection(id, null, ENVELOPE_SCHEMA);
         }
         if (id.startsWith(BY_TYPE + "/")) {
             String struct = id.substring((BY_TYPE + "/").length());
-            if (!schemas.messageStructures(version).contains(struct)) {
+            String schemaId = byTypeStructures().get(struct);
+            if (schemaId == null) {
                 throw ProducerException.noSuchObject(id);
             }
-            return new Collection(id, "message_structure", struct,
-                "schema:table:hl7v2." + version + "." + struct);
+            return new Collection(id, byTypeScope(struct), schemaId);
         }
         if (id.startsWith(BY_SENDER + "/")) {
             String app = id.substring((BY_SENDER + "/").length());
             if (!buffer.distinctValues("sending_app").contains(app)) {
                 throw ProducerException.noSuchObject(id);
             }
-            return new Collection(id, "sending_app", app, ENVELOPE_SCHEMA);
+            return new Collection(id, "sending_app = " + sql(app), ENVELOPE_SCHEMA);
         }
         // exists but isn't a collection, or doesn't exist
         object(id); // throws noSuchObject if unknown
@@ -113,11 +129,12 @@ public final class ObjectTree {
     private Map<String, Object> dynamicObject(String id) throws SQLException {
         if (id.startsWith(BY_TYPE + "/")) {
             String struct = id.substring((BY_TYPE + "/").length());
-            if (!schemas.messageStructures(version).contains(struct)) {
+            String schemaId = byTypeStructures().get(struct);
+            if (schemaId == null) {
                 throw ProducerException.noSuchObject(id);
             }
-            long size = buffer.countWhere("message_structure = " + sql(struct));
-            return collection(id, struct, "schema:table:hl7v2." + version + "." + struct, size);
+            long size = buffer.countWhere(byTypeScope(struct));
+            return collection(id, struct, schemaId, size);
         }
         if (id.startsWith(BY_SENDER + "/")) {
             String app = id.substring((BY_SENDER + "/").length());
@@ -152,7 +169,7 @@ public final class ObjectTree {
                 out.add(object(OPS));
                 return out;
             case BY_TYPE:
-                for (String struct : schemas.messageStructures(version)) {
+                for (String struct : byTypeStructures().keySet()) {
                     out.add(object(BY_TYPE + "/" + struct));
                 }
                 return out;

@@ -47,9 +47,15 @@ public final class Materializer implements MessageMaterializer {
     private static final Gson GSON = new GsonBuilder().serializeNulls().create();
 
     private final StructureIndex index;
+    private final StructureResolver resolver;
 
     public Materializer(StructureIndex index) {
+        this(index, StructureResolver.DEFAULT);
+    }
+
+    public Materializer(StructureIndex index, StructureResolver resolver) {
         this.index = index;
+        this.resolver = resolver;
     }
 
     @Override
@@ -125,19 +131,20 @@ public final class Materializer implements MessageMaterializer {
         }
     }
 
-    /** Message structure name from MSH-9: prefer MSH-9-3, else {@code <code>_<trigger>}. */
+    /**
+     * Message structure name: the base from MSH-9 (prefer MSH-9-3, else
+     * {@code <code>_<trigger>}), then run it through the {@link StructureResolver} so
+     * an extension discriminator can route to an augmented structure (DESIGN §7.2).
+     */
     private String messageStructure(Message message) throws HL7Exception {
         Terser t = new Terser(message);
-        String struct = t.get("/MSH-9-3");
-        if (struct != null && !struct.isEmpty()) {
-            return struct;
-        }
         String code = t.get("/MSH-9-1");
         String trigger = t.get("/MSH-9-2");
-        if (code != null && !code.isEmpty() && trigger != null && !trigger.isEmpty()) {
-            return code + "_" + trigger;
-        }
-        return null;
+        String struct = t.get("/MSH-9-3");
+        String base = (struct != null && !struct.isEmpty()) ? struct
+            : (code != null && !code.isEmpty() && trigger != null && !trigger.isEmpty())
+                ? code + "_" + trigger : null;
+        return resolver.resolve(code, t.get("/MSH-3"), base);
     }
 
     private List<Segment> segmentsNamed(Message message, String code) throws HL7Exception {

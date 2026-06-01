@@ -69,6 +69,41 @@ public final class SchemaRegistry {
         }
     }
 
+    /**
+     * Merge an extension pack's schemas (DESIGN §7) by walking {@code extDir} for
+     * {@code *.json} files carrying a {@code schema:} id. Throws {@link IllegalStateException}
+     * on a duplicate id (the no-dup-across-packs rule, §7.3 boot validation) —
+     * fail fast rather than silently shadow base or peer content.
+     */
+    public void mergeExtension(Path extDir) {
+        if (!Files.isDirectory(extDir)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(extDir)) {
+            walk.filter(p -> p.toString().endsWith(".json")).forEach(file -> {
+                try {
+                    String json = Files.readString(file);
+                    JsonObject obj = GSON.fromJson(json, JsonObject.class);
+                    if (obj == null || !obj.has("id")) {
+                        return;   // manifest.json / structure-index.json carry no schema id
+                    }
+                    String id = obj.get("id").getAsString();
+                    if (!id.startsWith("schema:")) {
+                        return;
+                    }
+                    if (byId.containsKey(id)) {
+                        throw new IllegalStateException("duplicate schema id across extensions: " + id);
+                    }
+                    byId.put(id, json);
+                } catch (IOException e) {
+                    throw new UncheckedIOException("Failed to read extension schema " + file, e);
+                }
+            });
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to scan extension dir " + extDir, e);
+        }
+    }
+
     /** Raw schema JSON for {@code schemaId}, or throw {@code noSuchObjectError}. */
     public String getSchema(String schemaId) {
         String json = byId.get(schemaId);
@@ -100,6 +135,27 @@ public final class SchemaRegistry {
             }
         }
         out.sort(String::compareTo);
+        return out;
+    }
+
+    /**
+     * All message-structure names → their collection schema id, across every
+     * namespace (base {@code v251} + extension namespaces like {@code epic}). Drives
+     * the namespace-agnostic {@code /by-type/<X>} listing once extensions are merged.
+     * Insertion order: base then extensions.
+     */
+    public Map<String, String> messageStructureIds() {
+        Map<String, String> out = new LinkedHashMap<>();
+        String pre = "schema:table:hl7v2.";
+        for (String id : byId.keySet()) {
+            if (id.startsWith(pre)) {
+                String tail = id.substring(pre.length());      // <namespace>.<name>
+                int dot = tail.indexOf('.');
+                if (dot > 0) {
+                    out.put(tail.substring(dot + 1), id);       // name → full id (last wins)
+                }
+            }
+        }
         return out;
     }
 }

@@ -6,11 +6,16 @@ import com.zerobias.module.hl7.buffer.BufferStore;
 import com.zerobias.module.hl7.listener.BufferingApp;
 import com.zerobias.module.hl7.listener.Hl7ListenerService;
 import com.zerobias.module.hl7.materializer.EnvelopeMaterializer;
+import com.zerobias.module.hl7.ext.Discriminator;
+import com.zerobias.module.hl7.ext.ExtensionLoader;
 import com.zerobias.module.hl7.health.HealthCheck;
 import com.zerobias.module.hl7.health.HealthSelfTest;
 import com.zerobias.module.hl7.materializer.Materializer;
 import com.zerobias.module.hl7.materializer.MessageMaterializer;
 import com.zerobias.module.hl7.materializer.StructureIndex;
+import com.zerobias.module.hl7.materializer.StructureResolver;
+
+import java.util.List;
 import com.zerobias.module.hl7.producer.Hl7ProducerFacade;
 import com.zerobias.module.hl7.producer.ObjectTree;
 import com.zerobias.module.hl7.producer.OperationRouter;
@@ -52,6 +57,7 @@ public final class Hl7ApiServer {
     private static final Logger LOG = LoggerFactory.getLogger(Hl7ApiServer.class);
     private static final Gson GSON = new Gson();
     private static final String VERSION_SLOT = "v251";
+    private static final String HL7_VERSION = "2.5.1";
 
     /** Profile fields safe to log/display (no secrets in this receiver profile). */
     private static final Set<String> NONSENSITIVE_PROFILE_FIELDS =
@@ -80,14 +86,29 @@ public final class Hl7ApiServer {
         boolean fullDurability = "full".equalsIgnoreCase(System.getenv("ACK_DURABILITY"));
         this.buffer = new BufferStore(dbPath, fullDurability);
 
-        // Full structure-index-driven materializer (DESIGN §5); falls back to the
-        // interim envelope materializer if the generated index isn't on the classpath
-        // (e.g. a dev build that skipped codegen) so the daemon still boots.
+        // Base schemas (generated tree) + structure index (classpath). The index may be
+        // absent in a dev build that skipped codegen → envelope-materializer fallback.
+        Path schemaRoot = Path.of(System.getenv().getOrDefault("SCHEMA_DIR", "/opt/module/generated"));
+        SchemaRegistry schemas = SchemaRegistry.fromDirectory(schemaRoot);
         StructureIndex index = StructureIndex.fromClasspath(VERSION_SLOT);
+
+        // Extensions (DESIGN §7.3): baked into the image under EXTENSION_DIR, optionally
+        // narrowed by MODULE_CONFIG.activeExtensions. Merges schemas + structure-index in
+        // place and yields the discriminators that route augmented structures.
+        ModuleRuntimeConfig mc = ModuleRuntimeConfig.fromEnv();
+        ExtensionLoader.Result ext = ExtensionLoader.load(
+            Path.of(config.extensionDir()), mc.activeExtensions(), HL7_VERSION, schemas, index);
+
+        StructureResolver resolver = resolverFor(ext.discriminators());
+        Map<String, String> extensionScopes = new java.util.LinkedHashMap<>();
+        for (Discriminator d : ext.discriminators()) {
+            extensionScopes.put(d.structure(), d.whereClause());
+        }
+
         MessageMaterializer materializer = index != null
-            ? new Materializer(index) : new EnvelopeMaterializer();
-        LOG.info("Materializer: {}", index != null
-            ? "structure-index " + VERSION_SLOT : "ENVELOPE fallback (no index on classpath)");
+            ? new Materializer(index, resolver) : new EnvelopeMaterializer();
+        LOG.info("Materializer: {}; {} schemas, {} extension(s)", index != null
+            ? "structure-index " + VERSION_SLOT : "ENVELOPE fallback", schemas.size(), ext.loaded().size());
 
         this.listener = new Hl7ListenerService(config.mllpPort(),
             new BufferingApp(buffer, materializer, VERSION_SLOT));
@@ -98,14 +119,10 @@ public final class Hl7ApiServer {
         boolean selfTest = HealthSelfTest.run(config.mllpPort());
         LOG.info("MLLP self-test: {}", selfTest ? "OK" : "FAILED (listener may not be accepting)");
 
-        // Health: extensions list is empty until Phase 8 wires the ExtensionLoader.
-        this.health = new HealthCheck(buffer, listener::isRunning, java.util.List.of());
+        this.health = new HealthCheck(buffer, listener::isRunning, ext.loaded());
 
         // --- producer surface ---
-        Path schemaRoot = Path.of(System.getenv().getOrDefault("SCHEMA_DIR", "/opt/module/generated"));
-        SchemaRegistry schemas = SchemaRegistry.fromDirectory(schemaRoot);
-        LOG.info("Schema registry loaded {} schemas from {}", schemas.size(), schemaRoot);
-        ObjectTree tree = new ObjectTree(buffer, schemas, VERSION_SLOT);
+        ObjectTree tree = new ObjectTree(buffer, schemas, VERSION_SLOT, extensionScopes);
         this.facade = new Hl7ProducerFacade(buffer, tree, schemas);
 
         Javalin app = Javalin.create(cfg -> {
@@ -210,5 +227,20 @@ public final class Hl7ApiServer {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> castMap(Object o) {
         return o instanceof Map ? (Map<String, Object>) o : new HashMap<>();
+    }
+
+    /** Build a {@link StructureResolver} that routes via the first matching discriminator. */
+    private static StructureResolver resolverFor(List<Discriminator> discriminators) {
+        if (discriminators.isEmpty()) {
+            return StructureResolver.DEFAULT;
+        }
+        return (code, sendingApp, dflt) -> {
+            for (Discriminator d : discriminators) {
+                if (d.matches(code, sendingApp)) {
+                    return d.structure();
+                }
+            }
+            return dflt;
+        };
     }
 }

@@ -4,6 +4,7 @@ import ca.uhn.hl7v2.DefaultHapiContext;
 import ca.uhn.hl7v2.HapiContext;
 import ca.uhn.hl7v2.app.HL7Service;
 import ca.uhn.hl7v2.model.Message;
+import ca.uhn.hl7v2.parser.GenericModelClassFactory;
 import ca.uhn.hl7v2.protocol.ReceivingApplication;
 import ca.uhn.hl7v2.validation.impl.ValidationContextFactory;
 import org.slf4j.Logger;
@@ -31,6 +32,11 @@ public final class Hl7ListenerService implements AutoCloseable {
         this.port = port;
         this.context = new DefaultHapiContext();
         this.context.setValidationContext(ValidationContextFactory.noValidation());
+        // Force generic parsing: the runtime carries no typed structure jars (DESIGN
+        // §4.1) and the structure-index Materializer requires a generic model (it
+        // navigates by segment code, not typed group accessors). Pinning it here makes
+        // that independent of whatever happens to be on the classpath.
+        this.context.setModelClassFactory(new GenericModelClassFactory());
         this.server = context.newServer(port, false);
         this.server.registerApplication("*", "*", app);
     }

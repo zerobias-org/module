@@ -6,6 +6,9 @@ import com.zerobias.module.hl7.buffer.BufferStore;
 import com.zerobias.module.hl7.listener.BufferingApp;
 import com.zerobias.module.hl7.listener.Hl7ListenerService;
 import com.zerobias.module.hl7.materializer.EnvelopeMaterializer;
+import com.zerobias.module.hl7.materializer.Materializer;
+import com.zerobias.module.hl7.materializer.MessageMaterializer;
+import com.zerobias.module.hl7.materializer.StructureIndex;
 import com.zerobias.module.hl7.producer.Hl7ProducerFacade;
 import com.zerobias.module.hl7.producer.ObjectTree;
 import com.zerobias.module.hl7.producer.OperationRouter;
@@ -73,8 +76,18 @@ public final class Hl7ApiServer {
         String dbPath = System.getenv().getOrDefault("BUFFER_DB", "/var/lib/module/buffer.db");
         boolean fullDurability = "full".equalsIgnoreCase(System.getenv("ACK_DURABILITY"));
         this.buffer = new BufferStore(dbPath, fullDurability);
+
+        // Full structure-index-driven materializer (DESIGN §5); falls back to the
+        // interim envelope materializer if the generated index isn't on the classpath
+        // (e.g. a dev build that skipped codegen) so the daemon still boots.
+        StructureIndex index = StructureIndex.fromClasspath(VERSION_SLOT);
+        MessageMaterializer materializer = index != null
+            ? new Materializer(index) : new EnvelopeMaterializer();
+        LOG.info("Materializer: {}", index != null
+            ? "structure-index " + VERSION_SLOT : "ENVELOPE fallback (no index on classpath)");
+
         this.listener = new Hl7ListenerService(config.mllpPort(),
-            new BufferingApp(buffer, new EnvelopeMaterializer(), VERSION_SLOT));
+            new BufferingApp(buffer, materializer, VERSION_SLOT));
         listener.start();
         LOG.info("MLLP listener up on {}", config.mllpPort());
 

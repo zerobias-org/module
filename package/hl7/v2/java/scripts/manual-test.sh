@@ -44,9 +44,7 @@ echo "compiling lite-filter (from source) + buffer + materializer + listener + f
 javac -cp "$CP" -d "$OUT" \
   "$LITEFILTER_SRC"/com/zerobias/litefilter/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/buffer/*.java \
-  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/materializer/Hl7Normalizer.java \
-  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/materializer/MessageMaterializer.java \
-  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/materializer/EnvelopeMaterializer.java \
+  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/materializer/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/listener/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/filter/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/producer/*.java
@@ -59,9 +57,19 @@ run_junit() {  # run_junit <fully.qualified.ClassName>...
 
 case "$MODE" in
   test)
+    # Generate the REAL structure index via the codegen (exactly as the build does),
+    # so MaterializerIT validates against it. Codegen needs hapi-structures-v251 (in CP).
+    GENO="$(mktemp -d)"; export HL7_INDEX_DIR="$(mktemp -d)"
+    echo "generating structure index (codegen)..."
+    javac -cp "$CP" -d "$GENO" \
+      "$JAVA_DIR"/codegen/src/main/java/com/zerobias/module/hl7/codegen/model/*.java \
+      "$JAVA_DIR"/codegen/src/main/java/com/zerobias/module/hl7/codegen/*.java
+    java -cp "${CP}${GENO}" com.zerobias.module.hl7.codegen.SchemaGenerator \
+      v251 "$HL7_INDEX_DIR" ADT_A01 ORU_R01 2>&1 | grep -E 'Generated' || true
     javac -cp "${CP}${JUNIT}:${OUT}" -d "$OUT" \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/buffer/BufferStoreTest.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/materializer/Hl7NormalizerTest.java \
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/materializer/MaterializerIT.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/listener/Hl7ListenerIT.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/filter/Hl7SqlAdapterIT.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/producer/Hl7ProducerIT.java \
@@ -69,6 +77,7 @@ case "$MODE" in
     echo "running tests..."
     run_junit com.zerobias.module.hl7.buffer.BufferStoreTest \
               com.zerobias.module.hl7.materializer.Hl7NormalizerTest \
+              com.zerobias.module.hl7.materializer.MaterializerIT \
               com.zerobias.module.hl7.listener.Hl7ListenerIT \
               com.zerobias.module.hl7.filter.Hl7SqlAdapterIT \
               com.zerobias.module.hl7.producer.Hl7ProducerIT \

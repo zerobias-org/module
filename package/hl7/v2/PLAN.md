@@ -168,20 +168,43 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   (Phase 4/6); precise byte-bounded eviction is implemented but only the
   max-age path is unit-tested.
 
-### Phase 3 — Materializer 🟢 🚧 *(normalization kernel done 2026-05-29)*
+### Phase 3 — Materializer 🟢 ✅ *(done & validated 2026-06-01)*
 - ✅ `materializer/Hl7Normalizer` — pure, verified (30 checks + `Hl7NormalizerTest`):
   HL7 DT/DTM/TM → ISO 8601 (precision-preserving, no fabricated midnight/zone),
   escape decoding (`\F\ \S\ \T\ \R\ \E\ \.br\ \Xhh\`, formatting toggles stripped),
   and the `""` explicit-null sentinel.
-- ✅ Interim `EnvelopeMaterializer` (+ `MessageMaterializer` seam) emits the
-  common envelope + patient basics via Terser, normalized — wired into the
-  Phase 4 listener so the receive→buffer→browse path works now.
-- **Remaining (needs the generated structure-index from Phase 1):** the full
-  `Materializer` walks a generic-parsed message against `StructureIndex` → the
-  complete typed JSON with HAPI-bean field names; composites recurse (CX→HD);
-  tables tagged, not resolved. Replaces `EnvelopeMaterializer`.
-- **Done when:** the §5 worked example (`PID|||5551212^^^EPIC…`) produces the
-  exact JSON shown; round-trips for ADT_A01 + ORU_R01 fixtures.
+- ✅ Full `materializer/Materializer` (+ runtime `StructureIndex` POJO/loader, a
+  twin of the codegen model that consumes the generated JSON). Walks a
+  **generic-parsed** message against the index → complete typed JSON keyed by
+  HAPI-bean names: per-segment objects (`msh`/`pid`/…), composites recursed
+  (CX→HD, XPN→FN), repeating fields/segments arrayed, table-bound values emitted
+  as raw codes (tagged not resolved), dates precision-preserving via the
+  normalizer. Group nesting flattened to top-level segments (v1). Replaces
+  `EnvelopeMaterializer` in `Hl7ApiServer` (which falls back to it if the index
+  isn't on the classpath). `Hl7ListenerService` now pins `GenericModelClassFactory`
+  — the index-driven walk requires generic parsing (typed messages expose group
+  names, not segment codes), and production carries no typed jars anyway.
+- ✅ **Validated against the REAL generated index** (`MaterializerIT`, 3 tests):
+  manual-test.sh runs the codegen to emit `structure-index/v251.json` (exactly as
+  the build does) and the test loads it + parses generically. §5 worked example
+  (PID-3 CX→{IDNumber, assigningAuthority:{namespaceID,universalIDType},
+  identifierTypeCode}; PID-5 XPN→{familyName:{surname},givenName}; PID-7
+  dateTimeOfBirth→{time:"1980-01-01"}; PID-8 "M"); ORU round-trip (pid arrayed
+  from its repeating group, two OBX arrayed, observationValue); explicit-null vs
+  absent. **37 tests green** overall.
+- 🐞 **Bug found by running it:** an under-delimited composite (e.g. `SMITH` for an
+  FN-typed field, no `&` subcomponents) parses as a bare primitive, so keying
+  composite-ness off the *parsed* type emitted a string. Fixed: drive
+  composite-ness off the *index type* and map a bare value to the composite's
+  first component → `familyName:{surname:"SMITH"}`, schema-consistent.
+- **Doc discrepancies (impl is the contract, schemas agree):** real HAPI bean
+  names are `IDNumber`/`namespaceID`/`dateTimeOfBirth` (not §5's idealized
+  `idNumber`/`namespaceId`/`dateOfBirth`); `TS` is a composite in v2.5.1 so dates
+  nest under `time`; precision-preserving dates (no fabricated `T00:00:00Z`).
+  §5's flat literal is illustrative — the generated schemas are the contract, and
+  the materializer matches them (same index).
+- **Deferred:** numeric typing (NM/SI emitted as strings, not JSON numbers);
+  group hierarchy is flattened (segments keyed at top level) rather than nested.
 
 ### Phase 4 — MLLP receiver / BufferingApp 🟢 ✅ *(done & validated 2026-05-29)*
 - ✅ `Hl7ListenerService`: HAPI `DefaultHapiContext` + `noValidation` (lenient

@@ -137,6 +137,19 @@ public final class BufferStore implements AutoCloseable {
         return leases.take(schemaId, max, leaseTtl);
     }
 
+    /**
+     * Lease drainable rows narrowed by a pre-rendered WHERE fragment (the RFC4515
+     * {@code take.filter}, DESIGN §2.5). Used by {@code ops/take}.
+     */
+    public synchronized Lease takeWhere(String whereClause, int max, Duration leaseTtl) throws SQLException {
+        return leases.take(null, whereClause, max, leaseTtl);
+    }
+
+    /** Force in_flight rows back to new (DESIGN §2.5 {@code replay}); null = all. */
+    public synchronized int replay(String whereClause) throws SQLException {
+        return leases.replayInFlight(whereClause);
+    }
+
     public synchronized int ack(String leaseId, List<String> controlIds) throws SQLException {
         return leases.ack(leaseId, controlIds);
     }
@@ -235,8 +248,10 @@ public final class BufferStore implements AutoCloseable {
     // --- primitives used by RetentionSweeper ---
 
     synchronized int deleteAckedOlderThanMillis(long cutoffMillis) throws SQLException {
+        // Inclusive boundary (age >= olderThan): purge(PT0S) means "all acked",
+        // which must include rows acked at the current instant (acked_at == cutoff).
         try (PreparedStatement ps = conn.prepareStatement(
-                "DELETE FROM messages WHERE status='acked' AND acked_at IS NOT NULL AND acked_at < ?")) {
+                "DELETE FROM messages WHERE status='acked' AND acked_at IS NOT NULL AND acked_at <= ?")) {
             ps.setLong(1, cutoffMillis);
             return ps.executeUpdate();
         }

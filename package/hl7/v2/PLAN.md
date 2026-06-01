@@ -251,9 +251,17 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   `/messages`, `/by-type/<X>` from `SchemaRegistry`, `/by-sender/<X>` from
   distinct `sending_app`, `/stats` doc, `/ops` functions), `SchemaRegistry`
   (scans the generated tree, indexes by parsed `id`, serves `getSchema` +
-  enumerates message structures), `ProducerException` (Errors.md envelope
-  `{code,message,details}` + HTTP status). `Hl7ApiServer` rewritten: boots the
-  daemon (buffer + listener) and registers the RPC routes + exception handlers.
+  enumerates message structures), `ProducerException` (errorModelBase envelope
+  `{key,template,timestamp,statusCode}` + subtype fields — see the fix below).
+  `Hl7ApiServer` rewritten: boots the daemon (buffer + listener) and registers
+  the RPC routes + exception handlers.
+- 🐞 **Fixed (2026-06-01):** the error envelope first shipped as Errors.md's
+  prose `{code,message,details}`, but the OpenAPI `errorModelBase` schema (and
+  the reference SQL module) require `{key,template,timestamp,statusCode}` +
+  `noSuchObjectError.{type,id}` / `illegalArgumentError.{msg}`. Rewrote to the
+  schema shape; `Hl7ProducerIT.errorMapping` now asserts the full body, not just
+  status. Keys: `err.no.such.object` (404), `err.unsupported.operation` /
+  `err.illegal.argument` (400). When two interface docs disagree, the schema wins.
 - ✅ `searchCollectionElements` is read-only over the buffer: collection scope
   (`message_structure`/`sending_app`) AND the Phase-5 RFC4515 filter, composed
   into `BufferStore.search(where, limit, offset)`. Write surface
@@ -274,13 +282,41 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   ignored (received_at DESC default); `pageToken` cursor paging (offset only);
   `getDocumentData` for `/stats` (Phase 9).
 
-### Phase 7 — Function objects 🟢
-- `ops/take|ack|release|replay|purge` behind `invokeFunction`, with
-  input/output schemas (DESIGN §2.5). `take` = lease primitive (wraps
-  Phase 2); `ack` supports partial controlId subsets; declared `throws`
-  (`lease_capacity_exceeded`, `backpressure`, `lease_expired`, `not_found`).
-- **Done when:** take→ack and take→TTL-revert round-trips through the HTTP
-  surface; backpressure policy honored (DESIGN §11.3 default `reject`).
+### Phase 7 — Function objects 🟢 ✅ *(done & validated 2026-06-01)*
+- ✅ `producer/Hl7Operations` — the five drain functions behind `invokeFunction`,
+  thin I/O-shaping wrappers over the Phase-2 lease primitives:
+  - `take` {filter?, max=100 cap 1000, leaseTtl=PT5M} → {leaseId, messages[],
+    remaining}; the RFC4515 `filter` renders via the Phase-5 adapter and narrows
+    the drainable candidates (new ∪ TTL-expired in_flight). New buffer primitive
+    `takeWhere`.
+  - `ack` {leaseId, controlIds?} → {acked}; partial subset supported (§11.2
+    partial-ack-with-revert is the default).
+  - `release` {leaseId, controlIds?} → {released}.
+  - `replay` {filter?} → {replayed} — forces in_flight → new (consumer recovery),
+    ignoring TTL. New primitive `replayInFlight`.
+  - `purge` {olderThan=PT0S} → {purged} — deletes acked rows; default purges all
+    acked.
+- ✅ `Hl7ProducerFacade.invokeFunction` dispatches by the `/ops/<fn>` name,
+  rejects non-function objects with `UnsupportedOperationError`, and serializes
+  function output with `serializeNulls` so `take`'s required `leaseId` is present
+  (JSON null) on an empty lease.
+- ✅ **Validated:** `Hl7OperationsIT` — 8 tests through
+  `OperationRouter.executeOperation` (the HTTP path) over a real seeded SQLite
+  buffer: take→ack, take-with-filter, partial-ack, release→re-take,
+  replay→re-take, purge-deletes-acked, empty-take (null leaseId present), and the
+  error mappings. **34 tests green** overall. `manual-test.sh producer` now shows
+  the take→ack→purge drain cycle.
+- 🐞 **Two findings fixed by running it:** (1) `purge(PT0S)` deleted 0 — the
+  delete used strict `acked_at < cutoff`, excluding rows acked at `now`; changed
+  to `<=` so "older than 0" = all acked. (2) empty-take dropped the required
+  `leaseId` field — `new Gson()` omits nulls; function output now uses
+  `serializeNulls`.
+- **Deferred (declared, not enforced in v1):** `take.throws`
+  (`lease_capacity_exceeded`/`backpressure`) — no artificial outstanding-lease
+  cap, and buffer-full backpressure is the receive path (§11.3 `MSA|AE`), not
+  `take`. `ack`/`release` report affected-row counts rather than raising
+  `lease_expired`/`not_found` (a 0 count is the signal). Function I/O **schemas**
+  (`schema:function:hl7v2.ops.*`) are served once the codegen emits them.
 
 ### Phase 8 — Extension boot-loader 🟢 *(no platform seam — extensions are baked in)*
 - `ExtensionLoader` scans `EXTENSION_DIR` (an in-image path; packs are baked in

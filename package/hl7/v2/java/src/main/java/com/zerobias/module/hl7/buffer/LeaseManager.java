@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -36,13 +37,23 @@ final class LeaseManager {
     }
 
     Lease take(String schemaId, int max, Duration leaseTtl) throws SQLException {
+        return take(schemaId, null, max, leaseTtl);
+    }
+
+    /**
+     * As {@link #take(String, int, Duration)} but with an additional pre-rendered
+     * WHERE fragment (the RFC4515 {@code take.filter} from DESIGN §2.5, rendered by
+     * {@code Hl7SqlAdapter}). Candidates are still constrained to drainable rows
+     * (new or expired in_flight); the fragment further narrows them.
+     */
+    Lease take(String schemaId, String extraWhere, int max, Duration leaseTtl) throws SQLException {
         final long now = now();
         final Duration ttl = clampTtl(leaseTtl);
 
         final boolean prev = conn.getAutoCommit();
         conn.setAutoCommit(false);
         try {
-            final List<Long> ids = candidateIds(schemaId, max, now);
+            final List<Long> ids = candidateIds(schemaId, extraWhere, max, now);
             if (ids.isEmpty()) {
                 conn.commit();
                 return Lease.empty(backlog(now));
@@ -84,12 +95,30 @@ final class LeaseManager {
         }
     }
 
+    /**
+     * Force {@code in_flight} rows back to {@code new} regardless of TTL (DESIGN §2.5
+     * {@code replay}) — recovers messages whose consumer died without acking, so a
+     * later {@code take} re-leases them. An optional pre-rendered WHERE fragment
+     * narrows the scope; null/blank replays all in-flight rows. Returns rows reverted.
+     */
+    int replayInFlight(String extraWhere) throws SQLException {
+        String sql = "UPDATE messages SET status='new', lease_id=NULL, in_flight_until=NULL "
+            + "WHERE status='in_flight'"
+            + (extraWhere != null && !extraWhere.isBlank() ? " AND (" + extraWhere + ")" : "");
+        try (Statement st = conn.createStatement()) {
+            return st.executeUpdate(sql);
+        }
+    }
+
     // --- internals ---
 
-    private List<Long> candidateIds(String schemaId, int max, long now) throws SQLException {
+    private List<Long> candidateIds(String schemaId, String extraWhere, int max, long now)
+            throws SQLException {
+        final boolean hasFilter = extraWhere != null && !extraWhere.isBlank();
         final String sql = "SELECT id FROM messages WHERE "
             + "(status='new' OR (status='in_flight' AND in_flight_until < ?)) "
             + (schemaId != null ? "AND schema_id = ? " : "")
+            + (hasFilter ? "AND (" + extraWhere + ") " : "")
             + "ORDER BY received_at ASC LIMIT ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             int i = 1;

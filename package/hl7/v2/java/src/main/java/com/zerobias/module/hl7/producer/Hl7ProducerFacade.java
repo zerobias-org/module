@@ -1,6 +1,7 @@
 package com.zerobias.module.hl7.producer;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.zerobias.module.hl7.buffer.BufferRow;
 import com.zerobias.module.hl7.buffer.BufferStore;
@@ -26,16 +27,20 @@ import java.util.Map;
 public final class Hl7ProducerFacade {
 
     private static final Gson GSON = new Gson();
+    /** Function output keeps null-valued required fields (e.g. take's leaseId on an empty lease). */
+    private static final Gson GSON_NULLS = new GsonBuilder().serializeNulls().create();
     private static final int MAX_PAGE_SIZE = 1000;
 
     private final BufferStore buffer;
     private final ObjectTree tree;
     private final SchemaRegistry schemas;
+    private final Hl7Operations ops;
 
     public Hl7ProducerFacade(BufferStore buffer, ObjectTree tree, SchemaRegistry schemas) {
         this.buffer = buffer;
         this.tree = tree;
         this.schemas = schemas;
+        this.ops = new Hl7Operations(buffer, this::toElement);
         Hl7Filter.register();
     }
 
@@ -118,12 +123,23 @@ public final class Hl7ProducerFacade {
         throw ProducerException.unsupported("Collection is read-only; use ops/purge to evict acked rows");
     }
 
-    // --- Functions: wired in Phase 7 --------------------------------------
+    // --- Functions: ops/take|ack|release|replay|purge (DESIGN §2.5) -------
 
     public String invokeFunction(String objectId, String inputJson) throws SQLException {
         requireId(objectId);
-        tree.object(objectId); // 404 if the function id is unknown
-        throw ProducerException.unsupported("Function invocation lands in Phase 7: " + objectId);
+        Map<String, Object> obj = tree.object(objectId); // 404 if unknown
+        @SuppressWarnings("unchecked")
+        List<String> classes = (List<String>) obj.get("objectClass");
+        if (classes == null || !classes.contains("function")) {
+            throw ProducerException.unsupported("Object is not a function: " + objectId);
+        }
+        String fn = objectId.substring(objectId.lastIndexOf('/') + 1);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> input = (inputJson == null || inputJson.isBlank())
+            ? Map.of()
+            : GSON.fromJson(inputJson, Map.class);
+        return GSON_NULLS.toJson(ops.invoke(fn, input == null ? Map.of() : input));
     }
 
     // --- helpers -----------------------------------------------------------

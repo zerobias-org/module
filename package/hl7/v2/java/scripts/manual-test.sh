@@ -64,13 +64,15 @@ case "$MODE" in
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/materializer/Hl7NormalizerTest.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/listener/Hl7ListenerIT.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/filter/Hl7SqlAdapterIT.java \
-      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/producer/Hl7ProducerIT.java
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/producer/Hl7ProducerIT.java \
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/producer/Hl7OperationsIT.java
     echo "running tests..."
     run_junit com.zerobias.module.hl7.buffer.BufferStoreTest \
               com.zerobias.module.hl7.materializer.Hl7NormalizerTest \
               com.zerobias.module.hl7.listener.Hl7ListenerIT \
               com.zerobias.module.hl7.filter.Hl7SqlAdapterIT \
-              com.zerobias.module.hl7.producer.Hl7ProducerIT
+              com.zerobias.module.hl7.producer.Hl7ProducerIT \
+              com.zerobias.module.hl7.producer.Hl7OperationsIT
     ;;
   demo)
     DB="/tmp/hl7-demo/buffer.db"; rm -f /tmp/hl7-demo/buffer.db*; mkdir -p /tmp/hl7-demo
@@ -267,7 +269,15 @@ public class PDemo {
       System.out.println("getElement /messages/M2     -> " + op(f,"CollectionsApi.getCollectionElement","objectId","/hl7-v2-receiver/messages","elementKey","M2"));
       System.out.println("getSchema  message-envelope -> " + op(f,"SchemasApi.getSchema","objectId","schema:shared:hl7v2.message-envelope"));
       try { op(f,"CollectionsApi.addCollectionElement","objectId","/hl7-v2-receiver/messages","element",Map.of("x",1)); }
-      catch (ProducerException e) { System.out.println("addCollectionElement (rejected)-> "+e.httpStatus()+" "+e.code()+": "+e.getMessage()); }
+      catch (ProducerException e) { System.out.println("addCollectionElement (rejected)-> "+e.httpStatus()+" "+e.key()+": "+e.getMessage()); }
+
+      System.out.println("\n--- drain cycle (ops functions) ---");
+      String take = op(f,"FunctionsApi.invokeFunction","objectId","/hl7-v2-receiver/ops/take","requestBody",Map.of("max",2));
+      System.out.println("ops/take {max:2}            -> " + take);
+      String leaseId = G.fromJson(take, com.google.gson.JsonObject.class).get("leaseId").getAsString();
+      System.out.println("ops/ack {leaseId}           -> " + op(f,"FunctionsApi.invokeFunction","objectId","/hl7-v2-receiver/ops/ack","requestBody",Map.of("leaseId",leaseId)));
+      System.out.println("ops/purge {} (all acked)    -> " + op(f,"FunctionsApi.invokeFunction","objectId","/hl7-v2-receiver/ops/purge","requestBody",Map.of()));
+      System.out.println("messages remaining          -> " + op(f,"ObjectsApi.getObject","objectId","/hl7-v2-receiver/messages"));
     }
   }
 }

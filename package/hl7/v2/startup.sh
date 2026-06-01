@@ -19,23 +19,15 @@ mkdir -p /opt/module/ssl
 # Check if running in insecure mode
 INSECURE=${HUB_NODE_INSECURE:-false}
 
+# Select the nginx config by mode — no runtime rewriting. The HTTPS config
+# (default) and the plain-HTTP config (HUB_NODE_INSECURE=true) are two complete,
+# committed files; we just point nginx at the right one.
 if [ "$INSECURE" = "true" ]; then
     echo "Running operations port in HTTP mode (HUB_NODE_INSECURE=true)"
-
-    # Enable the HTTP server block and disable the HTTPS one.
-    sed -i '/# INCLUDE_HTTP_SERVER_START/,/# INCLUDE_HTTP_SERVER_END/{
-        /# INCLUDE_HTTP_SERVER_START/d
-        /# INCLUDE_HTTP_SERVER_END/d
-        s/^    # //
-    }' /opt/module/nginx.conf
-
-    sed -i '/server {/,/^    }$/{
-        /listen 8888 ssl/,/^    }$/{
-            s/^/    # /
-        }
-    }' /opt/module/nginx.conf
+    NGINX_CONF=/opt/module/nginx-insecure.conf
 else
     echo "Running operations port in HTTPS mode (default)"
+    NGINX_CONF=/opt/module/nginx.conf
     if [ ! -f /opt/module/ssl/cert.pem ]; then
         echo "Generating self-signed SSL certificate..."
         openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
@@ -50,8 +42,8 @@ else
 fi
 
 # Start nginx in background (fronts the operations port only; MLLP is direct)
-echo "Starting nginx..."
-nginx -c /opt/module/nginx.conf &
+echo "Starting nginx ($NGINX_CONF)..."
+nginx -c "$NGINX_CONF" &
 NGINX_PID=$!
 sleep 1
 if ! kill -0 $NGINX_PID 2>/dev/null; then

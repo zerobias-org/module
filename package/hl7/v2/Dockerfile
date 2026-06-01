@@ -18,8 +18,9 @@ COPY java/target/hl7-listener-1.0.0.jar /opt/module/hl7-listener.jar
 # Copy OpenAPI specification and connection profile
 COPY *.yml /opt/module/
 
-# Copy nginx configuration
+# Copy nginx configurations (HTTPS default + plain-HTTP for HUB_NODE_INSECURE)
 COPY nginx.conf /opt/module/nginx.conf
+COPY nginx-insecure.conf /opt/module/nginx-insecure.conf
 
 # Copy startup script
 COPY startup.sh /opt/module/startup.sh

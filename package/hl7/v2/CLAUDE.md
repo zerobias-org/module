@@ -57,17 +57,17 @@ doesn't match its Javalin routes.)
 
 ## Validating changes
 
-**Always run the fast suite after a change** (no maven/gradle/network-to-GH needed —
-fetches public deps, compiles from source, runs all 45 JUnit tests):
+**Run the JUnit suite after a change** — it's the canonical test surface (45 tests:
+buffer, materializer, listener, filter, producer, ops, health, extensions):
 
 ```bash
-java/scripts/manual-test.sh test
+(cd java && mvn test)        # unit; `mvn verify` adds integration (failsafe). Needs GitHub Packages auth (below).
+# or via the gate task:  cd <repo-root> && ./gradlew :hl7:v2:test
 ```
 
-Other modes: `listener` (send a real HL7 msg in-process), `producer` (drain cycle),
-`filter` (RFC4515→SQL). Real-container tools: `e2e-local.sh` (one-shot E2E),
-`hl7-live.sh up|send|peek|take|ack|purge|...` (interactive). `container-smoke.sh`
-(plumbing only). All need Docker for the container ones.
+For container-level exploration (need Docker + a built jar): `java/scripts/e2e-local.sh`
+(one-shot receive→drain E2E) and `java/scripts/hl7-live.sh up|send|peek|take|ack|purge|…`
+(interactive). These are optional dev tools, not CI.
 
 ### The real gate (source of truth)
 

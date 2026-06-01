@@ -181,16 +181,13 @@ operator-driven.
 
 ## Local development & validation
 
-Two layers — a no-toolchain harness for fast iteration, and the real gate for the
-truth. (Working on the code? Read [`CLAUDE.md`](CLAUDE.md) first.)
+(Working on the code? Read [`CLAUDE.md`](CLAUDE.md) first.)
 
-**Fast, no maven/gradle needed** — compiles from source against fetched public deps:
+**Tests** — the JUnit suite (45 tests) is the canonical surface, run via maven/gradle:
 
 ```bash
-java/scripts/manual-test.sh test       # full JUnit suite (45): buffer, materializer, listener, filter, producer, ops, health, extensions
-java/scripts/manual-test.sh listener   # in-process: send a real HL7 message, see the ACK + stored JSON
-java/scripts/manual-test.sh producer   # drive the DataProducer read ops + the take→ack→purge drain cycle
-java/scripts/manual-test.sh filter     # show RFC4515 → SQLite WHERE → matching rows
+(cd java && mvn test)                  # unit tests; `mvn verify` adds the integration (failsafe) tests
+cd <repo-root> && ./gradlew :hl7:v2:test    # the same via the gate's task (needs GitHub Packages auth — see CLAUDE.md)
 ```
 
 **Run the real container** (needs Docker + the built jar):

@@ -179,35 +179,59 @@ class Hl7ProducerIT {
     void errorMapping(@TempDir Path dir) throws Exception {
         Hl7ProducerFacade f = facade(dir);
 
-        // unknown object -> 404 noSuchObjectError
+        // unknown object -> 404, noSuchObjectError body {key,template,timestamp,statusCode,type,id}
         ProducerException e1 = assertThrows(ProducerException.class,
             () -> op(f, "ObjectsApi.getObject", "objectId", "/hl7-v2-receiver/by-type/NOPE"));
-        assertEquals("noSuchObjectError", e1.code());
         assertEquals(404, e1.httpStatus());
+        assertEquals("err.no.such.object", e1.key());
+        assertNoSuchObjectBody(e1.toBody(), "object", "/hl7-v2-receiver/by-type/NOPE");
 
-        // unknown schema -> 404
+        // unknown schema -> 404, type=schema
         ProducerException e2 = assertThrows(ProducerException.class,
             () -> op(f, "SchemasApi.getSchema", "objectId", "schema:type:hl7v2.v251.NOPE"));
         assertEquals(404, e2.httpStatus());
+        assertNoSuchObjectBody(e2.toBody(), "schema", "schema:type:hl7v2.v251.NOPE");
 
         // unknown element key -> 404
         ProducerException e3 = assertThrows(ProducerException.class,
             () -> op(f, "CollectionsApi.getCollectionElement",
                 "objectId", "/hl7-v2-receiver/messages", "elementKey", "ZZZ"));
-        assertEquals("noSuchObjectError", e3.code());
+        assertEquals("err.no.such.object", e3.key());
 
-        // write surface rejected -> 400 UnsupportedOperationError
+        // write surface rejected -> 400, illegalArgumentError body {…, msg} (UnsupportedOperationError response)
         ProducerException e4 = assertThrows(ProducerException.class,
             () -> op(f, "CollectionsApi.addCollectionElement",
                 "objectId", "/hl7-v2-receiver/messages", "element", Map.of("x", 1)));
-        assertEquals("UnsupportedOperationError", e4.code());
         assertEquals(400, e4.httpStatus());
+        assertEquals("err.unsupported.operation", e4.key());
+        assertIllegalArgumentBody(e4.toBody());
 
-        // malformed filter -> 400 illegalArgumentError
+        // malformed filter -> 400, illegalArgumentError
         ProducerException e5 = assertThrows(ProducerException.class,
             () -> op(f, "CollectionsApi.searchCollectionElements",
                 "objectId", "/hl7-v2-receiver/messages", "filter", "not-a-filter"));
-        assertEquals("illegalArgumentError", e5.code());
+        assertEquals(400, e5.httpStatus());
+        assertEquals("err.illegal.argument", e5.key());
+        assertIllegalArgumentBody(e5.toBody());
+    }
+
+    /** errorModelBase required fields are present, non-null, and well-typed. */
+    private static void assertErrorModelBase(Map<String, Object> body, int status) {
+        assertTrue(body.get("key") instanceof String && !((String) body.get("key")).isBlank(), "key");
+        assertTrue(body.get("template") instanceof String && !((String) body.get("template")).isBlank(), "template");
+        assertTrue(body.get("timestamp") instanceof String && !((String) body.get("timestamp")).isBlank(), "timestamp");
+        assertEquals(status, ((Number) body.get("statusCode")).intValue(), "statusCode");
+    }
+
+    private static void assertNoSuchObjectBody(Map<String, Object> body, String type, String id) {
+        assertErrorModelBase(body, 404);
+        assertEquals(type, body.get("type"));
+        assertEquals(id, body.get("id"));
+    }
+
+    private static void assertIllegalArgumentBody(Map<String, Object> body) {
+        assertErrorModelBase(body, 400);
+        assertTrue(body.get("msg") instanceof String, "msg");
     }
 
     private static List<String> classes(JsonObject obj) {

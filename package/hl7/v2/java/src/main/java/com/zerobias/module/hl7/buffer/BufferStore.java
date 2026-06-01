@@ -42,9 +42,11 @@ public final class BufferStore implements AutoCloseable {
     private final Connection conn;
     private final Clock clock;
     private final LeaseManager leases;
+    private final String dbPath;
 
     public BufferStore(String dbPath, boolean fullDurability, Clock clock) throws SQLException {
         this.clock = clock;
+        this.dbPath = dbPath;
         this.conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
         this.leases = new LeaseManager(conn, clock);
         init(fullDurability);
@@ -276,6 +278,33 @@ public final class BufferStore implements AutoCloseable {
         }
     }
 
+    // --- health metrics (DESIGN §9) ---------------------------------------
+
+    /** Size of the WAL sidecar file in bytes, or 0 if it doesn't exist (e.g. fresh db). */
+    public synchronized long walBytes() {
+        try {
+            java.nio.file.Path wal = java.nio.file.Path.of(dbPath + "-wal");
+            return java.nio.file.Files.exists(wal) ? java.nio.file.Files.size(wal) : 0L;
+        } catch (java.io.IOException e) {
+            return 0L;
+        }
+    }
+
+    /** Epoch-millis of the most recently received message, or empty if the buffer is empty. */
+    public synchronized java.util.OptionalLong lastReceivedMillis() throws SQLException {
+        return queryNullableLong("SELECT max(received_at) FROM messages");
+    }
+
+    /** Age in seconds of the oldest not-yet-acked message, or empty if none are pending. */
+    public synchronized java.util.OptionalLong oldestUnackedSeconds() throws SQLException {
+        java.util.OptionalLong oldest =
+            queryNullableLong("SELECT min(received_at) FROM messages WHERE status != 'acked'");
+        if (oldest.isEmpty()) {
+            return java.util.OptionalLong.empty();
+        }
+        return java.util.OptionalLong.of(Math.max(0, (nowMillis() - oldest.getAsLong()) / 1000));
+    }
+
     Clock clock() {
         return clock;
     }
@@ -292,6 +321,19 @@ public final class BufferStore implements AutoCloseable {
     private long queryLong(String sql) throws SQLException {
         try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
             return rs.next() ? rs.getLong(1) : 0L;
+        }
+    }
+
+    /** Like {@link #queryLong} but distinguishes SQL NULL (e.g. min/max over no rows) from 0. */
+    private java.util.OptionalLong queryNullableLong(String sql) throws SQLException {
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(sql)) {
+            if (rs.next()) {
+                long v = rs.getLong(1);
+                if (!rs.wasNull()) {
+                    return java.util.OptionalLong.of(v);
+                }
+            }
+            return java.util.OptionalLong.empty();
         }
     }
 

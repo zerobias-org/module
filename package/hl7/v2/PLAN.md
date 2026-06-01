@@ -352,11 +352,31 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   `EXTENSION_DIR` (or staging it there by hand) surfaces `/by-type/ADT_A01_with_ZPV`
   and routes EPIC ADT to it. No platform tarball pull/mount exists to test.
 
-### Phase 9 — Health & MLLP self-test 🟢
-- `/healthz` on the ops port with the DESIGN §9 payload (listener up,
-  bufferDepth, oldestUnacked, WAL bytes, extensions loaded).
-- Startup MLLP self-test: dial `127.0.0.1:$LISTENER_PORT_MLLP`, send a
-  `*/X01` no-op that never persists; confirms the receive loop end-to-end.
+### Phase 9 — Health & MLLP self-test 🟢 ✅ *(done & validated 2026-06-01)*
+- ✅ `health/HealthCheck` builds the DESIGN §9 `/healthz` payload from the buffer:
+  `listener{up,lastReceived?,bufferDepth,oldestUnackedSec?}`, `db{walBytes}`,
+  `extensions[]` (empty until Phase 8). Optional fields omitted when empty (no
+  misleading zeros). New buffer metrics: `walBytes` (WAL sidecar file size),
+  `lastReceivedMillis`, `oldestUnackedSeconds` (+ a NULL-aware query helper).
+  `Hl7ApiServer` `/healthz` serves it: 200 healthy / 503 degraded, gated on the
+  listener being up. Node-only (no platform event plumbing, per Kevin 2026-06-01).
+- ✅ `health/HealthSelfTest` + `listener/HealthNoOpApplication`: at startup the
+  module dials `127.0.0.1:<mllpPort>` with a synthetic `ZZZ^X01` and asserts AA.
+  The no-op is registered for trigger `X01` **before** the wildcard (HAPI returns
+  the first matching binding) so it intercepts the self-test without persisting.
+  `Hl7ListenerService` now also pins `GenericModelClassFactory` (carried over from
+  Phase 3). `Hl7ApiServer` runs the self-test after `listener.start()` and logs
+  the result.
+- ✅ **Validated:** `HealthCheckTest` (3, real SQLite — payload fields present/
+  omitted, healthy/degraded gate) + `HealthSelfTestIT` (1, real HAPI MLLP — X01
+  round-trips AA and does NOT persist). That the X01 binding doesn't shadow real
+  messages is covered by `Hl7ListenerIT` (sends a real ADT^A01 through the same
+  now-X01-bound listener, still buffers). **41 tests green** overall.
+- 🐞 **Bug found by compiling:** javadoc `{@code */X01}` — the `*/` prematurely
+  closed the block comment. Reworded to "X01-trigger". (Also pinned
+  `-encoding UTF-8` in manual-test.sh for the em-dash comments.)
+- **Deferred:** `db.lastCheckpoint` (we don't track WAL checkpoints); `extensions`
+  populated by Phase 8.
 
 ### Phase 10 — Containerization 🔵 *(seam: env contract)*
 - Finalize `Dockerfile` (DESIGN §3.1 — note: MLLP port **not** EXPOSE'd,

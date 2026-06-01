@@ -38,6 +38,10 @@ public final class Hl7ListenerService implements AutoCloseable {
         // that independent of whatever happens to be on the classpath.
         this.context.setModelClassFactory(new GenericModelClassFactory());
         this.server = context.newServer(port, false);
+        // Register the X01 health no-op BEFORE the wildcard: HAPI's router returns the
+        // first matching binding, so ("*","X01") must precede ("*","*") to intercept the
+        // startup self-test message (DESIGN §9) without it reaching the buffering app.
+        this.server.registerApplication("*", "X01", new HealthNoOpApplication());
         this.server.registerApplication("*", "*", app);
     }
 

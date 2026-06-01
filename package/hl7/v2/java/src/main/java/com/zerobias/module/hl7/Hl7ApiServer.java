@@ -6,6 +6,8 @@ import com.zerobias.module.hl7.buffer.BufferStore;
 import com.zerobias.module.hl7.listener.BufferingApp;
 import com.zerobias.module.hl7.listener.Hl7ListenerService;
 import com.zerobias.module.hl7.materializer.EnvelopeMaterializer;
+import com.zerobias.module.hl7.health.HealthCheck;
+import com.zerobias.module.hl7.health.HealthSelfTest;
 import com.zerobias.module.hl7.materializer.Materializer;
 import com.zerobias.module.hl7.materializer.MessageMaterializer;
 import com.zerobias.module.hl7.materializer.StructureIndex;
@@ -59,6 +61,7 @@ public final class Hl7ApiServer {
     private Hl7ProducerFacade facade;
     private BufferStore buffer;
     private Hl7ListenerService listener;
+    private HealthCheck health;
 
     private Hl7ApiServer() {
     }
@@ -90,6 +93,13 @@ public final class Hl7ApiServer {
             new BufferingApp(buffer, materializer, VERSION_SLOT));
         listener.start();
         LOG.info("MLLP listener up on {}", config.mllpPort());
+
+        // Startup MLLP self-test (DESIGN §9): confirm the receive loop is wired.
+        boolean selfTest = HealthSelfTest.run(config.mllpPort());
+        LOG.info("MLLP self-test: {}", selfTest ? "OK" : "FAILED (listener may not be accepting)");
+
+        // Health: extensions list is empty until Phase 8 wires the ExtensionLoader.
+        this.health = new HealthCheck(buffer, listener::isRunning, java.util.List.of());
 
         // --- producer surface ---
         Path schemaRoot = Path.of(System.getenv().getOrDefault("SCHEMA_DIR", "/opt/module/generated"));
@@ -168,17 +178,10 @@ public final class Hl7ApiServer {
         });
 
         app.get("/healthz", ctx -> {
-            // Phase 9 fills the full payload (WAL stats, oldestUnacked, extensions).
-            JsonObject h = new JsonObject();
-            JsonObject l = new JsonObject();
-            l.addProperty("up", listener.isRunning());
-            try {
-                l.addProperty("bufferDepth", buffer.count());
-            } catch (Exception e) {
-                l.addProperty("bufferDepth", -1);
-            }
-            h.add("listener", l);
-            ctx.status(listener.isRunning() ? 200 : 503).result(h.toString());
+            // DESIGN §9 payload; Node polls every 30s. 200 healthy / 503 degraded.
+            ctx.status(health.healthy() ? 200 : 503)
+               .contentType("application/json")
+               .result(GSON.toJson(health.status()));
         });
     }
 

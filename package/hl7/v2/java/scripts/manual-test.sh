@@ -41,13 +41,14 @@ CP="$(ls "$LIB"/*.jar | grep -v junit-platform | tr '\n' ':')"
 JUNIT="$(ls "$LIB"/junit-platform-console-standalone-*.jar)"
 
 echo "compiling lite-filter (from source) + buffer + materializer + listener + filter..."
-javac -cp "$CP" -d "$OUT" \
+javac -encoding UTF-8 -cp "$CP" -d "$OUT" \
   "$LITEFILTER_SRC"/com/zerobias/litefilter/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/buffer/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/materializer/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/listener/*.java \
   "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/filter/*.java \
-  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/producer/*.java
+  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/producer/*.java \
+  "$JAVA_DIR"/src/main/java/com/zerobias/module/hl7/health/*.java
 
 run_junit() {  # run_junit <fully.qualified.ClassName>...
   local sel=(); for c in "$@"; do sel+=(--select-class="$c"); done
@@ -61,19 +62,21 @@ case "$MODE" in
     # so MaterializerIT validates against it. Codegen needs hapi-structures-v251 (in CP).
     GENO="$(mktemp -d)"; export HL7_INDEX_DIR="$(mktemp -d)"
     echo "generating structure index (codegen)..."
-    javac -cp "$CP" -d "$GENO" \
+    javac -encoding UTF-8 -cp "$CP" -d "$GENO" \
       "$JAVA_DIR"/codegen/src/main/java/com/zerobias/module/hl7/codegen/model/*.java \
       "$JAVA_DIR"/codegen/src/main/java/com/zerobias/module/hl7/codegen/*.java
     java -cp "${CP}${GENO}" com.zerobias.module.hl7.codegen.SchemaGenerator \
       v251 "$HL7_INDEX_DIR" ADT_A01 ORU_R01 2>&1 | grep -E 'Generated' || true
-    javac -cp "${CP}${JUNIT}:${OUT}" -d "$OUT" \
+    javac -encoding UTF-8 -cp "${CP}${JUNIT}:${OUT}" -d "$OUT" \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/buffer/BufferStoreTest.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/materializer/Hl7NormalizerTest.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/materializer/MaterializerIT.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/listener/Hl7ListenerIT.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/filter/Hl7SqlAdapterIT.java \
       "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/producer/Hl7ProducerIT.java \
-      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/producer/Hl7OperationsIT.java
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/producer/Hl7OperationsIT.java \
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/health/HealthCheckTest.java \
+      "$JAVA_DIR"/src/test/java/com/zerobias/module/hl7/health/HealthSelfTestIT.java
     echo "running tests..."
     run_junit com.zerobias.module.hl7.buffer.BufferStoreTest \
               com.zerobias.module.hl7.materializer.Hl7NormalizerTest \
@@ -81,7 +84,9 @@ case "$MODE" in
               com.zerobias.module.hl7.listener.Hl7ListenerIT \
               com.zerobias.module.hl7.filter.Hl7SqlAdapterIT \
               com.zerobias.module.hl7.producer.Hl7ProducerIT \
-              com.zerobias.module.hl7.producer.Hl7OperationsIT
+              com.zerobias.module.hl7.producer.Hl7OperationsIT \
+              com.zerobias.module.hl7.health.HealthCheckTest \
+              com.zerobias.module.hl7.health.HealthSelfTestIT
     ;;
   demo)
     DB="/tmp/hl7-demo/buffer.db"; rm -f /tmp/hl7-demo/buffer.db*; mkdir -p /tmp/hl7-demo
@@ -121,7 +126,7 @@ public class Demo {
   }
 }
 JAVA
-    javac -cp "$CP$OUT" -d "$OUT" "$OUT/Demo.java"
+    javac -encoding UTF-8 -cp "$CP$OUT" -d "$OUT" "$OUT/Demo.java"
     echo; echo "running buffer demo..."; echo
     java -cp "${CP}${OUT}:${RES}" Demo "$DB"
     echo; echo "inspect: sqlite3 $DB 'SELECT control_id, status, lease_id FROM messages ORDER BY received_at;'"
@@ -171,7 +176,7 @@ public class LDemo {
   }
 }
 JAVA
-    javac -cp "$CP$OUT" -d "$OUT" "$OUT/LDemo.java"
+    javac -encoding UTF-8 -cp "$CP$OUT" -d "$OUT" "$OUT/LDemo.java"
     echo; echo "running listener demo..."; echo
     java -cp "${CP}${OUT}:${RES}" LDemo "$DB" 2>&1 | grep -v SLF4J
     echo; echo "inspect: sqlite3 $DB 'SELECT control_id, status, mapped_json FROM messages;'"
@@ -227,7 +232,7 @@ public class FDemo {
   }
 }
 JAVA
-    javac -cp "$CP$OUT" -d "$OUT" "$OUT/FDemo.java"
+    javac -encoding UTF-8 -cp "$CP$OUT" -d "$OUT" "$OUT/FDemo.java"
     echo; echo "running filter demo..."; echo
     java -cp "${CP}${OUT}:${RES}" FDemo "$DB" 2>&1 | grep -v SLF4J
     ;;
@@ -291,7 +296,7 @@ public class PDemo {
   }
 }
 JAVA
-    javac -cp "$CP$OUT" -d "$OUT" "$OUT/PDemo.java"
+    javac -encoding UTF-8 -cp "$CP$OUT" -d "$OUT" "$OUT/PDemo.java"
     echo; echo "running producer demo..."; echo
     java -cp "${CP}${OUT}:${RES}" PDemo "$GEN" 2>&1 | grep -v SLF4J
     ;;

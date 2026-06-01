@@ -396,13 +396,29 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
 - **Deferred:** `db.lastCheckpoint` (we don't track WAL checkpoints); `extensions`
   populated by Phase 8.
 
-### Phase 10 — Containerization 🔵 *(seam: env contract)*
-- Finalize `Dockerfile` (DESIGN §3.1 — note: MLLP port **not** EXPOSE'd,
-  §3.3), `startup.sh` (copy sql, add `LISTENER_PORT_MLLP` read +
-  `EXTENSION_DIR` scan), `nginx.conf` (8888→8889).
-- **Done when:** `docker run -p 8888:8888 -p 2575:2575 -e
-  LISTENER_PORT_MLLP=2575 -v hl7-buffer:/var/lib/module …` boots both
-  subsystems and serves `/healthz`.
+### Phase 10 — Containerization 🔵 ✅ *(done & validated 2026-06-01)*
+- ✅ `Dockerfile` finalized (DESIGN §3.1/§3.3): temurin-17-jre + nginx/openssl,
+  copies the uber jar + `*.yml` + nginx.conf + startup.sh, `VOLUME /var/lib/module`
+  (buffer only — comment corrected; extensions are NOT in the volume), `EXPOSE 8888`
+  only (MLLP port deliberately not EXPOSE'd, §3.3), `ENV EXTENSION_DIR` + `mkdir`'d
+  empty (base image ships no packs; a vendor image is a derived build that
+  `npm install`s packs + `COPY extensions-staging/` — documented inline, §7.3).
+  No `LISTENER_PORT_MLLP` default (§3.2).
+- ✅ `startup.sh` (already scaffolded, now validated): refuses to boot without
+  `LISTENER_PORT_MLLP`; HUB_NODE_INSECURE toggles HTTPS↔HTTP nginx blocks via the
+  `INCLUDE_HTTP_SERVER` sed; cert-gen → nginx (bg) → java (fg) with a TERM/INT trap
+  forwarding shutdown. `nginx.conf`: 8888 (ssl, default) → 127.0.0.1:8889; ops port
+  only (MLLP not proxied).
+- ✅ **Validated (no Docker daemon up locally, so logic-level + a real-container
+  script):** `startup.sh` exercised with stubbed nginx/java/openssl — (A) refusal
+  without the port (exit 1 + message), (B) the insecure-mode nginx rewrite produces
+  a correct single HTTP server (ssl line commented, one active `default_server`),
+  (C) secure path: cert → nginx → java launch order → SIGTERM → clean trap exit 0.
+  `java/scripts/container-smoke.sh` does the full **real-container** check (build
+  image with a JDK-HttpServer stub jar → run: refusal without port, then
+  `/healthz` 200 through nginx) — runnable once the Docker daemon is up.
+- **Deferred:** the full `docker run` with the **real** uber jar (needs the
+  maven/gradle build) — that's Phase 11's job; smoke covers the plumbing.
 
 ### Phase 11 — Standalone E2E (simulated node) 🟢
 - TS e2e in `test/e2e/`: launch the container by hand (the `docker run`

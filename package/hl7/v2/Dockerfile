@@ -29,7 +29,17 @@ RUN chmod +x /opt/module/startup.sh
 RUN mkdir -p /var/log/nginx /var/run && \
     chmod 755 /var/log/nginx /var/run
 
-# Durable buffer + extensions live here (Hub Node mounts a named volume).
+# Extension packs are baked into the image at build time (DESIGN §7.3), NOT
+# mounted at runtime. The base image ships none — EXTENSION_DIR exists but is
+# empty (the boot loader tolerates that). A vendor image is a derived build that
+# adds packs, e.g.:
+#     RUN npm install @zerobias-org/hl7-extension-epic-adt
+#     COPY extensions-staging/ /opt/module/extensions/
+#         # -> /opt/module/extensions/<pack>/extensions/manifest.json …
+RUN mkdir -p /opt/module/extensions
+
+# Durable buffer (buffer.db) lives here; Hub Node mounts a named volume.
+# Extension packs do NOT live here — they are baked into the image (above).
 VOLUME /var/lib/module
 
 # Operations port (Hub-facing, fronted by nginx). The MLLP listener port is

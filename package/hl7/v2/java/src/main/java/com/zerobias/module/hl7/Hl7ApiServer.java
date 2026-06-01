@@ -86,10 +86,14 @@ public final class Hl7ApiServer {
         boolean fullDurability = "full".equalsIgnoreCase(System.getenv("ACK_DURABILITY"));
         this.buffer = new BufferStore(dbPath, fullDurability);
 
-        // Base schemas (generated tree) + structure index (classpath). The index may be
-        // absent in a dev build that skipped codegen → envelope-materializer fallback.
-        Path schemaRoot = Path.of(System.getenv().getOrDefault("SCHEMA_DIR", "/opt/module/generated"));
-        SchemaRegistry schemas = SchemaRegistry.fromDirectory(schemaRoot);
+        // Base schemas + structure index, both baked into the jar at build (Phase 1)
+        // and served from the classpath. SCHEMA_DIR is a dev fallback for running
+        // against an on-disk tree (e.g. a build that skipped the shade step).
+        SchemaRegistry schemas = SchemaRegistry.fromClasspath();
+        if (schemas.size() == 0) {
+            Path schemaRoot = Path.of(System.getenv().getOrDefault("SCHEMA_DIR", "/opt/module/generated"));
+            schemas = SchemaRegistry.fromDirectory(schemaRoot);
+        }
         StructureIndex index = StructureIndex.fromClasspath(VERSION_SLOT);
 
         // Extensions (DESIGN §7.3): baked into the image under EXTENSION_DIR, optionally

@@ -4,13 +4,21 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.net.JarURLConnection;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.stream.Stream;
 
 /**
@@ -54,18 +62,62 @@ public final class SchemaRegistry {
         return r;
     }
 
-    private void index(Path file) {
+    /**
+     * Build a registry from the {@code /schemas} resources on the classpath — how
+     * the packaged module serves them: the codegen bakes the tree into the jar at
+     * build time (Phase 1 decision), so production reads it from the classpath, not
+     * a filesystem dir. Handles both the shaded jar ({@code jar:} URL) and an
+     * exploded {@code target/classes} ({@code file:} URL). Empty if absent.
+     */
+    public static SchemaRegistry fromClasspath() {
+        SchemaRegistry r = new SchemaRegistry();
+        URL root = SchemaRegistry.class.getResource("/schemas");
+        if (root == null) {
+            return r;
+        }
         try {
-            String json = Files.readString(file);
-            JsonObject obj = GSON.fromJson(json, JsonObject.class);
-            if (obj != null && obj.has("id")) {
-                String id = obj.get("id").getAsString();
-                if (id.startsWith("schema:")) {
-                    byId.put(id, json);
+            if ("jar".equals(root.getProtocol())) {
+                JarURLConnection conn = (JarURLConnection) root.openConnection();
+                conn.setUseCaches(false);   // we own + close this JarFile, not the shared one
+                try (JarFile jar = conn.getJarFile()) {
+                    Enumeration<JarEntry> entries = jar.entries();
+                    while (entries.hasMoreElements()) {
+                        JarEntry e = entries.nextElement();
+                        if (!e.isDirectory()
+                                && e.getName().startsWith("schemas/") && e.getName().endsWith(".json")) {
+                            try (InputStream in = jar.getInputStream(e)) {
+                                r.indexJson(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                            }
+                        }
+                    }
+                }
+            } else if ("file".equals(root.getProtocol())) {
+                try (Stream<Path> walk = Files.walk(Path.of(root.toURI()))) {
+                    walk.filter(p -> p.toString().endsWith(".json")).forEach(r::index);
                 }
             }
+        } catch (IOException | URISyntaxException e) {
+            throw new UncheckedIOException("Failed to scan classpath schema tree", new IOException(e));
+        }
+        return r;
+    }
+
+    private void index(Path file) {
+        try {
+            indexJson(Files.readString(file));
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read schema " + file, e);
+        }
+    }
+
+    /** Parse one schema JSON and index it by its {@code schema:} id (no-op otherwise). */
+    private void indexJson(String json) {
+        JsonObject obj = GSON.fromJson(json, JsonObject.class);
+        if (obj != null && obj.has("id")) {
+            String id = obj.get("id").getAsString();
+            if (id.startsWith("schema:")) {
+                byId.put(id, json);
+            }
         }
     }
 

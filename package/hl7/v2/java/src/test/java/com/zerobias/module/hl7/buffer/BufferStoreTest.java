@@ -86,6 +86,16 @@ class BufferStoreTest {
             assertEquals(1, s.ack(lease.leaseId(), List.of("A")));
             assertEquals(1, s.count(MessageStatus.ACKED));
             assertEquals(1, s.count(MessageStatus.IN_FLIGHT));
+
+            // ...and it must be the RIGHT row: A acked, B still in_flight (guards the
+            // control_id IN (...) subset clause, not just the 1/1 split).
+            for (BufferRow r : s.search(null, 10)) {
+                if (r.controlId().equals("A")) {
+                    assertEquals(MessageStatus.ACKED, r.status());
+                } else {
+                    assertEquals(MessageStatus.IN_FLIGHT, r.status(), "B must remain in_flight");
+                }
+            }
         }
     }
 
@@ -138,6 +148,40 @@ class BufferStoreTest {
             assertEquals(1, s.purge(Duration.ofHours(1)));
             assertEquals(0, s.count(MessageStatus.ACKED));
             assertEquals(1, s.count(MessageStatus.NEW), "un-acked row survives purge");
+        }
+    }
+
+    @Test
+    void purgeIncludesRowsAckedAtTheCutoffInstant(@TempDir Path dir) throws Exception {
+        // Regression: deleteAckedOlderThanMillis uses `acked_at <= cutoff`. With strict
+        // `<` (the pre-fix bug) a row acked at the current instant escaped purge(PT0S).
+        // No clock advance — acked_at == now == cutoff.
+        try (BufferStore s = open(dir, new MutableClock(BASE))) {
+            s.insert(row("A", 0, SCHEMA_A));
+            s.ack(s.take(null, 1, Duration.ofMinutes(5)).leaseId(), null); // acked at BASE
+            assertEquals(1, s.count(MessageStatus.ACKED));
+
+            assertEquals(1, s.purge(Duration.ZERO), "purge(PT0S) must include just-acked rows");
+            assertEquals(0, s.count(MessageStatus.ACKED));
+            assertEquals(0, s.count());
+        }
+    }
+
+    @Test
+    void retentionByMaxBytesEvictsAckedOnly(@TempDir Path dir) throws Exception {
+        try (BufferStore s = open(dir, new MutableClock(BASE))) {
+            s.insert(row("A", 0, SCHEMA_A));
+            s.insert(row("B", 1, SCHEMA_A));
+            s.ack(s.take(null, 2, Duration.ofMinutes(5)).leaseId(), null); // A,B acked
+            s.insert(row("C", 2, SCHEMA_A)); // un-acked
+
+            // maxBytes=0 forces the eviction loop to run until no acked rows remain
+            // (page sizes make exact-byte assertions brittle; this exercises the whole
+            // maxBytes branch: deleteOldestAcked + incrementalVacuum + acked-only + break).
+            RetentionSweeper sweeper = new RetentionSweeper(s, new RetentionConfig(null, 0L), new MutableClock(BASE));
+            assertEquals(2, sweeper.sweep());
+            assertEquals(0, s.count(MessageStatus.ACKED));
+            assertEquals(1, s.count(MessageStatus.NEW), "un-acked row is never evicted by maxBytes");
         }
     }
 

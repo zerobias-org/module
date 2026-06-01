@@ -60,6 +60,14 @@ class StructureWalkerIT {
         // Table-bound fields registered the enums (HL70001 admin sex, HL70203 id type).
         assertTrue(w.tables.contains(1), "table HL70001 registered");
         assertTrue(w.tables.contains(203), "table HL70203 registered");
+
+        // Guard: HAPI exposes repetition-count getters (e.g.
+        // getPid3_PatientIdentifierListReps()) alongside real field getters. The
+        // walker must treat those as accessors to skip, never as schema fields — a
+        // "...Reps" property would be a phantom int field with no HL7 meaning.
+        w.segments.values().forEach(s -> s.properties.forEach(p ->
+            assertTrue(!p.name.endsWith("Reps"),
+                s.id + " leaked a HAPI *Reps count getter as a field: " + p.name)));
     }
 
     private static Property prop(Schema schema, String name) {

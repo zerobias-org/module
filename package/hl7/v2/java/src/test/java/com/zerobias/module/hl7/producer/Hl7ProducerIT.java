@@ -89,10 +89,18 @@ class Hl7ProducerIT {
         assertEquals(1, rootChildren.size());
         assertEquals("/hl7-v2-receiver", rootChildren.get(0).getAsJsonObject().get("id").getAsString());
 
-        // receiver has messages, by-type, by-sender, stats, ops
+        // receiver has exactly: messages, by-type, by-sender, stats, ops
         JsonArray kids = GSON.fromJson(
             op(f, "ObjectsApi.getChildren", "objectId", "/hl7-v2-receiver"), JsonArray.class);
-        assertEquals(5, kids.size());
+        java.util.Set<String> kidIds = kids.asList().stream()
+            .map(e -> e.getAsJsonObject().get("id").getAsString())
+            .collect(java.util.stream.Collectors.toSet());
+        assertEquals(java.util.Set.of(
+            "/hl7-v2-receiver/messages",
+            "/hl7-v2-receiver/by-type",
+            "/hl7-v2-receiver/by-sender",
+            "/hl7-v2-receiver/stats",
+            "/hl7-v2-receiver/ops"), kidIds);
     }
 
     @Test

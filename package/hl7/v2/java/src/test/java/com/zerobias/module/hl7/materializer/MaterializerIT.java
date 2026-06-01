@@ -130,16 +130,22 @@ class MaterializerIT {
     @Test
     void explicitNullVsAbsent() throws Exception {
         Materializer m = materializer();
-        // PID-6 mothersMaidenName explicit-null (""), PID-7 absent.
+        // The HL7 explicit-null sentinel ("") must survive as JSON null with the key
+        // PRESENT (serializeNulls), distinct from an absent field whose key is omitted.
+        // Exercised on a PRIMITIVE field (PID-8 administrativeSex, IS): a composite
+        // field's "" would surface the null nested under its first component, not at the
+        // field's top level, so a primitive is the faithful explicit-null probe.
+        // PID-7 (dateTimeOfBirth) is left empty → absent.
         String er7 = String.join(CR,
             "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260529103000||ADT^A01^ADT_A01|MSG3|P|2.5.1",
-            "PID|1||5551212^^^EPIC^MR||SMITH^JOHN|\"\"||M") + CR;
+            "PID|1||5551212^^^EPIC^MR||SMITH^JOHN|||\"\"") + CR;
 
         JsonObject pid = GSON.fromJson(m.toTypedJson(parseGeneric(er7)), JsonObject.class)
             .getAsJsonObject("pid");
         // dateTimeOfBirth (PID-7) was empty → key omitted entirely
         assertTrue(!pid.has("dateTimeOfBirth"), "absent field omitted");
-        // administrativeSex (PID-8) present
-        assertEquals("M", pid.get("administrativeSex").getAsString());
+        // administrativeSex (PID-8) was "" → key present, value JSON null
+        assertTrue(pid.has("administrativeSex"), "explicit-null field key is present");
+        assertTrue(pid.get("administrativeSex").isJsonNull(), "HL7 \"\" → JSON null");
     }
 }

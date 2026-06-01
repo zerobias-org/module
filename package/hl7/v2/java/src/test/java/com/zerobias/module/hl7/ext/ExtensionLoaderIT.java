@@ -27,38 +27,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Phase 8 validation (DESIGN §7): boot-loading a baked-in extension pack. Stages a
  * sample {@code @zerobias-org/hl7-extension-epic-adt} under a temp {@code EXTENSION_DIR}
  * and asserts the merge surfaces {@code /by-type/ADT_A01_with_ZPV}, routes an EPIC
  * ADT to it (the ZPV segment materializes), and honors activeExtensions /
- * duplicate-id / version-mismatch validation. Uses the REAL base index generated
- * by manual-test.sh (HL7_INDEX_DIR).
+ * duplicate-id / version-mismatch validation. The base catalog (schemas +
+ * structure-index) is loaded from the build-generated classpath resources, exactly
+ * as the daemon loads them at runtime.
  */
 class ExtensionLoaderIT {
 
     private static final Gson GSON = new Gson();
     private static final String CR = "\r";
-
-    /** Resources root holding {@code schemas/} + {@code structure-index/} (base catalog). */
-    private Path baseDir() {
-        // Prefer the build-generated resources on the classpath (target/classes) so this
-        // runs in CI; fall back to HL7_INDEX_DIR for the manual harness.
-        try {
-            java.net.URL u = getClass().getResource("/structure-index/v251.json");
-            if (u != null && "file".equals(u.getProtocol())) {
-                return Path.of(u.toURI()).getParent().getParent();   // .../v251.json -> resources root
-            }
-        } catch (java.net.URISyntaxException ignore) {
-            // fall through
-        }
-        String dir = System.getenv("HL7_INDEX_DIR");
-        assumeTrue(dir != null && !dir.isBlank(),
-            "no classpath structure-index and HL7_INDEX_DIR unset; skipping");
-        return Path.of(dir);
-    }
 
     /** Write a sample epic-adt pack under {@code extRoot/<packName>/extensions/}. */
     private void stageEpicPack(Path extRoot, String packName, String hl7Version) throws Exception {
@@ -104,11 +86,10 @@ class ExtensionLoaderIT {
 
     @Test
     void loadMergesSurfacesByTypeAndRoutes(@TempDir Path extRoot, @TempDir Path dbDir) throws Exception {
-        Path base = baseDir();
         stageEpicPack(extRoot, "epic-adt", "2.5.1");
 
-        SchemaRegistry registry = SchemaRegistry.fromDirectory(base);
-        StructureIndex index = StructureIndex.fromFile(base.resolve("structure-index").resolve("v251.json"));
+        SchemaRegistry registry = SchemaRegistry.fromClasspath();
+        StructureIndex index = StructureIndex.fromClasspath("v251");
         int baseSize = registry.size();
 
         ExtensionLoader.Result result = ExtensionLoader.load(
@@ -137,7 +118,9 @@ class ExtensionLoaderIT {
             // the extension collection scopes by the discriminator, not message_structure
             ObjectTree.Collection coll = tree.resolveCollection("/hl7-v2-receiver/by-type/ADT_A01_with_ZPV");
             assertEquals("schema:table:hl7v2.epic.ADT_A01_with_ZPV", coll.schemaId());
+            // scoped by BOTH discriminator legs, not just the sender
             assertTrue(coll.scopeWhere().contains("sending_app = 'EPIC'"), coll.scopeWhere());
+            assertTrue(coll.scopeWhere().contains("message_code = 'ADT'"), coll.scopeWhere());
         }
 
         // routing: an EPIC ADT with a ZPV segment materializes the ZPV (via the discriminator)
@@ -153,10 +136,9 @@ class ExtensionLoaderIT {
 
     @Test
     void activeExtensionsFilterExcludes(@TempDir Path extRoot) throws Exception {
-        Path base = baseDir();
         stageEpicPack(extRoot, "epic-adt", "2.5.1");
-        SchemaRegistry registry = SchemaRegistry.fromDirectory(base);
-        StructureIndex index = StructureIndex.fromFile(base.resolve("structure-index").resolve("v251.json"));
+        SchemaRegistry registry = SchemaRegistry.fromClasspath();
+        StructureIndex index = StructureIndex.fromClasspath("v251");
 
         // only "other" is active → epic-adt is skipped
         ExtensionLoader.Result result = ExtensionLoader.load(
@@ -167,24 +149,26 @@ class ExtensionLoaderIT {
 
     @Test
     void duplicateSchemaIdAcrossPacksRejected(@TempDir Path extRoot) throws Exception {
-        Path base = baseDir();
         stageEpicPack(extRoot, "epic-adt", "2.5.1");
         stageEpicPack(extRoot, "epic-dup", "2.5.1");   // same epic schema ids
-        SchemaRegistry registry = SchemaRegistry.fromDirectory(base);
-        StructureIndex index = StructureIndex.fromFile(base.resolve("structure-index").resolve("v251.json"));
+        SchemaRegistry registry = SchemaRegistry.fromClasspath();
+        StructureIndex index = StructureIndex.fromClasspath("v251");
 
-        assertThrows(IllegalStateException.class,
+        IllegalStateException e = assertThrows(IllegalStateException.class,
             () -> ExtensionLoader.load(extRoot, Set.of(), "2.5.1", registry, index));
+        // distinguish from the version-mismatch rejection: this is the dup-id path
+        assertTrue(e.getMessage().contains("duplicate schema id"), e.getMessage());
     }
 
     @Test
     void versionMismatchRejected(@TempDir Path extRoot) throws Exception {
-        Path base = baseDir();
         stageEpicPack(extRoot, "epic-adt", "2.3");      // module is 2.5.1
-        SchemaRegistry registry = SchemaRegistry.fromDirectory(base);
-        StructureIndex index = StructureIndex.fromFile(base.resolve("structure-index").resolve("v251.json"));
+        SchemaRegistry registry = SchemaRegistry.fromClasspath();
+        StructureIndex index = StructureIndex.fromClasspath("v251");
 
-        assertThrows(IllegalStateException.class,
+        IllegalStateException e = assertThrows(IllegalStateException.class,
             () -> ExtensionLoader.load(extRoot, Set.of(), "2.5.1", registry, index));
+        // distinguish from the dup-id rejection: this is the version-compat path
+        assertTrue(e.getMessage().contains("targets HL7"), e.getMessage());
     }
 }

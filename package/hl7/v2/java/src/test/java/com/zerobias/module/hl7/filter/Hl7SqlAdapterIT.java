@@ -197,4 +197,33 @@ class Hl7SqlAdapterIT {
             assertNotNull(store.search(where, 10));
         }
     }
+
+    @Test
+    void apostropheInValueIsEscapedNotInjected(@TempDir Path dir) throws Exception {
+        // A value carrying a single quote (O'BRIEN) must be doubled into the SQL
+        // literal ('O''BRIEN'), not break the statement. The selection result is the
+        // proof: exactly the O'BRIEN row, no SQL error, no over/under-match.
+        List<Msg> msgs = new ArrayList<>(seed());
+        msgs.add(new Msg("M5", "new", "2026-05-28T13:00:00Z", nest(
+            "msh", nest("messageType", nest("messageCode", "ADT"),
+                        "sendingApplication", nest("namespaceId", "EPIC")),
+            "pid", nest("patientFamilyName", "O'BRIEN", "ageYears", 50,
+                        "patientIdentifierList", nest("idNumber", "5551414")))));
+        try (BufferStore store = load(dir, msgs)) {
+            String where = Hl7Filter.toWhereClause("(pid.patientFamilyName=O'BRIEN)");
+            assertTrue(where.contains("O''BRIEN"), "apostrophe doubled in SQL literal: " + where);
+            assertEquals(new TreeSet<>(List.of("M5")), selected(store, where));
+        }
+    }
+
+    @Test
+    void maliciousPropertyPathIsRejectedNotInjected() {
+        // Property-path segments are restricted to [A-Za-z0-9_]; an injection attempt
+        // in the attribute can never be rendered into the SQL as raw text. It is
+        // rejected — at the adapter's segment guard or earlier at parse — never run.
+        assertThrows(IllegalArgumentException.class,
+            () -> Hl7Filter.toWhereClause("(pid.fam-ily=SMITH)")); // hyphen: adapter segment guard
+        assertThrows(IllegalArgumentException.class,
+            () -> Hl7Filter.toWhereClause("(pid.x');DROP TABLE messages;--=X)"));
+    }
 }

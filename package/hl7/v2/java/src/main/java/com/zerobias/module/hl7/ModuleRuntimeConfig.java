@@ -29,12 +29,17 @@ public record ModuleRuntimeConfig(Set<String> activeExtensions) {
     static ModuleRuntimeConfig parse(String json) {
         Set<String> active = new LinkedHashSet<>();
         if (json != null && !json.isBlank()) {
-            JsonObject obj = GSON.fromJson(json, JsonObject.class);
-            if (obj != null && obj.has("activeExtensions") && obj.get("activeExtensions").isJsonArray()) {
-                JsonArray arr = obj.getAsJsonArray("activeExtensions");
-                for (JsonElement e : arr) {
-                    active.add(e.getAsString());
+            try {
+                JsonObject obj = GSON.fromJson(json, JsonObject.class);
+                if (obj != null && obj.has("activeExtensions") && obj.get("activeExtensions").isJsonArray()) {
+                    for (JsonElement e : obj.getAsJsonArray("activeExtensions")) {
+                        active.add(e.getAsString());
+                    }
                 }
+            } catch (com.google.gson.JsonSyntaxException malformed) {
+                // Malformed MODULE_CONFIG → treat as no active-extension filter (all
+                // baked-in packs active) rather than crashing the daemon at boot.
+                return new ModuleRuntimeConfig(new LinkedHashSet<>());
             }
         }
         return new ModuleRuntimeConfig(active);

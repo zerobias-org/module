@@ -131,6 +131,29 @@
                             </arguments>
                         </configuration>
                     </execution>
+
+                    <!-- Run the codegen submodule's OWN tests (PureHelpersTest surefire +
+                         StructureWalkerIT failsafe). The submodule is never a reactor
+                         member here (it carries the build-time-only hapi-structures dep),
+                         so without this its tests silently never run. Bound to the `test`
+                         phase because the gate's unit task is `mvn test`; skipped under
+                         -DskipTests so the `mvn clean package -DskipTests` build stays fast. -->
+                    <execution>
+                        <id>run-codegen-tests</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skipTests}</skip>
+                            <executable>mvn</executable>
+                            <arguments>
+                                <argument>-f</argument>
+                                <argument>codegen/pom.xml</argument>
+                                <argument>verify</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
 

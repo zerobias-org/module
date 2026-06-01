@@ -30,6 +30,9 @@ public final class HealthSelfTest {
         try (HapiContext ctx = new DefaultHapiContext()) {
             ctx.setValidationContext(ValidationContextFactory.noValidation());
             ctx.setModelClassFactory(new GenericModelClassFactory());
+            // Dedicated executor: closing this client context must NOT shut down the
+            // shared default ExecutorService the listener relies on (see Hl7ListenerService).
+            ctx.setExecutorService(java.util.concurrent.Executors.newCachedThreadPool());
             Connection conn = ctx.newClient("127.0.0.1", listenerPort, false);
             try {
                 Message ack = conn.getInitiator().sendAndReceive(ctx.getPipeParser().parse(er7));

@@ -32,6 +32,12 @@ public final class Hl7ListenerService implements AutoCloseable {
         this.port = port;
         this.context = new DefaultHapiContext();
         this.context.setValidationContext(ValidationContextFactory.noValidation());
+        // Own a dedicated executor. DefaultHapiContext otherwise shares a singleton
+        // ExecutorService; when any OTHER context (e.g. the startup self-test's client)
+        // is closed, that shared executor is shut down and the listener can no longer
+        // accept connections ("ExecutorService is shut down"). A dedicated executor
+        // makes the server immune to other contexts' lifecycles.
+        this.context.setExecutorService(java.util.concurrent.Executors.newCachedThreadPool());
         // Force generic parsing: the runtime carries no typed structure jars (DESIGN
         // §4.1) and the structure-index Materializer requires a generic model (it
         // navigates by segment code, not typed group accessors). Pinning it here makes

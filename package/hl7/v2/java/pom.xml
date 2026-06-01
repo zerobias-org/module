@@ -69,14 +69,13 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- RFC4515 filter -> SQL adapter (lifted from the sql module in Phase 5).
-             From GitHub Packages; uncomment when Phase 5 lands.
+        <!-- RFC4515 filter -> SQL adapter (Phase 5). From GitHub Packages
+             (zerobias-org/util); see the <repositories> block below. -->
         <dependency>
             <groupId>com.zerobias</groupId>
             <artifactId>lite-filter</artifactId>
             <version>1.0.0</version>
         </dependency>
-        -->
 
         <!-- Testing -->
         <dependency>
@@ -194,4 +193,13 @@
     <!-- NOTE: schema codegen runs in the DEFAULT build (generate-resources phase,
          see the exec-maven-plugin above), not an opt-in profile — the generated
          tree is git-ignored, so CI must regenerate it every build. -->
+
+    <!-- lite-filter is published to GitHub Packages (zerobias-org/util), not Maven
+         Central. Auth comes from ~/.m2/settings.xml server id 'github'. -->
+    <repositories>
+        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/zerobias-org/util</url>
+        </repository>
+    </repositories>
 </project>

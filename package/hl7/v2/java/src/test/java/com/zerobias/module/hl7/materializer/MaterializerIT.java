@@ -34,10 +34,15 @@ class MaterializerIT {
     private static final String CR = "\r";
 
     private Materializer materializer() {
-        String dir = System.getenv("HL7_INDEX_DIR");
-        assumeTrue(dir != null && !dir.isBlank(),
-            "HL7_INDEX_DIR not set (manual-test.sh generates the index); skipping");
-        StructureIndex index = StructureIndex.fromFile(Path.of(dir, "structure-index", "v251.json"));
+        // Prefer the classpath index the real build generates into target/classes
+        // (so this runs in CI); fall back to HL7_INDEX_DIR for the manual harness.
+        StructureIndex index = StructureIndex.fromClasspath("v251");
+        if (index == null) {
+            String dir = System.getenv("HL7_INDEX_DIR");
+            assumeTrue(dir != null && !dir.isBlank(),
+                "no classpath structure-index and HL7_INDEX_DIR unset; skipping");
+            index = StructureIndex.fromFile(Path.of(dir, "structure-index", "v251.json"));
+        }
         return new Materializer(index);
     }
 

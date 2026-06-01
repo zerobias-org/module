@@ -4,6 +4,9 @@ info:
   description: "HL7 v2.x MLLP receiver (DataProducer)"
   title: '@zerobias-org/module-hl7-v2'
   x-impl-name: hl7
+  x-product-infos:
+    - $ref: './node_modules/@zerobias-org/product-auditmation-generic-dataproducer/catalog.yml#/Product'
+    - $ref: './node_modules/@zerobias-org/product-hl7-hl7/catalog.yml#/Product'
 # This module implements the DataProducer interface defined in
 # @zerobias-org/module-interface-dataproducer. Interface paths are referenced
 # directly from the interface module; the implementation is Java (see java/).

@@ -42,9 +42,21 @@ class ExtensionLoaderIT {
     private static final Gson GSON = new Gson();
     private static final String CR = "\r";
 
+    /** Resources root holding {@code schemas/} + {@code structure-index/} (base catalog). */
     private Path baseDir() {
+        // Prefer the build-generated resources on the classpath (target/classes) so this
+        // runs in CI; fall back to HL7_INDEX_DIR for the manual harness.
+        try {
+            java.net.URL u = getClass().getResource("/structure-index/v251.json");
+            if (u != null && "file".equals(u.getProtocol())) {
+                return Path.of(u.toURI()).getParent().getParent();   // .../v251.json -> resources root
+            }
+        } catch (java.net.URISyntaxException ignore) {
+            // fall through
+        }
         String dir = System.getenv("HL7_INDEX_DIR");
-        assumeTrue(dir != null && !dir.isBlank(), "HL7_INDEX_DIR not set; skipping");
+        assumeTrue(dir != null && !dir.isBlank(),
+            "no classpath structure-index and HL7_INDEX_DIR unset; skipping");
         return Path.of(dir);
     }
 

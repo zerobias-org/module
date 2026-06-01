@@ -442,10 +442,20 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   resolve at deploy time. (DESIGN §12 step 6, full version.)
 - Coordinate go-time with Chris once the platform reaches its step 9.
 
-### Phase 13 — Operator docs 🟢
-- USERGUIDE / README: pinning the listener port, sizing the durability
-  volume, declaring extensions, reading `/healthz`, finding the ephemeral
-  listener port when unpinned (DESIGN §12 step 7).
+### Phase 13 — Operator docs 🟢 ✅ *(done 2026-06-01)*
+- ✅ `README.md` — overview, why-daemon, architecture, the DataProducer surface
+  (collections + `/ops` functions), RFC4515 filtering, deployment via
+  `runtimeConfig.yml`, connection profile, extensions, `/healthz`, and the
+  local `manual-test.sh`/`container-smoke.sh` validation entry points.
+- ✅ `USERGUIDE.md` — the §12-step-7 operator runbook in depth: (1) pinning the
+  MLLP port (2575, 1:1 host map, refuses without it), (2) sizing the durable
+  volume (retention evicts acked-only; size for peak undrained backlog;
+  ackDurability), (3) reading `/healthz` (field-by-field; oldestUnackedSec = the
+  backlog signal; Node-alert-not-restart), (4) baking + selecting extensions
+  (derived-image `npm install`+`COPY`; `MODULE_CONFIG.activeExtensions`),
+  (5) finding the ephemeral port (`docker port` / `LISTENER_PORT_MLLP` / node
+  deployment view). Plus a draining how-to for pipeline authors (take→ack lease
+  cycle). Grounded in the real bean names / ops I/O / config.
 
 ---
 

@@ -1,8 +1,8 @@
 # Build Plan — `@zerobias-org/module-hl7-v2`
 
 Module-side implementation plan. Owner: Daniel. Platform updates
-(daemon mode, listener ports, durability, extension resolution) are owned
-separately — see [`PLATFORM_UPDATES.md`](PLATFORM_UPDATES.md) — and this
+(daemon mode, listener ports, durability, opaque `config` passthrough) are
+owned separately — see [`PLATFORM_UPDATES.md`](PLATFORM_UPDATES.md) — and this
 plan is deliberately structured so that **none of the module work below
 blocks on the platform work**, except the single live-Hub-Node E2E in
 Phase 12.
@@ -38,11 +38,12 @@ in writing first; everything else is independent.
 | Seam | Module side | Platform side | Source |
 |---|---|---|---|
 | Env: `LISTENER_PORT_MLLP` | Java reads it, refuses to boot without it | `Container.ts` emits `LISTENER_PORT_${name.toUpperCase()}` | DESIGN §3.2, PLATFORM §5.1 |
-| Env: `EXTENSION_DIR` | Java scans it at boot | Node sets it after mounting | DESIGN §3.2 |
-| Extension mount layout | scan `/opt/module/extensions/*/extensions/manifest.json` | per-artifact subdir: `-v <dir>:/opt/module/extensions/<name>:ro` | DESIGN §7.3 / PLATFORM §5.1 — **resolved 2026-05-29**: one subdir per extension; PLATFORM §5.1 was correct, DESIGN step 3 fixed |
-| Durability mount | `buffer.db` + `extensions/` under `/var/lib/module` | mounts named volume there | DESIGN §3.1, §8 |
-| `auditmation.runtime` block | we author it in `package.json` | dataloader reads → `module_version.runtime_config` | PLATFORM §6.3 |
-| `runtimeConfig` schema | we declare defaults conforming to it | `DeploymentRuntimeConfig.yml` defines it | PLATFORM §1.1 |
+| Env: `MODULE_CONFIG` | Java parses the opaque module `config` (JSON) | Node injects `runtimeConfig.config` verbatim | DESIGN §3.2, PLATFORM §5.1 |
+| Env: `EXTENSION_DIR` | Java scans it at boot | **In-image path** (extensions baked at build); Node does NOT mount it | DESIGN §3.2, §7.3 |
+| Extension delivery | declare extension packs as npm deps; build lays `extensions/` under `EXTENSION_DIR` | **none** — platform does not resolve/mount/catalog extensions | DESIGN §7.3 — **resolved 2026-06-01**: install-time/baked-in won; per-deployment mount dropped |
+| Durability mount | `buffer.db` under `/var/lib/module` | mounts named volume there | DESIGN §3.1, §8 |
+| `runtimeConfig.yml` file | we author it in the module root, declare in `package.json` `files`; mandatory (daemonMode) | dataloader reads → `module_version.runtime_config` | PLATFORM §6.3 |
+| `runtimeConfig` schema | we declare defaults conforming to it (typed daemon/ports/durability + opaque `config`) | `DeploymentRuntimeConfig.yml` defines it | PLATFORM §1.1 |
 
 ## Target file tree (mirrors the SQL module)
 
@@ -87,6 +88,11 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   (`zb.java-module`), `tsconfig.json`, `src/index.ts`, `.gitignore`.
 - ✅ `api.yml` ($ref's DataProducer paths + connect/disconnect/metadata/healthz),
   `connectionProfile.yml` (hl7Version/ackDurability/backpressurePolicy/senderDiscriminator).
+- ✅ `runtimeConfig.yml` (module root, in `package.json` `files`) — daemonMode +
+  listenerPorts[mllp] + durability + opaque `config` defaults; mandatory for this
+  daemon module, read by dataloader → `module_version.runtime_config`. *(added
+  2026-06-01 per platform correction; replaces the planned `auditmation.runtime`
+  package.json block.)*
 - ✅ Container: `Dockerfile` (temurin-17, VOLUME /var/lib/module, EXPOSE 8888 only,
   EXTENSION_DIR), `startup.sh` (refuses to boot without `LISTENER_PORT_MLLP`),
   `nginx.conf` (8888→8889, ops port only).
@@ -251,14 +257,16 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
 - **Done when:** take→ack and take→TTL-revert round-trips through the HTTP
   surface; backpressure policy honored (DESIGN §11.3 default `reject`).
 
-### Phase 8 — Extension boot-loader 🔵 *(seam: extension mount layout)*
-- `ExtensionLoader` scans `EXTENSION_DIR`, validates (namespace ownership,
-  HL7 version compat, SchemaId format, no dup IDs), merges schemas +
+### Phase 8 — Extension boot-loader 🟢 *(no platform seam — extensions are baked in)*
+- `ExtensionLoader` scans `EXTENSION_DIR` (an in-image path; packs are baked in
+  at build, §7.3), optionally filters to `config.activeExtensions` from
+  `MODULE_CONFIG`, validates (HL7 version compat, SchemaId format, no dup IDs —
+  **no** namespace-ownership check, that rule doesn't exist), merges schemas +
   structure-index, registers extra `/by-type/<name>` objects (DESIGN §7.3
   "Module at boot"). Discriminator rules from `manifest.json` (DESIGN §7.2).
-- **Done when:** mounting a sample `@zerobias-org/hl7_extension-epic-adt`
-  dir by hand surfaces `/by-type/ADT_A01_with_ZPV` and routes EPIC ADT to
-  it. (The deploy-time *tarball pull* is platform — not tested here.)
+- **Done when:** baking a sample `@zerobias-org/hl7-extension-epic-adt` pack into
+  `EXTENSION_DIR` (or staging it there by hand) surfaces `/by-type/ADT_A01_with_ZPV`
+  and routes EPIC ADT to it. No platform tarball pull/mount exists to test.
 
 ### Phase 9 — Health & MLLP self-test 🟢
 - `/healthz` on the ops port with the DESIGN §9 payload (listener up,
@@ -277,16 +285,19 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
 ### Phase 11 — Standalone E2E (simulated node) 🟢
 - TS e2e in `test/e2e/`: launch the container by hand (the `docker run`
   above), drive a `simhospital`/HAPI test feed into MLLP, run the
-  pipeline-style `take`→`ack` cycle over HTTP, load one extension via a
-  mounted dir. This is DESIGN §12 step 6 **minus** the real node.
+  pipeline-style `take`→`ack` cycle over HTTP, with one extension pack baked
+  into the image (or staged into `EXTENSION_DIR`). This is DESIGN §12 step 6
+  **minus** the real node.
 - **Done when:** full receive→buffer→take→ack→purge cycle passes against
   the running container with zero platform code present.
 
-### Phase 12 — Live Hub Node E2E 🔴 *(blocked on PLATFORM_UPDATES §10 steps 1–11)*
-- Real `EnsureDeployment` carrying `runtimeConfig`; node injects ports,
-  mounts volume, pulls + mounts extensions; daemon auto-start; `/healthz`
-  polling drives deployment status. (DESIGN §12 step 6, full version.)
-- Coordinate go-time with Chris once the platform reaches its step 11.
+### Phase 12 — Live Hub Node E2E 🔴 *(blocked on PLATFORM_UPDATES §10 steps 1–9)*
+- Real `EnsureDeployment` carrying `runtimeConfig`; node injects ports +
+  `MODULE_CONFIG`, mounts the durable volume; daemon auto-start; `/healthz`
+  polling (Node-local; failures raise Node alerts, not platform events).
+  Extensions are already baked into the image — nothing extension-related to
+  resolve at deploy time. (DESIGN §12 step 6, full version.)
+- Coordinate go-time with Chris once the platform reaches its step 9.
 
 ### Phase 13 — Operator docs 🟢
 - USERGUIDE / README: pinning the listener port, sizing the durability

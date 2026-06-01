@@ -7,8 +7,12 @@ container/collection/function model used by every other DataProducer
 implementation.
 
 This module is the first user of the **`Deployment.runtimeConfig`**
-extension (daemon mode, listener ports, durability, extension artifacts)
-on the `EnsureDeployment` wire message.
+extension on the `EnsureDeployment` wire message — daemon mode, listener
+ports, and durability (platform-interpreted), plus an opaque, module-defined
+`config` object the platform transports but never parses. Extension/schema
+packs are **not** carried here: they are HL7-specific and are baked into the
+module image at build time (`npm install`), not resolved by the platform
+(see §7).
 
 > The DataProducer interface contract is canonical and lives at
 > [`org/module/package/interface/dataproducer/documentation/`](../../interface/dataproducer/documentation/).
@@ -96,8 +100,8 @@ Canonical form (per [`SchemaIds.md`](../../interface/dataproducer/documentation/
 | `schema:enum:hl7v2.v251.HL70001` | Administrative Sex value set |
 | `schema:enum:hl7v2.v251.HL70003` | Event Type value set |
 | `schema:enum:hl7v2.v251.HL70076` | Message Type value set |
-| `schema:type:hl7v2.epic.ZPV` | Epic Z-segment (from `@zerobias-org/hl7_extension-epic-adt`) |
-| `schema:enum:hl7v2.local.HL79001` | Customer local enum (from a `@<customer-scope>/hl7_extension-*` pack) |
+| `schema:type:hl7v2.epic.ZPV` | Epic Z-segment (from `@zerobias-org/hl7-extension-epic-adt`) |
+| `schema:enum:hl7v2.local.HL79001` | Customer local enum (from a `@<customer-scope>/hl7-extension-*` pack) |
 | `schema:shared:hl7v2.message-envelope` | Common envelope fields across all message types (`controlId`, `receivedAt`, `status`, `leaseId`) |
 | `schema:function:hl7v2.ops.take:input` / `:output` | `ops/take` I/O |
 | `schema:function:hl7v2.ops.ack:input` / `:output` | `ops/ack` I/O |
@@ -404,7 +408,9 @@ COPY nginx.conf /opt/module/nginx.conf
 COPY startup.sh /opt/module/startup.sh
 RUN chmod +x /opt/module/startup.sh
 
-VOLUME /var/lib/module                   # buffer.db + extensions/ live here
+VOLUME /var/lib/module                   # buffer.db lives here (durable)
+                                         # extension packs are baked into the image
+                                         # at build (see §7), NOT in this volume
 EXPOSE 8888                              # producer (Hub-facing, fronted by nginx)
                                          # NOTE: MLLP port is NOT EXPOSE'd — see §3.3
 
@@ -422,16 +428,19 @@ foreground with signal forwarding.
 
 ### 3.2 Environment contract from Hub Node
 
-The Java process reads three ports from env:
+The Java process reads its ports and config from env:
 
 | Env | Source | Required |
 |---|---|---|
 | `INTERNAL_PORT` (default 8889) | Dockerfile | yes |
 | `LISTENER_PORT_MLLP` | Hub Node injects at container-create time from `runtimeConfig.listenerPorts[name=mllp].port` | yes — module refuses to start without it |
-| `EXTENSION_DIR` (default `/opt/module/extensions`) | Hub Node mounts read-only from per-deployment extension downloads | optional |
+| `MODULE_CONFIG` | Hub Node injects the opaque `runtimeConfig.config` (JSON) verbatim; the module parses it | optional |
+| `EXTENSION_DIR` (default `/opt/module/extensions`) | An **in-image** path the module owns — extension packs are baked in at build (§7). **Not** Node-mounted. | optional |
 
 No implicit defaults for `LISTENER_PORT_MLLP`. A daemon listener with no
-port is a misconfiguration, not a fallback case.
+port is a misconfiguration, not a fallback case. `EXTENSION_DIR` is no longer
+a per-deployment mount point — the platform does not deliver extensions at
+runtime (§7).
 
 ### 3.3 Listener port publishing — Hub Node responsibility
 
@@ -599,31 +608,34 @@ deploying the receiver module.
 Customer / vendor-specific HL7 content (Z-segments, custom tables,
 augmented message structures) lives in versioned NPM packages.
 
-> **⚠️ Delivery model under review (2026-05-29).** Per platform review
-> (Scarola/McCarthy): HL7 extension/schema packages are **not** processed by
-> the dataloader and are **not** platform catalog artifacts — "they're their
-> own deal; they just get into the module via `npm install`." That points at
-> **build/install-time delivery** (extensions are npm dependencies baked into
-> the module image) rather than the **per-deployment runtime resolution** that
-> §7.3 describes. The two models differ materially (per-deployment mounting
-> enables one image to serve different vendor packs; install-time bakes them
-> in). **§7.3 is retained as provisional** pending that decision; if
-> install-time wins, the dataloader processor (PLATFORM_UPDATES §6) and the
-> pkg-proxy fetch/mount flow drop out, and extensions arrive purely via the
-> module's `package.json` deps. The schema *content* design (§7.1–§7.2) holds
-> either way — only how the files reach the container changes.
+> **✅ Delivery model resolved (2026-06-01).** Install-time wins. HL7
+> extension/schema packages are **not** processed by the dataloader, are **not**
+> platform catalog artifacts, and are **not** resolved per-deployment by the
+> platform — "they're their own deal; they just get into the module via
+> `npm install`." Delivery is **build/install-time**: extension packs are npm
+> dependencies baked into the module image, with the package's `extensions/`
+> content laid down under `EXTENSION_DIR` at build. Consequently the dataloader
+> processor (former PLATFORM_UPDATES §6.1–§6.2), the pkg-proxy fetch/mount flow
+> (former §5.2), and the typed `runtimeConfig.extensions` field are all
+> **dropped**. The tradeoff is accepted: one image serves one extension set;
+> serving a different vendor pack means a different image build. Any *runtime
+> selection* among baked-in packs (which to activate) is expressed in the opaque
+> `runtimeConfig.config` (DESIGN §3.2 `MODULE_CONFIG`), which the platform
+> transports but never parses. The schema *content* design (§7.1–§7.2) is
+> unchanged — only how the files reach the container changed. §7.3 below is
+> rewritten to the install-time model.
 
 ### 7.1 Package shape
 
-Package names follow the dataloader's **universal** format
-(`@{scope}/{type}-{vendor}-{name…}`), with the registered type token
-`hl7_extension` first — never an invented `hl7-extensions-…` token (which
-would collide the type+vendor fields and not parse positionally). Compare
-`@zerobias-org/schema-zerobias-zerobias-base` ↔ `zerobias.zerobias.base.schema`.
+Extension packs are **ordinary npm packages** — they are consumed by the module
+build (`npm install`), not by the platform dataloader, so they carry **no**
+`zerobias.import-artifact` declaration and are subject to no dataloader naming
+rule. The naming below is a module-author convention for readability only, not a
+platform-parsed identity.
 
 ```
-@zerobias-org/hl7_extension-epic-adt/      # type=hl7_extension, vendor=epic, name=adt
-├── package.json                           #   package code: epic.adt.hl7_extension
+@zerobias-org/hl7-extension-epic-adt/      # convention: vendor=epic, name=adt
+├── package.json                           #   a plain npm dependency of the module
 └── extensions/
     ├── manifest.json
     ├── messages/ADT_A01_with_ZPV.json    # schema:table:hl7v2.epic.ADT_A01_with_ZPV
@@ -637,9 +649,8 @@ would collide the type+vendor fields and not parse positionally). Compare
 
 ```json
 {
-  "name": "@zerobias-org/hl7_extension-epic-adt",
+  "name": "@zerobias-org/hl7-extension-epic-adt",
   "version": "1.2.4",
-  "zerobias": { "import-artifact": "hl7_extension" },
   "auditmation": {
     "hl7": {
       "version": "2.5.1",
@@ -651,10 +662,11 @@ would collide the type+vendor fields and not parse positionally). Compare
 }
 ```
 
-> Hyphen-vs-underscore for the `hl7_extension` token in the npm name: match
-> however existing multi-word types (`compliance_feature`, `dev_user`,
-> `catalog_overview`) are published; HL7 follows that precedent, it doesn't set
-> one. Scope is `@zerobias-org` (open content), not `@auditlogic`.
+> No `zerobias.import-artifact` block — the dataloader never sees these packages.
+> The module's own Docker build pulls the declared extension deps and lays their
+> `extensions/` content under `EXTENSION_DIR` in the image. The `auditmation.hl7`
+> block is read by the **module** at boot (version compat, namespace), not by the
+> platform. Scope is `@zerobias-org` (open content), not `@auditlogic`.
 
 `namespace` is the module's internal schema slot
 (`schema:type:hl7v2.<namespace>.<name>`) — see the §2.2 scope note. The module
@@ -702,12 +714,28 @@ for Z-extended structures), discriminator rules in the extension's
 `manifest.json` decide (e.g. "if MSH-3 == 'EPIC' and ADT, use
 `epic.ADT_A01_with_ZPV`").
 
-### 7.3 Resolution on EnsureDeployment *(provisional — see the §7 review note)*
+### 7.3 Delivery — install-time, baked into the image
 
-This per-deployment runtime-resolution model is **under review**: if extensions
-are delivered at `npm install` time instead, this whole subsection (and the
-`runtimeConfig.extensions` field, pkg-proxy fetch, and the dataloader processor)
-is superseded by plain module dependencies. Retained here pending that decision.
+Extensions are **not** resolved per-deployment by the platform. They are npm
+dependencies of the module, baked into the image at build, and (optionally)
+selected at runtime via the opaque `config`.
+
+**At image build** — the module declares its extension packs as npm dependencies
+and the Docker build lays each pack's `extensions/` content under `EXTENSION_DIR`,
+one subdirectory per pack:
+
+```dockerfile
+# (module Dockerfile, build stage)
+# npm install pulled the declared @*/hl7-extension-* deps into node_modules;
+# copy each pack's extensions/ into the image under EXTENSION_DIR.
+COPY extensions-staging/ /opt/module/extensions/
+#   /opt/module/extensions/<vendor-name>/extensions/manifest.json …
+```
+
+**`runtimeConfig` carried on `EnsureDeployment`** — no `extensions` field. The
+platform-typed part is daemon/ports/durability; everything HL7-specific (incl.
+which baked-in packs to activate, if the image ships more than it enables by
+default) is the opaque `config`:
 
 ```yaml
 runtimeConfig:
@@ -717,46 +745,31 @@ runtimeConfig:
   durability:
     - { volumeName: hl7-buffer, mountPath: /var/lib/module,
         retention: { maxBytes: 10737418240, maxAge: P7D } }
-  extensions:
-    - { artifact: "@zerobias-org/hl7_extension-epic-base", version: "^1.0.0" }
-    - { artifact: "@zerobias-org/hl7_extension-epic-adt",  version: "^1.2.0" }
-    - { artifact: "@hospital-a/hl7_extension-internal",    version: "0.3.1" }
+  config:                       # OPAQUE to the platform — module-defined shape
+    activeExtensions: [epic-base, epic-adt]   # optional; default = all baked-in
+    senderDiscriminator: MSH-3
 ```
 
-Hub Node:
+The Hub Node injects `config` verbatim as `MODULE_CONFIG` (DESIGN §3.2); it does
+**not** fetch or mount anything for extensions.
 
-1. Resolves each `(artifact, version)` via pkg-proxy → tarball URL.
-2. Pulls tarball, extracts to `/var/lib/zerobias/extensions/<deployment-id>/<artifact>@<version>/`
-   (the extracted package root — `package.json` + `extensions/` at its top).
-3. Mounts each per-artifact directory into its **own uniquely-named
-   subdirectory** under `/opt/module/extensions/` (read-only), one `-v` per
-   extension — e.g.
-   `…/<artifact>@<version>/:/opt/module/extensions/<artifact>@<version>:ro`.
-   Never a single shared mount at `/opt/module/extensions` itself: N
-   artifacts would collide, and it would not match the boot glob below.
-   (Matches `Container.ts` in PLATFORM_UPDATES §5.1:
-   `-v ${dir}:/opt/module/extensions/${path.basename(dir)}:ro`.)
-4. Sets `EXTENSION_DIR=/opt/module/extensions` if not already.
+**Module at boot:**
 
-Module at boot:
+1. Loads `${EXTENSION_DIR}/*/extensions/manifest.json` — one match per baked-in
+   pack (the inner `extensions/` is the package's own directory from §7.1).
+2. Filters to the packs named in `config.activeExtensions` (if present; otherwise
+   all baked-in packs are active).
+3. Validates (module-internal, not platform identity): HL7 version compatibility
+   (`hl7.version` matches the module's configured version), schema-ID format, and
+   no duplicate schema IDs across loaded packs. (No "namespace ownership" check —
+   that rule does not exist.)
+4. Merges schemas into the in-memory schema registry.
+5. Merges structure-index entries into the materializer driver.
+6. Registers additional `/by-type/<name>` collection objects.
 
-1. Loads `/opt/module/extensions/*/extensions/manifest.json` — one match
-   per mounted extension subdir (the inner `extensions/` is the package's
-   own `extensions/` directory from §7.1).
-2. Validates (module-internal, not platform identity): HL7 version
-   compatibility (`hl7.version` matches the module's configured version),
-   schema-ID format, and no duplicate schema IDs across loaded packs. (No
-   "namespace ownership" check — that rule does not exist.)
-3. Merges schemas into the in-memory schema registry.
-4. Merges structure-index entries into the materializer driver.
-5. Registers additional `/by-type/<name>` collection objects.
-
-Server-side validation at deploy time (only if the per-deployment model
-survives the §7 review): the single check is a **presence** check — every
-`extensions[*].artifact` resolves at the requested version. There is no
-namespace-subpath or namespace-ownership validation; the HL7-version and
-schema-ID checks are the module's own, applied at boot (above). All deeper
-validation is module-internal, not a platform concern.
+There is **no** server-side / deploy-time extension validation — the platform has
+nothing to validate (the image either contains the packs or it doesn't). All
+extension validation is module-internal, applied at boot.
 
 ## 8. Buffer — SQLite + WAL
 
@@ -850,19 +863,25 @@ daemon may sit with zero pipeline calls for hours. Two layers:
   ```json
   { "listener": { "up": true, "lastReceived": "...", "bufferDepth": 142, "oldestUnackedSec": 3 },
     "db":       { "walBytes": 12345, "lastCheckpoint": "..." },
-    "extensions": [ { "artifact": "@zerobias-org/hl7_extension-epic-adt@1.2.4", "schemasLoaded": 7 } ] }
+    "extensions": [ { "artifact": "@zerobias-org/hl7-extension-epic-adt@1.2.4", "schemasLoaded": 7 } ] }
   ```
-  Hub Node polls every 30s for daemon deployments.
+  Hub Node polls every 30s for daemon deployments — purely to know whether the
+  container is healthy, the same way it would for any container.
 
 - **MLLP self-test at startup.** Module dials `127.0.0.1:$LISTENER_PORT_MLLP`,
   sends a synthetic `MSH|...|HEALTHCHECK|...|ZZZ^X01`, asserts the row
   is rejected by a `*/X01` no-op handler that never persists. Confirms
   the receive loop is wired end-to-end without polluting the buffer.
 
-Failure to serve `/healthz` for 2 consecutive minutes degrades the
-deployment status; the listener port stays open (TCP connections from
-sending systems are expensive to rebuild — don't restart on a transient
-health-check flap). Operator-driven restart only.
+**`/healthz` is a Node-only concern — it does not feed the platform event
+system.** There is no `DeploymentDegradedReason` / platform deployment-status
+plumbing for it (corrected 2026-06-01). When `/healthz` fails (for ~2 consecutive
+minutes), the failure activates the **Node Alert system**; the listener port stays
+open (TCP connections from sending systems are expensive to rebuild — don't
+restart on a transient health-check flap) and restart is **operator-driven**.
+Cohesive Node-Alert↔platform integration (surfacing Node alerts platform-side) is
+a real, needed, and **separate** effort — out of scope here. See
+PLATFORM_UPDATES.md §8.
 
 ## 10. Out of scope
 
@@ -921,13 +940,15 @@ health-check flap). Operator-driven restart only.
 
 1. **Land the `runtimeConfig` data-model extension** in
    `com/hydra/core/schemas/hub/` + server resolution + node honor
-   (daemon mode, listener ports, durability, extensions). This module
-   is unbuildable without it.
-2. **(Under review — likely dropped.)** Per the §7 platform review, the
-   dataloader does **not** process HL7 extension/schema packages; they reach
-   the module via `npm install`. If that holds, there is no `hl7_extension`
-   dataloader processor to land. (Was: a processor under
-   `com/platform/dataloader/src/processors/` cataloguing `@*/hl7_extension-*`.)
+   (daemon mode, listener ports, durability, and the opaque `config`
+   passthrough — **no** typed extensions). This module is unbuildable
+   without it.
+2. **(Dropped — resolved 2026-06-01.)** The dataloader does **not** process HL7
+   extension/schema packages; they reach the module via `npm install` (baked into
+   the image, §7). There is no `hl7_extension` dataloader processor and no
+   extension catalog. The dataloader's only module-side change is reading the
+   module's root `runtimeConfig.yml` → `module_version.runtime_config`
+   (PLATFORM_UPDATES §6.3).
 3. **Build-time schema codegen.** Maven sub-module that walks
    `hapi-structures-v251`, emits `schemas/v251/*.json` and
    `structure-index/v251.json`. Standalone — verifiable against the

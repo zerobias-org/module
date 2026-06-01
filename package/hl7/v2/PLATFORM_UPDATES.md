@@ -1,13 +1,32 @@
 # Platform updates required to support `@zerobias-org/module-hl7-v2`
 
-This module is the first user of three new platform capabilities:
+This module is the first user of three new **platform** capabilities:
 
 1. **Daemon-mode deployments** — containers that don't passivate, auto-start on node boot.
 2. **Additional listener ports** — deployments bind extra TCP/UDP ports beyond the standard module operations port.
 3. **Durable per-deployment volumes** — named Docker volumes that survive passivation and re-deploy.
-4. **Pluggable extension artifacts** — separate NPM packages that contribute additional schema content (Z-segments, custom tables, augmented message structures) at deploy time.
 
-All four ride on a single new field — `Deployment.runtimeConfig` — carried on the existing `EnsureDeployment` message. No new wire messages, no new operations. This document enumerates every codebase touch required.
+These three are genuinely platform-level: the Hub Node must act on them to create
+the container (restart policy, `-p`, `-v`). They ride on a single new field —
+`Deployment.runtimeConfig` — carried on the existing `EnsureDeployment` message.
+No new wire messages, no new operations.
+
+`runtimeConfig` also carries an **opaque `config` object** (jsonb). The platform
+stores and transports it verbatim and **never interprets it** — its shape and
+meaning are defined by the consuming module. HL7's extension/schema concern lives
+here (and in the module image; see below), *not* as a platform artifact type.
+
+> **Not a platform capability (corrected 2026-06-01).** Earlier drafts modelled
+> "pluggable extension artifacts" as a fourth platform capability — a typed
+> `extensions` array on `runtimeConfig`, a dataloader processor, a catalog table,
+> and per-deployment pkg-proxy resolution + mounting. **Removed.** HL7 extension
+> packs are HL7-specific; the dataloader neither sees nor cares about those NPM
+> artifacts. They reach the module at **`npm install` / image-build time** (baked
+> into the module image), and any runtime selection among baked-in packs is
+> expressed inside the module-defined opaque `config`. Sections that described the
+> platform-typed extension path are struck through below.
+
+This document enumerates every codebase touch required.
 
 Cross-reference: [`DESIGN.md`](DESIGN.md) for the module's design; the discussion that produced both is the canonical rationale.
 
@@ -17,10 +36,10 @@ Cross-reference: [`DESIGN.md`](DESIGN.md) for the module's design; the discussio
 
 | Component | Change kind | Touch surface |
 |---|---|---|
-| Hydra schemas | additive | 4 new schemas, 2 schema extensions |
-| Hydra DDL | additive | 2 column adds, 1 new catalog table |
-| Hydra DAOs | additive | DAO read/write of new column; 1 new DAO |
-| Hub Server (REST API) | additive | OpenAPI schemas regen; admit-time validation |
+| Hydra schemas | additive | 3 new schemas (daemonMode lives inline), 2 schema extensions; `config` is an untyped jsonb |
+| Hydra DDL | additive | 2 column adds (no extension catalog table) |
+| Hydra DAOs | additive | DAO read/write of new column |
+| Hub Server (REST API) | additive | OpenAPI schemas regen; admit-time validation (port collisions only) |
 | Hub Server (Dispatcher) | none (auto via schema) | EnsureDeployment auto-carries new field |
 | Hub Server (Producers) | refactor + additive | `DeploymentProducerImpl`: resolve + validate; `NodeProducerImpl`: include daemon-mode in fan-out |
 | Hub Node (Dispatcher) | refactor | Stop dropping `msg.deployment.runtimeConfig` |
@@ -28,13 +47,14 @@ Cross-reference: [`DESIGN.md`](DESIGN.md) for the module's design; the discussio
 | Hub Node (ContainerDeployment) | refactor | Branch on `daemonMode` to skip `stop()` |
 | Hub Node (ContextManager) | refactor | Branch on `daemonMode` to skip idle timer |
 | Hub Node (WSHubNode) | none | No protocol change |
-| Node-lib (Container.ts) | refactor | Iterate listenerPorts + durability; allocate volumes; inject env |
-| Node-lib (Extensions) | new | Pkg-proxy resolution + tarball extraction + per-deployment mount |
-| Dataloader | additive | New `hl7_extension` artifact-loader entry; one new processor class |
+| Node-lib (Container.ts) | refactor | Iterate listenerPorts + durability; allocate volumes; inject env; pass opaque `config` to container |
+| ~~Node-lib (Extensions)~~ | ~~new~~ | **Dropped** — extensions are baked in at image build, not Node-resolved |
+| Dataloader | additive | Read module-root `runtimeConfig.yml` → `module_version.runtime_config`. **No** `hl7_extension` processor |
 | Platform API (REST) | additive | OpenAPI regen — runtimeConfig in module-version + deployment endpoints |
 | Platform GraphQL | additive | Schema additions; resolver pass-through |
 | Hub Client SDK | regen | Codegen only |
-| pkg-proxy | none | Generic npm proxy is artifact-type-agnostic |
+| pkg-proxy | none | Not involved — no per-deployment extension fetch |
+| Node Alert system | (separate) | A failing `/healthz` raises a Node alert; Node-Alert↔platform integration is a separate topic |
 | Portal API / UI | additive (later) | Operator UI for runtimeConfig; out of scope for v1 of this module |
 
 ---
@@ -50,8 +70,9 @@ Path: [`com/hydra/core/schemas/`](../../../../com/hydra/core/schemas/)
 
 ```yaml
 description: Runtime configuration for a Deployment — daemon mode, listener ports,
-  durable volumes, and extension artifacts. Resolved by Hub Server from ModuleVersion
-  defaults overridden by Deployment-level fields, sent on EnsureDeployment.
+  and durable volumes (platform-interpreted), plus an opaque module-defined config.
+  Resolved by Hub Server from ModuleVersion defaults overridden by Deployment-level
+  fields, sent on EnsureDeployment.
 type: object
 properties:
   daemonMode:
@@ -65,13 +86,23 @@ properties:
   durability:
     type: array
     items: { $ref: './DeploymentDurability.yml' }
-  extensions:
-    type: array
-    items: { $ref: './DeploymentExtensionRef.yml' }
+  config:
+    type: object
+    additionalProperties: true
+    description: Opaque, module-defined configuration. The platform stores and
+      transports this jsonb verbatim and NEVER interprets it — its shape and
+      meaning are defined by the consuming module. Hub Node delivers it to the
+      container at start (see §5.1). HL7 uses it for receiver knobs (e.g. which
+      baked-in extension packs to activate, version handling). This replaces the
+      former typed `extensions` array.
   defaultLifecycle:
     $ref: '../connection/LifecycleConfig.yml'
     description: Fallback LifecycleConfig used when a Connection omits its own.
 ```
+
+> `config` is intentionally untyped at the platform layer. Validation of its
+> contents is the module's own concern, applied at module boot — not a platform
+> admit-time check.
 
 #### `hub/deployment/DeploymentListenerPort.yml`
 
@@ -108,15 +139,12 @@ properties:
       maxAge:     { type: string, format: duration }
 ```
 
-#### `hub/deployment/DeploymentExtensionRef.yml`
+#### ~~`hub/deployment/DeploymentExtensionRef.yml`~~ — **dropped**
 
-```yaml
-type: object
-required: [artifact, version]
-properties:
-  artifact:       { type: string, example: "@auditlogic/hl7-extensions-epic-adt" }
-  version:        { type: string, example: "^1.2.0" }
-```
+There is no platform-typed extension reference. Extension packs are HL7-specific
+and reach the module at image-build time (`npm install`); any runtime selection
+among them is expressed inside the opaque `config` object above, which the
+platform does not parse.
 
 ### 1.2 Schema extensions
 
@@ -145,8 +173,10 @@ properties:
   ...
   runtimeConfig:
     $ref: '../../../hub/deployment/DeploymentRuntimeConfig.yml'
-    description: Module-author-declared defaults. Populated by dataloader from
-      the module package's `auditmation.runtime` block in package.json.
+    description: Module-author-declared defaults. Populated by dataloader from the
+      module package's root `runtimeConfig.yml` file (declared in package.json
+      `files`). The file is optional in general but MANDATORY when
+      `daemonMode: true`. See §6.3.
 ```
 
 #### `hub/message/EnsureDeployment.yml`
@@ -207,16 +237,12 @@ JSONB roundtrip — the DAO already handles JSON for other fields, so this is a 
 
 Same shape on the `ModuleVersionDAO` (path: depends on where the canonical module-version DAO lives — confirm in `com/hydra/dao/src/store/` or equivalent).
 
-### 2.3 New catalog table for HL7 extensions
+### 2.3 ~~New catalog table for HL7 extensions~~ — **dropped**
 
-The platform's content distribution already handles arbitrary `import-artifact` types; HL7 extensions just need a row to live in. Two options:
-
-- **A** — Reuse `catalog.artifact` (or similar generic table) keyed by `import_artifact='hl7-extension'`. No DDL.
-- **B** — Add a dedicated `catalog.hl7_extension_view` table with the extension's `hl7Version`, `vendor`, `namespace`, `messageGroups` for fast search.
-
-(B) is worth it if operators will search/filter extensions by HL7 version or vendor. (A) is sufficient if discovery is via package name only.
-
-**Pick (A) for v1.** Resolution at deploy time is by `(artifact, version)`; richer search is a later concern.
+There is no extension catalog table. The dataloader does not process HL7 extension
+NPM packages, and the platform does no deploy-time extension resolution — so there
+is nothing to catalog. Extension packs are baked into the module image at build
+time. (Corrected 2026-06-01; see the §7 review note in `DESIGN.md`.)
 
 ---
 
@@ -241,7 +267,7 @@ deployment.runtimeConfig = resolveRuntimeConfig(
 this.context.dispatcher.ensureDeployment(node, deployment).catch(...);
 ```
 
-`resolveRuntimeConfig` is a shallow merge — deployment-level wins per field, arrays replace rather than concatenate (operators replace the extension list wholesale; merging surprises). Lives in a new utility module alongside the producer.
+`resolveRuntimeConfig` is a shallow merge — deployment-level wins per field, arrays replace rather than concatenate (operators replace the `listenerPorts`/`durability` list wholesale; merging surprises). The opaque `config` object is merged shallowly at the top level only (deployment override wins per top-level key); the platform does not reach into its nested shape. Lives in a new utility module alongside the producer.
 
 Add **admit-time validation** in `create()` and `update()` (before the deployment is persisted):
 
@@ -252,7 +278,7 @@ private async validateRuntimeConfig(
   deploymentId: UUID | undefined,
   rc: DeploymentRuntimeConfig,
 ): Promise<void> {
-  // 1. Listener port collisions on same node
+  // Listener port collisions on same node — the ONLY admit-time check.
   const pinned = (rc.listenerPorts ?? [])
     .filter(lp => lp.port != null && lp.port !== -1);
   if (pinned.length) {
@@ -262,12 +288,9 @@ private async validateRuntimeConfig(
       throw new ConflictError(`port(s) ${pinned.map(p=>p.port).join(',')} already pinned on node`);
     }
   }
-  // 2. Extension artifacts resolvable in the catalog
-  for (const ext of rc.extensions ?? []) {
-    const exists = await this.context.artifactCatalog.has(ext.artifact, ext.version);
-    if (!exists) throw new NotFoundError(`extension ${ext.artifact}@${ext.version} not in catalog`);
-  }
-  // 3. Extension HL7 version compatibility checked here too if connectionProfile.hl7Version is on the deployment
+  // `rc.config` is opaque — the platform does NOT validate its contents.
+  // Module-internal validation (extension packs, HL7 version compat, schema-ID
+  // format) happens at module boot, not here.
 }
 ```
 
@@ -298,13 +321,14 @@ Path: `com/hub/server/src/api/`
 
 - `deployment.yml` — accept and return `runtimeConfig` on create / update / get / search.
 - `module.yml` — accept and return `runtimeConfig` on the module-version endpoints.
-- Add response codes for new admit-time errors (`409` for port collision, `404` for unknown extension).
+- Add response code for the new admit-time error (`409` for listener-port collision). No `404`-for-extension — extension resolution is not a platform concern.
 
 Codegen regenerates the client and server stubs.
 
-### 3.5 `ServerContext` — artifact catalog accessor
+### 3.5 ~~`ServerContext` — artifact catalog accessor~~ — **dropped**
 
-The validation step needs `this.context.artifactCatalog.has(artifact, version)`. Confirm the existing module-version lookup serves this; if not, a thin facade over `ModuleVersionDAO` + extension catalog lookup.
+Was needed only for the (now removed) extension-resolvability check. No artifact
+catalog accessor is required; admit-time validation is port-collision only (§3.1).
 
 ---
 
@@ -425,11 +449,11 @@ for (const d of runtimeConfig?.durability ?? []) {
   createArgs.push('-v', `${d.volumeName}:${d.mountPath}:${d.access ?? 'rw'}`);
 }
 
-for (const ext of runtimeConfig?.extensions ?? []) {
-  const dir = await this.resolveExtension(ext);    // pkg-proxy fetch + extract; §5.2
-  createArgs.push('-v', `${dir}:/opt/module/extensions/${path.basename(dir)}:ro`);
+// Opaque module config — delivered verbatim, never interpreted by the Node.
+// One generic mechanism for every module that uses `config`.
+if (runtimeConfig?.config != null) {
+  envVars['MODULE_CONFIG'] = JSON.stringify(runtimeConfig.config);
 }
-envVars['EXTENSION_DIR'] = '/opt/module/extensions';
 
 for (const [k, v] of Object.entries(envVars)) {
   createArgs.push('-e', `${k}=${v}`);
@@ -438,22 +462,18 @@ for (const [k, v] of Object.entries(envVars)) {
 createArgs.push(fullImage);
 ```
 
+`MODULE_CONFIG` is the generic delivery channel: the Node serializes the opaque
+`config` to JSON and injects it; the module parses it (HL7 reads it in
+`ModuleConfig.java`). No extension mount loop, no `EXTENSION_DIR` injection from
+the Node — extension packs are baked into the image at build (§7 of `DESIGN.md`),
+so `EXTENSION_DIR` (if used) points at an in-image path the module owns.
+
 Also: after start, write the resolved listener-port values back to `slot.deployments.update()` so the server can fetch them via `GET /deployments/{id}` and surface to operators.
 
-### 5.2 New: `docker/Extensions.ts` (or similar)
+### 5.2 ~~New: `docker/Extensions.ts`~~ — **dropped**
 
-```ts
-async resolveExtension(ext: DeploymentExtensionRef): Promise<string> {
-  // 1. Build cache dir: /var/lib/zerobias/extensions/<deployment-id>/<artifact>@<version>/
-  // 2. If exists, return.
-  // 3. Otherwise: ask pkg-proxy for the tarball URL of <artifact>@<version>
-  //    Existing pkg-proxy client lives in node-lib for module fetches; reuse.
-  // 4. curl tarball → extract → return dir.
-  // 5. Validate: manifest.json present + parseable.
-}
-```
-
-No changes to pkg-proxy itself — it serves arbitrary npm tarballs.
+No per-deployment extension resolution. pkg-proxy is not involved. Extension packs
+arrive via `npm install` at image build, not via a Node-side tarball fetch + mount.
 
 ### 5.3 `ensureNamedVolume(name)`
 
@@ -465,45 +485,36 @@ One-liner via `docker volume create --label slot=<name>` (idempotent — returns
 
 Path: [`com/platform/dataloader/src/`](../../../../com/platform/dataloader/src/)
 
-### 6.1 New processor
+### 6.1 ~~New processor~~ — **dropped**
 
-`processors/hl7Extension/HL7ExtensionArtifactLoader.ts`:
+There is no `hl7-extension` artifact loader and no `import-artifact: hl7_extension`
+loader registration. The dataloader does not see or care about HL7 extension NPM
+packages. (Corrected 2026-06-01.) The Validator's `import-artifact` dispatch is
+unchanged; no `hl7-extension` entry is added.
 
-```ts
-import { ArtifactLoader } from '../ArtifactLoader.js';
+### 6.2 ~~Register in `DataLoader.ts`~~ — **dropped**
 
-export class HL7ExtensionArtifactLoader implements ArtifactLoader<HL7Extension> {
-  // ...
-  async processFiles(path: string) {
-    // 1. Read extensions/manifest.json
-    // 2. Validate namespace ownership against package scope
-    // 3. Validate schema JSON files conform to canonical SchemaId format
-    // 4. Insert into catalog (see §2.3)
-  }
-}
-```
+See §6.1.
 
-### 6.2 Register in `DataLoader.ts`
-
-[`com/platform/dataloader/src/importer/DataLoader.ts:732`](../../../../com/platform/dataloader/src/importer/DataLoader.ts) is where loaders register. Add:
-
-```ts
-this.loaderMap['hl7-extension'] = new HL7ExtensionArtifactLoader(
-  transactionLogger, dbTxn, nullZerobiasPackageInfo, this.versions[dep], this.isContentDev
-);
-```
-
-The Validator at [`com/platform/dataloader/src/importer/Validator.ts:186-188`](../../../../com/platform/dataloader/src/importer/Validator.ts) reads `import-artifact` from `package.json` and looks up the loader — no change needed there once registered.
-
-### 6.3 Module loader — read `runtime_config` from package.json
+### 6.3 Module loader — read `runtimeConfig.yml`
 
 [`com/platform/dataloader/src/processors/module/ModuleArtifactLoader.ts`](../../../../com/platform/dataloader/src/processors/module/ModuleArtifactLoader.ts):
 
-- Read `package.json` → `auditmation.runtime` block.
-- Validate against `DeploymentRuntimeConfig.yml` schema.
+- Read the module package's root **`runtimeConfig.yml`** file (declared in
+  `package.json` `files`, so it ships in the tarball).
+- The file is **optional in general** but **MANDATORY when `daemonMode: true`** —
+  a daemon module with no `runtimeConfig.yml` is a packaging error the dataloader
+  rejects. (A daemon with no declared listener ports / durability / config is a
+  misconfiguration, not a default.)
+- Validate it against the `DeploymentRuntimeConfig.yml` schema (the typed
+  `daemonMode`/`listenerPorts`/`durability` fields; `config` is passed through
+  un-validated — it's opaque).
 - Store as `runtime_config` JSONB on the `module_version` row.
 
-This is the "module-author-declared defaults" half of the resolution path.
+This replaces the earlier "read the `auditmation.runtime` block from package.json"
+plan — module-author-declared defaults now live in a dedicated file, not a
+package.json sub-block. This is the "module-author-declared defaults" half of the
+resolution path.
 
 ---
 
@@ -532,16 +543,27 @@ Path: `com/hub/sdk/` + `com/hub/client-server/`. Codegen-only — regenerates fr
 
 ---
 
-## 8. Events + monitoring
+## 8. Health monitoring — Node-local, via the Node Alert system
 
-Path: [`com/platform/events/src/`](../../../../com/platform/events/src/)
+**Corrected 2026-06-01.** `/healthz` is **not** wired into the platform event
+system. It is a Node-only concern: the Hub Node polls `/healthz` to know whether
+the container is healthy, exactly as it would for any container. There is **no**
+`DeploymentDegradedReason` enum, **no** `HealthCheckFailing` value, and **no**
+`DeploymentInfo.status`/event-handler plumbing for it.
 
-Daemon-mode deployments don't follow the standard "ops succeed → healthy" signal. Two additions:
+- **Health check poller** — Hub Node grows a 30s interval that probes `/healthz`
+  on daemon-mode deployments. New file: `com/hub/node/src/HealthChecker.ts` (or
+  co-locate in `ContainerManager`).
+- **On failure → the Node Alert system activates.** A failing `/healthz` raises a
+  **Node alert**, not a platform event. Per DESIGN §9 the listener port stays open
+  and the container is **not** auto-restarted (TCP sessions from sending systems
+  are expensive to rebuild; don't restart on a transient health flap) — restart is
+  operator-driven.
 
-- **`DeploymentDegradedReason` enum** (in `com/hydra/core/schemas/hub/deployment/`) — add `HealthCheckFailing` value for the case where `/healthz` polling fails on a daemon deployment but the container is up.
-- **Health check poller** — Hub Node grows a 30s interval that probes `/healthz` on daemon-mode deployments and updates `DeploymentInfo.status` / `degradedReason` accordingly. New file: `com/hub/node/src/HealthChecker.ts` (or co-locate in `ContainerManager`).
-
-The event handlers already react to `DeploymentInfo` changes; no new handler logic needed.
+> **Separate topic.** Cohesive integration between the **Node Alert system** and
+> the platform (so operators see Node alerts platform-side) is real and needed, but
+> it is a separate effort with its own design — explicitly out of scope for this
+> module. Nothing here depends on it landing.
 
 ---
 
@@ -551,9 +573,9 @@ Update the CLAUDE.md / Architecture.md files that codify each component's curren
 
 - [`com/hub/Architecture.md`](../../../../com/hub/Architecture.md) — add daemon-mode + listener-port + durability to the deployment lifecycle section.
 - [`com/hub/server/CLAUDE.md`](../../../../com/hub/server/CLAUDE.md) — ensureDeployment now carries runtimeConfig; resolution happens server-side.
-- [`com/hub/node/CLAUDE.md`](../../../../com/hub/node/CLAUDE.md) — daemon-mode deployments + extension mount + listener ports.
-- [`com/platform/dataloader/CLAUDE.md`](../../../../com/platform/dataloader/CLAUDE.md) — new `hl7-extension` processor.
-- [`org/module/CLAUDE.md`](../../../../org/module/CLAUDE.md) (the module-monorepo doc) — new `auditmation.runtime` block in module package.json; new `import-artifact: hl7-extension` package type.
+- [`com/hub/node/CLAUDE.md`](../../../../com/hub/node/CLAUDE.md) — daemon-mode deployments + listener ports + durability + opaque `config` passthrough (`MODULE_CONFIG`). No extension mount.
+- [`com/platform/dataloader/CLAUDE.md`](../../../../com/platform/dataloader/CLAUDE.md) — reads module-root `runtimeConfig.yml` → `module_version.runtime_config` (mandatory when `daemonMode`). No `hl7-extension` processor.
+- [`org/module/CLAUDE.md`](../../../../org/module/CLAUDE.md) (the module-monorepo doc) — new `runtimeConfig.yml` file convention (in package.json `files`, mandatory for daemon modules). No `auditmation.runtime` block, no `hl7-extension` package type.
 
 ---
 
@@ -564,29 +586,27 @@ Ordered for incremental landing — each step is independently mergeable + rever
 1. **Hydra schemas** (§1). Generate types; nothing consumes the new fields yet, but downstream codegen sees them.
 2. **DDL migration** (§2.1). Add columns; nothing reads them yet.
 3. **DAOs** (§2.2). Read/write the new column; surface only via direct queries.
-4. **Dataloader module loader** (§6.3). Module packages with `auditmation.runtime` start populating `module_version.runtime_config`.
+4. **Dataloader module loader** (§6.3). Modules shipping `runtimeConfig.yml` start populating `module_version.runtime_config`.
 5. **Hub Server resolution + validation** (§3.1). `EnsureDeployment` starts carrying `runtimeConfig`. Hub Node ignores the new field — no behavior change yet.
-6. **Hub Node — pipe through** (§4.1). Node receives + persists `runtimeConfig` in slot state, still ignores semantically.
+6. **Hub Node — pipe through** (§4.1). Node receives + persists `runtimeConfig` (incl. opaque `config`) in slot state, still ignores semantically.
 7. **Hub Node — honor `daemonMode`** (§4.3, §4.4). Branches on the flag. First behavioral change. Test against a synthetic always-on module.
-8. **Hub Node — listener ports + durability** (§5.1). `-p` and `-v` loops. Test with a contrived module that listens on an extra port.
+8. **Hub Node — listener ports + durability + `MODULE_CONFIG`** (§5.1). `-p` / `-v` loops and opaque-config injection. Test with a contrived module that listens on an extra port.
 9. **Hub Node — auto-start daemon-mode** (§4.2). Post-handshake scan.
-10. **Hub Node — extension resolution** (§5.2). Pkg-proxy fetch + mount.
-11. **Dataloader — `hl7-extension` processor** (§6.1, §6.2). Extensions become loadable.
-12. **REST + GraphQL** (§7). Operators can create deployments with runtimeConfig via the platform UI/API.
-13. **Health check poller** (§8). Daemon-mode deployments report degraded state on `/healthz` failure.
-14. **HL7 module itself** ([`DESIGN.md`](DESIGN.md)). The first real consumer.
+10. **REST + GraphQL** (§7). Operators can create deployments with runtimeConfig via the platform UI/API.
+11. **Health check poller** (§8). Daemon-mode deployments polled; failures raise Node alerts.
+12. **HL7 module itself** ([`DESIGN.md`](DESIGN.md)). The first real consumer.
 
-Steps 1–11 are platform infrastructure; an internal "always-on echo" test module proves them out without committing to HL7 semantics. Step 14 is module-side work that depends on all the platform work being in place.
+Steps 1–9 are platform infrastructure; an internal "always-on echo" test module proves them out without committing to HL7 semantics. Step 12 is module-side work that depends on all the platform work being in place. (There is no extension-resolution or `hl7-extension`-processor step — extensions are baked into the module image at build, not resolved by the platform.)
 
 ---
 
 ## 11. Open questions
 
-1. **Backfill on existing deployments.** Existing deployment rows will have `runtime_config IS NULL`. That's correct — no daemon mode, no listener ports, no extensions. But: should the dataloader, when it sees a module-version update that adds `auditmation.runtime`, surface a "you may want to update existing deployments" prompt to operators? Or is per-deployment override always opt-in? Suggest: opt-in. Module-version defaults flow through unchanged for new deployments; existing deployments keep their (null) override.
+1. **Backfill on existing deployments.** Existing deployment rows will have `runtime_config IS NULL`. That's correct — no daemon mode, no listener ports. But: should the dataloader, when it sees a module-version update whose `runtimeConfig.yml` changed, surface a "you may want to update existing deployments" prompt to operators? Or is per-deployment override always opt-in? Suggest: opt-in. Module-version defaults flow through unchanged for new deployments; existing deployments keep their (null) override.
 2. **`runtime_config` on `ModuleVersion` — visible via which API?** Operators creating a deployment via the UI should see what defaults the module declares (so they know what listener ports to pin, etc.). REST API for `module-version` should surface `runtimeConfig` on GET; UI needs to render it before the deployment-create form. Not in scope for v1 of the HL7 module but worth flagging.
 3. **Volume retention vs deployment lifecycle.** §5.3 says "volumes deleted on undeploy, not on passivation." Verify against the existing deployment-removal code path in `ContainerManager` — is there a hook there today that we extend, or does undeploy go through a different path?
-4. **Extension HL7 version compatibility.** §3.1 mentions validating `ext.auditmation.hl7.version` against the deployment's configured HL7 version. The deployment doesn't know its own HL7 version today — that lives in `connectionProfile.hl7Version`, which is per-secret, not per-deployment. Where does the version live for validation? Options: (a) duplicate it onto `runtimeConfig.hl7Version` for the receiver module's case; (b) defer the check to module boot (rejected — too late); (c) require the operator to declare it explicitly on the deployment. (c) is cleanest.
-5. **`startDaemonDeployments` ordering.** When the node receives a fan-out of `ensureDeployment` messages at boot, daemon-mode deployments should auto-start as those messages arrive — but extensions referenced from those deployments may take seconds to pull from pkg-proxy. The handshake-recovery path needs to not block the WebSocket while extensions download. Background-task each extension fetch, defer container start until extensions are ready. Affects `WSHubNode` only insofar as it kicks off a non-blocking async; verify nothing in the handshake/state code paths assumes synchronous completion.
+4. **Opaque `config` delivery channel.** §5.1 injects `config` as the `MODULE_CONFIG` env var (JSON). Confirm there's no practical size limit that bites (large config → consider a mounted file under the durability volume instead, still generic). Env is simplest for v1; revisit if a module needs a large `config`.
+5. **`startDaemonDeployments` ordering.** When the node receives a fan-out of `ensureDeployment` messages at boot, daemon-mode deployments should auto-start as those messages arrive. With extensions baked into the image (no runtime pull), there is no per-extension download to defer — container start is gated only on the image being present and the volume mounted. Still confirm nothing in the handshake/state code path assumes the auto-start completes synchronously.
 
 ---
 

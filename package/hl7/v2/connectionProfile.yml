@@ -2,9 +2,11 @@ type: object
 description: >-
   Connection profile for the HL7 v2 receiver. Unlike demand-driven modules,
   there is no remote system to dial — these fields tune how the always-on MLLP
-  listener and durable buffer behave. Listener port, durable volume, and
-  extension artifacts are supplied separately via Deployment.runtimeConfig
-  (see PLATFORM_UPDATES.md), not here.
+  listener and durable buffer behave. Listener port and durable volume are
+  supplied separately via Deployment.runtimeConfig (see PLATFORM_UPDATES.md),
+  not here. Extension packs are baked into the module image at build time
+  (DESIGN §7), not configured here. Module-defined runtime knobs that the
+  platform treats as opaque travel in runtimeConfig.config (MODULE_CONFIG).
 properties:
   hl7Version:
     type: string

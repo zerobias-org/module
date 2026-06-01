@@ -25,6 +25,7 @@
     "generated/api/manifest.json",
     "api.yml",
     "connectionProfile.yml",
+    "runtimeConfig.yml",
     "Dockerfile",
     "java/target/hl7-listener-1.0.0.jar"
   ],

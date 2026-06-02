@@ -6,6 +6,7 @@
   "moduleId": "369d38b0-2c23-43f0-bbc4-33f453ee75c8",
   "implementationType": "java-http",
   "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "engines": {
     "node": ">=22.21.1"
   },
@@ -26,8 +27,7 @@
     "api.yml",
     "connectionProfile.yml",
     "runtimeConfig.yml",
-    "Dockerfile",
-    "java/target/hl7-listener-1.0.0.jar"
+    "Dockerfile"
   ],
   "zerobias": {
     "package": "hl7.v2.module",

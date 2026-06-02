@@ -34,6 +34,16 @@ durability:
       maxBytes: 10737418240   # 10 GiB
       maxAge: P7D
 
+# Container memory cap (Hub Node applies as `--memory`; swap disabled by default).
+# The JVM heap is -Xmx512m (Dockerfile), so the container needs headroom above the
+# heap for JVM non-heap (metaspace, thread stacks, direct buffers), nginx, and the
+# SQLite buffer page cache. 1024 MB keeps the heap at ~50% of the cap — the standard
+# JVM-in-container ratio. The node's built-in 512 MB default would OOM-kill this
+# daemon immediately (it equals the heap max alone), so declaring this is mandatory
+# here, not optional. (DESIGN §8, PLAN D15) Operators may override per-deployment.
+resources:
+  memoryMb: 1024
+
 # Opaque, module-defined config. The platform transports this verbatim
 # (runtimeConfig.config → MODULE_CONFIG env) and NEVER parses it. The HL7 module
 # reads it at boot. Shape and meaning are owned by this module. (DESIGN §3.2, §7.3)

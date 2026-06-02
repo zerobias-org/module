@@ -95,6 +95,13 @@ properties:
       container at start (see §5.1). HL7 uses it for receiver knobs (e.g. which
       baked-in extension packs to activate, version handling). This replaces the
       former typed `extensions` array.
+  resources:
+    $ref: './DeploymentResources.yml'
+    description: Container resource caps (`--memory` / `--memory-swap`) applied by
+      Hub Node at start. Author-declared defaults; operator-overridable. Omitted
+      → Hub Node applies its built-in default (512 MB, swap disabled). MANDATORY
+      in practice for any module whose real RSS exceeds 512 MB (e.g. JVM modules
+      where the container needs heap + non-heap headroom).
   defaultLifecycle:
     $ref: '../connection/LifecycleConfig.yml'
     description: Fallback LifecycleConfig used when a Connection omits its own.
@@ -103,6 +110,37 @@ properties:
 > `config` is intentionally untyped at the platform layer. Validation of its
 > contents is the module's own concern, applied at module boot — not a platform
 > admit-time check.
+
+#### `hub/deployment/DeploymentResources.yml`
+
+```yaml
+description: Per-container resource caps applied by Hub Node at `docker run`. The
+  platform transports these; the node enforces them. Restart policy is NOT here —
+  the node derives it from daemonMode/phase (PLAN D14), not from operator config.
+type: object
+properties:
+  memoryMb:
+    type: integer
+    minimum: 64
+    description: Hard memory cap → `--memory=<memoryMb>m`. Must exceed the
+      container's real RSS — for JVM modules, comfortably above `-Xmx` (heap at
+      ~50–75% of the cap is the standard JVM-in-container ratio). When the whole
+      `resources` block (or this field) is omitted, Hub Node applies its built-in
+      512 MB default.
+  memorySwapMb:
+    type: integer
+    nullable: true
+    default: null
+    description: → `--memory-swap`. Omitted/null = node sets it equal to memoryMb,
+      which disables swap so an over-limit container OOMs immediately (the
+      load-bearing behavior — a swapping box is the CRASH_LOOP §5.2 hang). Set
+      greater than memoryMb only to deliberately allow swap.
+```
+
+> Resolution follows the same per-field rule as the rest of `DeploymentRuntimeConfig`
+> (Deployment-level override wins whole; `null`/absent inherits the default). Hub
+> Node applies `--memory` / `--memory-swap` from the resolved value, falling back to
+> its 512 MB / swap-off default when `resources` is absent.
 
 #### `hub/deployment/DeploymentListenerPort.yml`
 

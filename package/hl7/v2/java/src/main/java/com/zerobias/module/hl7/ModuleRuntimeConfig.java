@@ -1,10 +1,11 @@
 package com.zerobias.module.hl7;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.zerobias.module.hl7.buffer.RetentionConfig;
 
+import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -13,35 +14,80 @@ import java.util.Set;
  * the {@code MODULE_CONFIG} env (DESIGN §3.2, post-2026-06-01 review). The
  * platform never parses it — this module owns its shape:
  *
- * <pre>{ "activeExtensions": ["epic-adt"], "hl7Version": "2.5.1" }</pre>
+ * <pre>
+ * { "activeExtensions": ["epic-adt"],
+ *   "hl7Version": "2.5.1",
+ *   "ackDurability": "full",
+ *   "retention": { "maxBytes": 10737418240, "maxAge": "P7D" } }
+ * </pre>
  *
- * Absent/blank {@code MODULE_CONFIG} → no active-extension filter (all baked-in
- * packs load).
+ * <p>These are <em>daemon/container-level</em> knobs: they configure the buffer
+ * and listener at boot, before any connection exists, so they travel here (the
+ * only channel the platform delivers to the running module) rather than in the
+ * per-connection {@code connectionProfile}. Absent/blank/malformed
+ * {@code MODULE_CONFIG} → safe defaults (no extension filter, {@code normal}
+ * durability, no retention) rather than a boot crash.
  */
-public record ModuleRuntimeConfig(Set<String> activeExtensions) {
+public record ModuleRuntimeConfig(
+        Set<String> activeExtensions,
+        boolean fullDurability,
+        RetentionConfig retention) {
 
     private static final Gson GSON = new Gson();
+
+    private static ModuleRuntimeConfig defaults() {
+        return new ModuleRuntimeConfig(new LinkedHashSet<>(), false, RetentionConfig.none());
+    }
 
     public static ModuleRuntimeConfig fromEnv() {
         return parse(System.getenv("MODULE_CONFIG"));
     }
 
     static ModuleRuntimeConfig parse(String json) {
-        Set<String> active = new LinkedHashSet<>();
-        if (json != null && !json.isBlank()) {
-            try {
-                JsonObject obj = GSON.fromJson(json, JsonObject.class);
-                if (obj != null && obj.has("activeExtensions") && obj.get("activeExtensions").isJsonArray()) {
-                    for (JsonElement e : obj.getAsJsonArray("activeExtensions")) {
-                        active.add(e.getAsString());
-                    }
+        if (json == null || json.isBlank()) {
+            return defaults();
+        }
+        try {
+            JsonObject obj = GSON.fromJson(json, JsonObject.class);
+            if (obj == null) {
+                return defaults();
+            }
+            Set<String> active = new LinkedHashSet<>();
+            if (obj.has("activeExtensions") && obj.get("activeExtensions").isJsonArray()) {
+                for (JsonElement e : obj.getAsJsonArray("activeExtensions")) {
+                    active.add(e.getAsString());
                 }
-            } catch (com.google.gson.JsonSyntaxException malformed) {
-                // Malformed MODULE_CONFIG → treat as no active-extension filter (all
-                // baked-in packs active) rather than crashing the daemon at boot.
-                return new ModuleRuntimeConfig(new LinkedHashSet<>());
+            }
+            boolean full = obj.has("ackDurability")
+                && obj.get("ackDurability").isJsonPrimitive()
+                && "full".equalsIgnoreCase(obj.get("ackDurability").getAsString());
+            return new ModuleRuntimeConfig(active, full, parseRetention(obj));
+        } catch (RuntimeException malformed) {
+            // Malformed MODULE_CONFIG (bad JSON, wrong-typed/garbage fields) → safe
+            // defaults rather than crashing the daemon at boot. The platform transports
+            // this opaque; a deploy with a typo must not wedge an always-on receiver.
+            return defaults();
+        }
+    }
+
+    private static RetentionConfig parseRetention(JsonObject obj) {
+        if (!obj.has("retention") || !obj.get("retention").isJsonObject()) {
+            return RetentionConfig.none();
+        }
+        JsonObject r = obj.getAsJsonObject("retention");
+        Long maxBytes = (r.has("maxBytes") && r.get("maxBytes").isJsonPrimitive()
+                && r.getAsJsonPrimitive("maxBytes").isNumber())
+            ? r.get("maxBytes").getAsLong() : null;
+        Duration maxAge = null;
+        if (r.has("maxAge") && r.get("maxAge").isJsonPrimitive()) {
+            try {
+                maxAge = Duration.parse(r.get("maxAge").getAsString());
+            } catch (java.time.format.DateTimeParseException badDuration) {
+                // A bad maxAge disables age-based eviction only; it must not discard
+                // maxBytes or the rest of the config.
+                maxAge = null;
             }
         }
-        return new ModuleRuntimeConfig(active);
+        return new RetentionConfig(maxAge, maxBytes);
     }
 }

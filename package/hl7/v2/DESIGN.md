@@ -816,8 +816,10 @@ PRAGMA synchronous = NORMAL;           -- see §8.1
 not every write. Kernel crashes inside the WAL window lose a few
 seconds of un-checkpointed messages for which `MSA|AA` was already
 sent. That's a real durability gap. Operators with clinical feeds set
-`connectionProfile.ackDurability: full` for `PRAGMA synchronous=FULL`
-(fsync per row, ~2× slower) at deployment time.
+`runtimeConfig.config.ackDurability: full` for `PRAGMA synchronous=FULL`
+(fsync per row, ~2× slower). This is a daemon-level knob applied when the buffer
+opens at boot, so it travels in the opaque `config` (`MODULE_CONFIG`) — not in
+the per-connection `connectionProfile`, which the always-on receiver never reads.
 
 ### 8.2 Drain semantics — implemented as `ops/take`
 
@@ -860,8 +862,11 @@ DELETE FROM messages
         ));
 ```
 
-Both `maxBytes` and `maxAge` apply from `runtimeConfig.durability.retention`;
-whichever fires first wins.
+Both `maxBytes` and `maxAge` apply from `runtimeConfig.config.retention`
+(delivered via `MODULE_CONFIG`); whichever fires first wins. Trimming is
+module-owned: the platform provisions the volume but cannot cap a named volume's
+size, so retention is not a `durability` field (PLATFORM_UPDATES §1.1). The
+sweeper starts at boot only when a ceiling is declared; absent → unbounded.
 
 ## 9. Health
 

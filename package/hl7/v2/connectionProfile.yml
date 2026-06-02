@@ -24,7 +24,12 @@ properties:
       fsync at WAL checkpoints) is faster but can lose a few seconds of
       ack'd-but-uncheckpointed messages on a kernel crash. 'full'
       (synchronous=FULL, fsync per row, ~2x slower) closes that gap — use for
-      clinical feeds. (DESIGN §8.1)
+      clinical feeds.
+      NOTE: this is a daemon-level setting applied when the buffer opens at
+      container boot, before any connection exists. The receiver takes its
+      EFFECTIVE value from runtimeConfig.config.ackDurability (MODULE_CONFIG),
+      not from this per-connection field, which the always-on daemon never reads.
+      Kept for documentation/back-compat. (DESIGN §8.1)
     enum: [normal, full]
     default: normal
   backpressurePolicy:

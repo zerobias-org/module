@@ -3,6 +3,7 @@ package com.zerobias.module.hl7;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.zerobias.module.hl7.buffer.BufferStore;
+import com.zerobias.module.hl7.buffer.RetentionSweeper;
 import com.zerobias.module.hl7.listener.BufferingApp;
 import com.zerobias.module.hl7.listener.Hl7ListenerService;
 import com.zerobias.module.hl7.materializer.EnvelopeMaterializer;
@@ -26,6 +27,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -66,6 +69,7 @@ public final class Hl7ApiServer {
     private final Map<String, String> connections = new ConcurrentHashMap<>();
     private Hl7ProducerFacade facade;
     private BufferStore buffer;
+    private RetentionSweeper retentionSweeper;
     private Hl7ListenerService listener;
     private HealthCheck health;
 
@@ -81,10 +85,27 @@ public final class Hl7ApiServer {
         LOG.info("HL7 v2 receiver starting: ops port {}, MLLP port {}, extensionDir {}",
             config.internalPort(), config.mllpPort(), config.extensionDir());
 
+        // Daemon-level knobs (ack durability, retention, active extensions) arrive via
+        // the opaque MODULE_CONFIG — the only channel the platform delivers to a running
+        // module. They configure the buffer at boot, before any connection exists, so
+        // they cannot come from the per-connection connectionProfile. (DESIGN §3.2, §8)
+        ModuleRuntimeConfig mc = ModuleRuntimeConfig.fromEnv();
+
         // --- daemon: buffer + MLLP listener (DESIGN §4) ---
         String dbPath = System.getenv().getOrDefault("BUFFER_DB", "/var/lib/module/buffer.db");
-        boolean fullDurability = "full".equalsIgnoreCase(System.getenv("ACK_DURABILITY"));
-        this.buffer = new BufferStore(dbPath, fullDurability);
+        this.buffer = new BufferStore(dbPath, mc.fullDurability());
+
+        // Retention trimming (DESIGN §8.3): the platform provisions the volume but
+        // cannot cap a named volume's size, so the module owns trimming. Sweep on a
+        // schedule when a ceiling is declared; none() = unbounded (dev/test default).
+        if (mc.retention().maxAge() != null || mc.retention().maxBytes() != null) {
+            this.retentionSweeper = new RetentionSweeper(buffer, mc.retention(), Clock.systemUTC());
+            this.retentionSweeper.start(Duration.ofMinutes(10));
+            LOG.info("Retention sweeper started: maxAge={}, maxBytes={}",
+                mc.retention().maxAge(), mc.retention().maxBytes());
+        } else {
+            LOG.info("Retention: unbounded (no maxAge/maxBytes in MODULE_CONFIG)");
+        }
 
         // Base schemas + structure index, both baked into the jar at build (Phase 1)
         // and served from the classpath. SCHEMA_DIR is a dev fallback for running
@@ -99,7 +120,6 @@ public final class Hl7ApiServer {
         // Extensions (DESIGN §7.3): baked into the image under EXTENSION_DIR, optionally
         // narrowed by MODULE_CONFIG.activeExtensions. Merges schemas + structure-index in
         // place and yields the discriminators that route augmented structures.
-        ModuleRuntimeConfig mc = ModuleRuntimeConfig.fromEnv();
         ExtensionLoader.Result ext = ExtensionLoader.load(
             Path.of(config.extensionDir()), mc.activeExtensions(), HL7_VERSION, schemas, index);
 
@@ -143,6 +163,9 @@ public final class Hl7ApiServer {
                 listener.close();
             } catch (Exception e) {
                 LOG.warn("listener shutdown", e);
+            }
+            if (retentionSweeper != null) {
+                retentionSweeper.stop();
             }
             try {
                 buffer.close();

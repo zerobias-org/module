@@ -170,12 +170,15 @@ properties:
   volumeName:     { type: string }
   mountPath:      { type: string, example: /var/lib/module }
   access:         { type: string, enum: [rw, ro], default: rw }
-  retention:
-    type: object
-    properties:
-      maxBytes:   { type: integer }
-      maxAge:     { type: string, format: duration }
 ```
+
+> **Retention is NOT a durability field.** Docker cannot cap a named volume's
+> size, so the node can't enforce retention — buffer trimming is module-owned.
+> The HL7 module reads `maxBytes`/`maxAge` from the opaque `config`
+> (`config.retention`, delivered via `MODULE_CONFIG`) and runs its own sweeper.
+> A typed `durability.retention` the node would only ignore is dead surface, so
+> it's dropped here. (Module side: `runtimeConfig.config.retention` +
+> `Hl7ApiServer`/`RetentionSweeper`.)
 
 #### ~~`hub/deployment/DeploymentExtensionRef.yml`~~ — **dropped**
 

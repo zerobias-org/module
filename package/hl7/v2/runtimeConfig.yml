@@ -26,13 +26,13 @@ listenerPorts:
 
 # Durable volume for the SQLite buffer (buffer.db). Survives passivation and
 # re-deploy — messages persist across container restarts. (DESIGN §3.1, §8)
+# The node provisions/mounts the volume but does NOT cap its size (docker can't
+# bound a named volume), so buffer TRIMMING is module-owned and configured under
+# `config.retention` below — not here. (PLATFORM_UPDATES §1.1, DESIGN §8.3)
 durability:
   - volumeName: hl7-buffer
     mountPath: /var/lib/module
     access: rw
-    retention:
-      maxBytes: 10737418240   # 10 GiB
-      maxAge: P7D
 
 # Container memory cap (Hub Node applies as `--memory`; swap disabled by default).
 # The JVM heap is -Xmx512m (Dockerfile), so the container needs headroom above the
@@ -55,3 +55,16 @@ config:
   # Target HL7 version for materialization (mirrors connectionProfile.hl7Version
   # default; the receiver still accepts other versions). (DESIGN §11.5)
   hl7Version: "2.5.1"
+  # SQLite durability for the ack path, applied at buffer open. 'normal'
+  # (synchronous=NORMAL) is faster; 'full' (synchronous=FULL, fsync per row) is
+  # crash-safe for clinical feeds. This is a daemon-level knob set at boot, so it
+  # lives here (delivered via MODULE_CONFIG), not in the per-connection profile.
+  # (DESIGN §8.1)
+  ackDurability: normal
+  # Buffer trimming — the module evicts ACKED rows to stay under these ceilings
+  # (un-acked rows are never evicted). Omit either field to disable that axis;
+  # omit `retention` entirely for an unbounded buffer. The sweeper runs every
+  # 10 min. (DESIGN §8.3)
+  retention:
+    maxBytes: 10737418240   # 10 GiB
+    maxAge: P7D

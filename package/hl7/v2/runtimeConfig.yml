@@ -1,0 +1,70 @@
+# Module-author-declared deployment runtime defaults.
+#
+# Read by the dataloader at publish time → stored as `module_version.runtime_config`
+# (PLATFORM_UPDATES.md §6.3). Conforms to `DeploymentRuntimeConfig.yml`
+# (PLATFORM_UPDATES.md §1.1). Optional for ordinary modules; MANDATORY here because
+# this module declares `daemonMode: true` — a daemon with no declared listener port
+# or durable volume is a misconfiguration, not a default.
+#
+# These are DEFAULTS. An operator may override per-deployment fields (e.g. pin a
+# specific MLLP host port); Hub Server resolves operator overrides over these
+# defaults at EnsureDeployment time. Arrays replace wholesale (no merge).
+
+# Always-on: start at node boot, ignore idle timeouts, never passivate. (DESIGN §1)
+daemonMode: true
+
+# Extra TCP port the receiver binds beyond the 8888 operations port. Hub Node
+# injects the resolved value as LISTENER_PORT_MLLP. `port: null` = ephemeral
+# (node allocates) — fine for test feeds; operators pin a known port (e.g. 2575)
+# for statically-configured HL7 sources. (DESIGN §3.2, §3.3)
+listenerPorts:
+  - name: mllp
+    protocol: tcp
+    port: null
+    bindAddress: "0.0.0.0"
+    tls: false
+
+# Durable volume for the SQLite buffer (buffer.db). Survives passivation and
+# re-deploy — messages persist across container restarts. (DESIGN §3.1, §8)
+# The node provisions/mounts the volume but does NOT cap its size (docker can't
+# bound a named volume), so buffer TRIMMING is module-owned and configured under
+# `config.retention` below — not here. (PLATFORM_UPDATES §1.1, DESIGN §8.3)
+durability:
+  - volumeName: hl7-buffer
+    mountPath: /var/lib/module
+    access: rw
+
+# Container memory cap (Hub Node applies as `--memory`; swap disabled by default).
+# The JVM heap is -Xmx512m (Dockerfile), so the container needs headroom above the
+# heap for JVM non-heap (metaspace, thread stacks, direct buffers), nginx, and the
+# SQLite buffer page cache. 1024 MB keeps the heap at ~50% of the cap — the standard
+# JVM-in-container ratio. The node's built-in 512 MB default would OOM-kill this
+# daemon immediately (it equals the heap max alone), so declaring this is mandatory
+# here, not optional. (DESIGN §8, PLAN D15) Operators may override per-deployment.
+resources:
+  memoryMb: 1024
+
+# Opaque, module-defined config. The platform transports this verbatim
+# (runtimeConfig.config → MODULE_CONFIG env) and NEVER parses it. The HL7 module
+# reads it at boot. Shape and meaning are owned by this module. (DESIGN §3.2, §7.3)
+config:
+  # Which baked-in extension packs to activate. Omit/empty = all packs baked into
+  # the image are active. Extensions are NOT resolved by the platform — they are
+  # npm deps baked in at image build (DESIGN §7).
+  activeExtensions: []
+  # Target HL7 version for materialization (mirrors connectionProfile.hl7Version
+  # default; the receiver still accepts other versions). (DESIGN §11.5)
+  hl7Version: "2.5.1"
+  # SQLite durability for the ack path, applied at buffer open. 'normal'
+  # (synchronous=NORMAL) is faster; 'full' (synchronous=FULL, fsync per row) is
+  # crash-safe for clinical feeds. This is a daemon-level knob set at boot, so it
+  # lives here (delivered via MODULE_CONFIG), not in the per-connection profile.
+  # (DESIGN §8.1)
+  ackDurability: normal
+  # Buffer trimming — the module evicts ACKED rows to stay under these ceilings
+  # (un-acked rows are never evicted). Omit either field to disable that axis;
+  # omit `retention` entirely for an unbounded buffer. The sweeper runs every
+  # 10 min. (DESIGN §8.3)
+  retention:
+    maxBytes: 10737418240   # 10 GiB
+    maxAge: P7D

@@ -1,0 +1,32 @@
+node_modules/
+dist/
+generated/
+docs/
+
+# Java build output
+java/target/
+java/codegen/target/
+java/dependency-reduced-pom.xml
+
+# Generated HL7 schema content — build artifact produced by java/codegen,
+# generated into the jar's resources at build time / by CI (not committed).
+java/src/main/resources/schemas/
+java/src/main/resources/structure-index/
+
+# Ephemeral build artifacts
+eslint.config.js
+eslint.config.mjs
+module-*.yml
+test-results.json
+
+# Local buffer / runtime artifacts (should never be committed)
+*.db
+*.db-wal
+*.db-shm
+
+# Editor / OS
+*.swp
+.DS_Store
+
+# HAPI default message-ID generator writes this to the cwd at runtime
+id_file

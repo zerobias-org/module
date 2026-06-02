@@ -169,7 +169,10 @@ public final class ObjectTree {
                 out.add(object(OPS));
                 return out;
             case BY_TYPE:
-                for (String struct : byTypeStructures().keySet()) {
+                // Sort for a stable listing — the registry's structure map has no
+                // guaranteed iteration order (it varies by classpath/platform), and
+                // by-sender (SQL ORDER BY) / ops (fixed list) are already deterministic.
+                for (String struct : new java.util.TreeSet<>(byTypeStructures().keySet())) {
                     out.add(object(BY_TYPE + "/" + struct));
                 }
                 return out;

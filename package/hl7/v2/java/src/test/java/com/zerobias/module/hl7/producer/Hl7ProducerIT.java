@@ -35,9 +35,9 @@ class Hl7ProducerIT {
     private Hl7ProducerFacade facade(Path dir) throws Exception {
         // --- a minimal generated schema tree (Phase 1 emits the full one) ---
         writeSchema(dir, "schemas/shared/message-envelope.json", "schema:shared:hl7v2.message-envelope");
-        writeSchema(dir, "schemas/v251/messages/ADT_A01.json", "schema:table:hl7v2.v251.ADT_A01");
-        writeSchema(dir, "schemas/v251/messages/ORU_R01.json", "schema:table:hl7v2.v251.ORU_R01");
-        writeSchema(dir, "schemas/v251/segments/PID.json", "schema:type:hl7v2.v251.PID");
+        writeSchema(dir, "schemas/v27/messages/ADT_A01.json", "schema:table:hl7v2.v27.ADT_A01");
+        writeSchema(dir, "schemas/v27/messages/ORU_R01.json", "schema:table:hl7v2.v27.ORU_R01");
+        writeSchema(dir, "schemas/v27/segments/PID.json", "schema:type:hl7v2.v27.PID");
 
         BufferStore buffer = new BufferStore(dir.resolve("buffer.db").toString(), false);
         insert(buffer, "M1", "ADT_A01", "ADT", "EPIC", "new", "SMITH");
@@ -45,7 +45,7 @@ class Hl7ProducerIT {
         insert(buffer, "M3", "ORU_R01", "ORU", "CERNER", "new", "BOOTH");
 
         SchemaRegistry schemas = SchemaRegistry.fromDirectory(dir);
-        ObjectTree tree = new ObjectTree(buffer, schemas, "v251");
+        ObjectTree tree = new ObjectTree(buffer, schemas, "v27");
         return new Hl7ProducerFacade(buffer, tree, schemas);
     }
 
@@ -59,7 +59,7 @@ class Hl7ProducerIT {
             String app, String status, String family) throws Exception {
         String json = "{\"pid\":{\"patientFamilyName\":\"" + family + "\"}}";
         b.insert(new BufferRow(0, Instant.parse("2026-05-28T10:00:00Z"), cid, struct, code, "A01",
-            app, "HOSP", "2.5.1", "schema:table:hl7v2.v251." + struct, ("raw-" + cid).getBytes(),
+            app, "HOSP", "2.7", "schema:table:hl7v2.v27." + struct, ("raw-" + cid).getBytes(),
             json, MessageStatus.fromWire(status), null, null, null));
     }
 
@@ -240,9 +240,9 @@ class Hl7ProducerIT {
 
         // unknown schema -> 404, type=schema
         ProducerException e2 = assertThrows(ProducerException.class,
-            () -> op(f, "SchemasApi.getSchema", "objectId", "schema:type:hl7v2.v251.NOPE"));
+            () -> op(f, "SchemasApi.getSchema", "objectId", "schema:type:hl7v2.v27.NOPE"));
         assertEquals(404, e2.httpStatus());
-        assertNoSuchObjectBody(e2.toBody(), "schema", "schema:type:hl7v2.v251.NOPE");
+        assertNoSuchObjectBody(e2.toBody(), "schema", "schema:type:hl7v2.v27.NOPE");
 
         // unknown element key -> 404
         ProducerException e3 = assertThrows(ProducerException.class,

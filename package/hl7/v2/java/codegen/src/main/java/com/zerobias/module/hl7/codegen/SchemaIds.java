@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
  *
  * <p>Form: {@code schema:{type}:{catalog}.{schema}.{name}[:{direction}]}. For HL7
  * the catalog token is always {@code hl7v2} and the schema slot is the version
- * (e.g. {@code v251}) for spec content, or an extension namespace (e.g. {@code epic}).
+ * (e.g. {@code v27}) for spec content, or an extension namespace (e.g. {@code epic}).
  */
 public final class SchemaIds {
 

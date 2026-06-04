@@ -134,7 +134,7 @@ durability:
       retention: { maxBytes: 10737418240, maxAge: P7D } }
 config:                                            # opaque to the platform (MODULE_CONFIG)
   activeExtensions: []                             # empty = all baked-in packs
-  hl7Version: "2.5.1"
+  hl7Version: "2.7"
 ```
 
 The Hub Node injects `LISTENER_PORT_MLLP`, maps the port 1:1 (no NAT), mounts the
@@ -149,7 +149,7 @@ is no remote system to dial):
 
 | Field | Meaning |
 |---|---|
-| `hl7Version` | target version for materialization (default `2.5.1`) |
+| `hl7Version` | target version for materialization (default `2.7`) |
 | `ackDurability` | `normal` (fsync at WAL checkpoint) or `full` (fsync per row, zero-loss) |
 | `backpressurePolicy` | what to do when the buffer fills — default `reject` (`MSA|AE`, sender retries) |
 | `senderDiscriminator` | `/by-sender` key — default MSH-3 |

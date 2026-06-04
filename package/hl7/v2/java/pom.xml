@@ -107,7 +107,7 @@
                  produced on every build: otherwise the shaded jar ships with no schemas
                  and the producer/getSchema/by-type surface + materializer silently
                  degrade. Runs the codegen submodule (which carries the build-time-only
-                 hapi-structures-v251 dep). -->
+                 hapi-structures-v27 dep). -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
@@ -127,7 +127,7 @@
                                 <argument>compile</argument>
                                 <argument>exec:java</argument>
                                 <argument>-Dexec.mainClass=com.zerobias.module.hl7.codegen.SchemaGenerator</argument>
-                                <argument>-Dexec.args=v251 ${project.basedir}/src/main/resources</argument>
+                                <argument>-Dexec.args=v27 ${project.basedir}/src/main/resources</argument>
                             </arguments>
                         </configuration>
                     </execution>

@@ -13,10 +13,14 @@ properties:
     description: >-
       Target HL7 v2 version. The receiver accepts other versions
       (HAPI allowUnknownVersions) but materializes typed JSON against this
-      version's structure index. Mismatched feeds produce partially-populated
-      JSON, surfaced per-message via the envelope. (DESIGN §11.5)
-    default: "2.5.1"
-    example: "2.5.1"
+      version's baked-in structure index (2.7 -> v27). Mismatched feeds produce
+      partially-populated JSON, surfaced per-message via the envelope.
+      NOTE: like ackDurability, the materializer is daemon-wide (one buffer, one
+      listener), so the receiver takes its EFFECTIVE version from
+      runtimeConfig.config.hl7Version (MODULE_CONFIG), set at container boot —
+      not from this per-connection field. (DESIGN §11.5)
+    default: "2.7"
+    example: "2.7"
   ackDurability:
     type: string
     description: >-

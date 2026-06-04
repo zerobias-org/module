@@ -55,9 +55,11 @@ config:
   # the image are active. Extensions are NOT resolved by the platform — they are
   # npm deps baked in at image build (DESIGN §7).
   activeExtensions: []
-  # Target HL7 version for materialization (mirrors connectionProfile.hl7Version
-  # default; the receiver still accepts other versions). (DESIGN §11.5)
-  hl7Version: "2.5.1"
+  # Target HL7 version for materialization — selects the baked-in structure index
+  # (2.7 -> v27). The receiver still accepts any version on the wire; messages of
+  # other versions materialize against this index (partial) or fall back to the
+  # envelope schema. (DESIGN §11.5)
+  hl7Version: "2.7"
   # SQLite durability for the ack path, applied at buffer open. 'normal'
   # (synchronous=NORMAL) is faster; 'full' (synchronous=FULL, fsync per row) is
   # crash-safe for clinical feeds. This is a daemon-level knob set at boot, so it

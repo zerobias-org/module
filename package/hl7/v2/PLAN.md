@@ -1,5 +1,13 @@
 # Build Plan — `@zerobias-org/module-hl7-v2`
 
+> **Status note (2026-06-04).** Module now targets **HL7 v2.7** (was v2.5.1): codegen
+> pulls `hapi-structures-v27`, the runtime structure slot is **config-driven** from
+> `runtimeConfig.config.hl7Version` (default `2.7` → `v27`, no longer hardcoded), and
+> the MLLP listener port is prescribed `2575`. Also fixed: paginated producer ops now
+> return the `PagedResults` envelope (`{items,count,pageSize,pageNumber}`) the
+> data-explorer requires. v2.7 datatype shifts captured in tests/DESIGN (DTM primitive,
+> CWE administrativeSex). Historical phase notes below predate this and may say `v251`.
+
 Module-side implementation plan. Owner: Daniel. Platform updates
 (daemon mode, listener ports, durability, opaque `config` passthrough) are
 owned separately — see [`PLATFORM_UPDATES.md`](PLATFORM_UPDATES.md) — and this
@@ -223,10 +231,11 @@ Legend: 🟢 fully independent · 🔵 needs a contract seam agreed · 🔴 bloc
   ADT^A01, asserts AA + echoed control id, the buffered row's envelope +
   normalized JSON (`dateOfBirth: 1980-01-01`), and duplicate dedup. Also
   runnable by hand: `java/scripts/manual-test.sh listener`.
-- **Deferred (not blocking):** `MetricsConnectionListener`; mapping
-  `connectionProfile.hl7Version` → schema slot (hardcoded `v251` for now);
+- **Deferred (not blocking):** `MetricsConnectionListener`;
   the `MSA|AE` failure path is implemented but not yet unit-tested; reading the
   port from `LISTENER_PORT_MLLP` env happens in `Hl7ApiServer` wiring (Phase 6).
+  (The `hl7Version` → schema slot mapping is now config-driven via
+  `runtimeConfig.config.hl7Version`, default `2.7` → `v27` — see post-2026-06-04 note.)
 
 ### Phase 5 — lite-filter SQL adapter 🟢 ✅ *(done & validated 2026-05-29)*
 - ✅ `filter/Hl7SqlAdapter` — NOT a verbatim lift. The SQL module's

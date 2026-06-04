@@ -90,4 +90,25 @@ class ModuleRuntimeConfigTest {
         assertEquals(Set.of(), ModuleRuntimeConfig.parse("not json at all").activeExtensions());
         assertEquals(Set.of(), ModuleRuntimeConfig.parse("{\"activeExtensions\":[").activeExtensions());
     }
+
+    @Test
+    void hl7VersionDefaultsTo27AndDrivesTheSlot() {
+        // absent / empty / malformed → the baked-in default (2.7 -> v27)
+        assertEquals("2.7", ModuleRuntimeConfig.parse("{}").hl7Version());
+        assertEquals("v27", ModuleRuntimeConfig.parse("{}").versionSlot());
+        assertEquals("2.7", ModuleRuntimeConfig.parse(null).hl7Version());
+        assertEquals("v27", ModuleRuntimeConfig.parse("not json at all").versionSlot());
+        // blank string is ignored → default
+        assertEquals("2.7", ModuleRuntimeConfig.parse("{\"hl7Version\":\"\"}").hl7Version());
+    }
+
+    @Test
+    void hl7VersionParsesAndNormalizesToHapiSlot() {
+        assertEquals("v27", ModuleRuntimeConfig.parse("{\"hl7Version\":\"2.7\"}").versionSlot());
+        // an operator targeting a different baked version: 2.5.1 -> v251 (slot only;
+        // whether that index ships is a build concern — runtime falls back if absent)
+        var c = ModuleRuntimeConfig.parse("{\"hl7Version\":\"2.5.1\"}");
+        assertEquals("2.5.1", c.hl7Version());
+        assertEquals("v251", c.versionSlot());
+    }
 }

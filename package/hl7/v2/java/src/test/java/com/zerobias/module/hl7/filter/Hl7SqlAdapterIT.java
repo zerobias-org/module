@@ -88,8 +88,8 @@ class Hl7SqlAdapterIT {
             Map<String, Object> obj = m.asObject();
             String json = GSON.toJson(obj);
             BufferRow row = new BufferRow(0, Instant.parse(m.receivedAt()), m.controlId(),
-                "ADT_A01", "ADT", "A01", "EPIC", "HOSP", "2.5.1",
-                "schema:table:hl7v2.v251.ADT_A01", ("raw-" + m.controlId()).getBytes(),
+                "ADT_A01", "ADT", "A01", "EPIC", "HOSP", "2.7",
+                "schema:table:hl7v2.v27.ADT_A01", ("raw-" + m.controlId()).getBytes(),
                 json, MessageStatus.fromWire(m.status()), null, null, null);
             assertTrue(store.insert(row), "insert " + m.controlId());
         }

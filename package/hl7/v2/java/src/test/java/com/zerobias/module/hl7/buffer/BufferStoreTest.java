@@ -25,8 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BufferStoreTest {
 
     private static final Instant BASE = Instant.parse("2026-05-29T00:00:00Z");
-    private static final String SCHEMA_A = "schema:table:hl7v2.v251.ADT_A01";
-    private static final String SCHEMA_B = "schema:table:hl7v2.v251.ORU_R01";
+    private static final String SCHEMA_A = "schema:table:hl7v2.v27.ADT_A01";
+    private static final String SCHEMA_B = "schema:table:hl7v2.v27.ORU_R01";
 
     private BufferStore open(Path dir, MutableClock clock) throws Exception {
         return new BufferStore(dir.resolve("buffer.db").toString(), false, clock);
@@ -34,7 +34,7 @@ class BufferStoreTest {
 
     private static BufferRow row(String controlId, long offsetSec, String schemaId) {
         return new BufferRow(0, BASE.plusSeconds(offsetSec), controlId, "ADT_A01", "ADT", "A01",
-            "EPIC", "HOSP", "2.5.1", schemaId, ("raw-" + controlId).getBytes(),
+            "EPIC", "HOSP", "2.7", schemaId, ("raw-" + controlId).getBytes(),
             "{\"controlId\":\"" + controlId + "\"}", MessageStatus.NEW, null, null, null);
     }
 

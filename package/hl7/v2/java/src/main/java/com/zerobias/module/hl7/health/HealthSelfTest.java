@@ -26,7 +26,7 @@ public final class HealthSelfTest {
 
     /** @return true iff the synthetic message round-tripped with an AA acknowledgment. */
     public static boolean run(int listenerPort) {
-        String er7 = "MSH|^~\\&|HEALTHCHECK|SELF|RECV|DEST|20260101000000||ZZZ^X01|HC-SELFTEST|P|2.5.1\r";
+        String er7 = "MSH|^~\\&|HEALTHCHECK|SELF|RECV|DEST|20260101000000||ZZZ^X01|HC-SELFTEST|P|2.7\r";
         try (HapiContext ctx = new DefaultHapiContext()) {
             ctx.setValidationContext(ValidationContextFactory.noValidation());
             ctx.setModelClassFactory(new GenericModelClassFactory());

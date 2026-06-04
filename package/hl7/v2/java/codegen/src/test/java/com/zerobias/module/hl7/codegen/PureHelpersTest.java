@@ -16,14 +16,14 @@ class PureHelpersTest {
 
     @Test
     void schemaIds() {
-        assertEquals("schema:table:hl7v2.v251.ADT_A01", SchemaIds.table("v251", "ADT_A01"));
-        assertEquals("schema:type:hl7v2.v251.PID", SchemaIds.type("v251", "PID"));
-        assertEquals("schema:enum:hl7v2.v251.HL70001", SchemaIds.enumTable("v251", 1));
-        assertEquals("schema:enum:hl7v2.v251.HL70203", SchemaIds.enumTable("v251", 203));
+        assertEquals("schema:table:hl7v2.v27.ADT_A01", SchemaIds.table("v27", "ADT_A01"));
+        assertEquals("schema:type:hl7v2.v27.PID", SchemaIds.type("v27", "PID"));
+        assertEquals("schema:enum:hl7v2.v27.HL70001", SchemaIds.enumTable("v27", 1));
+        assertEquals("schema:enum:hl7v2.v27.HL70203", SchemaIds.enumTable("v27", 203));
         assertEquals("schema:shared:hl7v2.message-envelope", SchemaIds.shared("hl7v2.message-envelope"));
 
-        assertTrue(SchemaIds.isValid("schema:table:hl7v2.v251.ADT_A01"));
-        assertTrue(SchemaIds.isValid("schema:enum:hl7v2.v251.HL70001"));
+        assertTrue(SchemaIds.isValid("schema:table:hl7v2.v27.ADT_A01"));
+        assertTrue(SchemaIds.isValid("schema:enum:hl7v2.v27.HL70001"));
         assertTrue(SchemaIds.isValid("schema:shared:hl7v2.message-envelope"));
         assertFalse(SchemaIds.isValid("table:foo"));
     }

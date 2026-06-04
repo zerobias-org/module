@@ -15,13 +15,13 @@ Layout produced under this directory:
 
 ```
 schemas/
-  v251/
-    messages/   ADT_A01.json, ORU_R01.json, ...   schema:table:hl7v2.v251.<MSG>
-    segments/   MSH.json, PID.json, ...            schema:type:hl7v2.v251.<SEG>
-    datatypes/  CX.json, XPN.json, HD.json, ...    schema:type:hl7v2.v251.<DT>
-    tables/     HL70001.json, ...                  schema:enum:hl7v2.v251.<HL7nnnn>
+  v27/
+    messages/   ADT_A01.json, ORU_R01.json, ...   schema:table:hl7v2.v27.<MSG>
+    segments/   MSH.json, PID.json, ...            schema:type:hl7v2.v27.<SEG>
+    datatypes/  CX.json, XPN.json, HD.json, ...    schema:type:hl7v2.v27.<DT>
+    tables/     HL70001.json, ...                  schema:enum:hl7v2.v27.<HL7nnnn>
 structure-index/
-  v251.json     runtime materializer driver
+  v27.json      runtime materializer driver
 ```
 
 Regenerate with:
@@ -29,7 +29,7 @@ Regenerate with:
 ```
 mvn -f java/codegen/pom.xml compile exec:java \
   -Dexec.mainClass=com.zerobias.module.hl7.codegen.SchemaGenerator \
-  -Dexec.args="v251 java/src/main/resources"
+  -Dexec.args="v27 java/src/main/resources"
 ```
 
 (or `mvn -Pregen-schemas generate-resources` from `java/`).

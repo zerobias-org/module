@@ -37,14 +37,14 @@ class Hl7OperationsIT {
     private BufferStore buffer;
 
     private Hl7ProducerFacade facade(Path dir) throws Exception {
-        writeSchema(dir, "schemas/v251/messages/ADT_A01.json", "schema:table:hl7v2.v251.ADT_A01");
-        writeSchema(dir, "schemas/v251/messages/ORU_R01.json", "schema:table:hl7v2.v251.ORU_R01");
+        writeSchema(dir, "schemas/v27/messages/ADT_A01.json", "schema:table:hl7v2.v27.ADT_A01");
+        writeSchema(dir, "schemas/v27/messages/ORU_R01.json", "schema:table:hl7v2.v27.ORU_R01");
         buffer = new BufferStore(dir.resolve("buffer.db").toString(), false);
         insert("M1", "ADT_A01", "ADT");
         insert("M2", "ADT_A01", "ADT");
         insert("M3", "ORU_R01", "ORU");
         SchemaRegistry schemas = SchemaRegistry.fromDirectory(dir);
-        return new Hl7ProducerFacade(buffer, new ObjectTree(buffer, schemas, "v251"), schemas);
+        return new Hl7ProducerFacade(buffer, new ObjectTree(buffer, schemas, "v27"), schemas);
     }
 
     private static void writeSchema(Path dir, String rel, String id) throws Exception {
@@ -55,7 +55,7 @@ class Hl7OperationsIT {
 
     private void insert(String cid, String struct, String code) throws Exception {
         buffer.insert(new BufferRow(0, Instant.parse("2026-05-28T10:00:00Z"), cid, struct, code, "A01",
-            "EPIC", "HOSP", "2.5.1", "schema:table:hl7v2.v251." + struct, ("raw-" + cid).getBytes(),
+            "EPIC", "HOSP", "2.7", "schema:table:hl7v2.v27." + struct, ("raw-" + cid).getBytes(),
             "{\"msh\":{\"messageType\":{\"messageCode\":\"" + code + "\"}}}",
             MessageStatus.NEW, null, null, null));
     }

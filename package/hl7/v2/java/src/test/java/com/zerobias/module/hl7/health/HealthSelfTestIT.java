@@ -40,7 +40,7 @@ class HealthSelfTestIT {
         int port = freePort();
         try (BufferStore buffer = new BufferStore(dir.resolve("buffer.db").toString(), false);
              Hl7ListenerService listener = new Hl7ListenerService(port,
-                 new BufferingApp(buffer, new EnvelopeMaterializer(), "v251"))) {
+                 new BufferingApp(buffer, new EnvelopeMaterializer(), "v27"))) {
             listener.start();
 
             assertTrue(HealthSelfTest.run(port), "self-test should round-trip AA");
@@ -53,7 +53,7 @@ class HealthSelfTestIT {
             try (HapiContext ctx = new DefaultHapiContext()) {
                 ctx.setValidationContext(ValidationContextFactory.noValidation());
                 ctx.setModelClassFactory(new GenericModelClassFactory());
-                String adt = "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260601120000||ADT^A01^ADT_A01|POST-SELFTEST|P|2.5.1\r"
+                String adt = "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260601120000||ADT^A01^ADT_A01|POST-SELFTEST|P|2.7\r"
                     + "PID|1||5551212^^^EPIC^MR||DOE^JANE||19850315|F\r";
                 Connection c = ctx.newClient("127.0.0.1", port, false);
                 Message ack = c.getInitiator().sendAndReceive(ctx.getPipeParser().parse(adt));

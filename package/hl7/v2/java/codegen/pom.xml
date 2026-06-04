@@ -11,7 +11,7 @@
 
     mvn -f codegen/pom.xml compile exec:java \
         -Dexec.mainClass=com.zerobias.module.hl7.codegen.SchemaGenerator \
-        -Dexec.args="v251 ../src/main/resources"
+        -Dexec.args="v27 ../src/main/resources"
 
   This is the ONLY place hapi-structures-vNN jars are pulled — they never ship
   in the runtime uber JAR.
@@ -44,11 +44,12 @@
             <artifactId>hapi-base</artifactId>
             <version>${hapi.version}</version>
         </dependency>
-        <!-- The typed model classes the generator reflects over. Add more
-             versions here (hapi-structures-v25, -v23, ...) as we support them. -->
+        <!-- The typed model classes the generator reflects over. The module targets
+             HL7 v2.7 (ca.uhn.hl7v2.model.v27.*); add more versions here
+             (hapi-structures-v251, -v25, ...) if we re-introduce them. -->
         <dependency>
             <groupId>ca.uhn.hapi</groupId>
-            <artifactId>hapi-structures-v251</artifactId>
+            <artifactId>hapi-structures-v27</artifactId>
             <version>${hapi.version}</version>
         </dependency>
         <dependency>
@@ -83,8 +84,8 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.1.2</version>
             </plugin>
-            <!-- StructureWalkerIT walks HAPI's typed v251 structures (the build-time-only
-                 hapi-structures-v251 dep), so it is a failsafe (*IT) test. The parent
+            <!-- StructureWalkerIT walks HAPI's typed v27 structures (the build-time-only
+                 hapi-structures-v27 dep), so it is a failsafe (*IT) test. The parent
                  java/pom.xml drives `mvn -f codegen/pom.xml verify` during its own test
                  phase so this actually runs in the gate (DESIGN §6 codegen boundary). -->
             <plugin>

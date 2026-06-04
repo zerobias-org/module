@@ -59,7 +59,11 @@ public final class Hl7ProducerFacade {
         requireId(objectId);
         List<Map<String, Object>> children = tree.children(objectId);
         int size = clampPageSize(pageSize);
-        int from = Math.max(0, pageNumber) * size;
+        // pageNumber is 1-indexed (the platform/UI requests page 1 for the first
+        // page). Treating it as 0-indexed skipped a full page — page 1 became
+        // offset=pageSize, so a root with fewer children than one page returned
+        // an empty "[]" and the caller saw an empty dataproducer response.
+        int from = Math.max(0, pageNumber - 1) * size;
         if (from >= children.size()) {
             return "[]";
         }
@@ -74,7 +78,8 @@ public final class Hl7ProducerFacade {
         requireId(objectId);
         ObjectTree.Collection coll = tree.resolveCollection(objectId);
         int size = clampPageSize(pageSize);
-        int offset = Math.max(0, pageNumber) * size;
+        // 1-indexed pageNumber — see getChildren. Page 1 = first page (offset 0).
+        int offset = Math.max(0, pageNumber - 1) * size;
         String where = composeWhere(coll, filter);
 
         List<BufferRow> rows = buffer.search(where, size, offset);

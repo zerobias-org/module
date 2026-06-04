@@ -15,8 +15,8 @@ properties:
       (HAPI allowUnknownVersions) but materializes typed JSON against this
       version's structure index. Mismatched feeds produce partially-populated
       JSON, surfaced per-message via the envelope. (DESIGN §11.5)
-    default: "2.5.1"
-    example: "2.5.1"
+    default: "2.7"
+    example: "2.7"
   ackDurability:
     type: string
     description: >-

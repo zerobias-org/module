@@ -29,7 +29,7 @@ runtimeConfig.yml    daemonMode + listenerPorts[mllp] + durability + opaque conf
 Dockerfile  nginx.conf  nginx-insecure.conf  startup.sh    container (nginx → java on 8889)
 java/
 ├── pom.xml          uber jar (maven-shade); codegen runs at generate-resources (NOT a profile)
-├── codegen/         BUILD-TIME ONLY (depends hapi-structures-v251); emits schemas/ + structure-index
+├── codegen/         BUILD-TIME ONLY (depends hapi-structures-v27); emits schemas/ + structure-index
 └── src/main/java/com/zerobias/module/hl7/
     ├── Hl7ApiServer.java     entry point: boots daemon (buffer+listener) + Javalin RPC routes
     ├── ModuleConfig.java / ModuleRuntimeConfig.java   env (LISTENER_PORT_MLLP, MODULE_CONFIG)
@@ -54,6 +54,16 @@ proxies everything to Javalin, which serves the SQL-module RPC envelope:
 `api.yml` is the logical contract for type-gen + the operation catalog; the Hub Node
 maps operationIds onto the RPC route. (The reference SQL module's api.yml likewise
 doesn't match its Javalin routes.)
+
+**Paginated ops MUST return a `PagedResults` envelope, not a bare array.** Even
+though the OpenAPI response schema for `getChildren`/`searchChildObjects`/
+`getCollectionElements`/`searchCollectionElements` is `type: array`, the platform's
+generated producer client deserializes the RPC body into a paged bag and throws
+*"Producers must return 'items' for PagedResults queries"* (breaking the
+data-explorer tree) if the body isn't `{"items":[...],"count":N,"pageSize":P,
+"pageNumber":N}`. `Hl7ProducerFacade.pagedResults(...)` wraps them; `pageNumber` is
+1-based on the wire. See `auditlogic/module/IMPROVEMENTS.md` §"PagedResults Format".
+This was the boss-facing blocker fixed once — don't return a raw array again.
 
 ## Validating changes
 
@@ -106,8 +116,12 @@ cd <repo-root> && ./gradlew :hl7:v2:gate          # gradle path is :hl7:v2 (auto
   client) each set a **dedicated** executor. If you add another HAPI client, give it
   its own executor. (This bug made the listener silently die after startup.)
 - **Real bean names ≠ DESIGN §5's idealized ones.** Materialized JSON uses HAPI's
-  actual names: `IDNumber`, `namespaceID`, `dateTimeOfBirth` (TS is a composite →
-  dates nest under `time`). The schemas match; §5's `idNumber`/`surname` are illustrative.
+  actual names: `IDNumber`, `namespaceID`, `dateTimeOfBirth`. The schemas match; §5's
+  `idNumber`/`surname` are illustrative. **v2.7 datatype gotcha:** `dateTimeOfBirth`
+  is a `DTM` *primitive* (flat string — v2.5.1's `TS` composite that nested under
+  `time` was retired) and `administrativeSex` is a `CWE` *composite* (`{"identifier":"M"}`,
+  was an `IS` primitive in v2.5.1). The target version is config-driven
+  (`runtimeConfig.config.hl7Version`, default `2.7` → slot `v27`).
 - **Error envelope = OpenAPI `errorModelBase`** (`{key, template, timestamp, statusCode}`
   + `noSuchObjectError.{type,id}` / `illegalArgumentError.{msg}`), NOT the
   `{code,message,details}` shown in `Errors.md` prose. When interface docs disagree,

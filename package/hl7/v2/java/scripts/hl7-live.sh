@@ -55,7 +55,7 @@ port=int(sys.argv[1]); fam=sys.argv[2]; giv=sys.argv[3]
 cid="MSG-"+str(int(time.time()*1000))
 mrn=cid[-7:]
 msg="\r".join([
-  f"MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260601120000||ADT^A01^ADT_A01|{cid}|P|2.5.1",
+  f"MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260601120000||ADT^A01^ADT_A01|{cid}|P|2.7",
   "EVN|A01|20260601120000",
   f"PID|1||{mrn}^^^EPIC^MR||{fam}^{giv}||19850315|F",
   "PV1|1|I"]) + "\r"

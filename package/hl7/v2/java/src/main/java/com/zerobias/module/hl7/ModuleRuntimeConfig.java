@@ -16,7 +16,7 @@ import java.util.Set;
  *
  * <pre>
  * { "activeExtensions": ["epic-adt"],
- *   "hl7Version": "2.5.1",
+ *   "hl7Version": "2.7",
  *   "ackDurability": "full",
  *   "retention": { "maxBytes": 10737418240, "maxAge": "P7D" } }
  * </pre>
@@ -31,12 +31,26 @@ import java.util.Set;
 public record ModuleRuntimeConfig(
         Set<String> activeExtensions,
         boolean fullDurability,
-        RetentionConfig retention) {
+        RetentionConfig retention,
+        String hl7Version) {
 
     private static final Gson GSON = new Gson();
+    /** Target HL7 version when MODULE_CONFIG omits it (the version this image bakes). */
+    static final String DEFAULT_HL7_VERSION = "2.7";
 
     private static ModuleRuntimeConfig defaults() {
-        return new ModuleRuntimeConfig(new LinkedHashSet<>(), false, RetentionConfig.none());
+        return new ModuleRuntimeConfig(
+            new LinkedHashSet<>(), false, RetentionConfig.none(), DEFAULT_HL7_VERSION);
+    }
+
+    /**
+     * HAPI structure package / structure-index slot for {@link #hl7Version()} —
+     * {@code "2.7" -> "v27"}, {@code "2.5.1" -> "v251"} (HAPI's
+     * {@code ca.uhn.hl7v2.model.vNN} naming). If the configured version's index
+     * isn't baked into the image, the runtime degrades to the envelope schema.
+     */
+    public String versionSlot() {
+        return "v" + hl7Version.replace(".", "");
     }
 
     public static ModuleRuntimeConfig fromEnv() {
@@ -61,7 +75,10 @@ public record ModuleRuntimeConfig(
             boolean full = obj.has("ackDurability")
                 && obj.get("ackDurability").isJsonPrimitive()
                 && "full".equalsIgnoreCase(obj.get("ackDurability").getAsString());
-            return new ModuleRuntimeConfig(active, full, parseRetention(obj));
+            String version = (obj.has("hl7Version") && obj.get("hl7Version").isJsonPrimitive()
+                && !obj.get("hl7Version").getAsString().isBlank())
+                ? obj.get("hl7Version").getAsString() : DEFAULT_HL7_VERSION;
+            return new ModuleRuntimeConfig(active, full, parseRetention(obj), version);
         } catch (RuntimeException malformed) {
             // Malformed MODULE_CONFIG (bad JSON, wrong-typed/garbage fields) → safe
             // defaults rather than crashing the daemon at boot. The platform transports

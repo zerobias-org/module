@@ -26,7 +26,7 @@ class HealthCheckTest {
 
     private static void insert(BufferStore b, String cid, long offsetSec) throws Exception {
         b.insert(new BufferRow(0, Instant.parse("2026-05-28T00:00:00Z").plusSeconds(offsetSec), cid,
-            "ADT_A01", "ADT", "A01", "EPIC", "HOSP", "2.5.1", "schema:table:hl7v2.v251.ADT_A01",
+            "ADT_A01", "ADT", "A01", "EPIC", "HOSP", "2.7", "schema:table:hl7v2.v27.ADT_A01",
             ("raw-" + cid).getBytes(), "{}", MessageStatus.NEW, null, null, null));
     }
 

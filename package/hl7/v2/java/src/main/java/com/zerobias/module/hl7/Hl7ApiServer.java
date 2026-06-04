@@ -59,8 +59,6 @@ public final class Hl7ApiServer {
 
     private static final Logger LOG = LoggerFactory.getLogger(Hl7ApiServer.class);
     private static final Gson GSON = new Gson();
-    private static final String VERSION_SLOT = "v251";
-    private static final String HL7_VERSION = "2.5.1";
 
     /** Profile fields safe to log/display (no secrets in this receiver profile). */
     private static final Set<String> NONSENSITIVE_PROFILE_FIELDS =
@@ -90,6 +88,11 @@ public final class Hl7ApiServer {
         // module. They configure the buffer at boot, before any connection exists, so
         // they cannot come from the per-connection connectionProfile. (DESIGN §3.2, §8)
         ModuleRuntimeConfig mc = ModuleRuntimeConfig.fromEnv();
+        // Target HL7 version drives which baked-in structure index materializes the
+        // typed JSON (DESIGN §11.5). The slot is HAPI's vNN package name (2.7 -> v27).
+        final String hl7Version = mc.hl7Version();
+        final String versionSlot = mc.versionSlot();
+        LOG.info("Target HL7 version: {} (structure slot {})", hl7Version, versionSlot);
 
         // --- daemon: buffer + MLLP listener (DESIGN §4) ---
         String dbPath = System.getenv().getOrDefault("BUFFER_DB", "/var/lib/module/buffer.db");
@@ -115,13 +118,13 @@ public final class Hl7ApiServer {
             Path schemaRoot = Path.of(System.getenv().getOrDefault("SCHEMA_DIR", "/opt/module/generated"));
             schemas = SchemaRegistry.fromDirectory(schemaRoot);
         }
-        StructureIndex index = StructureIndex.fromClasspath(VERSION_SLOT);
+        StructureIndex index = StructureIndex.fromClasspath(versionSlot);
 
         // Extensions (DESIGN §7.3): baked into the image under EXTENSION_DIR, optionally
         // narrowed by MODULE_CONFIG.activeExtensions. Merges schemas + structure-index in
         // place and yields the discriminators that route augmented structures.
         ExtensionLoader.Result ext = ExtensionLoader.load(
-            Path.of(config.extensionDir()), mc.activeExtensions(), HL7_VERSION, schemas, index);
+            Path.of(config.extensionDir()), mc.activeExtensions(), hl7Version, schemas, index);
 
         StructureResolver resolver = resolverFor(ext.discriminators());
         Map<String, String> extensionScopes = new java.util.LinkedHashMap<>();
@@ -132,10 +135,10 @@ public final class Hl7ApiServer {
         MessageMaterializer materializer = index != null
             ? new Materializer(index, resolver) : new EnvelopeMaterializer();
         LOG.info("Materializer: {}; {} schemas, {} extension(s)", index != null
-            ? "structure-index " + VERSION_SLOT : "ENVELOPE fallback", schemas.size(), ext.loaded().size());
+            ? "structure-index " + versionSlot : "ENVELOPE fallback", schemas.size(), ext.loaded().size());
 
         this.listener = new Hl7ListenerService(config.mllpPort(),
-            new BufferingApp(buffer, materializer, VERSION_SLOT));
+            new BufferingApp(buffer, materializer, versionSlot));
         listener.start();
         LOG.info("MLLP listener up on {}", config.mllpPort());
 
@@ -146,7 +149,7 @@ public final class Hl7ApiServer {
         this.health = new HealthCheck(buffer, listener::isRunning, ext.loaded());
 
         // --- producer surface ---
-        ObjectTree tree = new ObjectTree(buffer, schemas, VERSION_SLOT, extensionScopes);
+        ObjectTree tree = new ObjectTree(buffer, schemas, versionSlot, extensionScopes);
         this.facade = new Hl7ProducerFacade(buffer, tree, schemas);
 
         Javalin app = Javalin.create(cfg -> {

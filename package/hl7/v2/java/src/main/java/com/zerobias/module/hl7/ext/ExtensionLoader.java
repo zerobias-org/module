@@ -53,7 +53,7 @@ public final class ExtensionLoader {
     /**
      * @param extensionDir     in-image {@code EXTENSION_DIR}
      * @param activeExtensions pack names to activate (from {@code MODULE_CONFIG}); empty = all
-     * @param hl7Version       the module's HL7 version (e.g. {@code 2.5.1}) for compat check
+     * @param hl7Version       the module's HL7 version (e.g. {@code 2.7}) for compat check
      */
     public static Result load(Path extensionDir, Set<String> activeExtensions, String hl7Version,
             SchemaRegistry registry, StructureIndex index) {

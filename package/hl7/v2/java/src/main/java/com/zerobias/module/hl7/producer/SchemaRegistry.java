@@ -192,7 +192,7 @@ public final class SchemaRegistry {
 
     /**
      * All message-structure names → their collection schema id, across every
-     * namespace (base {@code v251} + extension namespaces like {@code epic}). Drives
+     * namespace (base {@code v27} + extension namespaces like {@code epic}). Drives
      * the namespace-agnostic {@code /by-type/<X>} listing once extensions are merged.
      * Insertion order: base then extensions.
      */

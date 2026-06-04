@@ -18,7 +18,7 @@ import java.util.List;
  * <pre>
  * {
  *   "namespace": "epic",
- *   "hl7Version": "2.5.1",
+ *   "hl7Version": "2.7",
  *   "vendor": "epic",
  *   "discriminators": [
  *     { "messageCode": "ADT", "senderEquals": "EPIC", "structure": "ADT_A01_with_ZPV" }

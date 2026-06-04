@@ -10,11 +10,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Acceptance test for Phase 1 (PLAN.md): walks {@code ADT_A01} against HAPI's
- * v2.5.1 structures and asserts the worked traversal from DESIGN §2.3 —
+ * v2.7 structures and asserts the worked traversal from DESIGN §2.3 —
  * {@code ADT_A01 → PID → CX → HD}, with the table-bound enum references
- * (administrative sex → HL70001, identifier type code → HL70203).
+ * (PID indicator fields → HL70136, identifier type code → HL70203). NB: in
+ * v2.7 PID-8 administrativeSex became a CWE composite (no longer the IS+HL70001
+ * of v2.5.1), so the low-number worked example is HL70136, not HL70001.
  *
- * <p>Requires {@code hapi-structures-v251} on the test classpath (it is a
+ * <p>Requires {@code hapi-structures-v27} on the test classpath (it is a
  * dependency of the codegen module), so it runs only under the build toolchain,
  * not the toolchain-independent {@link PureHelpersTest}.
  */
@@ -22,7 +24,7 @@ class StructureWalkerIT {
 
     @Test
     void walksAdtA01ToEnumLeaves() throws Exception {
-        final StructureWalker w = new StructureWalker("v251");
+        final StructureWalker w = new StructureWalker("v27");
         w.walkMessage("ADT_A01");
 
         // Structures discovered transitively.
@@ -40,25 +42,25 @@ class StructureWalkerIT {
         // ADT_A01 references the PID segment by composition.
         final Property pidProp = prop(w.messages.get("ADT_A01"), "pid");
         assertNotNull(pidProp, "ADT_A01.pid property");
-        assertEquals(SchemaIds.type("v251", "PID"), pidProp.references.schemaId);
+        assertEquals(SchemaIds.type("v27", "PID"), pidProp.references.schemaId);
 
         // PID.patientIdentifierList is a repeating CX composition (DESIGN §2.3).
         final Property pidList = prop(w.segments.get("PID"), "patientIdentifierList");
         assertNotNull(pidList, "PID.patientIdentifierList property");
         assertEquals(Boolean.TRUE, pidList.multi);
-        assertEquals(SchemaIds.type("v251", "CX"), pidList.references.schemaId);
+        assertEquals(SchemaIds.type("v27", "CX"), pidList.references.schemaId);
 
         // CX composes HD (assigning authority) and carries an HL70203 enum reference.
         final Schema cx = w.datatypes.get("CX");
         assertTrue(cx.properties.stream().anyMatch(p ->
-                p.references != null && SchemaIds.type("v251", "HD").equals(p.references.schemaId)),
+                p.references != null && SchemaIds.type("v27", "HD").equals(p.references.schemaId)),
             "CX references HD");
         assertTrue(cx.properties.stream().anyMatch(p ->
-                p.references != null && SchemaIds.enumTable("v251", 203).equals(p.references.schemaId)),
+                p.references != null && SchemaIds.enumTable("v27", 203).equals(p.references.schemaId)),
             "CX references enum HL70203");
 
-        // Table-bound fields registered the enums (HL70001 admin sex, HL70203 id type).
-        assertTrue(w.tables.contains(1), "table HL70001 registered");
+        // Table-bound fields registered the enums (HL70136 PID indicators, HL70203 id type).
+        assertTrue(w.tables.contains(136), "table HL70136 registered");
         assertTrue(w.tables.contains(203), "table HL70203 registered");
 
         // Guard: HAPI exposes repetition-count getters (e.g.

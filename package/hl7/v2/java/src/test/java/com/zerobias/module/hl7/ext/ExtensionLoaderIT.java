@@ -57,7 +57,7 @@ class ExtensionLoaderIT {
         Files.writeString(ext.resolve("segments/ZPV.json"),
             "{\"id\":\"schema:type:hl7v2.epic.ZPV\",\"dataTypes\":[],\"properties\":[]}");
         Files.writeString(ext.resolve("structure-index.json"),
-            "{\"version\":\"v251\",\"messages\":{\"ADT_A01_with_ZPV\":{\"structures\":["
+            "{\"version\":\"v27\",\"messages\":{\"ADT_A01_with_ZPV\":{\"structures\":["
             + "{\"name\":\"msh\",\"structure\":\"MSH\",\"group\":false,\"required\":true,\"multi\":false},"
             + "{\"name\":\"pid\",\"structure\":\"PID\",\"group\":false,\"required\":true,\"multi\":false},"
             + "{\"name\":\"zpv\",\"structure\":\"ZPV\",\"group\":false,\"required\":false,\"multi\":false}"
@@ -86,14 +86,14 @@ class ExtensionLoaderIT {
 
     @Test
     void loadMergesSurfacesByTypeAndRoutes(@TempDir Path extRoot, @TempDir Path dbDir) throws Exception {
-        stageEpicPack(extRoot, "epic-adt", "2.5.1");
+        stageEpicPack(extRoot, "epic-adt", "2.7");
 
         SchemaRegistry registry = SchemaRegistry.fromClasspath();
-        StructureIndex index = StructureIndex.fromClasspath("v251");
+        StructureIndex index = StructureIndex.fromClasspath("v27");
         int baseSize = registry.size();
 
         ExtensionLoader.Result result = ExtensionLoader.load(
-            extRoot, Set.of(), "2.5.1", registry, index);
+            extRoot, Set.of(), "2.7", registry, index);
 
         // merged: new schemas served, health descriptor reported
         assertTrue(registry.size() > baseSize, "extension schemas merged");
@@ -108,7 +108,7 @@ class ExtensionLoaderIT {
             scopes.put(d.structure(), d.whereClause());
         }
         try (BufferStore buffer = new BufferStore(dbDir.resolve("buffer.db").toString(), false)) {
-            ObjectTree tree = new ObjectTree(buffer, registry, "v251", scopes);
+            ObjectTree tree = new ObjectTree(buffer, registry, "v27", scopes);
             List<String> byType = tree.children("/hl7-v2-receiver/by-type").stream()
                 .map(o -> o.get("id").toString()).toList();
             assertTrue(byType.contains("/hl7-v2-receiver/by-type/ADT_A01_with_ZPV"),
@@ -126,7 +126,7 @@ class ExtensionLoaderIT {
         // routing: an EPIC ADT with a ZPV segment materializes the ZPV (via the discriminator)
         Materializer m = new Materializer(index, resolverFor(result.discriminators()));
         String er7 = String.join(CR,
-            "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260101000000||ADT^A01^ADT_A01|MSGX|P|2.5.1",
+            "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260101000000||ADT^A01^ADT_A01|MSGX|P|2.7",
             "PID|1||5551212^^^EPIC^MR||SMITH^JOHN||19800101|M",
             "ZPV|VISIT-789") + CR;
         JsonObject root = GSON.fromJson(m.toTypedJson(parseGeneric(er7)), JsonObject.class);
@@ -136,38 +136,38 @@ class ExtensionLoaderIT {
 
     @Test
     void activeExtensionsFilterExcludes(@TempDir Path extRoot) throws Exception {
-        stageEpicPack(extRoot, "epic-adt", "2.5.1");
+        stageEpicPack(extRoot, "epic-adt", "2.7");
         SchemaRegistry registry = SchemaRegistry.fromClasspath();
-        StructureIndex index = StructureIndex.fromClasspath("v251");
+        StructureIndex index = StructureIndex.fromClasspath("v27");
 
         // only "other" is active → epic-adt is skipped
         ExtensionLoader.Result result = ExtensionLoader.load(
-            extRoot, Set.of("other"), "2.5.1", registry, index);
+            extRoot, Set.of("other"), "2.7", registry, index);
         assertTrue(result.loaded().isEmpty());
         assertFalse(registry.has("schema:table:hl7v2.epic.ADT_A01_with_ZPV"));
     }
 
     @Test
     void duplicateSchemaIdAcrossPacksRejected(@TempDir Path extRoot) throws Exception {
-        stageEpicPack(extRoot, "epic-adt", "2.5.1");
-        stageEpicPack(extRoot, "epic-dup", "2.5.1");   // same epic schema ids
+        stageEpicPack(extRoot, "epic-adt", "2.7");
+        stageEpicPack(extRoot, "epic-dup", "2.7");   // same epic schema ids
         SchemaRegistry registry = SchemaRegistry.fromClasspath();
-        StructureIndex index = StructureIndex.fromClasspath("v251");
+        StructureIndex index = StructureIndex.fromClasspath("v27");
 
         IllegalStateException e = assertThrows(IllegalStateException.class,
-            () -> ExtensionLoader.load(extRoot, Set.of(), "2.5.1", registry, index));
+            () -> ExtensionLoader.load(extRoot, Set.of(), "2.7", registry, index));
         // distinguish from the version-mismatch rejection: this is the dup-id path
         assertTrue(e.getMessage().contains("duplicate schema id"), e.getMessage());
     }
 
     @Test
     void versionMismatchRejected(@TempDir Path extRoot) throws Exception {
-        stageEpicPack(extRoot, "epic-adt", "2.3");      // module is 2.5.1
+        stageEpicPack(extRoot, "epic-adt", "2.3");      // module is 2.7
         SchemaRegistry registry = SchemaRegistry.fromClasspath();
-        StructureIndex index = StructureIndex.fromClasspath("v251");
+        StructureIndex index = StructureIndex.fromClasspath("v27");
 
         IllegalStateException e = assertThrows(IllegalStateException.class,
-            () -> ExtensionLoader.load(extRoot, Set.of(), "2.5.1", registry, index));
+            () -> ExtensionLoader.load(extRoot, Set.of(), "2.7", registry, index));
         // distinguish from the dup-id rejection: this is the version-compat path
         assertTrue(e.getMessage().contains("targets HL7"), e.getMessage());
     }

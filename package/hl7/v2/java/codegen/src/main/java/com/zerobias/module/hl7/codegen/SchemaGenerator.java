@@ -35,7 +35,7 @@ import java.util.Set;
  * {@code regen-schemas} profile). PLAN.md Phase 1.
  *
  * <p>Usage: {@code SchemaGenerator <version> <outputDir> [msg...]}
- * (e.g. {@code SchemaGenerator v251 ../src/main/resources ADT_A01 ORU_R01}).
+ * (e.g. {@code SchemaGenerator v27 ../src/main/resources ADT_A01 ORU_R01}).
  * With no message list, a small default set is generated; expand it to widen
  * coverage (the walk discovers all transitively-referenced structures).
  */
@@ -59,7 +59,7 @@ public final class SchemaGenerator {
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             System.err.println("usage: SchemaGenerator <version> <outputDir> [msg...]"
-                + "  (e.g. v251 ../src/main/resources ADT_A01 ORU_R01)");
+                + "  (e.g. v27 ../src/main/resources ADT_A01 ORU_R01)");
             System.exit(2);
             return;
         }

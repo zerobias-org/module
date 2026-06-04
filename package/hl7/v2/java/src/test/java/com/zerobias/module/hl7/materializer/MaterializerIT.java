@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /**
  * Phase 3 validation (DESIGN §5): the full structure-index-driven materializer,
  * run against the <em>real</em> generated index (produced by the codegen into
- * {@code $HL7_INDEX_DIR/structure-index/v251.json} by manual-test.sh, exactly as
+ * {@code $HL7_INDEX_DIR/structure-index/v27.json} by manual-test.sh, exactly as
  * the build would) and a generically-parsed message.
  *
  * <p>Parsing is forced generic via {@link GenericModelClassFactory} to mirror
@@ -36,12 +36,12 @@ class MaterializerIT {
     private Materializer materializer() {
         // Prefer the classpath index the real build generates into target/classes
         // (so this runs in CI); fall back to HL7_INDEX_DIR for the manual harness.
-        StructureIndex index = StructureIndex.fromClasspath("v251");
+        StructureIndex index = StructureIndex.fromClasspath("v27");
         if (index == null) {
             String dir = System.getenv("HL7_INDEX_DIR");
             assumeTrue(dir != null && !dir.isBlank(),
                 "no classpath structure-index and HL7_INDEX_DIR unset; skipping");
-            index = StructureIndex.fromFile(Path.of(dir, "structure-index", "v251.json"));
+            index = StructureIndex.fromFile(Path.of(dir, "structure-index", "v27.json"));
         }
         return new Materializer(index);
     }
@@ -59,7 +59,7 @@ class MaterializerIT {
         Materializer m = materializer();
         // The DESIGN §5 PID, with MSH framing. PID-3 CX: idNumber^^^assigningAuthority(HD)^typeCode.
         String er7 = String.join(CR,
-            "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260529103000||ADT^A01^ADT_A01|MSG1|P|2.5.1",
+            "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260529103000||ADT^A01^ADT_A01|MSG1|P|2.7",
             "EVN|A01|20260529103000",
             "PID|1||5551212^^^EPIC&&ISO^MR||SMITH^JOHN||19800101|M",
             "PV1|1|I") + CR;
@@ -89,14 +89,15 @@ class MaterializerIT {
         assertEquals("SMITH", xpn.getAsJsonObject("familyName").get("surname").getAsString());
         assertEquals("JOHN", xpn.get("givenName").getAsString());
 
-        // PID-7 dateTimeOfBirth: TS is a composite in v2.5.1 (TS-1 = time), so the
-        // value nests under "time" — faithful to the schema. The date is
-        // precision-preserving (NO fabricated midnight — the validated normalizer's
-        // contract; DESIGN §5's flat "…T00:00:00Z" is illustrative, predates it).
-        assertEquals("1980-01-01", pid.getAsJsonObject("dateTimeOfBirth").get("time").getAsString());
+        // PID-7 dateTimeOfBirth: DTM is a PRIMITIVE in v2.7 (v2.5.1's TS composite
+        // was retired), so the value is a flat string, not nested under "time". The
+        // date is precision-preserving (NO fabricated midnight — the validated
+        // normalizer's contract).
+        assertEquals("1980-01-01", pid.get("dateTimeOfBirth").getAsString());
 
-        // PID-8 administrativeSex: table-bound value emitted as the raw code (tagged, not resolved)
-        assertEquals("M", pid.get("administrativeSex").getAsString());
+        // PID-8 administrativeSex: CWE in v2.7 (was IS in v2.5.1), so the bare code
+        // "M" lands in CWE-1 identifier — emitted as the raw code (tagged, not resolved)
+        assertEquals("M", pid.getAsJsonObject("administrativeSex").get("identifier").getAsString());
 
         // MSH-3 sendingApplication is an HD composite
         assertEquals("EPIC",
@@ -107,7 +108,7 @@ class MaterializerIT {
     void oruRoundTripsWithRepeatingObx() throws Exception {
         Materializer m = materializer();
         String er7 = String.join(CR,
-            "MSH|^~\\&|LAB|HOSP|RECV|DEST|20260529103000||ORU^R01^ORU_R01|MSG2|P|2.5.1",
+            "MSH|^~\\&|LAB|HOSP|RECV|DEST|20260529103000||ORU^R01^ORU_R01|MSG2|P|2.7",
             "PID|1||9001234^^^LAB^MR||DOE^JANE||19750210|F",
             "OBR|1|||CBC^Complete Blood Count",
             "OBX|1|NM|WBC^White Blood Count||7.2|10*3/uL|||||F",
@@ -132,20 +133,21 @@ class MaterializerIT {
         Materializer m = materializer();
         // The HL7 explicit-null sentinel ("") must survive as JSON null with the key
         // PRESENT (serializeNulls), distinct from an absent field whose key is omitted.
-        // Exercised on a PRIMITIVE field (PID-8 administrativeSex, IS): a composite
-        // field's "" would surface the null nested under its first component, not at the
-        // field's top level, so a primitive is the faithful explicit-null probe.
-        // PID-7 (dateTimeOfBirth) is left empty → absent.
+        // Exercised on a PRIMITIVE field (PID-1 setIDPID, SI): a composite field's ""
+        // would surface the null nested under its first component, not at the field's
+        // top level, so a primitive is the faithful explicit-null probe. (In v2.7
+        // PID-8 administrativeSex is a CWE composite, so it is no longer usable here.)
+        // PID-7 (dateTimeOfBirth) is left absent → key omitted.
         String er7 = String.join(CR,
-            "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260529103000||ADT^A01^ADT_A01|MSG3|P|2.5.1",
-            "PID|1||5551212^^^EPIC^MR||SMITH^JOHN|||\"\"") + CR;
+            "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260529103000||ADT^A01^ADT_A01|MSG3|P|2.7",
+            "PID|\"\"||5551212^^^EPIC^MR||SMITH^JOHN") + CR;
 
         JsonObject pid = GSON.fromJson(m.toTypedJson(parseGeneric(er7)), JsonObject.class)
             .getAsJsonObject("pid");
-        // dateTimeOfBirth (PID-7) was empty → key omitted entirely
+        // dateTimeOfBirth (PID-7) was absent → key omitted entirely
         assertTrue(!pid.has("dateTimeOfBirth"), "absent field omitted");
-        // administrativeSex (PID-8) was "" → key present, value JSON null
-        assertTrue(pid.has("administrativeSex"), "explicit-null field key is present");
-        assertTrue(pid.get("administrativeSex").isJsonNull(), "HL7 \"\" → JSON null");
+        // setIDPID (PID-1) was "" → key present, value JSON null
+        assertTrue(pid.has("setIDPID"), "explicit-null field key is present");
+        assertTrue(pid.get("setIDPID").isJsonNull(), "HL7 \"\" → JSON null");
     }
 }

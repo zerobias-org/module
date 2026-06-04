@@ -14,13 +14,16 @@
 daemonMode: true
 
 # Extra TCP port the receiver binds beyond the 8888 operations port. Hub Node
-# injects the resolved value as LISTENER_PORT_MLLP. `port: null` = ephemeral
-# (node allocates) — fine for test feeds; operators pin a known port (e.g. 2575)
-# for statically-configured HL7 sources. (DESIGN §3.2, §3.3)
+# injects the resolved value as LISTENER_PORT_MLLP, binds it 1:1 in the container,
+# and maps it 1:1 to the host — so this number IS the address sending systems use.
+# It MUST be prescribed: a daemon MLLP listener with no fixed port is unusable
+# (nobody can know where to connect), which is why we default to 2575 — the
+# IANA-registered HL7-over-MLLP port and the industry default. Operators may
+# override per-deployment if 2575 is taken. (DESIGN §3.2, §3.3)
 listenerPorts:
   - name: mllp
     protocol: tcp
-    port: null
+    port: 2575
     bindAddress: "0.0.0.0"
     tls: false
 
@@ -52,9 +55,11 @@ config:
   # the image are active. Extensions are NOT resolved by the platform — they are
   # npm deps baked in at image build (DESIGN §7).
   activeExtensions: []
-  # Target HL7 version for materialization (mirrors connectionProfile.hl7Version
-  # default; the receiver still accepts other versions). (DESIGN §11.5)
-  hl7Version: "2.5.1"
+  # Target HL7 version for materialization — selects the baked-in structure index
+  # (2.7 -> v27). The receiver still accepts any version on the wire; messages of
+  # other versions materialize against this index (partial) or fall back to the
+  # envelope schema. (DESIGN §11.5)
+  hl7Version: "2.7"
   # SQLite durability for the ack path, applied at buffer open. 'normal'
   # (synchronous=NORMAL) is faster; 'full' (synchronous=FULL, fsync per row) is
   # crash-safe for clinical feeds. This is a daemon-level knob set at boot, so it

@@ -90,16 +90,16 @@ Canonical form (per [`SchemaIds.md`](../../interface/dataproducer/documentation/
 
 | Schema ID | Purpose |
 |---|---|
-| `schema:table:hl7v2.v251.ADT_A01` | Collection schema for `/by-type/ADT_A01` |
-| `schema:table:hl7v2.v251.ORU_R01` | Collection schema for `/by-type/ORU_R01` |
-| `schema:type:hl7v2.v251.MSH` | MSH segment (composite, referenced from messages) |
-| `schema:type:hl7v2.v251.PID` | PID segment |
-| `schema:type:hl7v2.v251.CX` | CX datatype (extended composite ID with check digit) |
-| `schema:type:hl7v2.v251.XPN` | XPN datatype (extended person name) |
-| `schema:type:hl7v2.v251.HD` | HD datatype (hierarchic designator) |
-| `schema:enum:hl7v2.v251.HL70001` | Administrative Sex value set |
-| `schema:enum:hl7v2.v251.HL70003` | Event Type value set |
-| `schema:enum:hl7v2.v251.HL70076` | Message Type value set |
+| `schema:table:hl7v2.v27.ADT_A01` | Collection schema for `/by-type/ADT_A01` |
+| `schema:table:hl7v2.v27.ORU_R01` | Collection schema for `/by-type/ORU_R01` |
+| `schema:type:hl7v2.v27.MSH` | MSH segment (composite, referenced from messages) |
+| `schema:type:hl7v2.v27.PID` | PID segment |
+| `schema:type:hl7v2.v27.CX` | CX datatype (extended composite ID with check digit) |
+| `schema:type:hl7v2.v27.XPN` | XPN datatype (extended person name) |
+| `schema:type:hl7v2.v27.HD` | HD datatype (hierarchic designator) |
+| `schema:enum:hl7v2.v27.HL70136` | Yes/No Indicator value set (PID death / multiple-birth indicators) |
+| `schema:enum:hl7v2.v27.HL70003` | Event Type value set |
+| `schema:enum:hl7v2.v27.HL70203` | Identifier Type value set (CX-5) |
 | `schema:type:hl7v2.epic.ZPV` | Epic Z-segment (from `@zerobias-org/hl7-extension-epic-adt`) |
 | `schema:enum:hl7v2.local.HL79001` | Customer local enum (from a `@<customer-scope>/hl7-extension-*` pack) |
 | `schema:shared:hl7v2.message-envelope` | Common envelope fields across all message types (`controlId`, `receivedAt`, `status`, `leaseId`) |
@@ -107,16 +107,16 @@ Canonical form (per [`SchemaIds.md`](../../interface/dataproducer/documentation/
 | `schema:function:hl7v2.ops.ack:input` / `:output` | `ops/ack` I/O |
 | `schema:function:hl7v2.ops.purge:input` / `:output` | `ops/purge` I/O |
 
-The catalog token is always `hl7v2`. The schema slot is `v251`, `v25`, … for
+The catalog token is always `hl7v2`. The schema slot is `v27`, `v25`, … for
 HL7-spec content; for extensions, it's a namespace the extension package
 declares (`epic`, `cerner`, `nhs-uk`, `local`). This is an internal addressing
 convention only — the module keeps the namespaces from colliding (below); there
 is no platform-level "namespace ownership" rule. Names mirror HAPI's
-structure-class names — `ADT_A01`, `PID`, `CX`, `HL70001`.
+structure-class names — `ADT_A01`, `PID`, `CX`, `HL70203`.
 
 Extension packages contribute schemas in **their own namespace**.
 There's no merging into base schemas — `schema:type:hl7v2.epic.ZPV` and
-`schema:type:hl7v2.v251.PID` coexist as peers. A message structure that
+`schema:type:hl7v2.v27.PID` coexist as peers. A message structure that
 includes Z-segments is a *new* schema in the extension's namespace
 (e.g. `schema:table:hl7v2.epic.ADT_A01_with_ZPV`), referencing the base
 segments plus the Z-segment. Collisions are impossible by construction;
@@ -133,7 +133,7 @@ HL7 is composition-heavy. A worked traversal:
 
 ```yaml
 Schema:
-  id: schema:table:hl7v2.v251.ADT_A01
+  id: schema:table:hl7v2.v27.ADT_A01
   dataTypes:
     - { name: string }
     - { name: date-time }
@@ -141,18 +141,18 @@ Schema:
     - name: msh
       required: true
       references:
-        schemaId: schema:type:hl7v2.v251.MSH
+        schemaId: schema:type:hl7v2.v27.MSH
     - name: evn
       required: true
       references:
-        schemaId: schema:type:hl7v2.v251.EVN
+        schemaId: schema:type:hl7v2.v27.EVN
     - name: pid
       required: true
       references:
-        schemaId: schema:type:hl7v2.v251.PID
+        schemaId: schema:type:hl7v2.v27.PID
     - name: pv1
       references:
-        schemaId: schema:type:hl7v2.v251.PV1
+        schemaId: schema:type:hl7v2.v27.PV1
     # ... and the envelope fields from the shared schema:
     - name: controlId
       dataType: string
@@ -167,28 +167,27 @@ Schema:
         schemaId: schema:enum:hl7v2.ops.MessageStatus    # new | in_flight | acked
 
 Schema:
-  id: schema:type:hl7v2.v251.PID
+  id: schema:type:hl7v2.v27.PID
   dataTypes: [{ name: string }, { name: date-time }]
   properties:
     - name: patientIdentifierList
       multi: true
       required: true
       references:
-        schemaId: schema:type:hl7v2.v251.CX
+        schemaId: schema:type:hl7v2.v27.CX
     - name: patientName
       multi: true
       required: true
       references:
-        schemaId: schema:type:hl7v2.v251.XPN
+        schemaId: schema:type:hl7v2.v27.XPN
     - name: dateOfBirth
-      dataType: date-time
+      dataType: date-time          # DTM primitive in v2.7 (v2.5.1's TS composite retired)
     - name: administrativeSex
-      dataType: string
-      references:
-        schemaId: schema:enum:hl7v2.v251.HL70001
+      references:                   # CWE composite in v2.7 (v2.5.1's IS+table HL70001 retired)
+        schemaId: schema:type:hl7v2.v27.CWE
 
 Schema:
-  id: schema:type:hl7v2.v251.CX
+  id: schema:type:hl7v2.v27.CX
   dataTypes: [{ name: string }]
   properties:
     - name: idNumber
@@ -196,14 +195,14 @@ Schema:
       required: true
     - name: assigningAuthority
       references:
-        schemaId: schema:type:hl7v2.v251.HD
+        schemaId: schema:type:hl7v2.v27.HD
     - name: identifierTypeCode
       dataType: string
       references:
-        schemaId: schema:enum:hl7v2.v251.HL70203
+        schemaId: schema:enum:hl7v2.v27.HL70203
 ```
 
-A consumer walking from `schema:table:hl7v2.v251.ADT_A01` discovers
+A consumer walking from `schema:table:hl7v2.v27.ADT_A01` discovers
 the full bean graph (MSH → PID → CX → HD → HL70203 enum), caches each
 `getSchema` response, and ends up with the same typed view a HAPI Java
 client gets from `msg.getPID().getPatientIdentifierList(0).getAssigningAuthority().getNamespaceId()`.
@@ -222,9 +221,9 @@ never `dataType: string + format: <thing>` when a core type exists.
 | DT (`YYYYMMDD`) | `date` | Producer normalizes to ISO 8601 at materialization. |
 | TM (`HHMMSS[.s+/-ZZZZ]`) | `string` | No core "time-only" type; `format: time` hint. |
 | DTM / TS (`YYYYMMDDHHMMSS[.s][+/-ZZZZ]`) | `date-time` | Normalized to ISO 8601. |
-| EI (entity identifier) | composition `references` to `schema:type:hl7v2.v251.EI` | |
-| HD, CX, XPN, XAD, CE, CWE, CNE, CWE, … | composition `references` to `schema:type:hl7v2.v251.<name>` | Each composite gets its own schema. |
-| Repeating fields | parent property + `multi: true` | E.g. `patientName: { multi: true, references: schemaId: schema:type:hl7v2.v251.XPN }`. |
+| EI (entity identifier) | composition `references` to `schema:type:hl7v2.v27.EI` | |
+| HD, CX, XPN, XAD, CE, CWE, CNE, CWE, … | composition `references` to `schema:type:hl7v2.v27.<name>` | Each composite gets its own schema. |
+| Repeating fields | parent property + `multi: true` | E.g. `patientName: { multi: true, references: schemaId: schema:type:hl7v2.v27.XPN }`. |
 
 The producer normalizes wire-format values at materialization time —
 ETL never sees HL7 date formats, never has to re-parse pipe-encoded
@@ -547,8 +546,8 @@ with extension-supplied entries (see §7).
 generic-parsed:  PID|||5551212^^^EPIC&...^MR||SMITH^JOHN||19800101|M
 structure idx :  PID-3 patientIdentifierList CX[] required
                  PID-5 patientName XPN[] required
-                 PID-7 dateOfBirth DTM optional
-                 PID-8 administrativeSex IS optional table=HL70001
+                 PID-7 dateTimeOfBirth DTM optional (primitive in v2.7)
+                 PID-8 administrativeSex CWE optional (composite in v2.7)
 materializer →
 {
   "patientIdentifierList": [
@@ -559,8 +558,8 @@ materializer →
   "patientName": [
     { "familyName": { "surname": "SMITH" }, "givenName": "JOHN" }
   ],
-  "dateOfBirth": "1980-01-01T00:00:00Z",
-  "administrativeSex": "M"
+  "dateOfBirth": "1980-01-01",
+  "administrativeSex": { "identifier": "M" }
 }
 ```
 
@@ -575,8 +574,10 @@ consumer follows the `schema:enum:…` reference to get display values).
 > (`idNumber`, `surname`, `dateOfBirth: …T00:00:00Z`) are **illustrative**. The
 > actual materialized keys are HAPI's bean names — `IDNumber`, `namespaceID`,
 > `dateTimeOfBirth`, etc. — and they match the generated schemas exactly (both come
-> from the same structure index). Two real consequences: `TS` is a *composite* in
-> v2.5.1, so timestamps nest under `time` (`dateTimeOfBirth.time`); and dates are
+> from the same structure index). Two real consequences for v2.7: `DTM` is a
+> *primitive*, so `dateTimeOfBirth` is a flat string (v2.5.1's `TS` composite that
+> nested under `time` was retired), and `administrativeSex` is a `CWE` *composite*
+> (the bare code lands in `identifier`, e.g. `{"identifier":"M"}`); and dates are
 > precision-preserving (no fabricated midnight/zone) per the validated
 > `Hl7Normalizer`. Treat the generated schema as the contract, not this example.
 
@@ -594,12 +595,12 @@ java/
 ├── src/main/
 │   ├── java/...                                   # listener + materializer + buffer
 │   └── resources/
-│       ├── schemas/v251/
-│       │   ├── messages/ADT_A01.json              # schema:table:hl7v2.v251.ADT_A01
-│       │   ├── segments/PID.json                  # schema:type:hl7v2.v251.PID
-│       │   ├── datatypes/CX.json                  # schema:type:hl7v2.v251.CX
-│       │   └── tables/HL70001.json                # schema:enum:hl7v2.v251.HL70001
-│       └── structure-index/v251.json              # runtime materializer driver
+│       ├── schemas/v27/
+│       │   ├── messages/ADT_A01.json              # schema:table:hl7v2.v27.ADT_A01
+│       │   ├── segments/PID.json                  # schema:type:hl7v2.v27.PID
+│       │   ├── datatypes/CX.json                  # schema:type:hl7v2.v27.CX
+│       │   └── tables/HL70203.json                # schema:enum:hl7v2.v27.HL70203
+│       └── structure-index/v27.json              # runtime materializer driver
 └── pom.xml                                        # exec-maven-plugin: runs codegen before package
 ```
 
@@ -662,7 +663,7 @@ platform-parsed identity.
   "version": "1.2.4",
   "auditmation": {
     "hl7": {
-      "version": "2.5.1",
+      "version": "2.7",
       "vendor": "epic",
       "namespace": "epic",
       "messageGroups": ["ADT"]
@@ -687,7 +688,7 @@ standard parsed name, with no namespace-subpath rule.
 
 Extensions don't modify base schemas. They contribute *new* schemas
 under their own namespace. `schema:table:hl7v2.epic.ADT_A01_with_ZPV`
-references base segments from `hl7v2.v251.*` plus its own ZPV segment:
+references base segments from `hl7v2.v27.*` plus its own ZPV segment:
 
 ```yaml
 Schema:
@@ -696,24 +697,24 @@ Schema:
   dataTypes: [...]
   properties:
     - name: msh
-      references: { schemaId: schema:type:hl7v2.v251.MSH }       # base
+      references: { schemaId: schema:type:hl7v2.v27.MSH }       # base
     - name: pid
-      references: { schemaId: schema:type:hl7v2.v251.PID }       # base
+      references: { schemaId: schema:type:hl7v2.v27.PID }       # base
     - name: pv1
-      references: { schemaId: schema:type:hl7v2.v251.PV1 }       # base
+      references: { schemaId: schema:type:hl7v2.v27.PV1 }       # base
     - name: zpv
       references: { schemaId: schema:type:hl7v2.epic.ZPV }       # extension
     # ... plus envelope fields
 ```
 
-Collisions impossible — `epic.ADT_A01_with_ZPV` and `v251.ADT_A01` are
+Collisions impossible — `epic.ADT_A01_with_ZPV` and `v27.ADT_A01` are
 peer schemas in the module's in-memory schema registry (not the platform catalog).
 
 The receiver's hierarchy reflects what's loaded. With the Epic extension
 pulled in, `/hl7-v2-receiver/by-type` lists both:
 
 ```
-/hl7-v2-receiver/by-type/ADT_A01              ← base, schema:table:hl7v2.v251.ADT_A01
+/hl7-v2-receiver/by-type/ADT_A01              ← base, schema:table:hl7v2.v27.ADT_A01
 /hl7-v2-receiver/by-type/ADT_A01_with_ZPV     ← extension, schema:table:hl7v2.epic.ADT_A01_with_ZPV
 ```
 
@@ -964,8 +965,8 @@ PLATFORM_UPDATES.md §8.
    module's root `runtimeConfig.yml` → `module_version.runtime_config`
    (PLATFORM_UPDATES §6.3).
 3. **Build-time schema codegen.** Maven sub-module that walks
-   `hapi-structures-v251`, emits `schemas/v251/*.json` and
-   `structure-index/v251.json`. Standalone — verifiable against the
+   `hapi-structures-v27`, emits `schemas/v27/*.json` and
+   `structure-index/v27.json`. Standalone — verifiable against the
    spec without the rest of the module.
 4. **Materializer + buffer + producer in isolation.** Unit tests:
    synthetic MLLP client → assert buffer rows + typed JSON shape +

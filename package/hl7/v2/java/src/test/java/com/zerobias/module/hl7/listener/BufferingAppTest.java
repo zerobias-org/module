@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class BufferingAppTest {
 
     private static final String ADT =
-        "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260601120000||ADT^A01^ADT_A01|MSG1|P|2.5.1\r"
+        "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260601120000||ADT^A01^ADT_A01|MSG1|P|2.7\r"
         + "PID|1||5551212^^^EPIC^MR||DOE^JANE||19850315|F\r";
 
     private Message parse(String er7) throws Exception {
@@ -50,7 +50,7 @@ class BufferingAppTest {
             MessageMaterializer boom = msg -> {
                 throw new RuntimeException("materialize failed");
             };
-            BufferingApp app = new BufferingApp(buffer, boom, "v251");
+            BufferingApp app = new BufferingApp(buffer, boom, "v27");
 
             Message ack = app.processMessage(parse(ADT), new java.util.HashMap<>());
 
@@ -62,7 +62,7 @@ class BufferingAppTest {
     @Test
     void successPersistsAndAcksAa(@TempDir Path dir) throws Exception {
         try (BufferStore buffer = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            BufferingApp app = new BufferingApp(buffer, new EnvelopeMaterializer(), "v251");
+            BufferingApp app = new BufferingApp(buffer, new EnvelopeMaterializer(), "v27");
             Message ack = app.processMessage(parse(ADT), new java.util.HashMap<>());
             assertEquals("AA", new Terser(ack).get("/MSA-1"));
             assertEquals(1, buffer.count());

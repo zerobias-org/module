@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class Hl7ListenerIT {
 
     private static final String ER7 = String.join("\r",
-        "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260529103000||ADT^A01^ADT_A01|MSG00001|P|2.5.1",
+        "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260529103000||ADT^A01^ADT_A01|MSG00001|P|2.7",
         "EVN|A01|20260529103000",
         "PID|1||5551212^^^EPIC^MR||SMITH^JOHN||19800101|M",
         "PV1|1|I") + "\r";
@@ -40,7 +40,7 @@ class Hl7ListenerIT {
         final int port = freePort();
         try (BufferStore buffer = new BufferStore(dir.resolve("buffer.db").toString(), false);
              Hl7ListenerService listener = new Hl7ListenerService(
-                 port, new BufferingApp(buffer, new EnvelopeMaterializer(), "v251"));
+                 port, new BufferingApp(buffer, new EnvelopeMaterializer(), "v27"));
              HapiContext client = new DefaultHapiContext()) {
 
             listener.start();
@@ -60,7 +60,7 @@ class Hl7ListenerIT {
             assertEquals("ADT", row.messageCode());
             assertEquals("A01", row.triggerEvent());
             assertEquals("EPIC", row.sendingApp());
-            assertEquals("schema:table:hl7v2.v251.ADT_A01", row.schemaId());
+            assertEquals("schema:table:hl7v2.v27.ADT_A01", row.schemaId());
             assertNotNull(row.rawEr7());
             assertTrue(row.mappedJson().contains("\"patientFamilyName\":\"SMITH\""),
                 "materialized JSON: " + row.mappedJson());

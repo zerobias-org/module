@@ -50,7 +50,7 @@ python3 - "$MLLP" <<'PY'
 import socket, sys
 port = int(sys.argv[1])
 msg = "\r".join([
-    "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260601120000||ADT^A01^ADT_A01|MSG-E2E-1|P|2.5.1",
+    "MSH|^~\\&|EPIC|HOSP|RECV|DEST|20260601120000||ADT^A01^ADT_A01|MSG-E2E-1|P|2.7",
     "EVN|A01|20260601120000",
     "PID|1||5551212^^^EPIC^MR||DOE^JANE||19850315|F",
     "PV1|1|I",

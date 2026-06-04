@@ -56,7 +56,7 @@ public final class OperationRouter {
                 return facade.getChildren(
                     str(argMap, "objectId"),
                     getInt(argMap, "pageSize", 100),
-                    getInt(argMap, "pageNumber", 1) - 1);
+                    getInt(argMap, "pageNumber", 1));
             case "createChildObject":
             case "updateObject":
             case "deleteObject":
@@ -78,7 +78,7 @@ public final class OperationRouter {
                     str(argMap, "sortBy"),
                     str(argMap, "sortDir"),
                     getInt(argMap, "pageSize", 100),
-                    getInt(argMap, "pageNumber", 1) - 1,
+                    getInt(argMap, "pageNumber", 1),
                     str(argMap, "pageToken"));
             case "getCollectionElement":
                 return facade.getCollectionElement(

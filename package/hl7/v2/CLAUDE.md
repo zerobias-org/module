@@ -55,6 +55,16 @@ proxies everything to Javalin, which serves the SQL-module RPC envelope:
 maps operationIds onto the RPC route. (The reference SQL module's api.yml likewise
 doesn't match its Javalin routes.)
 
+**Paginated ops MUST return a `PagedResults` envelope, not a bare array.** Even
+though the OpenAPI response schema for `getChildren`/`searchChildObjects`/
+`getCollectionElements`/`searchCollectionElements` is `type: array`, the platform's
+generated producer client deserializes the RPC body into a paged bag and throws
+*"Producers must return 'items' for PagedResults queries"* (breaking the
+data-explorer tree) if the body isn't `{"items":[...],"count":N,"pageSize":P,
+"pageNumber":N}`. `Hl7ProducerFacade.pagedResults(...)` wraps them; `pageNumber` is
+1-based on the wire. See `auditlogic/module/IMPROVEMENTS.md` §"PagedResults Format".
+This was the boss-facing blocker fixed once — don't return a raw array again.
+
 ## Validating changes
 
 **Run the JUnit suite after a change** — it's the canonical test surface (45 tests:

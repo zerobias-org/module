@@ -59,12 +59,12 @@ public final class Hl7ProducerFacade {
         requireId(objectId);
         List<Map<String, Object>> children = tree.children(objectId);
         int size = clampPageSize(pageSize);
-        int from = Math.max(0, pageNumber) * size;
-        if (from >= children.size()) {
-            return "[]";
-        }
-        int to = Math.min(children.size(), from + size);
-        return GSON.toJson(children.subList(from, to));
+        int from = Math.max(0, pageNumber - 1) * size;
+        int total = children.size();
+        List<Map<String, Object>> page = from >= total
+            ? List.of()
+            : children.subList(from, Math.min(total, from + size));
+        return pagedResults(page, total, size, pageNumber);
     }
 
     // --- Collections (read-only browse) -----------------------------------
@@ -74,7 +74,7 @@ public final class Hl7ProducerFacade {
         requireId(objectId);
         ObjectTree.Collection coll = tree.resolveCollection(objectId);
         int size = clampPageSize(pageSize);
-        int offset = Math.max(0, pageNumber) * size;
+        int offset = Math.max(0, pageNumber - 1) * size;
         String where = composeWhere(coll, filter);
 
         List<BufferRow> rows = buffer.search(where, size, offset);
@@ -82,7 +82,8 @@ public final class Hl7ProducerFacade {
         for (BufferRow r : rows) {
             elements.add(toElement(r));
         }
-        return GSON.toJson(elements);
+        long total = buffer.countWhere(where);
+        return pagedResults(elements, total, size, pageNumber);
     }
 
     public String getCollectionElement(String objectId, String elementKey) throws SQLException {
@@ -181,6 +182,26 @@ public final class Hl7ProducerFacade {
             return a;
         }
         return "(" + a + ") AND (" + b + ")";
+    }
+
+    /**
+     * The DataProducer {@code PagedResults} envelope. Paginated operations
+     * ({@code getChildren}/{@code searchChildObjects},
+     * {@code getCollectionElements}/{@code searchCollectionElements}) MUST return
+     * this shape — the platform's generated producer client deserializes the RPC
+     * body into a paged bag and raises "Producers must return 'items' for
+     * PagedResults queries" when {@code items} is absent. A bare array (the
+     * OpenAPI response schema, but not the runtime contract) breaks the
+     * data-explorer tree. {@code count} is the total matching rows, not the page.
+     */
+    private static String pagedResults(List<Map<String, Object>> items, long count,
+            int pageSize, int pageNumber) {
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("items", items);
+        envelope.put("count", count);
+        envelope.put("pageSize", pageSize);
+        envelope.put("pageNumber", pageNumber);
+        return GSON.toJson(envelope);
     }
 
     private int clampPageSize(int pageSize) {

@@ -80,7 +80,15 @@ def pv1_segment(encounter):
     cls = (encounter or {}).get("class", {}).get("code", "AMB")
     pc = PATIENT_CLASS.get(cls, "O")
     start = ts((encounter or {}).get("period", {}).get("start"))
-    return f"PV1|1|{pc}|^^^HOSP|||||||||||||||||{start}"
+    # Build by field index so each value lands in the correct PV1 field. The
+    # previous inline-pipe form mis-counted and put the admit time in PV1-20
+    # (Financial Class). PV1-44 is Admit Date/Time.
+    f = [""] * 44                  # PV1-1 .. PV1-44
+    f[0] = "1"                     # PV1-1   Set ID
+    f[1] = pc                      # PV1-2   Patient Class (O/I/E)
+    f[2] = "^^^HOSP"               # PV1-3   Assigned Patient Location
+    f[43] = start                  # PV1-44  Admit Date/Time
+    return "PV1|" + "|".join(f)
 
 
 HL7_VERSION = "2.7"

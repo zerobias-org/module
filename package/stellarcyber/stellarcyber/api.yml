@@ -166,6 +166,9 @@ components:
         accountId:
           type: string
           description: AWS account id.
+        region:
+          type: string
+          description: AWS region the GuardDuty finding was raised in (used to build the affected-resource ARN).
         arn:
           type: string
           description: GuardDuty finding ARN.
@@ -181,3 +184,6 @@ components:
         resourceType:
           type: string
           description: AWS resource type (e.g. Instance, AccessKey).
+        instanceId:
+          type: string
+          description: EC2 instance id when resourceType is Instance (used to build the affected-resource ARN).

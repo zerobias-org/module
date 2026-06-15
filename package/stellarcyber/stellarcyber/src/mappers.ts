@@ -26,6 +26,7 @@ export function toCaseAlert(raw: any): CaseAlert {
   const xdr = src.xdr_event ?? src.xdrEvent ?? {};
   const gd = src.aws_guardduty ?? src.awsGuardduty ?? {};
   const res = gd.Resource ?? gd.resource ?? {};
+  const instanceDetails = res.InstanceDetails ?? res.instanceDetails ?? {};
 
   return CaseAlert.newInstance({
     id: data._id ?? data.id,
@@ -41,9 +42,13 @@ export function toCaseAlert(raw: any): CaseAlert {
       },
       awsGuardduty: {
         accountId: gd.AccountId ?? gd.accountId,
+        region: gd.Region ?? gd.region,
         arn: gd.Arn ?? gd.arn,
         type: gd.Type ?? gd.type,
-        resource: { resourceType: res.ResourceType ?? res.resourceType },
+        resource: {
+          resourceType: res.ResourceType ?? res.resourceType,
+          instanceId: instanceDetails.InstanceId ?? instanceDetails.instanceId ?? res.instanceId,
+        },
       },
     },
   });

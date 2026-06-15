@@ -1,7 +1,7 @@
 {
-  "version": "1.2.0-uat.0",
-  "branch": "hl7",
-  "sourceHash": "ee53f317cdbe90a30f2a1e0113a17cf3101735b0302a4667360f92e2d70aac09",
+  "version": "1.2.0",
+  "branch": "main",
+  "sourceHash": "784f1973d24df222fa9b86966fd21502bc17249897638171ca348a5fa44af447",
   "testHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "tasks": {
     "validate": "passed",

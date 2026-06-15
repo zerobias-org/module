@@ -1,0 +1,5 @@
+type: object
+properties:
+  apiKey:
+    type: string
+    description: Optional Petstore API key. Petstore demo accepts but does not validate this value; included to demonstrate the apiKey auth pattern.

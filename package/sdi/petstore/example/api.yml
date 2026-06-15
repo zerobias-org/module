@@ -1,0 +1,243 @@
+openapi: 3.0.3
+info:
+  x-product-infos:
+    - $ref: "./node_modules/@zerobias-org/product-sdi-petstore-example/catalog.yml#/Product"
+  version: 2.0.0
+  title: '@zerobias-org/module-sdi-petstore-example'
+  description: SDI Petstore Example
+  x-impl-name: Petstore
+tags:
+  - name: pet
+    description: Pet management operations
+  - name: store
+    description: Store / order management operations
+  - name: user
+    description: User management operations
+components:
+  parameters:
+    petIdParam:
+      name: petId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for a pet
+    orderIdParam:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for an order
+    usernameParam:
+      name: username
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Petstore username (Petstore identifies users by username, not numeric id)
+    petStatusParam:
+      name: status
+      in: query
+      required: true
+      schema:
+        $ref: '#/components/schemas/PetStatus'
+      description: Filter pets by status (mapper normalizes uppercase per D-16)
+  schemas:
+    PetStatus:
+      type: string
+      enum:
+        - available
+        - pending
+        - sold
+      description: Pet availability status (mapper normalizes uppercase per D-16)
+    Pet:
+      type: object
+      required:
+        - name
+        - photoUrls
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the pet
+        name:
+          type: string
+          description: Pet name
+        category:
+          $ref: '#/components/schemas/Category'
+        photoUrls:
+          type: array
+          items:
+            type: string
+          description: URLs for pet photos
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+          description: Tags associated with the pet
+        status:
+          $ref: '#/components/schemas/PetStatus'
+    Category:
+      type: object
+      description: Pet category (e.g., dog, cat) referenced from Pet
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the category
+        name:
+          type: string
+          description: Category name
+    Tag:
+      type: object
+      description: Pet tag for grouping or labeling
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the tag
+        name:
+          type: string
+          description: Tag name
+    Order:
+      type: object
+      description: Store order placed against a pet
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the order
+        petId:
+          type: string
+          description: Identifier of the pet being ordered
+        quantity:
+          type: integer
+          format: int32
+          description: Number of pets in the order
+        shipDate:
+          type: string
+          format: date-time
+          description: Order shipment timestamp
+        status:
+          type: string
+          enum:
+            - placed
+            - approved
+            - delivered
+          description: Order fulfillment status (mapper normalizes uppercase per D-16)
+        complete:
+          type: boolean
+          description: Whether the order has been completed
+    Inventory:
+      type: object
+      additionalProperties:
+        type: integer
+        format: int32
+      description: Map of pet status to count of pets in that status
+    PetstoreUser:
+      type: object
+      description: Petstore user account (Petstore identifies users by username, not numeric id)
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the user
+        username:
+          type: string
+          description: Petstore username
+        firstName:
+          type: string
+          description: User first name
+        lastName:
+          type: string
+          description: User last name
+        email:
+          type: string
+          description: User email address
+        password:
+          type: string
+          description: User password (Petstore demo only — never use in production)
+        phone:
+          type: string
+          description: User phone number
+        userStatus:
+          type: integer
+          format: int32
+          description: User account status code
+paths:
+  /pet/findByStatus:
+    get:
+      tags:
+        - pet
+      summary: Lists pets filtered by status
+      operationId: petList
+      x-method-name: list
+      parameters:
+        - $ref: '#/components/parameters/petStatusParam'
+      responses:
+        '200':
+          description: List of pets matching the requested status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pet'
+  /pet/{petId}:
+    get:
+      tags:
+        - pet
+      summary: Retrieves a pet by its ID
+      operationId: petGet
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/petIdParam'
+      responses:
+        '200':
+          description: Pet details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+  /store/order/{orderId}:
+    get:
+      tags:
+        - store
+      summary: Retrieves a store order by its ID
+      operationId: storeGetOrder
+      x-method-name: getOrder
+      parameters:
+        - $ref: '#/components/parameters/orderIdParam'
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+  /store/inventory:
+    get:
+      tags:
+        - store
+      summary: Retrieves the store inventory grouped by status
+      operationId: storeGetInventory
+      x-method-name: getInventory
+      responses:
+        '200':
+          description: Inventory map of pet status to counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inventory'
+  /user/{username}:
+    get:
+      tags:
+        - user
+      summary: Retrieves a user by username
+      operationId: userGet
+      x-method-name: get
+      parameters:
+        - $ref: '#/components/parameters/usernameParam'
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetstoreUser'

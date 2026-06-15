@@ -1,0 +1,5 @@
+type: object
+allOf:
+  - $ref: "./node_modules/@zerobias-org/types-core/schema/connectionState.yml"
+  - type: object
+    properties: {}

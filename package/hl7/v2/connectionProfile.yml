@@ -1,0 +1,57 @@
+type: object
+description: >-
+  Connection profile for the HL7 v2 receiver. Unlike demand-driven modules,
+  there is no remote system to dial — these fields tune how the always-on MLLP
+  listener and durable buffer behave. Listener port and durable volume are
+  supplied separately via Deployment.runtimeConfig (see PLATFORM_UPDATES.md),
+  not here. Extension packs are baked into the module image at build time
+  (DESIGN §7), not configured here. Module-defined runtime knobs that the
+  platform treats as opaque travel in runtimeConfig.config (MODULE_CONFIG).
+properties:
+  hl7Version:
+    type: string
+    description: >-
+      Target HL7 v2 version. The receiver accepts other versions
+      (HAPI allowUnknownVersions) but materializes typed JSON against this
+      version's baked-in structure index (2.7 -> v27). Mismatched feeds produce
+      partially-populated JSON, surfaced per-message via the envelope.
+      NOTE: like ackDurability, the materializer is daemon-wide (one buffer, one
+      listener), so the receiver takes its EFFECTIVE version from
+      runtimeConfig.config.hl7Version (MODULE_CONFIG), set at container boot —
+      not from this per-connection field. (DESIGN §11.5)
+    default: "2.7"
+    example: "2.7"
+  ackDurability:
+    type: string
+    description: >-
+      SQLite durability for the ack path. 'normal' (PRAGMA synchronous=NORMAL,
+      fsync at WAL checkpoints) is faster but can lose a few seconds of
+      ack'd-but-uncheckpointed messages on a kernel crash. 'full'
+      (synchronous=FULL, fsync per row, ~2x slower) closes that gap — use for
+      clinical feeds.
+      NOTE: this is a daemon-level setting applied when the buffer opens at
+      container boot, before any connection exists. The receiver takes its
+      EFFECTIVE value from runtimeConfig.config.ackDurability (MODULE_CONFIG),
+      not from this per-connection field, which the always-on daemon never reads.
+      Kept for documentation/back-compat. (DESIGN §8.1)
+    enum: [normal, full]
+    default: normal
+  backpressurePolicy:
+    type: string
+    description: >-
+      What to do when the buffer hits its retention ceiling. 'reject' →
+      MSA|AE, sender retries (no data loss; default for clinical feeds).
+      'evict-acked' → drop oldest acked rows regardless of retention.
+      'evict-unacked' → drop oldest un-acked rows (DATA LOSS). (DESIGN §11.3)
+    enum: [reject, evict-acked, evict-unacked]
+    default: reject
+  senderDiscriminator:
+    type: string
+    description: >-
+      Which MSH field keys the /by-sender views. Default MSH-3
+      (sendingApplication); some feeds set MSH-3 to a generic value and
+      discriminate on MSH-4 (sendingFacility). (DESIGN §11.4)
+    enum: [MSH-3, MSH-4]
+    default: MSH-3
+required:
+  - hl7Version

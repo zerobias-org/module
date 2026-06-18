@@ -1,7 +1,7 @@
 {
   "version": "2.0.0-uat.0",
   "branch": "feat/add-sdi-petstore-example",
-  "sourceHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "sourceHash": "527c9ff14ab49abb4db57cbfe1927ed635f66301489c82e998127933f92b4cae",
   "testHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "tasks": {
     "validate": "passed",

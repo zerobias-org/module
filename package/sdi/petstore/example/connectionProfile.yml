@@ -1,5 +1,8 @@
 type: object
 properties:
+  url:
+    type: string
+    description: Optional base URL for the Petstore API (e.g. an ngrok tunnel to a locally-run instance). When omitted, defaults to the public demo at https://petstore3.swagger.io/api/v3.
   apiKey:
     type: string
     description: Optional Petstore API key. Petstore demo accepts but does not validate this value; included to demonstrate the apiKey auth pattern.

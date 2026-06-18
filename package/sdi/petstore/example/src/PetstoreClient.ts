@@ -18,12 +18,17 @@ export class PetstoreClient {
 
   private connected = false;
 
-  private baseUrl = 'https://petstore3.swagger.io/api/v3';
+  private static readonly DEFAULT_BASE_URL = 'https://petstore3.swagger.io/api/v3';
+
+  private baseUrl = PetstoreClient.DEFAULT_BASE_URL;
 
   private apiKey: string | undefined;
 
   async connect(profile: ConnectionProfile): Promise<ConnectionState> {
     this.apiKey = profile.apiKey;
+    // Optional profile override (e.g. an ngrok tunnel to a local Petstore);
+    // falls back to the public demo when not provided.
+    this.baseUrl = profile.url ?? PetstoreClient.DEFAULT_BASE_URL;
 
     const headers: Record<string, string> = {
       Accept: 'application/json',

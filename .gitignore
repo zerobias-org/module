@@ -145,3 +145,4 @@ npm-shrinkwrap.json
 
 # zbb
 .zbb-monorepo/
+.zbb-gradle/

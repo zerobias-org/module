@@ -828,6 +828,14 @@ components:
           type: integer
           format: int64
           description: Content size in bytes (binary objects only)
+        checksum:
+          type: string
+          description: >-
+            Content digest that changes if and only if the object's content
+            changes. Used for change detection (e.g. deciding whether to
+            re-fetch a copy). Opaque, source-defined value (e.g. git blob SHA,
+            S3 ETag, content hash); compare for equality only. Distinct from
+            etag, which is a metadata entity tag for optimistic concurrency.
     ObjectClass:
       type: string
       description: Object capability indicator

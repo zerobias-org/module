@@ -31,7 +31,8 @@ deviations between the two should be treated as bugs in `api.yml`.
 | `tags`        | string[]    | no       | Organizational tags. |
 | `created`     | date-time   | no       | Creation timestamp. |
 | `modified`    | date-time   | no       | Last modification timestamp. |
-| `etag`        | string      | no       | Used with `If-Match` for optimistic concurrency on writes. |
+| `etag`        | string      | no       | Used with `If-Match` for optimistic concurrency on writes. A *metadata* entity tag — not a content digest. |
+| `checksum`    | string      | no       | Content digest that changes iff the object's content changes. Used for change detection (e.g. deciding whether to re-fetch a copy). Opaque, source-defined value (git blob SHA, S3 ETag, content hash, …); compare for equality only. |
 | `versionId`   | string      | no       | Version pointer when the underlying source supports versioning. |
 | `objectClass` | ObjectClass[] | no     | Capability indicators (see next section). |
 
@@ -57,6 +58,21 @@ Writes that modify an existing object (`updateObject`, `updateCollectionElement`
 `updateDocumentData`) accept an `If-Match` header carrying the `etag` last
 observed by the caller. Implementations that support concurrency control must
 reject mismatched ETags with `412 Precondition Failed`.
+
+### Content Change Detection
+
+`checksum` is the contract for detecting whether an object's *content* has
+changed, independent of metadata. Consumers (e.g. a file copy that decides
+whether to re-fetch) compare the `checksum` they last observed against the
+current one and re-fetch only on mismatch.
+
+Implementations populate `checksum` from whatever value the underlying source
+exposes that changes iff content changes — a git blob SHA, an S3 ETag, a
+`quickXorHash`, etc. The value is opaque and source-defined: compare it for
+equality, never parse or assume an algorithm. Keep it stable across reads of
+unchanged content. This is deliberately separate from `etag`, which tracks
+*metadata* identity for optimistic concurrency and may change without the
+content changing.
 
 ## ObjectClass
 

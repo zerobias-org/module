@@ -38,16 +38,25 @@ public final class BufferingApp implements ReceivingApplication<Message> {
     private final BufferStore buffer;
     private final MessageMaterializer materializer;
     private final String versionSlot;
+    private final String sourcePort;
     private final Clock clock;
 
     public BufferingApp(BufferStore buffer, MessageMaterializer materializer, String versionSlot) {
-        this(buffer, materializer, versionSlot, Clock.systemUTC());
+        this(buffer, materializer, versionSlot, null, Clock.systemUTC());
     }
 
-    public BufferingApp(BufferStore buffer, MessageMaterializer materializer, String versionSlot, Clock clock) {
+    /** One {@code BufferingApp} per MLLP listener; {@code sourcePort} is that listener's name. */
+    public BufferingApp(BufferStore buffer, MessageMaterializer materializer, String versionSlot,
+            String sourcePort) {
+        this(buffer, materializer, versionSlot, sourcePort, Clock.systemUTC());
+    }
+
+    public BufferingApp(BufferStore buffer, MessageMaterializer materializer, String versionSlot,
+            String sourcePort, Clock clock) {
         this.buffer = buffer;
         this.materializer = materializer;
         this.versionSlot = versionSlot;
+        this.sourcePort = sourcePort;
         this.clock = clock;
     }
 
@@ -82,7 +91,8 @@ public final class BufferingApp implements ReceivingApplication<Message> {
                 in.encode().getBytes(StandardCharsets.UTF_8),
                 materializer.toTypedJson(in),
                 MessageStatus.NEW,
-                null, null, null);
+                null, null, null,
+                sourcePort);
 
             // Commit BEFORE acking. ON CONFLICT(control_id) DO NOTHING makes
             // re-sends a no-op that still gets AA.

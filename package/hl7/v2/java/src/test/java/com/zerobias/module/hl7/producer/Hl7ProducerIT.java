@@ -63,6 +63,12 @@ class Hl7ProducerIT {
             json, MessageStatus.fromWire(status), null, null, null));
     }
 
+    private static void insertWithPort(BufferStore b, String cid, String port) throws Exception {
+        b.insert(new BufferRow(0, Instant.parse("2026-05-28T10:00:00Z"), cid, "ADT_A01", "ADT", "A01",
+            "EPIC", "HOSP", "2.7", "schema:table:hl7v2.v27.ADT_A01", ("raw-" + cid).getBytes(),
+            "{}", MessageStatus.NEW, null, null, null, port));
+    }
+
     private static String op(Hl7ProducerFacade f, String method, Object... kv) throws Exception {
         Map<String, Object> args = new java.util.LinkedHashMap<>();
         for (int i = 0; i < kv.length; i += 2) {
@@ -104,7 +110,7 @@ class Hl7ProducerIT {
         assertEquals(1, rootChildren.size());
         assertEquals("/hl7-v2-receiver", rootChildren.get(0).getAsJsonObject().get("id").getAsString());
 
-        // receiver has exactly: messages, by-type, by-sender, stats, ops
+        // receiver has exactly: messages, by-type, by-sender, by-port, stats, ops
         JsonArray kids = pagedItems(
             op(f, "ObjectsApi.getChildren", "objectId", "/hl7-v2-receiver"));
         java.util.Set<String> kidIds = kids.asList().stream()
@@ -114,6 +120,7 @@ class Hl7ProducerIT {
             "/hl7-v2-receiver/messages",
             "/hl7-v2-receiver/by-type",
             "/hl7-v2-receiver/by-sender",
+            "/hl7-v2-receiver/by-port",
             "/hl7-v2-receiver/stats",
             "/hl7-v2-receiver/ops"), kidIds);
     }
@@ -128,17 +135,17 @@ class Hl7ProducerIT {
         JsonObject env = GSON.fromJson(
             op(f, "ObjectsApi.getChildren", "objectId", "/hl7-v2-receiver",
                 "pageSize", 2, "pageNumber", 1), JsonObject.class);
-        assertEquals(5, env.get("count").getAsInt());           // 5 children total
+        assertEquals(6, env.get("count").getAsInt());           // 6 children total
         assertEquals(2, env.get("pageSize").getAsInt());
         assertEquals(1, env.get("pageNumber").getAsInt());      // 1-based, echoed
-        assertEquals(2, env.getAsJsonArray("items").size());    // first page: 2 of 5
+        assertEquals(2, env.getAsJsonArray("items").size());    // first page: 2 of 6
 
-        // page 3 (1-based) of size 2 -> the trailing 1 child, count unchanged
+        // page 3 (1-based) of size 2 -> the trailing 2 children, count unchanged
         JsonObject p3 = GSON.fromJson(
             op(f, "ObjectsApi.getChildren", "objectId", "/hl7-v2-receiver",
                 "pageSize", 2, "pageNumber", 3), JsonObject.class);
-        assertEquals(5, p3.get("count").getAsInt());
-        assertEquals(1, p3.getAsJsonArray("items").size());
+        assertEquals(6, p3.get("count").getAsInt());
+        assertEquals(2, p3.getAsJsonArray("items").size());
 
         // collection elements are paged the same way — total count, not page size
         JsonObject coll = GSON.fromJson(
@@ -177,6 +184,41 @@ class Hl7ProducerIT {
         List<String> ids = senders.asList().stream()
             .map(e -> e.getAsJsonObject().get("id").getAsString()).toList();
         assertEquals(List.of("/hl7-v2-receiver/by-sender/CERNER", "/hl7-v2-receiver/by-sender/EPIC"), ids);
+    }
+
+    @Test
+    void byPortViewsScopeBySourcePort(@TempDir Path dir) throws Exception {
+        writeSchema(dir, "schemas/shared/message-envelope.json", "schema:shared:hl7v2.message-envelope");
+        writeSchema(dir, "schemas/v27/messages/ADT_A01.json", "schema:table:hl7v2.v27.ADT_A01");
+        BufferStore buffer = new BufferStore(dir.resolve("buffer.db").toString(), false);
+        insertWithPort(buffer, "P1", "mllp");
+        insertWithPort(buffer, "P2", "mllp");
+        insertWithPort(buffer, "P3", "epic-adt");
+        SchemaRegistry schemas = SchemaRegistry.fromDirectory(dir);
+        Hl7ProducerFacade f = new Hl7ProducerFacade(buffer, new ObjectTree(buffer, schemas, "v27"), schemas);
+
+        // one collection per distinct listener name (distinctValues ORDER BY -> ascending)
+        JsonArray ports = pagedItems(
+            op(f, "ObjectsApi.getChildren", "objectId", "/hl7-v2-receiver/by-port"));
+        List<String> ids = ports.asList().stream()
+            .map(e -> e.getAsJsonObject().get("id").getAsString()).toList();
+        assertEquals(List.of("/hl7-v2-receiver/by-port/epic-adt", "/hl7-v2-receiver/by-port/mllp"), ids);
+
+        // a by-port collection is scoped to its source_port
+        JsonObject mllp = GSON.fromJson(
+            op(f, "ObjectsApi.getObject", "objectId", "/hl7-v2-receiver/by-port/mllp"), JsonObject.class);
+        assertEquals(2, mllp.get("collectionSize").getAsLong());
+
+        // elements are scoped to the one port and carry their provenance
+        JsonArray epic = pagedItems(op(f, "CollectionsApi.searchCollectionElements",
+            "objectId", "/hl7-v2-receiver/by-port/epic-adt"));
+        assertEquals(1, epic.size());
+        assertEquals("epic-adt", epic.get(0).getAsJsonObject().get("sourcePort").getAsString());
+
+        // unknown port -> 404
+        ProducerException e = assertThrows(ProducerException.class,
+            () -> op(f, "ObjectsApi.getObject", "objectId", "/hl7-v2-receiver/by-port/nope"));
+        assertEquals(404, e.httpStatus());
     }
 
     @Test

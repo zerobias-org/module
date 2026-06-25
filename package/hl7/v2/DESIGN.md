@@ -59,6 +59,8 @@ hierarchical containers with collections and functions at the leaves.
    │  └─ "/hl7-v2-receiver/by-type/<MSG_STRUCT>"   one per configured structure (base + extensions)
    ├─ "/hl7-v2-receiver/by-sender"                 container — sender-discriminated views
    │  └─ "/hl7-v2-receiver/by-sender/<MSH-3>"      collection — same rows filtered by sendingApplication
+   ├─ "/hl7-v2-receiver/by-port"                   container — listener-port-discriminated views
+   │  └─ "/hl7-v2-receiver/by-port/<NAME>"         collection — same rows filtered by the MLLP listener they arrived on
    ├─ "/hl7-v2-receiver/stats"                     document — backlog metrics
    └─ "/hl7-v2-receiver/ops"                       container — mutating operations
       ├─ "/hl7-v2-receiver/ops/take"               function — lease + return un-acked messages
@@ -432,14 +434,20 @@ The Java process reads its ports and config from env:
 | Env | Source | Required |
 |---|---|---|
 | `INTERNAL_PORT` (default 8889) | Dockerfile | yes |
-| `LISTENER_PORT_MLLP` | Hub Node injects at container-create time from `runtimeConfig.listenerPorts[name=mllp].port` | yes — module refuses to start without it |
-| `MODULE_CONFIG` | Hub Node injects the opaque `runtimeConfig.config` (JSON) verbatim; the module parses it | optional |
+| `RUNTIME_CONFIG_FILE` | Hub Node points it at the delivered `DeploymentRuntimeConfig` file (e.g. `/etc/zerobias/runtime.json`); the module reads `listenerPorts` (verbatim names, resolved ports) from it | optional (older nodes omit it) |
+| `LISTENER_PORT_<NAME>` | Hub Node injects one per `runtimeConfig.listenerPorts[]` entry; the module scans these as the **fallback** when no file is present | yes if no file — module refuses to start with zero listeners |
+| `MODULE_CONFIG` | Hub Node injects the opaque `runtimeConfig.config` (JSON) verbatim; the module parses it. Permanent on every node version, so it remains the config source whether or not the file is present | optional |
 | `EXTENSION_DIR` (default `/opt/module/extensions`) | An **in-image** path the module owns — extension packs are baked in at build (§7). **Not** Node-mounted. | optional |
 
-No implicit defaults for `LISTENER_PORT_MLLP`. A daemon listener with no
-port is a misconfiguration, not a fallback case. `EXTENSION_DIR` is no longer
-a per-deployment mount point — the platform does not deliver extensions at
-runtime (§7).
+**Listener discovery is file-first, env-fallback.** When `RUNTIME_CONFIG_FILE`
+is present the file's `listenerPorts` are authoritative (collision-safe verbatim
+names — the key reason to prefer it for the many-named-ports model); otherwise the
+module scans `LISTENER_PORT_*` (lossy names under env-key normalization, but
+back-compatible with nodes that predate the file). Either way **at least one
+listener is mandatory** — a daemon listener with no port is a misconfiguration,
+not a fallback case. `MODULE_CONFIG` is read independently and is unaffected.
+`EXTENSION_DIR` is no longer a per-deployment mount point — the platform does not
+deliver extensions at runtime (§7).
 
 ### 3.3 Listener port publishing — Hub Node responsibility
 
@@ -915,12 +923,23 @@ PLATFORM_UPDATES.md §8.
 
 ## 11. Open questions
 
-1. **One listener port or many?** Some networks want one MLLP port per
-   sending system (cleaner ACL, easier troubleshooting). The
-   `runtimeConfig.listenerPorts` array supports N — but each pinned
-   port is a host-port commitment per deployment. Leaning toward "one
-   deployment per feed" so blast radius matches operator mental model;
-   need to confirm against actual customer topologies.
+1. **One listener port or many? — RESOLVED: many, in one deployment.**
+   Networks that want one MLLP port per sending system (cleaner ACL,
+   easier troubleshooting) are now supported directly: the daemon binds
+   one HAPI listener per `runtimeConfig.listenerPorts[]` entry, all
+   feeding the one shared buffer. Each listener's `name` is stamped on
+   every message it receives (`source_port`, the buffer's per-port
+   provenance) and surfaced as the `/by-port/<NAME>` views (§11.4) and a
+   `sourcePort` field on every element — so a single deployment can carry
+   N feeds and still keep them distinguishable. Port discovery is
+   **file-first**: the Hub Node delivers the canonical
+   `DeploymentRuntimeConfig` as a file (env pointer `RUNTIME_CONFIG_FILE`)
+   whose `listenerPorts` carry verbatim, collision-safe names + resolved
+   ports; absent the file (older node) the module falls back to scanning
+   `LISTENER_PORT_<NAME>` env vars (lossy names, back-compatible). At
+   least one listener remains mandatory (§3.2). "One deployment per feed"
+   is still a valid operator choice — it's now a deployment-shape decision,
+   not a module limitation.
 2. **Lease semantics for `take`.** Should partial-ack-with-lease-revert be
    the default (current design), or full-or-nothing? Partial is more
    flexible but harder to reason about. Need to know the pipeline's
@@ -934,7 +953,11 @@ PLATFORM_UPDATES.md §8.
    obvious key, but real-world feeds sometimes set MSH-3 to a generic
    "EPIC" and discriminate via MSH-4 (sendingFacility). Should the
    discriminator be configurable, or always MSH-3? Default MSH-3,
-   override via `connectionProfile.senderDiscriminator`.
+   override via `connectionProfile.senderDiscriminator`. **Note:** with
+   multi-port (§11.1) the *listener port* is now an additional, MSH-content-
+   independent discriminator — `/by-port/<NAME>` — useful precisely when a
+   feed's MSH fields are unreliable but its network endpoint is dedicated.
+   The two are complementary, not alternatives.
 5. **HL7 version pinning.** The module declares its target HL7 version
    in `connectionProfile.hl7Version`. Receiver still accepts other
    versions (HAPI's `setAllowUnknownVersions(true)`) but materializes

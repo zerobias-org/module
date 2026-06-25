@@ -157,6 +157,7 @@ public final class Hl7ProducerFacade {
         // Envelope columns are authoritative (DESIGN §2.3 shared schema).
         element.put("controlId", r.controlId());
         element.put("receivedAt", r.receivedAt().toString());
+        element.put("sourcePort", r.sourcePort());
         element.put("status", r.status().wire());
         element.put("leaseId", r.leaseId());
         return element;

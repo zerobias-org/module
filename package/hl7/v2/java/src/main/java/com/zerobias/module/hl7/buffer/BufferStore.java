@@ -34,7 +34,7 @@ import java.util.List;
 public final class BufferStore implements AutoCloseable {
 
     static final String COLS = "id, received_at, control_id, message_structure, message_code, "
-        + "trigger_event, sending_app, sending_facility, hl7_version, schema_id, raw_er7, "
+        + "trigger_event, sending_app, sending_facility, source_port, hl7_version, schema_id, raw_er7, "
         + "mapped_json, status, lease_id, in_flight_until, acked_at";
 
     private static final String SCHEMA_RESOURCE = "/buffer/schema.sql";
@@ -66,9 +66,39 @@ public final class BufferStore implements AutoCloseable {
                 st.execute(stmt);
             }
         }
+        migrate();
         // ackDurability=full -> fsync per row (DESIGN §8.1); overrides the schema's NORMAL.
         try (Statement st = conn.createStatement()) {
             st.execute("PRAGMA synchronous=" + (fullDurability ? "FULL" : "NORMAL"));
+        }
+    }
+
+    /**
+     * Additive schema migrations for buffers created by earlier versions. The durable
+     * {@code buffer.db} survives upgrades, and {@code CREATE TABLE IF NOT EXISTS} is a
+     * no-op on an existing table — so a column added to {@link #schema.sql} after the
+     * buffer was first created must be back-filled with an explicit {@code ALTER}.
+     * Idempotent: each step is guarded by a column-existence check, so a fresh db
+     * (which already has the column from the schema) skips it.
+     */
+    private void migrate() throws SQLException {
+        if (!columnExists("messages", "source_port")) {
+            try (Statement st = conn.createStatement()) {
+                // Nullable, no default — pre-migration rows keep source_port = NULL.
+                st.execute("ALTER TABLE messages ADD COLUMN source_port TEXT");
+            }
+        }
+    }
+
+    private boolean columnExists(String table, String column) throws SQLException {
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (rs.next()) {
+                if (column.equalsIgnoreCase(rs.getString("name"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -111,9 +141,9 @@ public final class BufferStore implements AutoCloseable {
      */
     public synchronized boolean insert(BufferRow row) throws SQLException {
         final String sql = "INSERT INTO messages (received_at, control_id, message_structure, "
-            + "message_code, trigger_event, sending_app, sending_facility, hl7_version, schema_id, "
-            + "raw_er7, mapped_json, status, lease_id, in_flight_until, acked_at) "
-            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(control_id) DO NOTHING";
+            + "message_code, trigger_event, sending_app, sending_facility, source_port, hl7_version, "
+            + "schema_id, raw_er7, mapped_json, status, lease_id, in_flight_until, acked_at) "
+            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(control_id) DO NOTHING";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             int i = 1;
             ps.setLong(i++, row.receivedAt().toEpochMilli());
@@ -123,6 +153,7 @@ public final class BufferStore implements AutoCloseable {
             ps.setString(i++, row.triggerEvent());
             ps.setString(i++, row.sendingApp());
             ps.setString(i++, row.sendingFacility());
+            ps.setString(i++, row.sourcePort());
             ps.setString(i++, row.hl7Version());
             ps.setString(i++, row.schemaId());
             ps.setBytes(i++, row.rawEr7());
@@ -239,7 +270,8 @@ public final class BufferStore implements AutoCloseable {
     }
 
     private static final java.util.Set<String> ALLOWED_DISTINCT_COLUMNS =
-        java.util.Set.of("sending_app", "sending_facility", "message_structure", "message_code");
+        java.util.Set.of("sending_app", "sending_facility", "message_structure", "message_code",
+            "source_port");
 
     /** Delete acked rows acked longer ago than {@code olderThan} (ops/purge, DESIGN §2.5). */
     public synchronized int purge(Duration olderThan) throws SQLException {
@@ -363,7 +395,8 @@ public final class BufferStore implements AutoCloseable {
             MessageStatus.fromWire(rs.getString("status")),
             rs.getString("lease_id"),
             instant(rs, "in_flight_until"),
-            instant(rs, "acked_at"));
+            instant(rs, "acked_at"),
+            rs.getString("source_port"));
     }
 
     private static Instant instant(ResultSet rs, String col) throws SQLException {

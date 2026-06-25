@@ -20,6 +20,8 @@ import java.util.Map;
  *    │  └─ /by-type/&lt;MSG&gt;        collection (one per configured structure)
  *    ├─ /by-sender               container
  *    │  └─ /by-sender/&lt;APP&gt;       collection (one per distinct MSH-3)
+ *    ├─ /by-port                 container
+ *    │  └─ /by-port/&lt;NAME&gt;        collection (one per distinct listener port name)
  *    ├─ /stats                   document
  *    └─ /ops                     container
  *       └─ /ops/&lt;fn&gt;             function (take/ack/release/replay/purge)
@@ -36,6 +38,7 @@ public final class ObjectTree {
     static final String MESSAGES = RECEIVER + "/messages";
     static final String BY_TYPE = RECEIVER + "/by-type";
     static final String BY_SENDER = RECEIVER + "/by-sender";
+    static final String BY_PORT = RECEIVER + "/by-port";
     static final String STATS = RECEIVER + "/stats";
     static final String OPS = RECEIVER + "/ops";
 
@@ -99,6 +102,13 @@ public final class ObjectTree {
             }
             return new Collection(id, "sending_app = " + sql(app), ENVELOPE_SCHEMA);
         }
+        if (id.startsWith(BY_PORT + "/")) {
+            String port = id.substring((BY_PORT + "/").length());
+            if (!buffer.distinctValues("source_port").contains(port)) {
+                throw ProducerException.noSuchObject(id);
+            }
+            return new Collection(id, "source_port = " + sql(port), ENVELOPE_SCHEMA);
+        }
         // exists but isn't a collection, or doesn't exist
         object(id); // throws noSuchObject if unknown
         throw ProducerException.unsupported("Object is not a collection: " + id);
@@ -117,6 +127,8 @@ public final class ObjectTree {
                 return container(BY_TYPE, "by-type");
             case BY_SENDER:
                 return container(BY_SENDER, "by-sender");
+            case BY_PORT:
+                return container(BY_PORT, "by-port");
             case STATS:
                 return document(STATS, "stats");
             case OPS:
@@ -144,6 +156,14 @@ public final class ObjectTree {
             long size = buffer.countWhere("sending_app = " + sql(app));
             return collection(id, app, ENVELOPE_SCHEMA, size);
         }
+        if (id.startsWith(BY_PORT + "/")) {
+            String port = id.substring((BY_PORT + "/").length());
+            if (!buffer.distinctValues("source_port").contains(port)) {
+                throw ProducerException.noSuchObject(id);
+            }
+            long size = buffer.countWhere("source_port = " + sql(port));
+            return collection(id, port, ENVELOPE_SCHEMA, size);
+        }
         if (id.startsWith(OPS + "/")) {
             String fn = id.substring((OPS + "/").length());
             if (!OPS_FUNCTIONS.contains(fn)) {
@@ -165,6 +185,7 @@ public final class ObjectTree {
                 out.add(object(MESSAGES));
                 out.add(object(BY_TYPE));
                 out.add(object(BY_SENDER));
+                out.add(object(BY_PORT));
                 out.add(object(STATS));
                 out.add(object(OPS));
                 return out;
@@ -179,6 +200,11 @@ public final class ObjectTree {
             case BY_SENDER:
                 for (String app : buffer.distinctValues("sending_app")) {
                     out.add(object(BY_SENDER + "/" + app));
+                }
+                return out;
+            case BY_PORT:
+                for (String port : buffer.distinctValues("source_port")) {
+                    out.add(object(BY_PORT + "/" + port));
                 }
                 return out;
             case OPS:

@@ -1,7 +1,7 @@
 {
-  "version": "1.2.0",
-  "branch": "main",
-  "sourceHash": "784f1973d24df222fa9b86966fd21502bc17249897638171ca348a5fa44af447",
+  "version": "1.2.0-uat.0",
+  "branch": "hl7_runtime_config",
+  "sourceHash": "c6a1fdddd55bed7060b65585b845626fcda7294a37ca3d34e90cea7e75b1a648",
   "testHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "tasks": {
     "validate": "passed",

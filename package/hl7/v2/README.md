@@ -71,6 +71,7 @@ systems speak MLLP directly to it. Only the operations port (8888) is.
    ├─ /messages                          collection — every buffered message (heterogeneous)
    ├─ /by-type/<STRUCTURE>               collection — one per message structure (ADT_A01, ORU_R01, …)
    ├─ /by-sender/<APP>                   collection — filtered by sending application (MSH-3)
+   ├─ /by-port/<NAME>                    collection — filtered by the MLLP listener port it arrived on
    ├─ /stats                             document   — backlog metrics
    └─ /ops                               container
       ├─ /ops/take      function — lease un-acked messages (returns + marks in_flight)
@@ -127,8 +128,9 @@ and carried on `EnsureDeployment`:
 
 ```yaml
 daemonMode: true
-listenerPorts:
-  - { name: mllp, protocol: tcp, port: 2575 }      # pin for statically-configured feeds; null = ephemeral
+listenerPorts:                                      # one bound listener each; all feed the one buffer
+  - { name: mllp, protocol: tcp, port: 2575 }       # pin for statically-configured feeds; null = ephemeral
+  # - { name: epic-adt, protocol: tcp, port: 2576 } # add more (distinct names) for one-port-per-feed
 durability:
   - { volumeName: hl7-buffer, mountPath: /var/lib/module,
       retention: { maxBytes: 10737418240, maxAge: P7D } }
@@ -137,8 +139,11 @@ config:                                            # opaque to the platform (MOD
   hl7Version: "2.7"
 ```
 
-The Hub Node injects `LISTENER_PORT_MLLP`, maps the port 1:1 (no NAT), mounts the
-durable volume, and passes `config` verbatim as `MODULE_CONFIG`. See
+The Hub Node delivers the resolved runtime config as a file (pointed at by
+`RUNTIME_CONFIG_FILE`) and, for back-compat, also injects one `LISTENER_PORT_<NAME>`
+env var per port; the module reads the file when present (verbatim, collision-safe
+port names) and falls back to the env vars on older nodes. It maps each port 1:1 (no
+NAT), mounts the durable volume, and passes `config` verbatim as `MODULE_CONFIG`. See
 [`USERGUIDE.md`](USERGUIDE.md) for pinning ports, sizing the volume, baking
 extensions, and reading health.
 
@@ -152,7 +157,7 @@ is no remote system to dial):
 | `hl7Version` | target version for materialization (default `2.7`) |
 | `ackDurability` | `normal` (fsync at WAL checkpoint) or `full` (fsync per row, zero-loss) |
 | `backpressurePolicy` | what to do when the buffer fills — default `reject` (`MSA|AE`, sender retries) |
-| `senderDiscriminator` | `/by-sender` key — default MSH-3 |
+| `senderDiscriminator` | `/by-sender` key — default MSH-3 (complemented by `/by-port` when one listener serves each feed) |
 
 ## Extensions (vendor / customer content)
 

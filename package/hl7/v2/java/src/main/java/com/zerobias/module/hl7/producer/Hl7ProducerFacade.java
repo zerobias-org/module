@@ -37,10 +37,15 @@ public final class Hl7ProducerFacade {
     private final Hl7Operations ops;
 
     public Hl7ProducerFacade(BufferStore buffer, ObjectTree tree, SchemaRegistry schemas) {
+        this(buffer, tree, schemas, null);
+    }
+
+    public Hl7ProducerFacade(BufferStore buffer, ObjectTree tree, SchemaRegistry schemas,
+            Recaster recaster) {
         this.buffer = buffer;
         this.tree = tree;
         this.schemas = schemas;
-        this.ops = new Hl7Operations(buffer, this::toElement);
+        this.ops = new Hl7Operations(buffer, this::toElement, recaster);
         Hl7Filter.register();
     }
 
@@ -124,7 +129,7 @@ public final class Hl7ProducerFacade {
         throw ProducerException.unsupported("Collection is read-only; use ops/purge to evict acked rows");
     }
 
-    // --- Functions: ops/take|ack|release|replay|purge (DESIGN §2.5) -------
+    // --- Functions: ops/take|ack|release|replay|recast|purge (DESIGN §2.5) -------
 
     public String invokeFunction(String objectId, String inputJson) throws SQLException {
         requireId(objectId);

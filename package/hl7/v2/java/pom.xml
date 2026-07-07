@@ -74,7 +74,7 @@
         <dependency>
             <groupId>com.zerobias</groupId>
             <artifactId>lite-filter</artifactId>
-            <version>1.0.0</version>
+            <version>1.0.4</version>
         </dependency>
 
         <!-- Testing -->
@@ -127,7 +127,7 @@
                                 <argument>compile</argument>
                                 <argument>exec:java</argument>
                                 <argument>-Dexec.mainClass=com.zerobias.module.hl7.codegen.SchemaGenerator</argument>
-                                <argument>-Dexec.args=v27 ${project.basedir}/src/main/resources</argument>
+                                <argument>-Dexec.args=v23,v231,v24,v25,v251,v26,v27 ${project.basedir}/src/main/resources ALL</argument>
                             </arguments>
                         </configuration>
                     </execution>

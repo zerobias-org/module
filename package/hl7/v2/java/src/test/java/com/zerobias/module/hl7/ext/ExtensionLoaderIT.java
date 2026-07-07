@@ -7,7 +7,9 @@ import ca.uhn.hl7v2.parser.GenericModelClassFactory;
 import ca.uhn.hl7v2.validation.impl.ValidationContextFactory;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.zerobias.module.hl7.buffer.BufferRow;
 import com.zerobias.module.hl7.buffer.BufferStore;
+import com.zerobias.module.hl7.buffer.MessageStatus;
 import com.zerobias.module.hl7.materializer.Materializer;
 import com.zerobias.module.hl7.materializer.StructureIndex;
 import com.zerobias.module.hl7.materializer.StructureResolver;
@@ -18,6 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -108,12 +111,19 @@ class ExtensionLoaderIT {
             scopes.put(d.structure(), d.whereClause());
         }
         try (BufferStore buffer = new BufferStore(dbDir.resolve("buffer.db").toString(), false)) {
+            // A received base ADT_A01 (base structures are buffer-driven now); it also
+            // matches the epic discriminator, so both must surface under /by-type.
+            buffer.insert(new BufferRow(0, Instant.parse("2026-05-28T10:00:00Z"), "B1",
+                "ADT_A01", "ADT", "A01", "EPIC", "HOSP", "2.7", "schema:table:hl7v2.v27.ADT_A01",
+                "raw".getBytes(), "{}", MessageStatus.NEW, null, null, null));
+
             ObjectTree tree = new ObjectTree(buffer, registry, "v27", scopes);
             List<String> byType = tree.children("/hl7-v2-receiver/by-type").stream()
                 .map(o -> o.get("id").toString()).toList();
             assertTrue(byType.contains("/hl7-v2-receiver/by-type/ADT_A01_with_ZPV"),
                 "augmented structure listed: " + byType);
-            assertTrue(byType.contains("/hl7-v2-receiver/by-type/ADT_A01"), "base structure still listed");
+            assertTrue(byType.contains("/hl7-v2-receiver/by-type/ADT_A01"),
+                "base structure still listed (not hidden by the extension): " + byType);
 
             // the extension collection scopes by the discriminator, not message_structure
             ObjectTree.Collection coll = tree.resolveCollection("/hl7-v2-receiver/by-type/ADT_A01_with_ZPV");

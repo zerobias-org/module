@@ -12,6 +12,7 @@ import com.zerobias.module.hl7.ext.ExtensionLoader;
 import com.zerobias.module.hl7.health.HealthCheck;
 import com.zerobias.module.hl7.health.HealthSelfTest;
 import com.zerobias.module.hl7.materializer.Materializer;
+import com.zerobias.module.hl7.materializer.MaterializerRegistry;
 import com.zerobias.module.hl7.materializer.MessageMaterializer;
 import com.zerobias.module.hl7.materializer.StructureIndex;
 import com.zerobias.module.hl7.materializer.StructureResolver;
@@ -21,6 +22,7 @@ import com.zerobias.module.hl7.producer.Hl7ProducerFacade;
 import com.zerobias.module.hl7.producer.ObjectTree;
 import com.zerobias.module.hl7.producer.OperationRouter;
 import com.zerobias.module.hl7.producer.ProducerException;
+import com.zerobias.module.hl7.producer.Recaster;
 import com.zerobias.module.hl7.producer.SchemaRegistry;
 import io.javalin.Javalin;
 import org.slf4j.Logger;
@@ -132,16 +134,21 @@ public final class Hl7ApiServer {
             extensionScopes.put(d.structure(), d.whereClause());
         }
 
-        MessageMaterializer materializer = index != null
+        // The configured slot is the default (extension-merged); other versions seen
+        // on the wire (MSH-12) route to their own baked-in slot, lazily loaded, and
+        // unbundled versions degrade to the envelope schema (DESIGN §5 / §11.5).
+        MessageMaterializer defaultMaterializer = index != null
             ? new Materializer(index, resolver) : new EnvelopeMaterializer();
-        LOG.info("Materializer: {}; {} schemas, {} extension(s)", index != null
-            ? "structure-index " + versionSlot : "ENVELOPE fallback", schemas.size(), ext.loaded().size());
+        MaterializerRegistry materializers =
+            MaterializerRegistry.routing(versionSlot, defaultMaterializer, index != null);
+        LOG.info("Materializer: default slot {} ({}); per-message routing on MSH-12; {} schemas, {} extension(s)",
+            versionSlot, index != null ? "typed" : "ENVELOPE fallback", schemas.size(), ext.loaded().size());
 
         // One listener per declared port; each tags its messages with its name for
         // per-port provenance (DESIGN §11.4). All listeners feed the one shared buffer.
         for (ListenerSpec spec : config.listeners()) {
             Hl7ListenerService l = new Hl7ListenerService(spec.port(),
-                new BufferingApp(buffer, materializer, versionSlot, spec.name()));
+                new BufferingApp(buffer, materializers, spec.name()));
             l.start();
             listeners.add(l);
             LOG.info("MLLP listener '{}' up on {}", spec.name(), spec.port());
@@ -156,7 +163,11 @@ public final class Hl7ApiServer {
 
         // --- producer surface ---
         ObjectTree tree = new ObjectTree(buffer, schemas, versionSlot, extensionScopes);
-        this.facade = new Hl7ProducerFacade(buffer, tree, schemas);
+        // ops/recast re-materializes stored rows from raw ER7 under this same registry,
+        // routing each row by its own version, so a message first cast under a poorer
+        // schema can be upgraded in place once a better image ships.
+        Recaster recaster = new Recaster(materializers);
+        this.facade = new Hl7ProducerFacade(buffer, tree, schemas, recaster);
 
         Javalin app = Javalin.create(cfg -> {
             cfg.http.defaultContentType = "application/json";

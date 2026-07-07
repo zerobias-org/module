@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -29,6 +30,11 @@ import java.util.function.Function;
  *   <li>{@code release} — return a lease early without consuming.</li>
  *   <li>{@code replay} — force in_flight rows back to {@code new} (consumer
  *       recovery), optionally filtered.</li>
+ *   <li>{@code recast} — re-materialize rows from their raw ER7 under the current
+ *       schema, rewriting {@code mapped_json}/{@code schema_id} only where it
+ *       improved (upgrade after a better schema/extension ships); skips in_flight
+ *       rows, optionally filtered; returns {@code examined}/{@code recast}/
+ *       {@code unchanged}/{@code failed} counts.</li>
  *   <li>{@code purge} — delete acked rows older than a duration.</li>
  * </ul>
  *
@@ -48,10 +54,18 @@ public final class Hl7Operations {
 
     private final BufferStore buffer;
     private final Function<BufferRow, Map<String, Object>> elementMapper;
+    /** Re-materializes rows from raw ER7 for {@code recast}; null when unconfigured (back-compat). */
+    private final Recaster recaster;
 
     public Hl7Operations(BufferStore buffer, Function<BufferRow, Map<String, Object>> elementMapper) {
+        this(buffer, elementMapper, null);
+    }
+
+    public Hl7Operations(BufferStore buffer, Function<BufferRow, Map<String, Object>> elementMapper,
+            Recaster recaster) {
         this.buffer = buffer;
         this.elementMapper = elementMapper;
+        this.recaster = recaster;
     }
 
     /** Dispatch a {@code /hl7-v2-receiver/ops/<fn>} invocation. */
@@ -65,6 +79,8 @@ public final class Hl7Operations {
                 return release(input);
             case "replay":
                 return replay(input);
+            case "recast":
+                return recast(input);
             case "purge":
                 return purge(input);
             default:
@@ -104,6 +120,47 @@ public final class Hl7Operations {
     private Map<String, Object> replay(Map<String, Object> input) throws SQLException {
         int replayed = buffer.replay(renderFilter(strArg(input, "filter")));
         return Map.of("replayed", replayed);
+    }
+
+    /**
+     * Re-materialize stored messages from their raw ER7 under the currently-loaded
+     * schema, rewriting {@code mapped_json}/{@code schema_id} only where the result
+     * actually improved (the "when a better schema is available" contract). Leased
+     * ({@code in_flight}) rows are excluded. Per-row failures (an un-parseable raw)
+     * are counted, never fatal. Processes at most {@code max} rows (newest first) per
+     * call; re-invoke to continue a large backlog.
+     */
+    private Map<String, Object> recast(Map<String, Object> input) throws SQLException {
+        if (recaster == null) {
+            throw ProducerException.unsupported("recast is unavailable: no materializer configured");
+        }
+        int max = clampMax(intArg(input, "max", MAX_CAP));
+        String where = renderFilter(strArg(input, "filter"));
+
+        List<BufferRow> rows = buffer.recastable(where, max);
+        int recast = 0;
+        int unchanged = 0;
+        int failed = 0;
+        for (BufferRow row : rows) {
+            try {
+                Optional<Recaster.Mapping> m = recaster.recast(row);
+                if (m.isPresent() && buffer.updateMapping(row.id(), m.get().schemaId(), m.get().mappedJson())) {
+                    recast++;
+                } else {
+                    // empty = reproduced the stored value; update==false = row got leased
+                    // between select and write (skipped). Either way, nothing rewritten.
+                    unchanged++;
+                }
+            } catch (Exception e) {
+                failed++;
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("examined", rows.size());
+        out.put("recast", recast);
+        out.put("unchanged", unchanged);
+        out.put("failed", failed);
+        return out;
     }
 
     private Map<String, Object> purge(Map<String, Object> input) throws SQLException {

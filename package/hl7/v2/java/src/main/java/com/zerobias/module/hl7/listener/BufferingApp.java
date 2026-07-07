@@ -8,6 +8,7 @@ import ca.uhn.hl7v2.util.Terser;
 import com.zerobias.module.hl7.buffer.BufferRow;
 import com.zerobias.module.hl7.buffer.BufferStore;
 import com.zerobias.module.hl7.buffer.MessageStatus;
+import com.zerobias.module.hl7.materializer.MaterializerRegistry;
 import com.zerobias.module.hl7.materializer.MessageMaterializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,26 +37,27 @@ public final class BufferingApp implements ReceivingApplication<Message> {
     private static final Logger LOG = LoggerFactory.getLogger(BufferingApp.class);
 
     private final BufferStore buffer;
-    private final MessageMaterializer materializer;
-    private final String versionSlot;
+    private final MaterializerRegistry materializers;
     private final String sourcePort;
     private final Clock clock;
 
+    /** Fixed-slot (tests / config-pinned): every message uses {@code materializer} at {@code versionSlot}. */
     public BufferingApp(BufferStore buffer, MessageMaterializer materializer, String versionSlot) {
-        this(buffer, materializer, versionSlot, null, Clock.systemUTC());
+        this(buffer, MaterializerRegistry.pinned(versionSlot, materializer), null, Clock.systemUTC());
     }
 
-    /** One {@code BufferingApp} per MLLP listener; {@code sourcePort} is that listener's name. */
-    public BufferingApp(BufferStore buffer, MessageMaterializer materializer, String versionSlot,
-            String sourcePort) {
-        this(buffer, materializer, versionSlot, sourcePort, Clock.systemUTC());
+    /**
+     * Per-message routing: {@code materializers} selects the materializer + collection
+     * schema by each message's MSH-12. One {@code BufferingApp} per MLLP listener;
+     * {@code sourcePort} is that listener's name.
+     */
+    public BufferingApp(BufferStore buffer, MaterializerRegistry materializers, String sourcePort) {
+        this(buffer, materializers, sourcePort, Clock.systemUTC());
     }
 
-    public BufferingApp(BufferStore buffer, MessageMaterializer materializer, String versionSlot,
-            String sourcePort, Clock clock) {
+    public BufferingApp(BufferStore buffer, MaterializerRegistry materializers, String sourcePort, Clock clock) {
         this.buffer = buffer;
-        this.materializer = materializer;
-        this.versionSlot = versionSlot;
+        this.materializers = materializers;
         this.sourcePort = sourcePort;
         this.clock = clock;
     }
@@ -77,6 +79,12 @@ public final class BufferingApp implements ReceivingApplication<Message> {
                 structure = code + "_" + trigger; // e.g. ADT_A01 when MSH-9-3 omitted
             }
 
+            // Route by the message's own declared version (MSH-12), not a fixed config
+            // slot: a mixed-version feed materializes + labels each message correctly,
+            // and an unbundled version degrades to generic + the envelope schema.
+            final String version = t.get("/MSH-12");
+            final MessageMaterializer materializer = materializers.materializerFor(version);
+
             final BufferRow row = new BufferRow(
                 0,
                 Instant.now(clock),
@@ -86,8 +94,8 @@ public final class BufferingApp implements ReceivingApplication<Message> {
                 trigger,
                 t.get("/MSH-3"),
                 t.get("/MSH-4"),
-                t.get("/MSH-12"),
-                "schema:table:hl7v2." + versionSlot + "." + structure,
+                version,
+                materializers.schemaIdFor(version, structure),
                 in.encode().getBytes(StandardCharsets.UTF_8),
                 materializer.toTypedJson(in),
                 MessageStatus.NEW,

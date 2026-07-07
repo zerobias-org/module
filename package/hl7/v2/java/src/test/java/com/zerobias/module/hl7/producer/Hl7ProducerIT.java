@@ -110,7 +110,7 @@ class Hl7ProducerIT {
         assertEquals(1, rootChildren.size());
         assertEquals("/hl7-v2-receiver", rootChildren.get(0).getAsJsonObject().get("id").getAsString());
 
-        // receiver has exactly: messages, by-type, by-sender, by-port, stats, ops
+        // receiver has exactly: messages, by-type, by-version, by-sender, by-port, stats, ops
         JsonArray kids = pagedItems(
             op(f, "ObjectsApi.getChildren", "objectId", "/hl7-v2-receiver"));
         java.util.Set<String> kidIds = kids.asList().stream()
@@ -119,6 +119,7 @@ class Hl7ProducerIT {
         assertEquals(java.util.Set.of(
             "/hl7-v2-receiver/messages",
             "/hl7-v2-receiver/by-type",
+            "/hl7-v2-receiver/by-version",
             "/hl7-v2-receiver/by-sender",
             "/hl7-v2-receiver/by-port",
             "/hl7-v2-receiver/stats",
@@ -135,16 +136,16 @@ class Hl7ProducerIT {
         JsonObject env = GSON.fromJson(
             op(f, "ObjectsApi.getChildren", "objectId", "/hl7-v2-receiver",
                 "pageSize", 2, "pageNumber", 1), JsonObject.class);
-        assertEquals(6, env.get("count").getAsInt());           // 6 children total
+        assertEquals(7, env.get("count").getAsInt());           // 7 children total
         assertEquals(2, env.get("pageSize").getAsInt());
         assertEquals(1, env.get("pageNumber").getAsInt());      // 1-based, echoed
-        assertEquals(2, env.getAsJsonArray("items").size());    // first page: 2 of 6
+        assertEquals(2, env.getAsJsonArray("items").size());    // first page: 2 of 7
 
         // page 3 (1-based) of size 2 -> the trailing 2 children, count unchanged
         JsonObject p3 = GSON.fromJson(
             op(f, "ObjectsApi.getChildren", "objectId", "/hl7-v2-receiver",
                 "pageSize", 2, "pageNumber", 3), JsonObject.class);
-        assertEquals(6, p3.get("count").getAsInt());
+        assertEquals(7, p3.get("count").getAsInt());
         assertEquals(2, p3.getAsJsonArray("items").size());
 
         // collection elements are paged the same way — total count, not page size
@@ -230,7 +231,8 @@ class Hl7ProducerIT {
             op(f, "CollectionsApi.searchCollectionElements", "objectId", "/hl7-v2-receiver/messages"));
         assertEquals(3, all.size());
 
-        // scoped to ADT_A01 -> M1, M2
+        // ADT_A01 has a single version here, so /by-type/ADT_A01 is itself the
+        // (homogeneous) collection — no version discriminator needed. -> M1, M2
         JsonArray adt = pagedItems(
             op(f, "CollectionsApi.searchCollectionElements",
                 "objectId", "/hl7-v2-receiver/by-type/ADT_A01"));
@@ -307,6 +309,52 @@ class Hl7ProducerIT {
         assertEquals(400, e5.httpStatus());
         assertEquals("err.illegal.argument", e5.key());
         assertIllegalArgumentBody(e5.toBody());
+    }
+
+    @Test
+    void byTypeIsVersionNestedAndByVersionFacet(@TempDir Path dir) throws Exception {
+        BufferStore buffer = new BufferStore(dir.resolve("buffer.db").toString(), false);
+        writeSchema(dir, "schemas/v27/messages/ADT_A01.json", "schema:table:hl7v2.v27.ADT_A01");
+        writeSchema(dir, "schemas/v24/messages/ADT_A01.json", "schema:table:hl7v2.v24.ADT_A01");
+        SchemaRegistry schemas = SchemaRegistry.fromDirectory(dir);
+        insertVersioned(buffer, "A", "2.7");
+        insertVersioned(buffer, "B", "2.4");
+        Hl7ProducerFacade f = new Hl7ProducerFacade(buffer, new ObjectTree(buffer, schemas, "v27"), schemas);
+
+        // /by-type/ADT_A01 is a CONTAINER whose children are the versions received.
+        JsonObject typeNode = GSON.fromJson(
+            op(f, "ObjectsApi.getObject", "objectId", "/hl7-v2-receiver/by-type/ADT_A01"), JsonObject.class);
+        assertEquals(List.of("container"), classes(typeNode));
+        List<String> vers = pagedItems(op(f, "ObjectsApi.getChildren",
+            "objectId", "/hl7-v2-receiver/by-type/ADT_A01")).asList().stream()
+            .map(e -> e.getAsJsonObject().get("id").getAsString()).toList();
+        assertEquals(List.of("/hl7-v2-receiver/by-type/ADT_A01/2.4",
+                             "/hl7-v2-receiver/by-type/ADT_A01/2.7"), vers);
+
+        // The version leaf is a HOMOGENEOUS collection carrying the version-correct schema.
+        JsonObject leaf = GSON.fromJson(
+            op(f, "ObjectsApi.getObject", "objectId", "/hl7-v2-receiver/by-type/ADT_A01/2.4"), JsonObject.class);
+        assertEquals(List.of("collection"), classes(leaf));
+        assertEquals("schema:table:hl7v2.v24.ADT_A01", leaf.get("collectionSchema").getAsString());
+        JsonArray leafRows = pagedItems(op(f, "CollectionsApi.searchCollectionElements",
+            "objectId", "/hl7-v2-receiver/by-type/ADT_A01/2.4"));
+        assertEquals(1, leafRows.size());
+        assertEquals("B", leafRows.get(0).getAsJsonObject().get("controlId").getAsString());
+
+        // /by-version lists each version; a version collection is heterogeneous (envelope schema).
+        List<String> byVer = pagedItems(op(f, "ObjectsApi.getChildren",
+            "objectId", "/hl7-v2-receiver/by-version")).asList().stream()
+            .map(e -> e.getAsJsonObject().get("id").getAsString()).toList();
+        assertEquals(List.of("/hl7-v2-receiver/by-version/2.4", "/hl7-v2-receiver/by-version/2.7"), byVer);
+        JsonObject v24 = GSON.fromJson(
+            op(f, "ObjectsApi.getObject", "objectId", "/hl7-v2-receiver/by-version/2.4"), JsonObject.class);
+        assertEquals("schema:shared:hl7v2.message-envelope", v24.get("collectionSchema").getAsString());
+    }
+
+    private static void insertVersioned(BufferStore b, String cid, String version) throws Exception {
+        b.insert(new BufferRow(0, Instant.parse("2026-05-28T10:00:00Z"), cid, "ADT_A01", "ADT", "A01",
+            "EPIC", "HOSP", version, "schema:table:hl7v2.v" + version.replace(".", "") + ".ADT_A01",
+            ("raw-" + cid).getBytes(), "{}", MessageStatus.NEW, null, null, null));
     }
 
     /** errorModelBase required fields are present, non-null, and well-typed. */

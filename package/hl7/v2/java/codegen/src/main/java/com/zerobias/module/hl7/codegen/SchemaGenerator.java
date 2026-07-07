@@ -7,13 +7,19 @@ import com.zerobias.module.hl7.codegen.model.Property;
 import com.zerobias.module.hl7.codegen.model.Reference;
 import com.zerobias.module.hl7.codegen.model.Schema;
 
+import java.net.JarURLConnection;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 /**
  * Build-time schema generator (DESIGN §6).
@@ -63,19 +69,77 @@ public final class SchemaGenerator {
             System.exit(2);
             return;
         }
-        final String version = args[0];
+        // arg0 is one version slot or a comma-separated list (e.g. "v23,v24,v27"),
+        // so the whole supported set is generated in a single JVM invocation.
+        final String[] versions = args[0].split(",");
         final Path outputDir = Path.of(args[1]);
-        final String[] msgs = args.length > 2
+        final String[] requested = args.length > 2
             ? java.util.Arrays.copyOfRange(args, 2, args.length)
             : DEFAULT_MESSAGES;
+        final boolean all = requested.length == 1
+            && ("ALL".equalsIgnoreCase(requested[0]) || "*".equals(requested[0]));
 
-        new SchemaGenerator(version, outputDir).run(msgs);
+        for (String version : versions) {
+            // "ALL"/"*" → enumerate every message structure the version ships.
+            final String[] msgs = all
+                ? enumerateMessages(version).toArray(new String[0])
+                : requested;
+            new SchemaGenerator(version, outputDir).run(msgs);
+        }
+    }
+
+    /**
+     * Every message-structure simple name HAPI ships for {@code version}, read from
+     * the {@code ca.uhn.hl7v2.model.<version>.message} package on the classpath
+     * (the {@code hapi-structures-<version>} jar). Inner classes ({@code $}) are
+     * skipped; the walk from each message transitively discovers its groups,
+     * segments, datatypes, and tables.
+     */
+    private static List<String> enumerateMessages(String version) throws Exception {
+        final String pkgPath = "ca/uhn/hl7v2/model/" + version + "/message";
+        final Set<String> names = new TreeSet<>();
+        final Enumeration<URL> roots =
+            Thread.currentThread().getContextClassLoader().getResources(pkgPath);
+        while (roots.hasMoreElements()) {
+            final URL url = roots.nextElement();
+            if (!"jar".equals(url.getProtocol())) {
+                continue;   // HAPI structures always ship as jars
+            }
+            final JarURLConnection conn = (JarURLConnection) url.openConnection();
+            conn.setUseCaches(false);
+            try (JarFile jar = conn.getJarFile()) {
+                final Enumeration<JarEntry> entries = jar.entries();
+                while (entries.hasMoreElements()) {
+                    final String n = entries.nextElement().getName();
+                    if (n.startsWith(pkgPath + "/") && n.endsWith(".class") && !n.contains("$")) {
+                        names.add(n.substring((pkgPath + "/").length(), n.length() - ".class".length()));
+                    }
+                }
+            }
+        }
+        if (names.isEmpty()) {
+            throw new IllegalStateException("no message structures found for " + version
+                + " (is hapi-structures-" + version + " on the classpath?)");
+        }
+        return new ArrayList<>(names);
     }
 
     private void run(String[] messageSimpleNames) throws Exception {
         final StructureWalker walker = new StructureWalker(version);
+        int skipped = 0;
         for (String msg : messageSimpleNames) {
-            walker.walkMessage(msg);
+            try {
+                walker.walkMessage(msg);
+            } catch (Exception | LinkageError e) {
+                // One non-instantiable/oddball structure must not fail a whole-catalog
+                // build; record and continue (DESIGN §6 general-purpose codegen).
+                skipped++;
+                System.err.printf("  skip %s.%s: %s%n", version, msg, e);
+            }
+        }
+        if (skipped > 0) {
+            System.err.printf("Skipped %d/%d message structures for %s.%n",
+                skipped, messageSimpleNames.length, version);
         }
 
         // Message table schemas carry the HL7 structure + the buffer envelope (DESIGN §2.3).

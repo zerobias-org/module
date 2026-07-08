@@ -151,6 +151,16 @@ Identify auth method from API documentation and credentials:
 - Access token + refresh token
 - Pattern: Authorization flow with refresh capability
 - Credentials: CLIENT_ID + CLIENT_SECRET + REFRESH_TOKEN
+- 🚨 **Two-half capability — flag it.** The Hub "Connect" (click-to-authorize) button
+  needs a **platform-side OAuth app registration that a contributor CANNOT self-serve**
+  (OAuth app + client_id/secret in AWS Secrets Manager + `OAuthProvider` load + profile→provider
+  link). The module half you CAN author is: `oauthTokenProfile` + `oauthTokenState` +
+  `x-oauth-providers: [<vendor>.oauth]` + `connect()/refresh()`. When you identify this
+  auth method you MUST set `requiresPlatformOAuthRegistration: true` in your output, pick
+  the `oauthProviderCode` (reuse an existing provider like `microsoft.oauth` when it fits),
+  and tell the user to open the registration task — see the "OAuth Click-to-Connect = Module
+  Half + Platform Half" section in @.claude/skills/connection-profile/SKILL.md for the task
+  template. (OAuth **client-credentials** does NOT need this — no popup, no provider link.)
 
 ### Basic Auth
 - Username + password in Authorization header
@@ -182,11 +192,29 @@ Identify auth method from API documentation and credentials:
 }
 ```
 
+For an **OAuth authorization_code** module, `forApiArchitect` additionally carries:
+
+```json
+  "forApiArchitect": {
+    "authMethodType": "oauth2-authorization-code",
+    "requiresRefresh": true,
+    "requiresPlatformOAuthRegistration": true,
+    "oauthProviderCode": "microsoft.oauth",
+    "additionalContext": "Click-to-Connect. Module half is authorable; platform-side OAuth app + secret + provider link is a ZeroBias insider task — surface the registration task to the user."
+  }
+```
+
 **Pass this data to @api-architect** who will:
 - Select appropriate core profile to extend
 - Design connectionProfile.yml schema
 - Design connectionState.yml schema
 - Configure security schemes in api.yml
+- For authorization_code: add `x-oauth-providers: [<oauthProviderCode>]` to the profile
+
+**When `requiresPlatformOAuthRegistration` is true, also surface to the USER** (not just
+@api-architect): the module ships OAuth-capable, but the Hub "Connect" button stays dark
+until a ZeroBias insider completes the registration task. Hand them the ready-to-file task
+body from @.claude/skills/connection-profile/SKILL.md.
 
 ## Common Patterns
 

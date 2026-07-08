@@ -142,6 +142,62 @@ $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenProfile.yml'
 $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
 ```
 
+## 🚨 CRITICAL: OAuth "Click-to-Connect" = Module Half + Platform Half
+
+**Choosing an OAuth `authorization_code` flow (the Hub "Connect" button) is only HALF a
+self-serve task.** The module declares the capability; a **ZeroBias insider** must register
+the OAuth app and wire it to the platform before the Connect button does anything. If you
+ship the module half without opening the insider task, the button stays dark.
+
+### The module half — YOU author this (fully self-serve)
+
+| File | What to author |
+|------|----------------|
+| `connectionProfile.yml` | Extend `oauthTokenProfile.yml` (clientId, clientSecret, url). Add the provider hook: `x-oauth-providers: [<vendor>.oauth]` — this is what makes the Hub UI offer the OAuth popup. |
+| `connectionState.yml` | Extend `oauthTokenState.yml` (accessToken, **refreshToken**, expiresIn in SECONDS, scope) — MUST extend `baseConnectionState` so the server schedules refresh. |
+| `src/<Class>Impl.ts` (`connect()`/`refresh()`) | Exchange/refresh tokens. Receive `clientId`/`clientSecret` at runtime via the `oauthDetails` argument — **never hardcode or persist them**. Validate `oauthDetails.clientId`, `.clientSecret`, `connectionProfile.refreshToken`; throw `InvalidCredentialsError` if missing. |
+
+```yaml
+# connectionProfile.yml — OAuth authorization-code, with the provider hook
+type: object
+allOf:
+  - $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenProfile.yml'
+  - type: object
+    x-oauth-providers:
+      - <vendor>.oauth        # e.g. microsoft.oauth for Entra-based products (Wiz, etc.)
+```
+
+The `<vendor>.oauth` code refers to an **`OAuthProvider` resource** in the `zerobias-org/oauth`
+repo. Reuse an existing provider when one fits (e.g. `microsoft` /
+`login.microsoftonline.com/organizations/oauth2/v2.0/authorize` already exists) rather than
+inventing a new one.
+
+### The platform half — a ZeroBias INSIDER must do this (a contributor CANNOT self-serve)
+
+The client_id/secret live in AWS Secrets Manager, and the redirect URI is ZeroBias's shared
+Global App callback — none of this is authorable from the module repo. So **when OAuth
+authorization-code is chosen, tell the user to open a registration task** with this body:
+
+```
+Title: Register <vendor> OAuth app + link to <module-package> connectionProfile
+
+The <module-package> connector is OAuth-capable (authorization-code + refresh) but its
+"Connect" button won't work until the platform-side OAuth wiring exists:
+  1. Register (or confirm) the <vendor> OAuth app with the provider → obtain client_id +
+     client_secret; confirm ZeroBias's Global App redirect URI is allow-listed and the
+     required scopes / admin-consent are granted.
+  2. Store client_id/client_secret in AWS Secrets Manager (dev + prod).
+  3. Load the OAuthProvider resource (zerobias-org/oauth) if it does not already exist,
+     and LINK it to the module's connectionProfile (referenced via x-oauth-providers:
+     [<vendor>.oauth]) so the Store advertises OAuth support.
+
+Outcome: OAuth-enabled <vendor> connections show the click-to-Connect button in Hub.
+```
+
+> OAuth **client-credentials** (Pattern 2) is different: it needs no click-to-connect popup
+> and no provider link — the user supplies clientId/clientSecret directly. No insider task.
+> The registration task is only for the **authorization_code** ("Connect" button) flow.
+
 ### Pattern 4: Custom Fields (Extend Core)
 
 ```yaml

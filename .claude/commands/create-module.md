@@ -78,6 +78,7 @@ Invoke @module-scaffolder. It will:
   - Replace `api.yml` stub: paths, operations, components, security schemes
   - If connector: replace `connectionProfile.yml` stub (extend `tokenProfile` / `oauthClientProfile` / etc. from `@zerobias-org/types-core`)
   - If token expiry tracking is needed: create `connectionState.yml` extending `baseConnectionState` (otherwise omit — design-phase decides)
+  - **If OAuth `authorization_code` (click-to-Connect):** extend `oauthTokenProfile` + create `connectionState.yml` extending `oauthTokenState`, and add `x-oauth-providers: [<oauthProviderCode>]` to the profile (from @credential-manager). This is a **two-half capability** — see the "OAuth Click-to-Connect = Module Half + Platform Half" section in @.claude/skills/connection-profile/SKILL.md. Carry `requiresPlatformOAuthRegistration` forward to Phase 6.
   - Check for optional connection params (region, environment, etc.)
 - Invoke @schema-specialist for complex resource schemas (`$ref` composition)
 - Invoke @api-reviewer to validate against api-spec rules
@@ -126,6 +127,13 @@ Invoke @module-scaffolder. It will:
   - Stage only files inside `package/<vendor>/[<suite>/]<service>/` (plus `gate-stamp.json`)
   - **Never** `git add -A` or `git add .` from the repo root — would pick up unrelated changes
   - **Never** commit `node_modules/`, `dist/`, `generated/`, `hub-sdk/generated/`, `build/`, `npm-shrinkwrap.json`, secrets, or `.env`
+- **If OAuth `authorization_code` (`requiresPlatformOAuthRegistration`):** the module ships
+  OAuth-capable, but the Hub "Connect" button stays dark until a **ZeroBias insider** registers
+  the OAuth app + secret and links the `OAuthProvider`. Tell the user this explicitly and hand
+  them the ready-to-file registration-task body from
+  @.claude/skills/connection-profile/SKILL.md ("OAuth Click-to-Connect = Module Half + Platform
+  Half"), and note it in the PR body. Do NOT attempt the platform half here — it's not
+  authorable from the module repo.
 
 ## Success Criteria
 

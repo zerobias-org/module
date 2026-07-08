@@ -156,7 +156,7 @@ reference implementations in `@auditlogic/module-*` (all use `x-oauth-providers`
 
 | Module | Provider | Good example of |
 |--------|----------|-----------------|
-| `microsoft/azure/msgraph` | `microsoft.oauth` | **Entra/Azure AD** — the closest analog for Wiz; dual-mode (OAuth **or** manual clientId/secret/directoryId) |
+| `microsoft/azure/msgraph` | `microsoft.oauth` | **Entra/Azure AD** — reuse `microsoft.oauth` for any Entra-backed product; dual-mode (OAuth **or** manual clientId/secret/directoryId) |
 | `atlassian/cloud/jira` | `atlassian.oauth` | explicit `connectionMode: [manual, oauth]` enum + oauth `basePath` rewrite |
 | `slack/slack` | `slack.oauth` | minimal OAuth-only profile; `connect()` hard-requires `oauthConnectionDetails` |
 | `github/github` | `github.oauth` | OAuth + PAT fallback |
@@ -172,7 +172,7 @@ allOf:
   - $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
   - type: object
     x-oauth-providers:
-      - <vendor>.oauth          # e.g. microsoft.oauth for Entra-based products (Wiz, etc.)
+      - <vendor>.oauth          # e.g. microsoft.oauth for Entra/Azure AD-backed products
     x-ui-required:              # fields the connect form REQUIRES (manual-entry / OAuth-app creds)
       - clientId
       - clientSecret
@@ -232,7 +232,7 @@ Gotchas the real modules encode:
 The `<vendor>.oauth` code refers to an **`OAuthProvider` resource** in the `zerobias-org/oauth`
 repo. Reuse an existing provider when one fits (e.g. `microsoft` /
 `login.microsoftonline.com/organizations/oauth2/v2.0/authorize` already exists — reuse it for
-Wiz/Entra) rather than inventing a new one.
+any Entra/Azure AD-backed product) rather than inventing a new one.
 
 ### The platform half — a ZeroBias INSIDER must do this (a contributor CANNOT self-serve)
 
@@ -257,8 +257,13 @@ Outcome: OAuth-enabled <vendor> connections show the click-to-Connect button in 
 ```
 
 > OAuth **client-credentials** (Pattern 2) is different: it needs no click-to-connect popup
-> and no provider link — the user supplies clientId/clientSecret directly. No insider task.
-> The registration task is only for the **authorization_code** ("Connect" button) flow.
+> and no provider link — the user supplies clientId/clientSecret directly. No insider task,
+> fully contributor-self-serve. Extend `oauthClientProfile` (not `oauthTokenProfile`), and do
+> NOT add `x-oauth-providers`.
+> **Example: Wiz** — a Wiz *service account* (Settings → Service Accounts) yields a Client ID +
+> Client Secret exchanged via `client_credentials` at `auth.app.wiz.io/oauth/token`
+> (Auth0/Cognito, **not** Microsoft Entra). So a Wiz module is Pattern 2 end-to-end — no insider
+> task. The registration task is only for the **authorization_code** ("Connect" button) flow.
 
 ### Pattern 4: Custom Fields (Extend Core)
 

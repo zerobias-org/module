@@ -160,9 +160,10 @@ Identify auth method from API documentation and credentials:
   the `oauthProviderCode` (reuse an existing provider like `microsoft.oauth` when it fits),
   and tell the user to open the registration task — see the "OAuth Click-to-Connect = Module
   Half + Platform Half" section in @.claude/skills/connection-profile/SKILL.md for the task
-  template AND the verified reference modules to copy (`msgraph` for Entra/Azure AD — closest
-  Wiz analog, `jira`, `slack`, `github`). (OAuth **client-credentials** does NOT need this — no
-  popup, no provider link.)
+  template AND the verified reference modules to copy (`msgraph` for Entra/Azure AD, `jira`,
+  `slack`, `github`). (OAuth **client-credentials** does NOT need this — no popup, no provider
+  link, fully self-serve; e.g. Wiz uses a `client_credentials` service account via
+  `auth.app.wiz.io`, so it is Pattern 2, not authorization_code.)
 
 ### Basic Auth
 - Username + password in Authorization header

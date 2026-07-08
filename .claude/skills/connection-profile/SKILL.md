@@ -151,26 +151,88 @@ ship the module half without opening the insider task, the button stays dark.
 
 ### The module half — YOU author this (fully self-serve)
 
-| File | What to author |
-|------|----------------|
-| `connectionProfile.yml` | Extend `oauthTokenProfile.yml` (clientId, clientSecret, url). Add the provider hook: `x-oauth-providers: [<vendor>.oauth]` — this is what makes the Hub UI offer the OAuth popup. |
-| `connectionState.yml` | Extend `oauthTokenState.yml` (accessToken, **refreshToken**, expiresIn in SECONDS, scope) — MUST extend `baseConnectionState` so the server schedules refresh. |
-| `src/<Class>Impl.ts` (`connect()`/`refresh()`) | Exchange/refresh tokens. Receive `clientId`/`clientSecret` at runtime via the `oauthDetails` argument — **never hardcode or persist them**. Validate `oauthDetails.clientId`, `.clientSecret`, `connectionProfile.refreshToken`; throw `InvalidCredentialsError` if missing. |
+**Copy a real shipped OAuth module rather than authoring from scratch.** Verified
+reference implementations in `@auditlogic/module-*` (all use `x-oauth-providers` + refresh):
+
+| Module | Provider | Good example of |
+|--------|----------|-----------------|
+| `microsoft/azure/msgraph` | `microsoft.oauth` | **Entra/Azure AD** — the closest analog for Wiz; dual-mode (OAuth **or** manual clientId/secret/directoryId) |
+| `atlassian/cloud/jira` | `atlassian.oauth` | explicit `connectionMode: [manual, oauth]` enum + oauth `basePath` rewrite |
+| `slack/slack` | `slack.oauth` | minimal OAuth-only profile; `connect()` hard-requires `oauthConnectionDetails` |
+| `github/github` | `github.oauth` | OAuth + PAT fallback |
+
+**connectionProfile.yml** — extend BOTH `oauthTokenProfile` AND `oauthTokenState`, add the
+provider hook, and use `x-ui-*` to control the connect form (this is what every real module does):
 
 ```yaml
-# connectionProfile.yml — OAuth authorization-code, with the provider hook
+# connectionProfile.yml — OAuth authorization-code (mirrors msgraph/jira/slack)
 type: object
 allOf:
   - $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenProfile.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
   - type: object
     x-oauth-providers:
-      - <vendor>.oauth        # e.g. microsoft.oauth for Entra-based products (Wiz, etc.)
+      - <vendor>.oauth          # e.g. microsoft.oauth for Entra-based products (Wiz, etc.)
+    x-ui-required:              # fields the connect form REQUIRES (manual-entry / OAuth-app creds)
+      - clientId
+      - clientSecret
+    x-ui-hidden:               # HIDE the token-state fields the OAuth flow fills in for you
+      - tokenType
+      - accessToken
+      - refreshToken
+      - expiresIn
+      - scope
+      - url
+    properties:
+      clientId:
+        type: string
+      clientSecret:
+        type: string
+        format: password
 ```
+
+> ⚠️ **Omitting `x-ui-hidden` leaks raw `accessToken`/`refreshToken` fields into the connect
+> form.** Every shipped OAuth module hides them — match that.
+
+**connectionState.yml** — extend `oauthTokenState.yml` (accessToken + **refreshToken** +
+`expiresIn` in SECONDS + scope). It MUST resolve to `baseConnectionState` (which `oauthTokenState`
+already does) so the server schedules the refresh cronjob.
+
+**`src/<Class>Impl.ts` — `connect()` / `refresh()`.** The OAuth app creds arrive at runtime as
+a typed 2nd argument, `OauthConnectionDetails` (from `@zerobias-org/types-core-js`) — **never
+hardcode or persist them**. Real signature (from msgraph/github):
+
+```ts
+import { OauthConnectionDetails } from '@zerobias-org/types-core-js';
+
+async connect(
+  connectionProfile: ConnectionProfile,
+  oauthConnectionDetails?: OauthConnectionDetails,
+): Promise<BaseConnectionState> { /* exchange code/refresh → accessToken */ }
+
+async refresh(
+  connectionProfile: ConnectionProfile,
+  connectionState: BaseConnectionState,
+  oauthConnectionDetails?: OauthConnectionDetails,
+): Promise<BaseConnectionState> {
+  // canonical: delegate to connect() with refresh=true
+  return this.client.connect(connectionProfile, oauthConnectionDetails, true);
+}
+```
+
+Gotchas the real modules encode:
+- **Accept both casings.** The node→module boundary may deliver `clientId` OR `client_id`.
+  msgraph reads `oauth?.clientId ?? oauth?.client_id` — a forced refresh silently lost creds
+  until it handled both. Do the same for `clientSecret`/`client_secret`.
+- **Dual-mode fallback.** OAuth is not strictly either/or with token auth. msgraph/jira accept
+  the OAuth popup creds *or* fall back to `connectionProfile.clientId/clientSecret` for a manual
+  client-credentials connection. Throw `InvalidCredentialsError` (or a specific message naming
+  the missing field) only when neither path has what it needs.
 
 The `<vendor>.oauth` code refers to an **`OAuthProvider` resource** in the `zerobias-org/oauth`
 repo. Reuse an existing provider when one fits (e.g. `microsoft` /
-`login.microsoftonline.com/organizations/oauth2/v2.0/authorize` already exists) rather than
-inventing a new one.
+`login.microsoftonline.com/organizations/oauth2/v2.0/authorize` already exists — reuse it for
+Wiz/Entra) rather than inventing a new one.
 
 ### The platform half — a ZeroBias INSIDER must do this (a contributor CANNOT self-serve)
 

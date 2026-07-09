@@ -189,6 +189,9 @@ public final class SchemaGenerator {
         props.add(new Property("status", CoreTypes.STRING).required(true)
             .references(new Reference(STATUS_ENUM_ID)));
         props.add(new Property("leaseId", CoreTypes.STRING));
+        // Provenance overlaid by the producer (the many-named-ports model, §11.4); optional
+        // (null for pre-provenance rows). Declared so a served element validates clean.
+        props.add(new Property("sourcePort", CoreTypes.STRING));
         return props;
     }
 

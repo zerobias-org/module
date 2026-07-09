@@ -45,7 +45,7 @@ public final class Hl7ProducerFacade {
         this.buffer = buffer;
         this.tree = tree;
         this.schemas = schemas;
-        this.ops = new Hl7Operations(buffer, this::toElement, recaster);
+        this.ops = new Hl7Operations(buffer, this::toElement, recaster, new SchemaValidator(schemas));
         Hl7Filter.register();
     }
 

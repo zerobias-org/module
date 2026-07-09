@@ -59,4 +59,15 @@ public record BufferRow(
             sendingApp, sendingFacility, hl7Version, schemaId, rawEr7, mappedJson,
             status, leaseId, inFlightUntil, ackedAt, null);
     }
+
+    /**
+     * A copy with a re-derived mapping ({@code schemaId} + {@code mappedJson}), every
+     * other field (raw ER7, envelope, lease) unchanged. Lets {@code ops/validate}
+     * element-ize a re-materialized rep through the same mapper as the stored rep.
+     */
+    public BufferRow withMapping(String newSchemaId, String newMappedJson) {
+        return new BufferRow(id, receivedAt, controlId, messageStructure, messageCode, triggerEvent,
+            sendingApp, sendingFacility, hl7Version, newSchemaId, rawEr7, newMappedJson,
+            status, leaseId, inFlightUntil, ackedAt, sourcePort);
+    }
 }

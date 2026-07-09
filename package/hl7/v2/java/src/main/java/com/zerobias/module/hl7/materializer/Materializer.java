@@ -13,7 +13,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -34,9 +33,12 @@ import java.util.Set;
  * the buffer envelope ({@code controlId}/{@code receivedAt}/{@code status}/
  * {@code leaseId}) is overlaid later from the authoritative buffer columns.
  *
- * <p>v1 scope: group nesting is flattened — a message's segments are keyed at the
- * top level by segment code (repeating segments/segments in repeating groups
- * become arrays). The per-segment field/component graph is fully materialized.
+ * <p>Group nesting is preserved: the walk consumes the message's document-ordered
+ * segment stream against the structure grammar, emitting nested group objects
+ * (e.g. {@code patient_result -> patient / order_observation}) so group membership
+ * — which OBX belongs to which OBR — survives, and every repeat is captured even
+ * when HAPI's generic parse splits a non-contiguous repeat into a numeric-suffixed
+ * slot ({@code OBX2}). The per-segment field/component graph is fully materialized.
  */
 public final class Materializer implements MessageMaterializer {
 
@@ -60,74 +62,147 @@ public final class Materializer implements MessageMaterializer {
 
     @Override
     public String toTypedJson(Message message) throws HL7Exception {
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (SegmentSlot slot : segmentSlots(message)) {
-            List<Object> occurrences = new ArrayList<>();
-            for (Segment seg : segmentsNamed(message, slot.code)) {
-                Object obj = materializeSegment(seg, index.segment(slot.code));
-                if (obj != ABSENT) {
-                    occurrences.add(obj);
-                }
-            }
-            if (occurrences.isEmpty()) {
-                continue;
-            }
-            out.put(slot.name, (slot.multi || occurrences.size() > 1) ? occurrences : occurrences.get(0));
-        }
-        return GSON.toJson(out);
-    }
-
-    // --- which segments, in what order, with what cardinality --------------
-
-    private record SegmentSlot(String code, String name, boolean multi) {
-    }
-
-    /**
-     * The ordered, de-duplicated segment slots to emit. Driven by the message's
-     * structure entry when known (flattening groups, preserving order and OR-ing
-     * multi); otherwise falls back to the segments actually present (occurrence
-     * count decides array-ness).
-     */
-    private List<SegmentSlot> segmentSlots(Message message) throws HL7Exception {
+        List<Seg> stream = segmentStream(message);
         String structure = messageStructure(message);
         StructureIndex.MessageEntry entry = structure == null ? null : index.message(structure);
 
-        Map<String, SegmentSlot> slots = new LinkedHashMap<>();
+        Map<String, Object> out;
+        int[] cursor = {0};
         if (entry != null) {
-            collectSlots(entry, false, slots, new LinkedHashSet<>());
+            out = consume(entry, stream, cursor, new LinkedHashSet<>());
+        } else {
+            out = new LinkedHashMap<>();
         }
-        if (slots.isEmpty()) {
-            // unknown structure (or empty entry): emit every present segment we can name
-            for (String code : message.getNames()) {
-                if (index.segment(code) != null && !slots.containsKey(code)) {
-                    slots.put(code, new SegmentSlot(code, lower(code), false));
-                }
-            }
-        }
-        return new ArrayList<>(slots.values());
+        // Any segments the grammar didn't place (unknown structure, unexpected order,
+        // trailing Z-segments) are still emitted by code so nothing is dropped.
+        appendLeftover(out, stream, cursor[0]);
+        return GSON.toJson(out);
     }
 
-    /** Flatten a message/group entry into segment slots, descending nested groups. */
-    private void collectSlots(StructureIndex.MessageEntry entry, boolean inheritedMulti,
-            Map<String, SegmentSlot> slots, Set<String> visitingGroups) {
-        for (StructureIndex.StructureRef ref : entry.structures) {
-            boolean multi = inheritedMulti || ref.multi;
-            if (ref.group) {
-                if (visitingGroups.add(ref.structure)) {           // cycle-safe
-                    StructureIndex.MessageEntry g = index.groups.get(ref.structure);
-                    if (g != null) {
-                        collectSlots(g, multi, slots, visitingGroups);
-                    }
-                    visitingGroups.remove(ref.structure);
-                }
-            } else {
-                SegmentSlot existing = slots.get(ref.structure);
-                if (existing == null) {
-                    slots.put(ref.structure, new SegmentSlot(ref.structure, ref.name, multi));
-                } else if (multi && !existing.multi()) {
-                    slots.put(ref.structure, new SegmentSlot(ref.structure, existing.name(), true));
+    // --- document-ordered segment stream -----------------------------------
+
+    /** A parsed segment plus its true HL7 code (HAPI suffixes non-contiguous repeats: {@code OBX2}). */
+    private record Seg(String code, Segment segment) {
+    }
+
+    /**
+     * The message's segments in document order, every occurrence included. HAPI's
+     * generic parse gives a repeated segment that is interrupted by another segment
+     * its own numeric-suffixed slot ({@code OBX2}); we recover the real code and keep
+     * the occurrence, so no repeat is lost and group boundaries stay reconstructable.
+     * Each slot's reps are themselves contiguous, so flattening
+     * {@code getNames() × getAll()} reproduces true document order.
+     *
+     * <p>HL7 segment IDs are always exactly three characters and HAPI appends its
+     * rep-suffix <em>after</em> the code, so the real code is the first three chars —
+     * NOT the name with trailing digits stripped (that would mangle legitimate codes
+     * ending in a digit, e.g. {@code PV1}, {@code PV2}, {@code OM1}).
+     */
+    private List<Seg> segmentStream(Message message) throws HL7Exception {
+        List<Seg> stream = new ArrayList<>();
+        for (String name : message.getNames()) {
+            String code = name.length() > 3 ? name.substring(0, 3) : name;
+            for (Structure s : message.getAll(name)) {
+                if (s instanceof Segment) {
+                    stream.add(new Seg(code, (Segment) s));
                 }
             }
+        }
+        return stream;
+    }
+
+    // --- grammar-driven group assembly -------------------------------------
+
+    /**
+     * Consume the ordered segment stream against a message/group entry, emitting
+     * nested group objects (DESIGN §5). A segment ref consumes leading occurrences of
+     * its code up to cardinality; a group ref consumes as many group instances as
+     * begin at the cursor (decided by the group's FIRST-set), each a nested object.
+     * {@code cursor[0]} advances as segments are consumed. Preserves group membership
+     * and every repeat.
+     */
+    private Map<String, Object> consume(StructureIndex.MessageEntry entry, List<Seg> stream,
+            int[] cursor, Set<String> visiting) throws HL7Exception {
+        Map<String, Object> obj = new LinkedHashMap<>();
+        for (StructureIndex.StructureRef ref : entry.structures) {
+            if (ref.group) {
+                StructureIndex.MessageEntry g = index.groups.get(ref.structure);
+                if (g == null || !visiting.add(ref.structure)) {
+                    continue;   // missing definition or cyclic grammar — skip safely
+                }
+                List<Object> instances = new ArrayList<>();
+                while (cursor[0] < stream.size()
+                        && groupStarts(g, stream.get(cursor[0]).code(), new LinkedHashSet<>())) {
+                    int before = cursor[0];
+                    Map<String, Object> inst = consume(g, stream, cursor, visiting);
+                    if (cursor[0] == before) {
+                        break;   // consumed nothing this pass — don't spin
+                    }
+                    if (!inst.isEmpty()) {
+                        instances.add(inst);
+                    }
+                    if (!ref.multi) {
+                        break;
+                    }
+                }
+                visiting.remove(ref.structure);
+                if (!instances.isEmpty()) {
+                    obj.put(ref.name, ref.multi ? instances : instances.get(0));
+                }
+            } else {
+                List<Object> occ = new ArrayList<>();
+                while (cursor[0] < stream.size() && stream.get(cursor[0]).code().equals(ref.structure)) {
+                    Object v = materializeSegment(stream.get(cursor[0]).segment(), index.segment(ref.structure));
+                    cursor[0]++;
+                    if (v != ABSENT) {
+                        occ.add(v);
+                    }
+                    if (!ref.multi) {
+                        break;
+                    }
+                }
+                if (!occ.isEmpty()) {
+                    obj.put(ref.name, (ref.multi || occ.size() > 1) ? occ : occ.get(0));
+                }
+            }
+        }
+        return obj;
+    }
+
+    /**
+     * Whether {@code code} may legally begin {@code entry} — its FIRST-set: leading
+     * segment codes, descending into leading groups, stopping at the first required
+     * element (nothing after a required element can be the entry's start).
+     */
+    private boolean groupStarts(StructureIndex.MessageEntry entry, String code, Set<String> visiting) {
+        for (StructureIndex.StructureRef ref : entry.structures) {
+            if (ref.group) {
+                StructureIndex.MessageEntry g = index.groups.get(ref.structure);
+                if (g != null && visiting.add(ref.structure) && groupStarts(g, code, visiting)) {
+                    return true;
+                }
+            } else if (ref.structure.equals(code)) {
+                return true;
+            }
+            if (ref.required) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /** Emit not-yet-consumed segments by code (arrays for repeats), without clobbering placed keys. */
+    private void appendLeftover(Map<String, Object> out, List<Seg> stream, int from) throws HL7Exception {
+        Map<String, List<Object>> byCode = new LinkedHashMap<>();
+        for (int i = from; i < stream.size(); i++) {
+            Seg s = stream.get(i);
+            Object v = materializeSegment(s.segment(), index.segment(s.code()));
+            if (v != ABSENT) {
+                byCode.computeIfAbsent(lower(s.code()), k -> new ArrayList<>()).add(v);
+            }
+        }
+        for (Map.Entry<String, List<Object>> e : byCode.entrySet()) {
+            out.putIfAbsent(e.getKey(), e.getValue().size() == 1 ? e.getValue().get(0) : e.getValue());
         }
     }
 
@@ -145,19 +220,6 @@ public final class Materializer implements MessageMaterializer {
             : (code != null && !code.isEmpty() && trigger != null && !trigger.isEmpty())
                 ? code + "_" + trigger : null;
         return resolver.resolve(code, t.get("/MSH-3"), base);
-    }
-
-    private List<Segment> segmentsNamed(Message message, String code) throws HL7Exception {
-        if (!Arrays.asList(message.getNames()).contains(code)) {
-            return List.of();
-        }
-        List<Segment> out = new ArrayList<>();
-        for (Structure s : message.getAll(code)) {
-            if (s instanceof Segment) {
-                out.add((Segment) s);
-            }
-        }
-        return out;
     }
 
     // --- segment / field / component walk ----------------------------------

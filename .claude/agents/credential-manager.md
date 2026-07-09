@@ -159,13 +159,19 @@ Identify auth method from API documentation and credentials:
   loadable via the dataloader like any content (reuse an existing provider —
   `microsoft`/`github`/`atlassian`/`slack`/`zoho`/`google` — or add a new one). The **only
   insider layer** is (3) registering the external OAuth app + putting client_id/secret in AWS
-  Secrets Manager (secrets can't be content). When you identify this auth method you MUST set
-  `requiresPlatformOAuthRegistration: true`, pick the `oauthProviderCode` (reuse e.g.
-  `microsoft.oauth` when it fits), and tell the user to open the layer-3 task — see the "OAuth
-  Click-to-Connect — 3 layers" section in @.claude/skills/connection-profile/SKILL.md for the
-  task template AND the verified reference modules to copy (`msgraph` for Entra/Azure AD, `jira`,
-  `slack`, `github`). (OAuth **client-credentials** does NOT need any of layers 2–3 — no popup,
-  no provider link, fully self-serve; e.g. Wiz uses a `client_credentials` service account via
+  Secrets Manager (secrets can't be content). When you identify this auth method you MUST:
+  1. **Detect whether the provider already exists in `zerobias-org/oauth`** — query it live, don't
+     guess: `gh api repos/zerobias-org/oauth/contents/package --jq '.[].name'` (and the recursive
+     tree for nested providers). Set `oauthProviderCode` + `oauthProviderExists: true|false`.
+  2. If it's **missing**, set `requiresNewOAuthProvider: true` — the provider must be **added** as a
+     separate `zerobias-org/oauth` content PR (contributor content, use the recipe in the skill),
+     and flag it as an extra deliverable. If it exists, just reuse the code.
+  3. Set `requiresPlatformOAuthRegistration: true` and tell the user to open the layer-3 (insider)
+     task. See the "OAuth Click-to-Connect — 3 layers" section (detection step + provider recipe +
+     task template) in @.claude/skills/connection-profile/SKILL.md AND the verified reference
+     modules to copy (`msgraph` for Entra/Azure AD, `jira`, `slack`, `github`).
+  (OAuth **client-credentials** does NOT need any of layers 2–3 — no popup, no provider, no
+  detection, fully self-serve; e.g. Wiz uses a `client_credentials` service account via
   `auth.app.wiz.io`, so it is Pattern 2, not authorization_code.)
 
 ### Basic Auth
@@ -204,9 +210,11 @@ For an **OAuth authorization_code** module, `forApiArchitect` additionally carri
   "forApiArchitect": {
     "authMethodType": "oauth2-authorization-code",
     "requiresRefresh": true,
-    "requiresPlatformOAuthRegistration": true,
     "oauthProviderCode": "microsoft.oauth",
-    "additionalContext": "Click-to-Connect. Module + oauth provider artifact + x-oauth-providers link are all contributor content-as-code; ONLY the external OAuth app registration + client_id/secret in Secrets Manager is a ZeroBias insider task — surface that task to the user."
+    "oauthProviderExists": true,
+    "requiresNewOAuthProvider": false,
+    "requiresPlatformOAuthRegistration": true,
+    "additionalContext": "Click-to-Connect. Module + oauth provider artifact + x-oauth-providers link are all contributor content-as-code; if requiresNewOAuthProvider, add the provider via a zerobias-org/oauth content PR. ONLY the external OAuth app registration + client_id/secret in Secrets Manager is a ZeroBias insider task — surface that task to the user."
   }
 ```
 

@@ -288,6 +288,25 @@ catalog. **Reuse an existing provider when one fits** — already present:
 `microsoft`, `github`, `atlassian`, `slack`, `zoho`, `google`. (e.g. reuse `oauth-microsoft` for
 any Entra/Azure AD product; only add a new `oauth-<vendor>` package if none matches.)
 
+#### 🚨 ALWAYS detect first — is the provider already in the repo?
+
+**Whenever a module needs an authorization-code provider, check the `oauth` repo live — do NOT
+trust the static list above (it drifts as providers are added).** Match your
+vendor (and suite/product, if the provider is scoped):
+
+```bash
+gh api repos/zerobias-org/oauth/contents/package --jq '.[].name'          # top-level vendors
+gh api repos/zerobias-org/oauth/git/trees/main:package?recursive=1 \
+  --jq '.tree[] | select(.path|endswith("index.yml")) | .path'            # every provider (incl. nested suite/product)
+```
+
+Decision:
+- **Provider exists** → reference it via `x-oauth-providers: [<code>]` and STOP. Nothing touches the oauth repo.
+- **Provider MISSING** → you must **add it** — author the package with the recipe below and open a
+  **separate content PR to `zerobias-org/oauth`** (contributor content, NOT the insider task).
+  Flag this as an extra deliverable so it isn't forgotten; the module can't advertise OAuth until
+  the provider is loaded.
+
 #### Recipe: add a missing provider (a `zerobias-org/oauth` content PR)
 
 No scaffold script and **no gradle gate** — it's a 2-file Lerna package. Copy an existing

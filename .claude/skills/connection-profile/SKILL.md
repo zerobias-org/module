@@ -236,6 +236,30 @@ Gotchas the real modules encode:
   client-credentials connection. Throw `InvalidCredentialsError` (or a specific message naming
   the missing field) only when neither path has what it needs.
 
+#### 🚨 What the module does — and does NOT — do at runtime
+
+The **platform's Global App** performs the authorization-code exchange (the popup, `code`,
+`redirect_uri`) and hands your module an **already-minted `accessToken` + `refreshToken`** in the
+connection state. So **do NOT implement a `code`→token exchange in the module** — that's a common
+wasted effort. Your `connect()`/`refresh()` only:
+- **`connect()` (normal OAuth):** just USE / validate the `accessToken` you were handed.
+- **`refresh()`:** re-mint the token yourself — `POST` to the token endpoint with
+  `grant_type: refresh_token`, `refresh_token` from the profile/state, and `client_id`/`client_secret`
+  from `OauthConnectionDetails`. (Only the *manual* dual-mode fallback uses `grant_type: client_credentials`.)
+
+#### 🚨 Where each URL / scope lives (non-obvious — get this right)
+
+| Thing | Lives in | Example (msgraph) |
+|-------|----------|-------------------|
+| **Authorize** URL | the `oauth` provider `index.yml` (`url`) | `login.microsoftonline.com/…/oauth2/v2.0/authorize` |
+| **Token** URL | **hardcoded constant in your client** — NOT the provider | `const BASE_TOKEN_URI + tenant + '/oauth2/v2.0/token'` |
+| **Scopes** | **hardcoded constant in your client** (api.yml securityScheme only *documents* them) | `const MS_GRAPH_SCOPE` |
+| `accessToken` / `refreshToken` | `connectionState` — handed to you at runtime | — |
+
+The provider artifact carries **only** the authorize URL + a UUID. The **token endpoint and scopes
+are yours to hardcode** in `connect()/refresh()` (they're universal per-provider constants — don't
+put them in the profile or provider).
+
 The `<vendor>.oauth` code refers to an **`OAuthProvider` resource** in the `zerobias-org/oauth`
 repo. Reuse an existing provider when one fits (e.g. `microsoft` /
 `login.microsoftonline.com/organizations/oauth2/v2.0/authorize` already exists — reuse it for
@@ -263,6 +287,35 @@ content** — you can even load them into your OWN org first (org-private) befor
 catalog. **Reuse an existing provider when one fits** — already present:
 `microsoft`, `github`, `atlassian`, `slack`, `zoho`, `google`. (e.g. reuse `oauth-microsoft` for
 any Entra/Azure AD product; only add a new `oauth-<vendor>` package if none matches.)
+
+#### Recipe: add a missing provider (a `zerobias-org/oauth` content PR)
+
+No scaffold script and **no gradle gate** — it's a 2-file Lerna package. Copy an existing
+`package/<vendor>/` and change 4 things:
+
+```yaml
+# package/<vendor>/index.yml
+id: <fresh v4 UUID>                       # repo-wide unique, IMMUTABLE once published
+url: https://<provider>/oauth2/authorize  # the AUTHORIZE endpoint (not the token endpoint)
+```
+```jsonc
+// package/<vendor>/package.json  (only the load-bearing keys shown)
+{
+  "name": "@zerobias-org/oauth-<vendor>",
+  "files": ["index.yml"],
+  "scripts": { "nx:publish": "../../scripts/publish.sh" },
+  "zerobias": {
+    "package": "<vendor>.oauth",       // ← the code x-oauth-providers resolves against
+    "import-artifact": "oauth",        // ← tells the dataloader the artifact type
+    "dataloader-version": "<current>"  // match the other packages in the repo
+  },
+  "dependencies": { "@zerobias-org/vendor-<vendor>": "latest" }  // ← binds to the VSP
+}
+```
+- **VSP scope** = whatever package you depend on: vendor-level → `@zerobias-org/vendor-<vendor>` +
+  code `<vendor>.oauth`; suite/product-scoped → depend on that package + code
+  `<vendor>.<suite>.<product>.oauth`, nested at `package/<vendor>/<suite>/…`.
+- Publishes via Lerna to GitHub npm, then loads via the dataloader (`import-artifact: oauth`).
 
 ### The genuinely-insider half — external app + secret (a contributor CANNOT self-serve)
 

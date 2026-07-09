@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-hl7-v2",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "HL7 v2.x MLLP receiver (DataProducer)",
   "type": "module",
   "moduleId": "369d38b0-2c23-43f0-bbc4-33f453ee75c8",

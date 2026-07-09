@@ -59,7 +59,7 @@ public final class ObjectTree {
 
     static final String ENVELOPE_SCHEMA = "schema:shared:hl7v2.message-envelope";
     static final List<String> OPS_FUNCTIONS =
-        List.of("take", "ack", "release", "replay", "recast", "purge");
+        List.of("take", "ack", "release", "replay", "recast", "purge", "er7", "validate");
 
     private final BufferStore buffer;
     private final SchemaRegistry schemas;
@@ -393,6 +393,10 @@ public final class ObjectTree {
             case "ack":
             case "release":
                 t.put("lease_expired", "schema:shared:hl7v2.ops-error");
+                t.put("not_found", "schema:shared:hl7v2.ops-error");
+                break;
+            case "er7":
+            case "validate":
                 t.put("not_found", "schema:shared:hl7v2.ops-error");
                 break;
             default:

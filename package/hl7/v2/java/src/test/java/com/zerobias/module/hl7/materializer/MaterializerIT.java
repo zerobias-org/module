@@ -105,7 +105,7 @@ class MaterializerIT {
     }
 
     @Test
-    void oruRoundTripsWithRepeatingObx() throws Exception {
+    void oruPreservesGroupNesting() throws Exception {
         Materializer m = materializer();
         String er7 = String.join(CR,
             "MSH|^~\\&|LAB|HOSP|RECV|DEST|20260529103000||ORU^R01^ORU_R01|MSG2|P|2.7",
@@ -116,16 +116,36 @@ class MaterializerIT {
 
         JsonObject root = GSON.fromJson(m.toTypedJson(parseGeneric(er7)), JsonObject.class);
 
-        assertTrue(root.has("pid"), "pid present");
-        assertTrue(root.has("obr"), "obr present");
-        // two OBX → array (repeating segment, flattened from its group)
-        JsonArray obx = root.getAsJsonArray("obx");
-        assertEquals(2, obx.size());
-        assertEquals("7.2", obx.get(0).getAsJsonObject().getAsJsonArray("observationValue").get(0).getAsString());
-        // PID sits in a repeating group in ORU_R01 → flattened as an array
-        assertEquals("DOE", root.getAsJsonArray("pid").get(0).getAsJsonObject()
-            .getAsJsonArray("patientName").get(0).getAsJsonObject()
+        // Group nesting is preserved (DESIGN §5): ORU_R01 = MSH + PATIENT_RESULT[
+        //   PATIENT{pid…}, ORDER_OBSERVATION[{obr, OBSERVATION[{obx}]}] ]. Segments are
+        // NOT hoisted to the top level — which OBX belongs to which order survives.
+        assertTrue(root.has("msh"), "msh at message level");
+        assertTrue(!root.has("pid") && !root.has("obx") && !root.has("obr"),
+            "segments are nested under their groups, not top-level: " + root.keySet());
+
+        JsonArray patientResult = root.getAsJsonArray("patient_result");
+        assertEquals(1, patientResult.size());
+        JsonObject pr = patientResult.get(0).getAsJsonObject();
+
+        // PID inside PATIENT — a single object (its own ref is non-repeating), even though
+        // PATIENT_RESULT itself repeats.
+        JsonObject pid = pr.getAsJsonObject("patient").getAsJsonObject("pid");
+        assertEquals("DOE", pid.getAsJsonArray("patientName").get(0).getAsJsonObject()
             .getAsJsonObject("familyName").get("surname").getAsString());
+
+        // One order; its two results nested as OBSERVATION instances beneath it.
+        JsonArray orders = pr.getAsJsonArray("order_observation");
+        assertEquals(1, orders.size());
+        JsonObject order = orders.get(0).getAsJsonObject();
+        assertEquals("CBC", order.getAsJsonObject("obr")
+            .getAsJsonObject("universalServiceIdentifier").get("identifier").getAsString());
+
+        JsonArray observations = order.getAsJsonArray("observation");
+        assertEquals(2, observations.size());
+        assertEquals("7.2", observations.get(0).getAsJsonObject().getAsJsonObject("obx")
+            .getAsJsonArray("observationValue").get(0).getAsString());
+        assertEquals("14.1", observations.get(1).getAsJsonObject().getAsJsonObject("obx")
+            .getAsJsonArray("observationValue").get(0).getAsString());
     }
 
     @Test

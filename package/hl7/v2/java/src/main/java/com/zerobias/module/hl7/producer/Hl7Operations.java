@@ -5,6 +5,7 @@ import com.zerobias.module.hl7.buffer.BufferStore;
 import com.zerobias.module.hl7.buffer.Lease;
 import com.zerobias.module.hl7.filter.Hl7Filter;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
@@ -54,18 +55,26 @@ public final class Hl7Operations {
 
     private final BufferStore buffer;
     private final Function<BufferRow, Map<String, Object>> elementMapper;
-    /** Re-materializes rows from raw ER7 for {@code recast}; null when unconfigured (back-compat). */
+    /** Re-materializes rows from raw ER7 for {@code recast}/{@code validate}; null when unconfigured. */
     private final Recaster recaster;
+    /** Validates a rep against its registered schema for {@code validate}; null when unconfigured. */
+    private final SchemaValidator validator;
 
     public Hl7Operations(BufferStore buffer, Function<BufferRow, Map<String, Object>> elementMapper) {
-        this(buffer, elementMapper, null);
+        this(buffer, elementMapper, null, null);
     }
 
     public Hl7Operations(BufferStore buffer, Function<BufferRow, Map<String, Object>> elementMapper,
             Recaster recaster) {
+        this(buffer, elementMapper, recaster, null);
+    }
+
+    public Hl7Operations(BufferStore buffer, Function<BufferRow, Map<String, Object>> elementMapper,
+            Recaster recaster, SchemaValidator validator) {
         this.buffer = buffer;
         this.elementMapper = elementMapper;
         this.recaster = recaster;
+        this.validator = validator;
     }
 
     /** Dispatch a {@code /hl7-v2-receiver/ops/<fn>} invocation. */
@@ -83,9 +92,105 @@ public final class Hl7Operations {
                 return recast(input);
             case "purge":
                 return purge(input);
+            case "er7":
+                return er7(input);
+            case "validate":
+                return validate(input);
             default:
                 throw ProducerException.noSuchObject("/hl7-v2-receiver/ops/" + fn);
         }
+    }
+
+    /**
+     * Return the canonical raw ER7 for one buffered message, addressed by its message id
+     * (MSH-10 / the DataProducer {@code elementKey}). This is the pre-JSON, pre-slot
+     * source of truth (audit / independent re-parse), verbatim as stored ({@code encode()}
+     * preserves original segment order). 404s when the id isn't buffered.
+     */
+    private Map<String, Object> er7(Map<String, Object> input) throws SQLException {
+        BufferRow row = requireRow(input);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("controlId", row.controlId());
+        out.put("hl7Version", row.hl7Version());
+        out.put("messageStructure", row.messageStructure());
+        out.put("sourcePort", row.sourcePort());
+        out.put("er7", row.rawEr7() == null ? null : new String(row.rawEr7(), StandardCharsets.UTF_8));
+        return out;
+    }
+
+    /**
+     * Validate one buffered message (by message id) against its registered schema, checking
+     * <em>both representations</em>: the {@code stored} typed JSON as served, and the
+     * {@code rematerialized} form re-derived from the row's raw ER7 through the current
+     * materializer. Each verdict is {@code {valid, errors[]}}; {@code repsAgree} is true when
+     * re-materialization reproduces the stored mapping. Lets an operator confirm a row
+     * conforms, and tells apart a stale row (stored fails, rematerialized passes → recast
+     * would repair) from a current-code defect (both fail).
+     */
+    private Map<String, Object> validate(Map<String, Object> input) throws SQLException {
+        if (validator == null) {
+            throw ProducerException.unsupported("validate is unavailable: no schema registry configured");
+        }
+        BufferRow row = requireRow(input);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("controlId", row.controlId());
+        out.put("schemaId", row.schemaId());
+        out.put("stored", verdict(elementMapper.apply(row), row.schemaId()));
+        if (recaster != null) {
+            try {
+                Recaster.Mapping m = recaster.rematerialize(row);
+                Map<String, Object> rv = verdict(elementMapper.apply(row.withMapping(m.schemaId(), m.mappedJson())),
+                    m.schemaId());
+                rv.put("schemaId", m.schemaId());
+                out.put("rematerialized", rv);
+                out.put("repsAgree",
+                    m.mappedJson().equals(row.mappedJson()) && m.schemaId().equals(row.schemaId()));
+            } catch (Exception e) {
+                out.put("rematerialized", Map.of("error", "re-materialization failed: " + e.getMessage()));
+                out.put("repsAgree", false);
+            }
+        }
+        return out;
+    }
+
+    private Map<String, Object> verdict(Map<String, Object> element, String schemaId) {
+        List<String> errors = validator.validate(element, schemaId);
+        Map<String, Object> v = new LinkedHashMap<>();
+        v.put("valid", errors.isEmpty());
+        v.put("errors", errors);
+        return v;
+    }
+
+    /**
+     * The single buffered row for a message id, from {@code elementKey} (the DataProducer
+     * key; {@code messageId}/{@code controlId} accepted as aliases). {@code control_id} is
+     * the buffer's global key, so no collection {@code objectId} scope is needed to locate
+     * it. Throws {@code noSuchObjectError} when unbuffered.
+     */
+    private BufferRow requireRow(Map<String, Object> input) throws SQLException {
+        String id = firstNonBlank(strArg(input, "elementKey"), strArg(input, "messageId"),
+            strArg(input, "controlId"));
+        if (id == null) {
+            throw ProducerException.illegalArgument("message id is required (elementKey / messageId / controlId)");
+        }
+        List<BufferRow> rows = buffer.search("control_id = " + sql(id), 1, 0);
+        if (rows.isEmpty()) {
+            throw ProducerException.noSuchObject("/hl7-v2-receiver message " + id);
+        }
+        return rows.get(0);
+    }
+
+    private static String firstNonBlank(String... vals) {
+        for (String v : vals) {
+            if (v != null && !v.isBlank()) {
+                return v;
+            }
+        }
+        return null;
+    }
+
+    private static String sql(String value) {
+        return "'" + value.replace("'", "''") + "'";
     }
 
     private Map<String, Object> take(Map<String, Object> input) throws SQLException {

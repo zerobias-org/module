@@ -62,13 +62,24 @@ public final class Recaster {
      * serialize here (an admin op, not a hot path).
      */
     public synchronized Optional<Mapping> recast(BufferRow row) throws HL7Exception {
+        Mapping m = rematerialize(row);
+        if (m.mappedJson().equals(row.mappedJson()) && m.schemaId().equals(row.schemaId())) {
+            return Optional.empty();
+        }
+        return Optional.of(m);
+    }
+
+    /**
+     * Re-materialize {@code row} from its raw ER7 under the current registry, routing by
+     * the row's stored version — <em>always</em> returning the mapping (unlike
+     * {@link #recast}, which returns empty when it reproduces the stored value). This is
+     * the re-materialized rep {@code ops/validate} checks against its schema.
+     */
+    public synchronized Mapping rematerialize(BufferRow row) throws HL7Exception {
         Message message = parser.parse(new String(row.rawEr7(), StandardCharsets.UTF_8));
         String version = row.hl7Version();
         String schemaId = materializers.schemaIdFor(version, row.messageStructure());
         String mappedJson = materializers.materializerFor(version).toTypedJson(message);
-        if (mappedJson.equals(row.mappedJson()) && schemaId.equals(row.schemaId())) {
-            return Optional.empty();
-        }
-        return Optional.of(new Mapping(schemaId, mappedJson));
+        return new Mapping(schemaId, mappedJson);
     }
 }

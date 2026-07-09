@@ -142,7 +142,7 @@ $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenProfile.yml'
 $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
 ```
 
-## 🚨 CRITICAL: OAuth "Click-to-Connect" — 3 layers, only 1 is insider
+## 🚨 CRITICAL: OAuth Click-to-Connect — 3 layers (only 1 is insider)
 
 **Choosing an OAuth `authorization_code` flow (the Hub "Connect" button) spans three layers, and
 two of the three are contributor-self-serve content-as-code:**
@@ -159,7 +159,9 @@ authorization-code is chosen, open a task for layer 3**.
 ### The module half — YOU author this (fully self-serve)
 
 **Copy a real shipped OAuth module rather than authoring from scratch.** Verified
-reference implementations in `@auditlogic/module-*` (all use `x-oauth-providers` + refresh):
+reference implementations in `@auditlogic/module-*` (all use `x-oauth-providers` + refresh). Note
+the `$ref` scope: current modules use `@zerobias-org/types-core`; older ones (e.g. `slack`) use
+`@auditmation/types-core` — same schemas, use `@zerobias-org/types-core` for new work:
 
 | Module | Provider | Good example of |
 |--------|----------|-----------------|
@@ -198,8 +200,16 @@ allOf:
         format: password
 ```
 
-> ⚠️ **Omitting `x-ui-hidden` leaks raw `accessToken`/`refreshToken` fields into the connect
-> form.** Every shipped OAuth module hides them — match that.
+> ⚠️ **`x-ui-*` = which fields the connect FORM shows.** Rule of thumb:
+> - `x-ui-hidden`: the OAuth-flow fields the user should never type — always hide `tokenType`,
+>   `refreshToken`, `expiresIn`, `scope`, `url`.
+> - `x-ui-required`: the fields that ARE the manual connect method. This is a **real design choice**,
+>   not fixed: `msgraph` requires the app creds (`clientId`/`clientSecret`/`directoryId`) and HIDES
+>   `accessToken`; `slack` instead REQUIRES `accessToken` (it supports pasting a bot token) and hides
+>   the rest. Pick per module: hide `accessToken` for pure click-to-connect; require it only if you
+>   also support manual token paste. (The "Build-Time Resolution → The Pattern" example lower in
+>   this file shows the require-`accessToken` variant — that's the slack-style choice, not a
+>   contradiction.)
 
 **connectionState.yml** — extend `oauthTokenState.yml` (accessToken + **refreshToken** +
 `expiresIn` in SECONDS + scope). It MUST resolve to `baseConnectionState` (which `oauthTokenState`
@@ -254,11 +264,39 @@ wasted effort. Your `connect()`/`refresh()` only:
 | **Authorize** URL | the `oauth` provider `index.yml` (`url`) | `login.microsoftonline.com/…/oauth2/v2.0/authorize` |
 | **Token** URL | **hardcoded constant in your client** — NOT the provider | `const BASE_TOKEN_URI + tenant + '/oauth2/v2.0/token'` |
 | **Scopes** | **hardcoded constant in your client** (api.yml securityScheme only *documents* them) | `const MS_GRAPH_SCOPE` |
-| `accessToken` / `refreshToken` | `connectionState` — handed to you at runtime | — |
+| `accessToken` / `refreshToken` | read them off **`connectionProfile`** at runtime (see note) | `this.connectionProfile.refreshToken` |
+
+> **`connect()` has no `connectionState` argument — the tokens arrive on `connectionProfile`.**
+> Because the profile `allOf`-includes `oauthTokenState`, `accessToken`/`refreshToken`/`expiresIn`
+> are fields *on the profile object* the Hub hands you. Real modules read
+> `this.connectionProfile.accessToken` / `.refreshToken` — do NOT look for a separate state param.
+> (`refresh()` does receive a `connectionState` arg for metadata, but the refresh token still comes
+> from the profile.)
 
 The provider artifact carries **only** the authorize URL + a UUID. The **token endpoint and scopes
 are yours to hardcode** in `connect()/refresh()` (they're universal per-provider constants — don't
 put them in the profile or provider).
+
+#### 🚨 Testing an OAuth module locally (there's no popup in a test run)
+
+Every `connectionProfile` field is supplied as a **zbb secret whose name matches the field name**;
+`describeModule<T>` injects them into the `ConnectionProfile` passed to `connect()` (non-secret test
+params go via `zbb env set` → `test/e2e/constants.ts`). The catch: **there's no OAuth popup in
+`testDirect`/`testDocker`**, so *something* has to supply a token. Two real paths:
+
+- **Dual-mode / app-creds (easiest — what makes `msgraph` testable):** if the module also supports a
+  manual `client_credentials` path, store `clientId`/`clientSecret`(+`directoryId`/tenant) as secrets;
+  `connect()` mints its own `accessToken` — no popup, no pre-minted token needed.
+  ```bash
+  zbb secret create clientId     --module @zerobias-org/module-<v>-<p> --slot local
+  zbb secret create clientSecret --module @zerobias-org/module-<v>-<p> --slot local
+  ```
+- **Pure click-to-connect only:** there's no way to mint a token locally — obtain a real
+  `accessToken`/`refreshToken` **once, out-of-band** (Postman/curl against the provider) and store them
+  as secrets so `connect()`/`refresh()` can run. Tests `this.skip()` gracefully when the values are
+  absent, so CI stays green without them.
+
+Reference e2e wiring: `msgraph`, `jira` (`test/e2e/` + `constants.ts`).
 
 The `<vendor>.oauth` code refers to an **`OAuthProvider` resource** in the `zerobias-org/oauth`
 repo. Reuse an existing provider when one fits (e.g. `microsoft` /
@@ -309,12 +347,17 @@ Decision:
 
 #### Recipe: add a missing provider (a `zerobias-org/oauth` content PR)
 
+> **Prerequisite:** the `dependencies` below reference `@zerobias-org/vendor-<vendor>` (or the
+> suite/product package). That **catalog content must already exist** — if the vendor/product isn't
+> in the catalog yet, create it FIRST via `/create-product`, then add the oauth provider. A provider
+> whose vendor dep doesn't resolve won't load.
+
 No scaffold script and **no gradle gate** — it's a 2-file Lerna package. Copy an existing
-`package/<vendor>/` and change 4 things:
+`package/<vendor>/` and change 4 things (generate the UUID with `uuidgen`):
 
 ```yaml
 # package/<vendor>/index.yml
-id: <fresh v4 UUID>                       # repo-wide unique, IMMUTABLE once published
+id: <fresh v4 UUID>                       # `uuidgen` — repo-wide unique, IMMUTABLE once published
 url: https://<provider>/oauth2/authorize  # the AUTHORIZE endpoint (not the token endpoint)
 ```
 ```jsonc
@@ -326,15 +369,16 @@ url: https://<provider>/oauth2/authorize  # the AUTHORIZE endpoint (not the toke
   "zerobias": {
     "package": "<vendor>.oauth",       // ← the code x-oauth-providers resolves against
     "import-artifact": "oauth",        // ← tells the dataloader the artifact type
-    "dataloader-version": "<current>"  // match the other packages in the repo
+    "dataloader-version": "<current>"  // copy from a sibling package's package.json
   },
-  "dependencies": { "@zerobias-org/vendor-<vendor>": "latest" }  // ← binds to the VSP
+  "dependencies": { "@zerobias-org/vendor-<vendor>": "latest" }  // ← binds to the VSP (must exist)
 }
 ```
 - **VSP scope** = whatever package you depend on: vendor-level → `@zerobias-org/vendor-<vendor>` +
   code `<vendor>.oauth`; suite/product-scoped → depend on that package + code
   `<vendor>.<suite>.<product>.oauth`, nested at `package/<vendor>/<suite>/…`.
 - Publishes via Lerna to GitHub npm, then loads via the dataloader (`import-artifact: oauth`).
+- **PR base is `main`** — the `zerobias-org/oauth` repo has no `dev` branch.
 
 ### The genuinely-insider half — external app + secret (a contributor CANNOT self-serve)
 

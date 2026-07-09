@@ -127,13 +127,13 @@ Invoke @module-scaffolder. It will:
   - Stage only files inside `package/<vendor>/[<suite>/]<service>/` (plus `gate-stamp.json`)
   - **Never** `git add -A` or `git add .` from the repo root — would pick up unrelated changes
   - **Never** commit `node_modules/`, `dist/`, `generated/`, `hub-sdk/generated/`, `build/`, `npm-shrinkwrap.json`, secrets, or `.env`
-- **If OAuth `authorization_code` (`requiresPlatformOAuthRegistration`):** the module ships
-  OAuth-capable, but the Hub "Connect" button stays dark until a **ZeroBias insider** registers
-  the OAuth app + secret and links the `OAuthProvider`. Tell the user this explicitly and hand
-  them the ready-to-file registration-task body from
-  @.claude/skills/connection-profile/SKILL.md ("OAuth Click-to-Connect = Module Half + Platform
-  Half"), and note it in the PR body. Do NOT attempt the platform half here — it's not
-  authorable from the module repo.
+- **If OAuth `authorization_code` (`requiresPlatformOAuthRegistration`):** the module + the
+  `oauth` provider artifact + the `x-oauth-providers` link are all contributor content-as-code
+  (author/load them, even to your own org first). The Hub "Connect" button still stays dark until
+  the **one insider step** is done: registering the external OAuth app + storing client_id/secret
+  in AWS Secrets Manager (secrets can't be content). Tell the user this and hand them the
+  ready-to-file task body from @.claude/skills/connection-profile/SKILL.md ("OAuth
+  Click-to-Connect — 3 layers"), and note it in the PR body.
 
 ## Success Criteria
 

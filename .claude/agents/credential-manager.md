@@ -151,18 +151,21 @@ Identify auth method from API documentation and credentials:
 - Access token + refresh token
 - Pattern: Authorization flow with refresh capability
 - Credentials: CLIENT_ID + CLIENT_SECRET + REFRESH_TOKEN
-- 🚨 **Two-half capability — flag it.** The Hub "Connect" (click-to-authorize) button
-  needs a **platform-side OAuth app registration that a contributor CANNOT self-serve**
-  (OAuth app + client_id/secret in AWS Secrets Manager + `OAuthProvider` load + profile→provider
-  link). The module half you CAN author is: `oauthTokenProfile` + `oauthTokenState` +
-  `x-oauth-providers: [<vendor>.oauth]` + `connect()/refresh()`. When you identify this
-  auth method you MUST set `requiresPlatformOAuthRegistration: true` in your output, pick
-  the `oauthProviderCode` (reuse an existing provider like `microsoft.oauth` when it fits),
-  and tell the user to open the registration task — see the "OAuth Click-to-Connect = Module
-  Half + Platform Half" section in @.claude/skills/connection-profile/SKILL.md for the task
-  template AND the verified reference modules to copy (`msgraph` for Entra/Azure AD, `jira`,
-  `slack`, `github`). (OAuth **client-credentials** does NOT need this — no popup, no provider
-  link, fully self-serve; e.g. Wiz uses a `client_credentials` service account via
+- 🚨 **3-layer capability — flag it.** The Hub "Connect" (click-to-authorize) button spans
+  three layers; **only one is insider.** You (contributor) author: (1) the module
+  (`oauthTokenProfile` + `oauthTokenState` + `x-oauth-providers: [<vendor>.oauth]` +
+  `connect()/refresh()`), and (2) the **provider wiring as content-as-code** — the `oauth`
+  artifact (`@zerobias-org/oauth-<vendor>`, `index.yml {id,url}`) + the `x-oauth-providers` link,
+  loadable via the dataloader like any content (reuse an existing provider —
+  `microsoft`/`github`/`atlassian`/`slack`/`zoho`/`google` — or add a new one). The **only
+  insider layer** is (3) registering the external OAuth app + putting client_id/secret in AWS
+  Secrets Manager (secrets can't be content). When you identify this auth method you MUST set
+  `requiresPlatformOAuthRegistration: true`, pick the `oauthProviderCode` (reuse e.g.
+  `microsoft.oauth` when it fits), and tell the user to open the layer-3 task — see the "OAuth
+  Click-to-Connect — 3 layers" section in @.claude/skills/connection-profile/SKILL.md for the
+  task template AND the verified reference modules to copy (`msgraph` for Entra/Azure AD, `jira`,
+  `slack`, `github`). (OAuth **client-credentials** does NOT need any of layers 2–3 — no popup,
+  no provider link, fully self-serve; e.g. Wiz uses a `client_credentials` service account via
   `auth.app.wiz.io`, so it is Pattern 2, not authorization_code.)
 
 ### Basic Auth
@@ -203,7 +206,7 @@ For an **OAuth authorization_code** module, `forApiArchitect` additionally carri
     "requiresRefresh": true,
     "requiresPlatformOAuthRegistration": true,
     "oauthProviderCode": "microsoft.oauth",
-    "additionalContext": "Click-to-Connect. Module half is authorable; platform-side OAuth app + secret + provider link is a ZeroBias insider task — surface the registration task to the user."
+    "additionalContext": "Click-to-Connect. Module + oauth provider artifact + x-oauth-providers link are all contributor content-as-code; ONLY the external OAuth app registration + client_id/secret in Secrets Manager is a ZeroBias insider task — surface that task to the user."
   }
 ```
 

@@ -142,12 +142,19 @@ $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenProfile.yml'
 $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
 ```
 
-## 🚨 CRITICAL: OAuth "Click-to-Connect" = Module Half + Platform Half
+## 🚨 CRITICAL: OAuth "Click-to-Connect" — 3 layers, only 1 is insider
 
-**Choosing an OAuth `authorization_code` flow (the Hub "Connect" button) is only HALF a
-self-serve task.** The module declares the capability; a **ZeroBias insider** must register
-the OAuth app and wire it to the platform before the Connect button does anything. If you
-ship the module half without opening the insider task, the button stays dark.
+**Choosing an OAuth `authorization_code` flow (the Hub "Connect" button) spans three layers, and
+two of the three are contributor-self-serve content-as-code:**
+
+1. **Module** — connectionProfile/state + `connect()/refresh()` (you author).
+2. **Provider wiring** — the `oauth` artifact (`index.yml {id,url}`) + the `x-oauth-providers`
+   link (you author + load as content — even to your own org first).
+3. **External app + secret** — register the OAuth app and put client_id/secret in AWS Secrets
+   Manager (**the only genuinely-insider step**; secrets can't be content).
+
+If you ship layers 1–2 but no one does layer 3, the button stays dark — so **when OAuth
+authorization-code is chosen, open a task for layer 3**.
 
 ### The module half — YOU author this (fully self-serve)
 
@@ -234,27 +241,51 @@ repo. Reuse an existing provider when one fits (e.g. `microsoft` /
 `login.microsoftonline.com/organizations/oauth2/v2.0/authorize` already exists — reuse it for
 any Entra/Azure AD-backed product) rather than inventing a new one.
 
-### The platform half — a ZeroBias INSIDER must do this (a contributor CANNOT self-serve)
+### The provider wiring — content-as-code YOU author + load (NOT insider)
 
-The client_id/secret live in AWS Secrets Manager, and the redirect URI is ZeroBias's shared
-Global App callback — none of this is authorable from the module repo. So **when OAuth
-authorization-code is chosen, tell the user to open a registration task** with this body:
+`oauth` is a **loadable artifact type** (see `.claude/docs/dataloader-artifact-map.md`), just
+like vendor/product/module. The provider lives in the **`zerobias-org/oauth`** repo as
+`@zerobias-org/oauth-<vendor>` and its only manifest is `index.yml`:
+
+```yaml
+# zerobias-org/oauth · package/<vendor>/index.yml  (nest package/<vendor>/<suite>/ for a suite)
+id: 9d975c18-45d4-4974-abcb-90aea1795c12          # stable UUID (repo-wide unique)
+url: https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize   # public authorize URL
+```
+
+**No client_id, no secret — just the public authorize URL + a UUID.** The package's `package.json`
+`zerobias` block deps on the vendor/suite/product package, which resolves the provider to a **VSP
+by package-code convention**. The module references it via `x-oauth-providers: [<vendor>.oauth]`;
+the two meet in `OAuthProvider` at dataload.
+
+So the provider **and** the module→provider link are authored and loaded **exactly like any other
+content** — you can even load them into your OWN org first (org-private) before PRing to the shared
+catalog. **Reuse an existing provider when one fits** — already present:
+`microsoft`, `github`, `atlassian`, `slack`, `zoho`, `google`. (e.g. reuse `oauth-microsoft` for
+any Entra/Azure AD product; only add a new `oauth-<vendor>` package if none matches.)
+
+### The genuinely-insider half — external app + secret (a contributor CANNOT self-serve)
+
+Only **two** things are NOT content-as-code, because they involve an external OAuth app and a
+secret. **When OAuth authorization-code is chosen, tell the user to open a task for JUST these:**
 
 ```
-Title: Register <vendor> OAuth app + link to <module-package> connectionProfile
+Title: Register <vendor> OAuth app + Secrets Manager entry for click-to-connect
 
-The <module-package> connector is OAuth-capable (authorization-code + refresh) but its
-"Connect" button won't work until the platform-side OAuth wiring exists:
+The <module-package> connector is OAuth-capable and its oauth provider artifact + connectionProfile
+link are authored/loaded as content. Two insider steps remain before the "Connect" button works:
   1. Register (or confirm) the <vendor> OAuth app with the provider → obtain client_id +
-     client_secret; confirm ZeroBias's Global App redirect URI is allow-listed and the
-     required scopes / admin-consent are granted.
-  2. Store client_id/client_secret in AWS Secrets Manager (dev + prod).
-  3. Load the OAuthProvider resource (zerobias-org/oauth) if it does not already exist,
-     and LINK it to the module's connectionProfile (referenced via x-oauth-providers:
-     [<vendor>.oauth]) so the Store advertises OAuth support.
+     client_secret; allow-list ZeroBias's shared Global App redirect URI; grant scopes/admin-consent.
+     (For a reused provider like Microsoft, the shared app may already exist.)
+  2. Store client_id/client_secret in AWS Secrets Manager (dev + prod), keyed to the
+     <vendor>.oauth OAuthProvider. Secrets cannot live in loadable content — this is the hard step.
 
 Outcome: OAuth-enabled <vendor> connections show the click-to-Connect button in Hub.
 ```
+
+> If the provider package doesn't exist yet, authoring it (`@zerobias-org/oauth-<vendor>`,
+> `index.yml {id,url}`) is **your** job, not the insider's — it's a normal content PR to
+> `zerobias-org/oauth`. The insider task is only the external app + the secret.
 
 > OAuth **client-credentials** (Pattern 2) is different: it needs no click-to-connect popup
 > and no provider link — the user supplies clientId/clientSecret directly. No insider task,

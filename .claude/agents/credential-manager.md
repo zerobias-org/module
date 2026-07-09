@@ -171,8 +171,8 @@ Identify auth method from API documentation and credentials:
      task template) in @.claude/skills/connection-profile/SKILL.md AND the verified reference
      modules to copy (`msgraph` for Entra/Azure AD, `jira`, `slack`, `github`).
   (OAuth **client-credentials** does NOT need any of layers 2–3 — no popup, no provider, no
-  detection, fully self-serve; e.g. Wiz uses a `client_credentials` service account via
-  `auth.app.wiz.io`, so it is Pattern 2, not authorization_code.)
+  detection, fully self-serve; e.g. a product whose API uses a `client_credentials` service
+  account (Client ID + Secret) is Pattern 2, not authorization_code.)
 
 ### Basic Auth
 - Username + password in Authorization header

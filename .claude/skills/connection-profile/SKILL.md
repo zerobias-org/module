@@ -407,10 +407,12 @@ Outcome: OAuth-enabled <vendor> connections show the click-to-Connect button in 
 > and no provider link — the user supplies clientId/clientSecret directly. No insider task,
 > fully contributor-self-serve. Extend `oauthClientProfile` (not `oauthTokenProfile`), and do
 > NOT add `x-oauth-providers`.
-> **Example: Wiz** — a Wiz *service account* (Settings → Service Accounts) yields a Client ID +
-> Client Secret exchanged via `client_credentials` at `auth.app.wiz.io/oauth/token`
-> (Auth0/Cognito, **not** Microsoft Entra). So a Wiz module is Pattern 2 end-to-end — no insider
-> task. The registration task is only for the **authorization_code** ("Connect" button) flow.
+> **Example (M2M / service account):** many products expose a *service account* (a Client ID +
+> Client Secret from their admin console) exchanged via `client_credentials` at the product's own
+> token endpoint — often an Auth0/Cognito-backed URL distinct from the vendor's user-SSO IdP. Don't
+> assume the token IdP from who owns the product; verify the actual token endpoint. Such a module is
+> Pattern 2 end-to-end — no insider task. The registration task is only for the
+> **authorization_code** ("Connect" button) flow.
 
 ### Pattern 4: Custom Fields (Extend Core)
 

@@ -78,7 +78,7 @@ Invoke @module-scaffolder. It will:
   - Replace `api.yml` stub: paths, operations, components, security schemes
   - If connector: replace `connectionProfile.yml` stub (extend `tokenProfile` / `oauthClientProfile` / etc. from `@zerobias-org/types-core`)
   - If token expiry tracking is needed: create `connectionState.yml` extending `baseConnectionState` (otherwise omit — design-phase decides)
-  - **If OAuth `authorization_code` (click-to-Connect):** extend `oauthTokenProfile` + create `connectionState.yml` extending `oauthTokenState`, and add `x-oauth-providers: [<oauthProviderCode>]` to the profile (from @credential-manager). This is a **two-half capability** — see the "OAuth Click-to-Connect = Module Half + Platform Half" section in @.claude/skills/connection-profile/SKILL.md. Carry `requiresPlatformOAuthRegistration` forward to Phase 6.
+  - **If OAuth `authorization_code` (click-to-Connect):** extend `oauthTokenProfile` + create `connectionState.yml` extending `oauthTokenState`, and add `x-oauth-providers: [<oauthProviderCode>]` to the profile (from @credential-manager). This is a **3-layer capability** (module + oauth provider artifact + external app/secret) — see the "OAuth Click-to-Connect — 3 layers" section in @.claude/skills/connection-profile/SKILL.md. Carry `requiresPlatformOAuthRegistration` forward to Phase 6.
   - Check for optional connection params (region, environment, etc.)
 - Invoke @schema-specialist for complex resource schemas (`$ref` composition)
 - Invoke @api-reviewer to validate against api-spec rules

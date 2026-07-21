@@ -1,0 +1,228 @@
+openapi: 3.0.3
+info:
+  version: 0.0.0
+  title: '@zerobias-org/module-nist-cmvp'
+  description: Cryptographic Module Validation Program
+  x-impl-name: cmvp
+  x-product-infos:
+    # Array of external references to Products (versions of products) involved in the module.
+    - $ref: "./node_modules/@zerobias-org/product-nist-cmvp/catalog.yml#/Product"
+paths:
+  /certificates:
+    get:
+      summary: List CMVP Certificates
+      description: >-
+        List validated-module entries from the CMVP registry. The registry
+        has no native pagination (one flat listing) — pageNumber/pageSize
+        are applied client-side over the full scraped listing.
+      operationId: listCertificates
+      x-method-name: list
+      tags:
+        - certificate
+      parameters:
+        - $ref: '#/components/parameters/pageNumber'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: A page of CMVP certificate summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CertificateSummary'
+  /certificates/{certificateNumber}:
+    get:
+      summary: Get a CMVP Certificate
+      description: Get the full detail-page record for a single CMVP certificate.
+      operationId: getCertificate
+      x-method-name: get
+      tags:
+        - certificate
+      parameters:
+        - $ref: '#/components/parameters/certificateNumber'
+      responses:
+        '200':
+          description: The CMVP certificate detail record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+components:
+  parameters:
+    pageNumber:
+      $ref: './node_modules/@zerobias-org/types-core/schema/pageNumberParam.yml'
+    pageSize:
+      $ref: './node_modules/@zerobias-org/types-core/schema/pageSizeParam.yml'
+    certificateNumber:
+      name: certificateNumber
+      in: path
+      required: true
+      description: The CMVP certificate number, from the source registry URL
+      schema:
+        type: string
+        example: '5425'
+  schemas:
+    CmvpStandard:
+      type: string
+      description: FIPS standard version this certificate was validated against
+      enum:
+        - FIPS_140_1
+        - FIPS_140_2
+        - FIPS_140_3
+    CmvpStatus:
+      type: string
+      description: Current validation status of a CMVP certificate
+      enum:
+        - ACTIVE
+        - HISTORICAL
+        - REVOKED
+    CmvpModuleType:
+      type: string
+      description: Physical/logical form of the validated module
+      enum:
+        - SOFTWARE
+        - HARDWARE
+        - FIRMWARE
+        - SOFTWARE_HYBRID
+        - FIRMWARE_HYBRID
+    CertificateSummary:
+      type: object
+      description: A single row from the CMVP validated-modules listing page.
+      required:
+        - certificateNumber
+        - moduleName
+        - vendorName
+        - detailUrl
+      properties:
+        certificateNumber:
+          type: string
+          description: The CMVP certificate number — unique key of this entry, from the source registry URL
+          example: '5425'
+        moduleName:
+          type: string
+          description: Name of the validated cryptographic module, as printed by CMVP
+        vendorName:
+          type: string
+          description: Vendor name as printed by CMVP — not resolved against the ZeroBias catalog
+        moduleType:
+          $ref: '#/components/schemas/CmvpModuleType'
+        validationDate:
+          type: string
+          format: date
+          description: Date this validation event was recorded by CMVP
+        detailUrl:
+          type: string
+          format: url
+          description: Canonical CMVP source page for this certificate
+    Certificate:
+      type: object
+      description: >-
+        A validation entry from NIST's Cryptographic Module Validation Program
+        (CMVP) registry — the authoritative record of whether a cryptographic
+        module is FIPS 140-1/140-2/140-3 validated, and the specific
+        conditions (see caveatText) under which that validation applies.
+      required:
+        - certificateNumber
+        - moduleName
+        - standard
+        - status
+        - overallLevel
+        - moduleType
+        - caveatText
+        - vendorName
+        - detailUrl
+        - rawEntryHtml
+        - lastAcquired
+      properties:
+        certificateNumber:
+          type: string
+          description: The CMVP certificate number — unique key of this entry, from the source registry URL
+          example: '5425'
+        moduleName:
+          type: string
+          description: Name of the validated cryptographic module, as printed by CMVP
+        standard:
+          $ref: '#/components/schemas/CmvpStandard'
+        status:
+          $ref: '#/components/schemas/CmvpStatus'
+        sunsetDate:
+          type: string
+          format: date
+          description: Date this certificate expires or was retired, if any
+        overallLevel:
+          type: integer
+          description: Overall FIPS 140 security level achieved (1-4)
+          minimum: 1
+          maximum: 4
+        moduleType:
+          $ref: '#/components/schemas/CmvpModuleType'
+        embodiment:
+          type: string
+          description: 'CMVP embodiment classification, e.g. MultiChipStand, SingleChip'
+        caveatText:
+          type: string
+          description: >-
+            The Caveat field verbatim, unmodified from the source entry.
+            States the specific conditions (e.g. required OS/software
+            version, configuration, key types) under which this validation
+            is actually valid — critical for correct use, never derive or
+            summarize in place of this field.
+        overview:
+          type: string
+          description: The CMVP entry Description field — free-text overview of the module
+        securityLevelExceptions:
+          type: string
+          description: >-
+            Per-area security level exceptions verbatim (physical security,
+            non-invasive security, mitigation of other attacks)
+        vendorName:
+          type: string
+          description: Vendor name as printed by CMVP — not resolved against the ZeroBias catalog
+        vendorAddress:
+          type: string
+          description: Vendor mailing address as printed by CMVP
+        vendorContact:
+          type: string
+          description: Vendor contact name/phone as printed by CMVP
+        validationType:
+          type: string
+          description: 'Type of validation event, e.g. Initial, Revalidation'
+        validationLab:
+          type: string
+          description: Accredited lab that performed the validation testing
+        validationDate:
+          type: string
+          format: date
+          description: Date this validation event was recorded by CMVP
+        securityPolicyUrl:
+          type: string
+          format: url
+          description: Link to the published Security Policy document (PDF) for this module
+        detailUrl:
+          type: string
+          format: url
+          description: Canonical CMVP source page for this certificate — the authoritative reference for this entry
+        rawEntryHtml:
+          type: string
+          description: >-
+            The full, original HTML fragment captured for this certificate's
+            detail page, verbatim and re-renderable — the source of truth for
+            anything not captured by a promoted field above, and the audit
+            trail if a promoted field's parsing is ever wrong.
+        lastAcquired:
+          type: string
+          format: date-time
+          description: When this entry was last scraped from the live CMVP registry
+        productId:
+          type: string
+          format: uuid
+          description: >-
+            UUID of the matching ZeroBias catalog Product, if one has been
+            matched. Unset until catalog matching is implemented.
+        vendorId:
+          type: string
+          format: uuid
+          description: >-
+            UUID of the matching ZeroBias catalog Vendor, if one has been
+            matched. Unset until catalog matching is implemented.

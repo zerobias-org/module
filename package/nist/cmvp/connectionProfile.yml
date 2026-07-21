@@ -1,0 +1,16 @@
+type: object
+description: >-
+  CMVP has no authentication — the validated-modules registry is a public,
+  unauthenticated web page. No core connection profile applies (all extend
+  some form of credential). This profile is intentionally near-empty; connect()
+  performs a reachability check only. See CMVP_Connector_STATUS.md judgment
+  call #5 for why this deviates from the "always extend a core profile" rule.
+properties:
+  baseUrl:
+    type: string
+    format: url
+    description: >-
+      Override for the CMVP validated-modules listing base URL. Optional —
+      defaults to the live NIST site when omitted; exists only for testing
+      against a mirror or adapting to a future URL change.
+    example: https://csrc.nist.gov/projects/cryptographic-module-validation-program

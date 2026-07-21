@@ -1,0 +1,63 @@
+{
+  "name": "@zerobias-org/module-nist-cmvp",
+  "version": "0.0.0",
+  "description": "Cryptographic Module Validation Program",
+  "type": "module",
+  "moduleId": "eda8db0b-716b-4ba0-bd2b-f5d4483c69d3",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "clean": "rm -rf build/ dist/ generated/ hub-sdk/generated hub-sdk/dist hub-sdk/tsconfig.json module-nist-cmvp.yml full.yml"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:rufrisk-zerobias/module.git",
+    "directory": "package/nist/cmvp"
+  },
+  "license": "UNLICENSED",
+  "author": "brianrufrisk+zb@gmail.com",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": [
+    "dist",
+    "generated/api/manifest.json",
+    "api.yml",
+    "connectionProfile.yml"
+  ],
+  "zerobias": {
+    "package": "nist.cmvp.module",
+    "dataloader-version": "1.0.0",
+    "import-artifact": "module"
+  },
+  "overrides": {
+    "diff": ">=8.0.3",
+    "serialize-javascript": ">=7.0.3"
+  },
+  "dependencies": {
+    "@zerobias-org/product-nist-cmvp": "file:../../../../product/package/nist/cmvp",
+    "@zerobias-org/logger": "^3.0.9",
+    "@zerobias-org/util-connector": "^1.0.40",
+    "@zerobias-org/util-hub-module-utils": "^2.0.50",
+    "axios": "^1.7.9",
+    "cheerio": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@zerobias-org/types-core": "^1.0.13",
+    "@zerobias-org/types-core-js": "^1.2.25"
+  },
+  "devDependencies": {
+    "@types/chai": "4.3.20",
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.19.17",
+    "@zerobias-org/eslint-config": "1.0.36",
+    "@zerobias-org/module-test-client": "1.0.3",
+    "@zerobias-org/util-api-client-base": "^1.0.44",
+    "@zerobias-org/util-codegen": "^2.0.55",
+    "@redocly/cli": "2.29.0",
+    "chai": "4.5.0",
+    "mocha": "11.7.5",
+    "nock": "14.0.10",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
+  }
+}

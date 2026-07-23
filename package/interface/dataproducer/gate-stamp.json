@@ -1,5 +1,5 @@
 {
-  "version": "2.2.0-uat.0",
+  "version": "2.2.1",
   "branch": "dataproducer-checksum",
   "sourceHash": "4654ab179d188f825279628886a330ceac2bb849789abb45526a8d0c0cfda2e6",
   "testHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",

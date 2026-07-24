@@ -1,5 +1,5 @@
 {
-  "name": "@auditlogic/hub-sdk-nist-cmvp",
+  "name": "@zerobias-org/hub-sdk-nist-cmvp",
   "version": "0.0.0",
   "description": "Hub SDK for Cmvp module",
   "type": "module",

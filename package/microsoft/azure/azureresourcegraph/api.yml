@@ -1,0 +1,232 @@
+openapi: 3.0.3
+info:
+  x-impl-name: AzureResourceGraph
+  x-product-infos:
+    - $ref: './node_modules/@zerobias-org/product-microsoft-azure-azureresourcegraph/catalog.yml#/Product'
+    - $ref: './node_modules/@zerobias-org/product-microsoft-azure-subscription/catalog.yml#/Product'
+  version: '1.0.0'
+  title: '@zerobias-org/module-microsoft-azure-azureresourcegraph'
+  description: 'Azure Resource Graph'
+paths:
+  /resources:
+    get:
+      tags:
+        - resource
+      summary: Retrieves the list of Azure resources visible to the connection via Azure Resource Graph
+      description: >-
+        Queries the Azure Resource Graph `Resources` table
+        (POST https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2024-04-01).
+        When no subscription scope is provided the query runs at tenant scope and returns
+        every resource the service principal can read. Resource Graph returns no rows for
+        objects the credential cannot read, and responds 403 only when nothing is readable.
+      operationId: listResources
+      x-method-name: list
+      security:
+        - azure-resource-graph:
+            - https://management.azure.com/.default
+      parameters:
+        - $ref: '#/components/parameters/subscriptionIdsParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/pageTokenParam'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Resource'
+  /resourceContainers:
+    get:
+      tags:
+        - resourceContainer
+      summary: Retrieves the list of Azure resource containers via Azure Resource Graph
+      description: >-
+        Queries the Azure Resource Graph `ResourceContainers` table
+        (POST https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2024-04-01).
+        Returns subscriptions (microsoft.resources/subscriptions), resource groups
+        (microsoft.resources/subscriptions/resourcegroups) and management groups
+        (microsoft.management/managementgroups) visible to the connection.
+      operationId: listResourceContainers
+      x-method-name: list
+      security:
+        - azure-resource-graph:
+            - https://management.azure.com/.default
+      parameters:
+        - $ref: '#/components/parameters/subscriptionIdsParam'
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/pageTokenParam'
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResourceContainer'
+components:
+  securitySchemes:
+    azure-resource-graph:
+      type: oauth2
+      description: >-
+        Azure AD (Entra ID) client-credentials flow with an ARM token audience.
+        The service principal needs the Azure RBAC Reader role at subscription or
+        management-group scope. Resource Graph enforces read access per object:
+        unreadable objects are silently omitted, and the API returns 403 only when
+        the credential can read nothing at all. Throttling is reported via the
+        x-ms-user-quota-remaining and x-ms-user-quota-resets-after response headers.
+      flows:
+        clientCredentials:
+          tokenUrl: https://login.microsoftonline.com/{directoryId}/oauth2/v2.0/token
+          scopes:
+            https://management.azure.com/.default: >-
+              Azure Resource Manager token audience; effective permissions come from
+              the Azure RBAC Reader role assigned to the service principal.
+  headers:
+    pagedLinkHeader:
+      $ref: './node_modules/@zerobias-org/types-core/schema/pagedLinkHeader.yml'
+  parameters:
+    pageSizeParam:
+      $ref: './node_modules/@zerobias-org/types-core/schema/pageSizeParam.yml'
+    pageTokenParam:
+      $ref: './node_modules/@zerobias-org/types-core/schema/pageTokenParam.yml'
+    subscriptionIdsParam:
+      name: subscriptionIds
+      in: query
+      description: >-
+        Optional list of Azure subscription IDs to scope the query to. When omitted
+        the query runs at tenant scope (supported on api-version 2024-04-01) and
+        returns results from every subscription and management group the service
+        principal can read.
+      required: false
+      schema:
+        type: array
+        items:
+          type: string
+          format: uuid
+          description: An Azure subscription ID.
+  schemas:
+    Resource:
+      type: object
+      description: >-
+        A resource row from the Azure Resource Graph `Resources` table
+        (options.resultFormat objectArray). Maps toward the
+        AzureResourceGraphResource class of
+        @zerobias-org/schema-microsoft-azure-azureresourcegraph.
+      properties:
+        id:
+          type: string
+          description: The full Azure Resource Manager ID of the resource.
+        name:
+          type: string
+          description: The name of the resource.
+        type:
+          type: string
+          description: The resource type, e.g. microsoft.compute/virtualmachines.
+        tenantId:
+          type: string
+          description: The Azure AD tenant (directory) ID the resource belongs to.
+        kind:
+          type: string
+          description: The resource kind, when the resource provider reports one.
+        location:
+          type: string
+          description: The Azure region the resource resides in.
+        resourceGroup:
+          type: string
+          description: The name of the resource group containing the resource.
+        subscriptionId:
+          type: string
+          description: The ID of the subscription containing the resource.
+        managedBy:
+          type: string
+          description: The ID of the resource managing this resource, if any.
+        sku:
+          type: object
+          description: The SKU of the resource, as reported by the resource provider.
+          additionalProperties: true
+        plan:
+          type: object
+          description: The marketplace plan of the resource, if any.
+          additionalProperties: true
+        properties:
+          type: object
+          description: >-
+            The resource-type-specific properties bag as returned by Azure Resource
+            Graph. Content varies by resource type.
+          additionalProperties: true
+        tags:
+          type: object
+          description: The tags assigned to the resource.
+          additionalProperties:
+            type: string
+            description: Tag value.
+        identity:
+          type: object
+          description: The managed identity of the resource, if any.
+          additionalProperties: true
+        zones:
+          type: array
+          description: The availability zones the resource is deployed to.
+          items:
+            type: string
+            description: An availability zone identifier.
+        extendedLocation:
+          type: object
+          description: The extended location of the resource, if any.
+          additionalProperties: true
+    ResourceContainer:
+      type: object
+      description: >-
+        A row from the Azure Resource Graph `ResourceContainers` table. Covers
+        subscriptions (microsoft.resources/subscriptions), resource groups
+        (microsoft.resources/subscriptions/resourcegroups) and management groups
+        (microsoft.management/managementgroups).
+      properties:
+        id:
+          type: string
+          description: The full Azure Resource Manager ID of the container.
+        name:
+          type: string
+          description: The display name of the container.
+        type:
+          type: string
+          description: >-
+            The container type: microsoft.resources/subscriptions,
+            microsoft.resources/subscriptions/resourcegroups or
+            microsoft.management/managementgroups.
+        tenantId:
+          type: string
+          description: The Azure AD tenant (directory) ID the container belongs to.
+        location:
+          type: string
+          description: The Azure region of the container, when applicable.
+        resourceGroup:
+          type: string
+          description: For resource group rows, the resource group name.
+        subscriptionId:
+          type: string
+          description: The ID of the subscription the container belongs to.
+        managedBy:
+          type: string
+          description: The ID of the resource managing this container, if any.
+        properties:
+          type: object
+          description: >-
+            The container-type-specific properties bag, e.g. subscription state and
+            policies for subscription rows.
+          additionalProperties: true
+        tags:
+          type: object
+          description: The tags assigned to the container.
+          additionalProperties:
+            type: string
+            description: Tag value.

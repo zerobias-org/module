@@ -1,0 +1,37 @@
+type: object
+allOf:
+  - $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenProfile.yml'
+  - $ref: './node_modules/@zerobias-org/types-core/schema/oauthTokenState.yml'
+  - type: object
+    description: >
+      Additional properties for an Azure Resource Graph Connection.
+      * directoryId is required in both oauth and non oauth connections
+      * client properties are required when setting up a non-oauth connection (alongside directoryId)
+      * tokens are acquired with the Azure Resource Manager audience (scope https://management.azure.com/.default);
+        the service principal needs the Azure RBAC Reader role at subscription or management-group scope
+    required:
+      - directoryId
+    x-oauth-providers:
+      - microsoft.oauth
+    x-ui-required:
+      - directoryId
+      - clientId
+      - clientSecret
+    x-ui-hidden:
+      - tokenType
+      - accessToken
+      - refreshToken
+      - expiresIn
+      - scope
+      - url
+    properties:
+      directoryId:
+        type: string
+        example: myorg.onmicrosoft.com
+      clientId:
+        type: string
+        example: b42e570c-26ae-4a96-bb8e-eed2454be5b7
+      clientSecret:
+        type: string
+        format: password
+        example: r1J6m2@oKbT6$%gZp9^s8#fE3qA1

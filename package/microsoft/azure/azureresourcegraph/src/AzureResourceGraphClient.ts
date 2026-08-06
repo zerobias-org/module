@@ -8,7 +8,7 @@ import {
   UnexpectedError,
   NotConnectedError
 } from '@zerobias-org/types-core-js';
-import { ConnectionProfile } from '../generated/model/ConnectionProfile.js';
+import { ConnectionProfile } from '../generated/model/index.js';
 import { ConnectionState } from '../generated/model/index.js';
 
 /** Azure AD (Entra ID) authority host — the tenant segment comes from directoryId. */

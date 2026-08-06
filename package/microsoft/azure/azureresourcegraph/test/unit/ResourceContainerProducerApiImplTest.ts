@@ -7,7 +7,7 @@ import { PagedResults } from '@zerobias-org/types-core-js';
 import { AzureResourceGraphClient } from '../../src/AzureResourceGraphClient.js';
 import { ResourceContainerProducerApiImpl } from '../../src/ResourceContainerProducerApiImpl.js';
 import { ResourceContainer } from '../../generated/model/index.js';
-import { ConnectionProfile } from '../../generated/model/ConnectionProfile.js';
+import { ConnectionProfile } from '../../generated/model/index.js';
 import {
   cleanNock,
   mockTokenSuccess,

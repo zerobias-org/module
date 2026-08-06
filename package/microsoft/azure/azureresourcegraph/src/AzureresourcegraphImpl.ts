@@ -5,7 +5,7 @@ import {
   wrapResourceProducer,
   wrapResourceContainerProducer
 } from '../generated/api/index.js';
-import { ConnectionProfile } from '../generated/model/ConnectionProfile.js';
+import { ConnectionProfile } from '../generated/model/index.js';
 import { ConnectionState } from '../generated/model/index.js';
 import {
   ConnectionMetadata,

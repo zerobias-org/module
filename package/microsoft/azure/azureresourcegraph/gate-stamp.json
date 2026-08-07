@@ -1,0 +1,21 @@
+{
+  "version": "0.0.0-uat.0",
+  "branch": "feat/microsoft-azure-azureresourcegraph",
+  "sourceHash": "7328517d66189cf394b08b39396ecd8b58dc694a5cd8f1a8a4f77b73c777f38c",
+  "testHash": "26aedd5edd3bb1b4f9f2879f00131021c3ccf0cf7a33df727afe4b24933fdd9e",
+  "tasks": {
+    "validate": "passed",
+    "lint": "passed",
+    "compile": "passed",
+    "test": "passed",
+    "testDirect": "passed",
+    "testDocker": "passed",
+    "testDataloader": "passed",
+    "buildArtifacts": "passed"
+  },
+  "tests": {
+      "unit": { "expected": 19, "ran": 19, "status": "passed" },
+      "integration": { "expected": 0, "ran": 0, "status": "skipped" },
+      "e2e": { "expected": 4, "ran": 4, "status": "passed" }
+  }
+}

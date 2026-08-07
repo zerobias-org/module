@@ -1,5 +1,5 @@
 {
-  "name": "@auditlogic/hub-sdk-microsoft-azure-azureresourcegraph",
+  "name": "@zerobias-org/hub-sdk-microsoft-azure-azureresourcegraph",
   "version": "0.0.0",
   "description": "Hub SDK for Azureresourcegraph module",
   "type": "module",

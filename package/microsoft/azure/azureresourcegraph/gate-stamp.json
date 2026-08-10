@@ -1,8 +1,8 @@
 {
   "version": "0.0.0-uat.0",
-  "branch": "HEAD",
-  "sourceHash": "75169e226c01dc24dc25e06f5204cfc6688dbb3b85b3f20cf147eecc0ab79175",
-  "testHash": "26aedd5edd3bb1b4f9f2879f00131021c3ccf0cf7a33df727afe4b24933fdd9e",
+  "branch": "feat/azureresourcegraph-dataproducer",
+  "sourceHash": "548233aa9d3d2ead82bc9a45b85c19a4e7a6db38e172fc33ddd1bfe9a925e148",
+  "testHash": "d2598691b3ac098757bad3cbad50fe88b8ec102a938684646907fe1bd341d42b",
   "tasks": {
     "validate": "passed",
     "lint": "passed",
@@ -14,8 +14,8 @@
     "buildArtifacts": "passed"
   },
   "tests": {
-      "unit": { "expected": 19, "ran": 19, "status": "passed" },
+      "unit": { "expected": 55, "ran": 55, "status": "passed" },
       "integration": { "expected": 0, "ran": 0, "status": "skipped" },
-      "e2e": { "expected": 4, "ran": 4, "status": "passed" }
+      "e2e": { "expected": 12, "ran": 12, "status": "passed" }
   }
 }

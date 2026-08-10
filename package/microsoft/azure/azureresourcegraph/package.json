@@ -22,7 +22,8 @@
     "dist",
     "generated/api/manifest.json",
     "api.yml",
-    "connectionProfile.yml"
+    "connectionProfile.yml",
+    "connectionState.yml"
   ],
   "zerobias": {
     "package": "microsoft.azure.azureresourcegraph.module",
@@ -37,7 +38,8 @@
     "@zerobias-org/product-microsoft-azure-azureresourcegraph": "latest",
     "@zerobias-org/logger": "^3.0.9",
     "@zerobias-org/util-connector": "^1.0.40",
-    "@zerobias-org/util-hub-module-utils": "^2.0.50"
+    "@zerobias-org/util-hub-module-utils": "^2.0.50",
+    "axios": "1.19.0"
   },
   "peerDependencies": {
     "@zerobias-org/types-core": "^1.0.13",

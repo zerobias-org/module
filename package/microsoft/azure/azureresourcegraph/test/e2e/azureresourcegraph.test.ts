@@ -73,6 +73,106 @@ describeModule<Azureresourcegraph>('Azureresourcegraph Module', (client) => {
     });
   });
 
+  // ── DataProducer interface ───────────────────────────────
+
+  describe('DataProducer', () => {
+    it('getRootObject returns the "/" container', async () => {
+      const root = await client.getObjectsApi().getRootObject();
+
+      expect(root.id).to.equal('/');
+      expect(root.name).to.equal('/');
+      expect(root.objectClass).to.include('container');
+    });
+
+    it('getChildren("/") lists the static containers', async () => {
+      const children = await client.getObjectsApi().getChildren('/');
+
+      expect(children.items.map((item) => item.id)).to.include.members([
+        'subscriptions',
+        'managementgroups',
+        'query',
+      ]);
+    });
+
+    it('navigates subscriptions → subscription object → children', async function () {
+      const subscriptions = await client.getObjectsApi().getChildren('subscriptions');
+      expect(subscriptions.items).to.be.an('array');
+
+      if (subscriptions.items.length === 0) {
+        this.skip();
+      }
+
+      const first = subscriptions.items[0];
+      expect(first.id).to.match(/^sub_/);
+      expect(first.documentSchema).to.be.a('string');
+
+      const fetched = await client.getObjectsApi().getObject(first.id);
+      expect(fetched.id).to.equal(first.id);
+
+      const children = await client.getObjectsApi().getChildren(first.id);
+      expect(children.items[0].id).to.equal(`collection_resources_${first.id}`);
+    });
+
+    it('getCollectionElements returns scoped resource rows', async function () {
+      const subscriptions = await client.getObjectsApi().getChildren('subscriptions');
+      if (subscriptions.items.length === 0) {
+        this.skip();
+      }
+
+      const collectionId = `collection_resources_${subscriptions.items[0].id}`;
+      const elements = await client.getCollectionsApi().getCollectionElements(collectionId);
+
+      expect(elements.items).to.be.an('array');
+      for (const element of elements.items as Array<Record<string, unknown>>) {
+        expect(element.id, 'every element carries its ARM id').to.be.a('string');
+      }
+    });
+
+    it('getDocumentData returns a value-wrapped subscription document', async function () {
+      const subscriptions = await client.getObjectsApi().getChildren('subscriptions');
+      if (subscriptions.items.length === 0) {
+        this.skip();
+      }
+
+      const document = await client.getDocumentsApi().getDocumentData(subscriptions.items[0].id);
+      expect(document).to.be.an('object');
+      expect(document.type).to.deep.equal({ value: 'microsoft.resources/subscriptions' });
+    });
+
+    it('getSchema resolves each published schema id', async () => {
+      const schemaIds = [
+        'schema:shared:microsoft.azure.azureresourcegraph.resource',
+        'schema:shared:microsoft.azure.azureresourcegraph.resourceContainer',
+        'schema:function:azure.azureresourcegraph.argQuery:input',
+        'schema:function:azure.azureresourcegraph.argQuery:output',
+      ];
+
+      for (const schemaId of schemaIds) {
+        const schema = await client.getSchemasApi().getSchema(schemaId);
+        expect(schema.id).to.equal(schemaId);
+        expect(schema.properties).to.be.an('array');
+      }
+    });
+
+    it('invokeFunction(func_arg_query) executes a raw KQL query', async () => {
+      const output = await client.getFunctionsApi().invokeFunction('func_arg_query', {
+        query: { value: 'ResourceContainers | take 1' } as unknown as object,
+      });
+
+      expect(output.data).to.have.property('value');
+    });
+
+    it('write operations reject (read-only module)', async () => {
+      let failed = false;
+      try {
+        await client.getObjectsApi().deleteObject('sub_nope');
+      } catch {
+        failed = true;
+      }
+      expect(failed, 'deleteObject must throw — ARG is read-only').to.equal(true);
+    });
+  });
+
   // ── ResourceContainer API ────────────────────────────────
 
   describe('ResourceContainerApi.list', () => {

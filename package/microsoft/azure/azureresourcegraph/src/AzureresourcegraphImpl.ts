@@ -2,8 +2,20 @@ import {
   AzureresourcegraphConnector,
   ResourceApi,
   ResourceContainerApi,
+  BinaryApi,
+  CollectionsApi,
+  DocumentsApi,
+  FunctionsApi,
+  ObjectsApi,
+  SchemasApi,
   wrapResourceProducer,
-  wrapResourceContainerProducer
+  wrapResourceContainerProducer,
+  wrapBinaryProducer,
+  wrapCollectionsProducer,
+  wrapDocumentsProducer,
+  wrapFunctionsProducer,
+  wrapObjectsProducer,
+  wrapSchemasProducer
 } from '../generated/api/index.js';
 import { ConnectionProfile } from '../generated/model/index.js';
 import { ConnectionState } from '../generated/model/index.js';
@@ -16,6 +28,7 @@ import {
 import { AzureResourceGraphClient } from './AzureResourceGraphClient.js';
 import { ResourceProducerApiImpl } from './ResourceProducerApiImpl.js';
 import { ResourceContainerProducerApiImpl } from './ResourceContainerProducerApiImpl.js';
+import { DataProducerImpl } from './impl/dataproducer/DataProducerImpl.js';
 
 export class AzureresourcegraphImpl implements AzureresourcegraphConnector {
   private client: AzureResourceGraphClient;
@@ -23,6 +36,8 @@ export class AzureresourcegraphImpl implements AzureresourcegraphConnector {
   private resourceApiProducer?: ResourceApi;
 
   private resourceContainerApiProducer?: ResourceContainerApi;
+
+  private dataProducer?: DataProducerImpl;
 
   constructor() {
     this.client = new AzureResourceGraphClient();
@@ -76,5 +91,37 @@ export class AzureresourcegraphImpl implements AzureresourcegraphConnector {
       this.resourceContainerApiProducer = wrapResourceContainerProducer(producer);
     }
     return this.resourceContainerApiProducer;
+  }
+
+  // DataProducer interface — one impl backs all six producer APIs.
+  private getDataProducer(): DataProducerImpl {
+    if (!this.dataProducer) {
+      this.dataProducer = new DataProducerImpl(this.client);
+    }
+    return this.dataProducer;
+  }
+
+  getObjectsApi(): ObjectsApi {
+    return wrapObjectsProducer(this.getDataProducer());
+  }
+
+  getCollectionsApi(): CollectionsApi {
+    return wrapCollectionsProducer(this.getDataProducer());
+  }
+
+  getDocumentsApi(): DocumentsApi {
+    return wrapDocumentsProducer(this.getDataProducer());
+  }
+
+  getFunctionsApi(): FunctionsApi {
+    return wrapFunctionsProducer(this.getDataProducer());
+  }
+
+  getBinaryApi(): BinaryApi {
+    return wrapBinaryProducer(this.getDataProducer());
+  }
+
+  getSchemasApi(): SchemasApi {
+    return wrapSchemasProducer(this.getDataProducer());
   }
 }

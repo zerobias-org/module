@@ -1,0 +1,21 @@
+{
+  "version": "0.0.0-uat.0",
+  "branch": "feat/azureresourcegraph-dataproducer",
+  "sourceHash": "548233aa9d3d2ead82bc9a45b85c19a4e7a6db38e172fc33ddd1bfe9a925e148",
+  "testHash": "d2598691b3ac098757bad3cbad50fe88b8ec102a938684646907fe1bd341d42b",
+  "tasks": {
+    "validate": "passed",
+    "lint": "passed",
+    "compile": "passed",
+    "test": "passed",
+    "testDirect": "passed",
+    "testDocker": "passed",
+    "testDataloader": "passed",
+    "buildArtifacts": "passed"
+  },
+  "tests": {
+      "unit": { "expected": 55, "ran": 55, "status": "passed" },
+      "integration": { "expected": 0, "ran": 0, "status": "skipped" },
+      "e2e": { "expected": 12, "ran": 12, "status": "passed" }
+  }
+}

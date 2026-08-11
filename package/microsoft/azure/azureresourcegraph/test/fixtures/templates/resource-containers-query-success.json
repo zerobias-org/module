@@ -1,0 +1,39 @@
+{
+  "totalRecords": 3,
+  "count": 3,
+  "data": [
+    {
+      "id": "/subscriptions/aaaa1111-bbbb-2222-cccc-333344445555",
+      "name": "Production",
+      "type": "microsoft.resources/subscriptions",
+      "tenantId": "00000000-1111-2222-3333-444444444444",
+      "location": null,
+      "subscriptionId": "aaaa1111-bbbb-2222-cccc-333344445555",
+      "resourceGroup": null,
+      "properties": { "state": "Enabled", "subscriptionId": "aaaa1111-bbbb-2222-cccc-333344445555" },
+      "tags": { "costCenter": "1001" }
+    },
+    {
+      "id": "/subscriptions/aaaa1111-bbbb-2222-cccc-333344445555/resourceGroups/rg-prod",
+      "name": "rg-prod",
+      "type": "microsoft.resources/subscriptions/resourcegroups",
+      "tenantId": "00000000-1111-2222-3333-444444444444",
+      "location": "eastus",
+      "subscriptionId": "aaaa1111-bbbb-2222-cccc-333344445555",
+      "resourceGroup": "rg-prod",
+      "properties": { "provisioningState": "Succeeded" },
+      "tags": {}
+    },
+    {
+      "id": "/providers/Microsoft.Management/managementGroups/mg-root",
+      "name": "mg-root",
+      "type": "microsoft.management/managementgroups",
+      "tenantId": "00000000-1111-2222-3333-444444444444",
+      "location": null,
+      "subscriptionId": null,
+      "resourceGroup": null,
+      "properties": { "displayName": "Root Management Group" },
+      "tags": null
+    }
+  ]
+}

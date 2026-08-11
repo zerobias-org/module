@@ -1,0 +1,10 @@
+type: object
+description: >-
+  Connection state for Azure Resource Graph — the client-credentials access
+  token minted by connect() plus its expiry (expiresIn, in seconds, via
+  baseConnectionState) so the platform can schedule re-connection before the
+  token lapses.
+allOf:
+  - $ref: './node_modules/@zerobias-org/types-core/schema/tokenConnectionState.yml'
+  - type: object
+    properties: {}

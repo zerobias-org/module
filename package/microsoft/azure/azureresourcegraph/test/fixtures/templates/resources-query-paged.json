@@ -1,0 +1,19 @@
+{
+  "totalRecords": 2500,
+  "count": 1000,
+  "resultTruncated": "false",
+  "$skipToken": "skiptoken-page-2-opaque-value",
+  "data": [
+    {
+      "id": "/subscriptions/aaaa1111-bbbb-2222-cccc-333344445555/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-batch-000",
+      "name": "vm-batch-000",
+      "type": "microsoft.compute/virtualmachines",
+      "tenantId": "00000000-1111-2222-3333-444444444444",
+      "location": "eastus",
+      "resourceGroup": "rg-prod",
+      "subscriptionId": "aaaa1111-bbbb-2222-cccc-333344445555",
+      "properties": { "provisioningState": "Succeeded" },
+      "tags": { "env": "prod" }
+    }
+  ]
+}

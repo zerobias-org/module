@@ -12,6 +12,7 @@ import com.zerobias.module.hl7.ext.ExtensionLoader;
 import com.zerobias.module.hl7.health.HealthCheck;
 import com.zerobias.module.hl7.health.HealthSelfTest;
 import com.zerobias.module.hl7.materializer.Materializer;
+import com.zerobias.module.hl7.materializer.MaterializerRegistry;
 import com.zerobias.module.hl7.materializer.MessageMaterializer;
 import com.zerobias.module.hl7.materializer.StructureIndex;
 import com.zerobias.module.hl7.materializer.StructureResolver;
@@ -21,6 +22,7 @@ import com.zerobias.module.hl7.producer.Hl7ProducerFacade;
 import com.zerobias.module.hl7.producer.ObjectTree;
 import com.zerobias.module.hl7.producer.OperationRouter;
 import com.zerobias.module.hl7.producer.ProducerException;
+import com.zerobias.module.hl7.producer.Recaster;
 import com.zerobias.module.hl7.producer.SchemaRegistry;
 import io.javalin.Javalin;
 import org.slf4j.Logger;
@@ -65,10 +67,10 @@ public final class Hl7ApiServer {
         Set.of("hl7Version", "ackDurability", "backpressurePolicy", "senderDiscriminator");
 
     private final Map<String, String> connections = new ConcurrentHashMap<>();
+    private final java.util.List<Hl7ListenerService> listeners = new java.util.ArrayList<>();
     private Hl7ProducerFacade facade;
     private BufferStore buffer;
     private RetentionSweeper retentionSweeper;
-    private Hl7ListenerService listener;
     private HealthCheck health;
 
     private Hl7ApiServer() {
@@ -80,8 +82,8 @@ public final class Hl7ApiServer {
     }
 
     void start(ModuleConfig config) throws Exception {
-        LOG.info("HL7 v2 receiver starting: ops port {}, MLLP port {}, extensionDir {}",
-            config.internalPort(), config.mllpPort(), config.extensionDir());
+        LOG.info("HL7 v2 receiver starting: ops port {}, {} MLLP listener(s) {}, extensionDir {}",
+            config.internalPort(), config.listeners().size(), config.listeners(), config.extensionDir());
 
         // Daemon-level knobs (ack durability, retention, active extensions) arrive via
         // the opaque MODULE_CONFIG — the only channel the platform delivers to a running
@@ -132,25 +134,40 @@ public final class Hl7ApiServer {
             extensionScopes.put(d.structure(), d.whereClause());
         }
 
-        MessageMaterializer materializer = index != null
+        // The configured slot is the default (extension-merged); other versions seen
+        // on the wire (MSH-12) route to their own baked-in slot, lazily loaded, and
+        // unbundled versions degrade to the envelope schema (DESIGN §5 / §11.5).
+        MessageMaterializer defaultMaterializer = index != null
             ? new Materializer(index, resolver) : new EnvelopeMaterializer();
-        LOG.info("Materializer: {}; {} schemas, {} extension(s)", index != null
-            ? "structure-index " + versionSlot : "ENVELOPE fallback", schemas.size(), ext.loaded().size());
+        MaterializerRegistry materializers =
+            MaterializerRegistry.routing(versionSlot, defaultMaterializer, index != null);
+        LOG.info("Materializer: default slot {} ({}); per-message routing on MSH-12; {} schemas, {} extension(s)",
+            versionSlot, index != null ? "typed" : "ENVELOPE fallback", schemas.size(), ext.loaded().size());
 
-        this.listener = new Hl7ListenerService(config.mllpPort(),
-            new BufferingApp(buffer, materializer, versionSlot));
-        listener.start();
-        LOG.info("MLLP listener up on {}", config.mllpPort());
+        // One listener per declared port; each tags its messages with its name for
+        // per-port provenance (DESIGN §11.4). All listeners feed the one shared buffer.
+        for (ListenerSpec spec : config.listeners()) {
+            Hl7ListenerService l = new Hl7ListenerService(spec.port(),
+                new BufferingApp(buffer, materializers, spec.name()));
+            l.start();
+            listeners.add(l);
+            LOG.info("MLLP listener '{}' up on {}", spec.name(), spec.port());
 
-        // Startup MLLP self-test (DESIGN §9): confirm the receive loop is wired.
-        boolean selfTest = HealthSelfTest.run(config.mllpPort());
-        LOG.info("MLLP self-test: {}", selfTest ? "OK" : "FAILED (listener may not be accepting)");
+            // Startup MLLP self-test (DESIGN §9): confirm each receive loop is wired.
+            boolean selfTest = HealthSelfTest.run(spec.port());
+            LOG.info("MLLP self-test '{}': {}", spec.name(),
+                selfTest ? "OK" : "FAILED (listener may not be accepting)");
+        }
 
-        this.health = new HealthCheck(buffer, listener::isRunning, ext.loaded());
+        this.health = new HealthCheck(buffer, this::allListenersRunning, ext.loaded());
 
         // --- producer surface ---
         ObjectTree tree = new ObjectTree(buffer, schemas, versionSlot, extensionScopes);
-        this.facade = new Hl7ProducerFacade(buffer, tree, schemas);
+        // ops/recast re-materializes stored rows from raw ER7 under this same registry,
+        // routing each row by its own version, so a message first cast under a poorer
+        // schema can be upgraded in place once a better image ships.
+        Recaster recaster = new Recaster(materializers);
+        this.facade = new Hl7ProducerFacade(buffer, tree, schemas, recaster);
 
         Javalin app = Javalin.create(cfg -> {
             cfg.http.defaultContentType = "application/json";
@@ -162,10 +179,12 @@ public final class Hl7ApiServer {
         LOG.info("Operations server listening on {}", config.internalPort());
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                listener.close();
-            } catch (Exception e) {
-                LOG.warn("listener shutdown", e);
+            for (Hl7ListenerService l : listeners) {
+                try {
+                    l.close();
+                } catch (Exception e) {
+                    LOG.warn("listener shutdown", e);
+                }
             }
             if (retentionSweeper != null) {
                 retentionSweeper.stop();
@@ -205,7 +224,7 @@ public final class Hl7ApiServer {
         app.get("/connections/{connectionId}/metadata", ctx -> {
             requireConnection(ctx.pathParam("connectionId"));
             JsonObject md = new JsonObject();
-            md.addProperty("status", listener.isRunning() ? "On" : "Error");
+            md.addProperty("status", allListenersRunning() ? "On" : "Error");
             md.addProperty("bufferDepth", buffer.count());
             ctx.result(md.toString());
         });
@@ -246,6 +265,11 @@ public final class Hl7ApiServer {
             body.addProperty("message", String.valueOf(e.getMessage()));
             ctx.status(500).contentType("application/json").result(body.toString());
         });
+    }
+
+    /** Healthy only when every bound listener is accepting — a single dead port degrades the daemon. */
+    private boolean allListenersRunning() {
+        return !listeners.isEmpty() && listeners.stream().allMatch(Hl7ListenerService::isRunning);
     }
 
     private void requireConnection(String connectionId) {

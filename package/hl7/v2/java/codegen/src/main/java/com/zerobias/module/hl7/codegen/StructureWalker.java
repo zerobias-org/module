@@ -223,11 +223,12 @@ public final class StructureWalker {
      */
     private static Map<Integer, String> positionalBeanNames(Class<?> structureClass) {
         final Map<Integer, String> map = new HashMap<>();
+        final String prefix = HapiNames.accessorPrefix(structureClass.getSimpleName());
         for (Method m : structureClass.getMethods()) {
             if (!returnsHl7Type(m)) {
                 continue;
             }
-            HapiNames.parseAccessor(m.getName())
+            HapiNames.parseAccessor(m.getName(), prefix)
                 .ifPresent(a -> map.putIfAbsent(a.index(), a.beanName()));
         }
         return map;

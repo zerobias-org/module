@@ -1,7 +1,7 @@
 {
-  "version": "1.2.0",
-  "branch": "main",
-  "sourceHash": "784f1973d24df222fa9b86966fd21502bc17249897638171ca348a5fa44af447",
+  "version": "1.2.4-uat.0",
+  "branch": "feat/hl7-add-procuity-jaguar",
+  "sourceHash": "fa8406b8679aee52065ce63480c5432ad8a2179b2791230e69274f7c592ba4db",
   "testHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "tasks": {
     "validate": "passed",

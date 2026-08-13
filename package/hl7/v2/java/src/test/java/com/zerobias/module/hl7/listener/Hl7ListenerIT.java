@@ -60,7 +60,11 @@ class Hl7ListenerIT {
             assertEquals("ADT", row.messageCode());
             assertEquals("A01", row.triggerEvent());
             assertEquals("EPIC", row.sendingApp());
-            assertEquals("schema:table:hl7v2.v27.ADT_A01", row.schemaId());
+            // This IT wires the degraded EnvelopeMaterializer (no structure index), so
+            // the row carries the shared envelope schema rather than a typed table id we
+            // couldn't serve. Typed per-version table-id routing is covered by
+            // MaterializerRegistryIT + the schema-backed producer ITs.
+            assertEquals("schema:shared:hl7v2.message-envelope", row.schemaId());
             assertNotNull(row.rawEr7());
             assertTrue(row.mappedJson().contains("\"patientFamilyName\":\"SMITH\""),
                 "materialized JSON: " + row.mappedJson());

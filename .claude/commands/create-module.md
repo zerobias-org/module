@@ -78,6 +78,7 @@ Invoke @module-scaffolder. It will:
   - Replace `api.yml` stub: paths, operations, components, security schemes
   - If connector: replace `connectionProfile.yml` stub (extend `tokenProfile` / `oauthClientProfile` / etc. from `@zerobias-org/types-core`)
   - If token expiry tracking is needed: create `connectionState.yml` extending `baseConnectionState` (otherwise omit — design-phase decides)
+  - **If OAuth `authorization_code` (click-to-Connect):** extend `oauthTokenProfile` + create `connectionState.yml` extending `oauthTokenState`, and add `x-oauth-providers: [<oauthProviderCode>]` to the profile (from @credential-manager). This is a **3-layer capability** (module + oauth provider artifact + external app/secret) — see the "OAuth Click-to-Connect — 3 layers" section in @.claude/skills/connection-profile/SKILL.md. **Detect whether the provider exists in `zerobias-org/oauth`** (`gh api repos/zerobias-org/oauth/contents/package`); if `requiresNewOAuthProvider`, author it with the provider recipe and plan a **separate content PR to `zerobias-org/oauth`** (contributor content, no gradle gate). Carry `requiresNewOAuthProvider` + `requiresPlatformOAuthRegistration` forward to Phase 6.
   - Check for optional connection params (region, environment, etc.)
 - Invoke @schema-specialist for complex resource schemas (`$ref` composition)
 - Invoke @api-reviewer to validate against api-spec rules
@@ -126,6 +127,17 @@ Invoke @module-scaffolder. It will:
   - Stage only files inside `package/<vendor>/[<suite>/]<service>/` (plus `gate-stamp.json`)
   - **Never** `git add -A` or `git add .` from the repo root — would pick up unrelated changes
   - **Never** commit `node_modules/`, `dist/`, `generated/`, `hub-sdk/generated/`, `build/`, `npm-shrinkwrap.json`, secrets, or `.env`
+- **If OAuth `authorization_code` (`requiresPlatformOAuthRegistration`):** the module + the
+  `oauth` provider artifact + the `x-oauth-providers` link are all contributor content-as-code
+  (author/load them, even to your own org first).
+  - **If `requiresNewOAuthProvider` (provider not in `zerobias-org/oauth`):** open a **second PR**
+    against `zerobias-org/oauth` adding the provider package (recipe in the skill) — this is an
+    explicit deliverable, not optional. The module can't advertise OAuth until that provider loads.
+  - The Hub "Connect" button still stays dark until the **one insider step** is done: registering
+    the external OAuth app + storing client_id/secret in AWS Secrets Manager (secrets can't be
+    content). Tell the user this and hand them the ready-to-file task body from
+    @.claude/skills/connection-profile/SKILL.md ("OAuth Click-to-Connect — 3 layers"), and note
+    both the oauth-repo PR (if any) and the insider task in the module PR body.
 
 ## Success Criteria
 

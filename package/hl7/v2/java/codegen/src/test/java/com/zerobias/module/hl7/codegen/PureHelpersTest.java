@@ -43,6 +43,29 @@ class PureHelpersTest {
     }
 
     @Test
+    void prefixAnchoredParsingHandlesDigitEndingSegments() {
+        // GT1 (accessor prefix "Gt1"): the generic parser splits getGt11_ as
+        // "Gt" + index 11 (folding the segment's trailing 1 into the index), which
+        // collides fields 1-9 with 11-19. Prefix-anchored parsing keeps them apart.
+        assertEquals("Gt1", HapiNames.accessorPrefix("GT1"));
+        assertEquals("Pid", HapiNames.accessorPrefix("PID"));
+        assertEquals("Cx", HapiNames.accessorPrefix("CX"));
+
+        var gt1_1 = HapiNames.parseAccessor("getGt11_SetIDGT1", "Gt1").orElseThrow();
+        assertEquals(1, gt1_1.index());
+        assertEquals("setIDGT1", gt1_1.beanName());
+
+        var gt1_11 = HapiNames.parseAccessor("getGt111_GuarantorRelationship", "Gt1").orElseThrow();
+        assertEquals(11, gt1_11.index());
+        assertEquals("guarantorRelationship", gt1_11.beanName());
+
+        // Non-digit-ending segments still resolve against their own prefix.
+        assertEquals(3, HapiNames.parseAccessor("getPid3_PatientIdentifierList", "Pid").orElseThrow().index());
+        // A method for a different structure does not match this prefix.
+        assertTrue(HapiNames.parseAccessor("getPid3_PatientIdentifierList", "Gt1").isEmpty());
+    }
+
+    @Test
     void descriptionFallback() {
         assertEquals("patientIdentifierList", HapiNames.fromDescription("Patient Identifier List"));
         assertEquals("setIDPID", HapiNames.fromDescription("Set ID - PID"));

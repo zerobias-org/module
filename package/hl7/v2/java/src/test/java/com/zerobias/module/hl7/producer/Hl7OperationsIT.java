@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -51,6 +52,13 @@ class Hl7OperationsIT {
         Path f = dir.resolve(rel);
         Files.createDirectories(f.getParent());
         Files.writeString(f, "{\"id\":\"" + id + "\",\"dataTypes\":[],\"properties\":[]}\n");
+    }
+
+    /** Write a schema with an explicit properties list (JSON property objects, comma-separated). */
+    private static void writeSchemaBody(Path dir, String rel, String id, String propsJson) throws Exception {
+        Path f = dir.resolve(rel);
+        Files.createDirectories(f.getParent());
+        Files.writeString(f, "{\"id\":\"" + id + "\",\"dataTypes\":[],\"properties\":[" + propsJson + "]}\n");
     }
 
     private void insert(String cid, String struct, String code) throws Exception {
@@ -190,5 +198,63 @@ class Hl7OperationsIT {
         ProducerException e3 = assertThrows(ProducerException.class,
             () -> invoke(f, "take", Map.of("filter", "not-a-filter")));
         assertEquals("err.illegal.argument", e3.key());
+    }
+
+    // --- er7 / validate (DESIGN §2.5; addressed by message id) -------------
+
+    @Test
+    void er7ReturnsCanonicalWireText(@TempDir Path dir) throws Exception {
+        Hl7ProducerFacade f = facade(dir);
+        JsonObject out = invoke(f, "er7", Map.of("elementKey", "M1"));
+        assertEquals("M1", out.get("controlId").getAsString());
+        assertEquals("ADT_A01", out.get("messageStructure").getAsString());
+        // insert() stored ("raw-" + cid) as the raw ER7 bytes; returned verbatim as UTF-8
+        assertEquals("raw-M1", out.get("er7").getAsString());
+    }
+
+    @Test
+    void er7UnknownMessageIdIs404(@TempDir Path dir) throws Exception {
+        Hl7ProducerFacade f = facade(dir);
+        ProducerException e = assertThrows(ProducerException.class,
+            () -> invoke(f, "er7", Map.of("elementKey", "NOPE")));
+        assertEquals(404, e.httpStatus());
+        assertEquals("err.no.such.object", e.key());
+    }
+
+    /** A facade whose ADT_A01 schema exactly declares what {@code toElement} emits for a seeded row. */
+    private Hl7ProducerFacade validateFacade(Path dir, String adtProps) throws Exception {
+        writeSchemaBody(dir, "schemas/v27/messages/ADT_A01.json", "schema:table:hl7v2.v27.ADT_A01", adtProps);
+        writeSchema(dir, "schemas/v27/messages/ORU_R01.json", "schema:table:hl7v2.v27.ORU_R01");
+        buffer = new BufferStore(dir.resolve("buffer.db").toString(), false);
+        insert("M1", "ADT_A01", "ADT");   // mapped_json {"msh":{messageType:{messageCode:"ADT"}}}
+        SchemaRegistry schemas = SchemaRegistry.fromDirectory(dir);
+        return new Hl7ProducerFacade(buffer, new ObjectTree(buffer, schemas, "v27"), schemas);
+    }
+
+    @Test
+    void validatePassesWhenElementConforms(@TempDir Path dir) throws Exception {
+        // declare exactly the keys toElement produces (msh + envelope); all present → valid
+        Hl7ProducerFacade f = validateFacade(dir,
+            "{\"name\":\"msh\"},{\"name\":\"controlId\",\"required\":true},"
+          + "{\"name\":\"receivedAt\",\"required\":true},{\"name\":\"status\",\"required\":true},"
+          + "{\"name\":\"sourcePort\"},{\"name\":\"leaseId\"}");
+        JsonObject out = invoke(f, "validate", Map.of("elementKey", "M1"));
+        assertEquals("M1", out.get("controlId").getAsString());
+        JsonObject stored = out.getAsJsonObject("stored");
+        assertTrue(stored.get("valid").getAsBoolean(), "expected conformant: " + stored.get("errors"));
+    }
+
+    @Test
+    void validateFlagsMissingRequiredAndUndeclared(@TempDir Path dir) throws Exception {
+        // require a "pid" the (msh-only) element lacks, and don't declare "msh"
+        Hl7ProducerFacade f = validateFacade(dir,
+            "{\"name\":\"pid\",\"required\":true},{\"name\":\"controlId\",\"required\":true},"
+          + "{\"name\":\"receivedAt\",\"required\":true},{\"name\":\"status\",\"required\":true},"
+          + "{\"name\":\"sourcePort\"},{\"name\":\"leaseId\"}");
+        JsonObject stored = invoke(f, "validate", Map.of("elementKey", "M1")).getAsJsonObject("stored");
+        assertFalse(stored.get("valid").getAsBoolean());
+        String errs = stored.getAsJsonArray("errors").toString();
+        assertTrue(errs.contains("pid") && errs.contains("missing required"), errs);
+        assertTrue(errs.contains("msh") && errs.contains("undeclared"), errs);
     }
 }

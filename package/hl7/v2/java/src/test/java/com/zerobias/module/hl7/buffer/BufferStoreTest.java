@@ -14,6 +14,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -213,6 +214,49 @@ class BufferStoreTest {
             Lease lease = s.take(SCHEMA_A, 10, Duration.ofMinutes(5));
             assertEquals(List.of("A", "C"), lease.messages().stream().map(BufferRow::controlId).toList());
             assertEquals(1, s.count(MessageStatus.NEW), "the ORU row was not taken");
+        }
+    }
+
+    @Test
+    void sourcePortRoundTripsAndEnumerates(@TempDir Path dir) throws Exception {
+        try (BufferStore s = open(dir, new MutableClock(BASE))) {
+            s.insert(new BufferRow(0, BASE, "A", "ADT_A01", "ADT", "A01", "EPIC", "HOSP",
+                "2.7", SCHEMA_A, "raw-A".getBytes(), "{}", MessageStatus.NEW, null, null, null, "epic-adt"));
+            BufferRow got = s.search(null, 1).get(0);
+            assertEquals("epic-adt", got.sourcePort(), "provenance round-trips");
+            // /by-port enumeration draws on distinctValues(source_port).
+            assertEquals(List.of("epic-adt"), s.distinctValues("source_port"));
+        }
+    }
+
+    @Test
+    void migratesLegacyBufferWithoutSourcePort(@TempDir Path dir) throws Exception {
+        final String path = dir.resolve("buffer.db").toString();
+        // A buffer.db created before per-port provenance existed: no source_port column.
+        try (java.sql.Connection c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + path);
+             java.sql.Statement st = c.createStatement()) {
+            st.execute("CREATE TABLE messages ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TIMESTAMP NOT NULL, "
+                + "control_id TEXT NOT NULL UNIQUE, message_structure TEXT NOT NULL, "
+                + "message_code TEXT NOT NULL, trigger_event TEXT NOT NULL, sending_app TEXT, "
+                + "sending_facility TEXT, hl7_version TEXT, schema_id TEXT NOT NULL, "
+                + "raw_er7 BLOB NOT NULL, mapped_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'new', "
+                + "lease_id TEXT, in_flight_until TIMESTAMP, acked_at TIMESTAMP)");
+            st.execute("INSERT INTO messages (received_at, control_id, message_structure, message_code, "
+                + "trigger_event, schema_id, raw_er7, mapped_json, status) VALUES ("
+                + BASE.toEpochMilli() + ", 'LEGACY', 'ADT_A01', 'ADT', 'A01', '" + SCHEMA_A
+                + "', x'00', '{}', 'new')");
+        }
+        // Reopening through BufferStore must ALTER in source_port (no crash) and keep the legacy row.
+        try (BufferStore s = open(dir, new MutableClock(BASE))) {
+            assertEquals(1, s.count());
+            BufferRow legacy = s.search(null, 1).get(0);
+            assertEquals("LEGACY", legacy.controlId());
+            assertNull(legacy.sourcePort(), "pre-migration row has null source_port");
+            // New inserts can now record provenance against the migrated column.
+            s.insert(new BufferRow(0, BASE, "NEW", "ADT_A01", "ADT", "A01", "EPIC", "HOSP",
+                "2.7", SCHEMA_A, "r".getBytes(), "{}", MessageStatus.NEW, null, null, null, "mllp"));
+            assertEquals(List.of("mllp"), s.distinctValues("source_port"));
         }
     }
 

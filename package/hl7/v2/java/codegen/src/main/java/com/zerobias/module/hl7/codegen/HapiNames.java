@@ -1,5 +1,6 @@
 package com.zerobias.module.hl7.codegen;
 
+import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -39,6 +40,40 @@ public final class HapiNames {
         }
         final int index = Integer.parseInt(m.group(2));
         return Optional.of(new Accessor(index, decapitalize(m.group(3))));
+    }
+
+    /**
+     * HAPI's method-name prefix for a structure simple name: capitalize the first
+     * char, lowercase the rest ({@code "GT1" -> "Gt1"}, {@code "PID" -> "Pid"},
+     * {@code "CX" -> "Cx"}). This mirrors how HAPI builds {@code get<Prefix><N>_<Bean>}.
+     */
+    public static String accessorPrefix(String structureSimpleName) {
+        if (structureSimpleName == null || structureSimpleName.isEmpty()) {
+            return structureSimpleName;
+        }
+        return Character.toUpperCase(structureSimpleName.charAt(0))
+            + structureSimpleName.substring(1).toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Parse a positional accessor when the structure's <em>exact</em> accessor
+     * prefix is known. The generic {@link #parseAccessor(String)} guesses the
+     * alpha/number split, which is ambiguous for segments whose name ends in a
+     * digit ({@code getGt11_...} is GT1 field 1, not a "Gt" field 11) — folding the
+     * trailing digit into the index and colliding fields 1-9 with 11-19. Anchoring
+     * on the known prefix removes the ambiguity.
+     */
+    public static Optional<Accessor> parseAccessor(String methodName, String accessorPrefix) {
+        if (methodName == null || accessorPrefix == null || accessorPrefix.isEmpty()) {
+            return Optional.empty();
+        }
+        final Matcher m = Pattern
+            .compile("^get" + Pattern.quote(accessorPrefix) + "(\\d+)_([A-Za-z0-9]+)$")
+            .matcher(methodName);
+        if (!m.matches()) {
+            return Optional.empty();
+        }
+        return Optional.of(new Accessor(Integer.parseInt(m.group(1)), decapitalize(m.group(2))));
     }
 
     /**

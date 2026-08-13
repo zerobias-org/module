@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS messages (
   trigger_event     TEXT NOT NULL,     -- A01, R01, ...
   sending_app       TEXT,
   sending_facility  TEXT,
+  source_port       TEXT,              -- name of the MLLP listener it arrived on (provenance)
   hl7_version       TEXT,
   schema_id         TEXT NOT NULL,     -- which collection schema this row claims
   raw_er7           BLOB NOT NULL,     -- canonical ER7 for audit/replay

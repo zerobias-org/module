@@ -8,6 +8,19 @@
 > data-explorer requires. v2.7 datatype shifts captured in tests/DESIGN (DTM primitive,
 > CWE administrativeSex). Historical phase notes below predate this and may say `v251`.
 
+> **Status note (2026-06-24) — multi-port + per-port provenance (branch `hl7_runtime_config`).**
+> The daemon now binds **N** MLLP listeners (one per `runtimeConfig.listenerPorts[]`),
+> all feeding the one shared buffer — resolving DESIGN §11.1 open-question #1 ("one port
+> or many") in favour of *many, in one deployment*. Listener discovery is **file-first**:
+> the module reads the canonical `DeploymentRuntimeConfig` file via `RUNTIME_CONFIG_FILE`
+> (verbatim, collision-safe port names), falling back to scanning `LISTENER_PORT_*` env on
+> older nodes — back-compatible, no platform change required to ship. Each message is
+> stamped with its listener's `name` (`source_port`, a back-filled durable-buffer column)
+> and exposed as `/by-port/<NAME>` views + a `sourcePort` element field. Validated by
+> `mvn verify` (unit + failsafe IT) offline; full `zbb gate` still pending (needs
+> GitHub Packages auth + Docker). The com/node side (deliver the file via `docker cp`) is
+> tracked in that repo's `1_5_12` plan and is **not** required for this module to run.
+
 Module-side implementation plan. Owner: Daniel. Platform updates
 (daemon mode, listener ports, durability, opaque `config` passthrough) are
 owned separately — see [`PLATFORM_UPDATES.md`](PLATFORM_UPDATES.md) — and this
@@ -45,7 +58,7 @@ in writing first; everything else is independent.
 
 | Seam | Module side | Platform side | Source |
 |---|---|---|---|
-| Env: `LISTENER_PORT_MLLP` | Java reads it, refuses to boot without it | `Container.ts` emits `LISTENER_PORT_${name.toUpperCase()}` | DESIGN §3.2, PLATFORM §5.1 |
+| Listener ports (file-first) | Java reads `listenerPorts` from the `RUNTIME_CONFIG_FILE` `DeploymentRuntimeConfig`, else scans `LISTENER_PORT_*` env; binds one listener each; refuses to boot with zero | `Container.ts` delivers the resolved config file (com/node `1_5_12`) **and** still emits `LISTENER_PORT_<NAME>` for back-compat | DESIGN §3.2, §11.1, PLATFORM §5.1 |
 | Env: `MODULE_CONFIG` | Java parses the opaque module `config` (JSON) | Node injects `runtimeConfig.config` verbatim | DESIGN §3.2, PLATFORM §5.1 |
 | Env: `EXTENSION_DIR` | Java scans it at boot | **In-image path** (extensions baked at build); Node does NOT mount it | DESIGN §3.2, §7.3 |
 | Extension delivery | declare extension packs as npm deps; build lays `extensions/` under `EXTENSION_DIR` | **none** — platform does not resolve/mount/catalog extensions | DESIGN §7.3 — **resolved 2026-06-01**: install-time/baked-in won; per-deployment mount dropped |

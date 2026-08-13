@@ -17,6 +17,7 @@ import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.stream.Stream;
@@ -26,26 +27,32 @@ import java.util.stream.Stream;
  * {@code getSchema} operation and to enumerate the {@code /by-type/<X>}
  * collections in the object tree.
  *
- * <p>The schema tree is produced at build time (Phase 1 codegen, a build
- * artifact) under {@code schemas/<version>/{messages,groups,segments,datatypes,
- * tables}/*.json} + {@code schemas/shared/message-envelope.json}. Rather than
- * decode ids back into file paths, the registry walks the tree once at startup,
- * parses each file's {@code id}, and indexes id → raw JSON. The
- * {@code structure-index/*.json} files (no schema {@code id}) are skipped.
+ * <p><b>Lazy by id → resource.</b> The general-purpose catalog is large (all
+ * message families across every supported version → thousands of small files).
+ * Rather than parse every file into memory at boot, the registry indexes only the
+ * schema <em>ids</em> — reconstructed from each file's <em>path</em>
+ * ({@code schemas/<version>/{messages,groups,segments,datatypes,tables}/<name>.json}
+ * → {@code schema:{table|type|enum}:hl7v2.<version>.<name>}) with no content read —
+ * and reads a schema's JSON on demand in {@link #getSchema}. Shared schemas
+ * ({@code schemas/shared/*.json}, a handful) carry an id the path can't
+ * reconstruct, so those are read once at index time to capture it.
+ *
+ * <p>{@code structure-index/*.json} (no schema id, different tree) is never scanned.
  */
 public final class SchemaRegistry {
 
     private static final Gson GSON = new Gson();
 
-    /** schemaId → raw JSON text (served verbatim). */
-    private final Map<String, String> byId = new LinkedHashMap<>();
+    /** schemaId → a loader that yields the raw JSON (classpath resource, file, or in-memory extension). */
+    private final Map<String, Supplier<String>> loaders = new LinkedHashMap<>();
 
     private SchemaRegistry() {
     }
 
     /**
-     * Build a registry by scanning {@code schemaRoot} (the codegen output dir
-     * containing {@code schemas/}). Returns an empty registry if the dir is absent.
+     * Build a registry by scanning {@code schemaRoot} (a dir containing
+     * {@code schemas/}). Ids are reconstructed from paths; content is read lazily.
+     * Returns an empty registry if the dir is absent.
      */
     public static SchemaRegistry fromDirectory(Path schemaRoot) {
         SchemaRegistry r = new SchemaRegistry();
@@ -55,7 +62,7 @@ public final class SchemaRegistry {
         }
         try (Stream<Path> walk = Files.walk(schemas)) {
             walk.filter(p -> p.toString().endsWith(".json"))
-                .forEach(r::index);
+                .forEach(p -> r.indexFile(schemaRoot, p));
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to scan schema tree at " + schemas, e);
         }
@@ -64,10 +71,9 @@ public final class SchemaRegistry {
 
     /**
      * Build a registry from the {@code /schemas} resources on the classpath — how
-     * the packaged module serves them: the codegen bakes the tree into the jar at
-     * build time (Phase 1 decision), so production reads it from the classpath, not
-     * a filesystem dir. Handles both the shaded jar ({@code jar:} URL) and an
-     * exploded {@code target/classes} ({@code file:} URL). Empty if absent.
+     * the packaged module serves them. Handles both the shaded jar ({@code jar:}
+     * URL) and an exploded {@code target/classes} ({@code file:} URL); either way a
+     * schema is read from the classpath on demand. Empty if absent.
      */
     public static SchemaRegistry fromClasspath() {
         SchemaRegistry r = new SchemaRegistry();
@@ -85,15 +91,15 @@ public final class SchemaRegistry {
                         JarEntry e = entries.nextElement();
                         if (!e.isDirectory()
                                 && e.getName().startsWith("schemas/") && e.getName().endsWith(".json")) {
-                            try (InputStream in = jar.getInputStream(e)) {
-                                r.indexJson(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-                            }
+                            r.indexClasspath(e.getName());
                         }
                     }
                 }
             } else if ("file".equals(root.getProtocol())) {
+                Path classpathRoot = Path.of(root.toURI()).getParent();   // parent of /schemas
                 try (Stream<Path> walk = Files.walk(Path.of(root.toURI()))) {
-                    walk.filter(p -> p.toString().endsWith(".json")).forEach(r::index);
+                    walk.filter(p -> p.toString().endsWith(".json"))
+                        .forEach(p -> r.indexClasspath(classpathRoot.relativize(p).toString().replace('\\', '/')));
                 }
             }
         } catch (IOException | URISyntaxException e) {
@@ -102,30 +108,103 @@ public final class SchemaRegistry {
         return r;
     }
 
-    private void index(Path file) {
-        try {
-            indexJson(Files.readString(file));
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to read schema " + file, e);
+    // --- indexing (id from path; content deferred) -------------------------
+
+    /** Index one classpath resource ({@code schemas/...json}) by its reconstructed/read id. */
+    private void indexClasspath(String resource) {
+        String[] parts = resource.split("/");
+        String id = idFromPath(parts, () -> readIdFromStream(SchemaRegistry.class.getResourceAsStream("/" + resource)));
+        if (id != null) {
+            loaders.put(id, () -> readClasspath(resource));
         }
     }
 
-    /** Parse one schema JSON and index it by its {@code schema:} id (no-op otherwise). */
-    private void indexJson(String json) {
+    /** Index one filesystem schema file by its reconstructed/read id. */
+    private void indexFile(Path schemaRoot, Path file) {
+        String[] parts = schemaRoot.relativize(file).toString().replace('\\', '/').split("/");
+        String id = idFromPath(parts, () -> readIdFromString(readFile(file)));
+        if (id != null) {
+            loaders.put(id, () -> readFile(file));
+        }
+    }
+
+    /**
+     * The schema id for a {@code schemas/...} path. Version-scoped files
+     * ({@code schemas/<v>/<subdir>/<name>.json}) reconstruct without a read; shared
+     * files ({@code schemas/shared/<name>.json}) fall back to {@code sharedId} which
+     * reads the file's declared id. Returns null for anything else.
+     */
+    private static String idFromPath(String[] parts, Supplier<String> sharedId) {
+        if (parts.length == 4 && "schemas".equals(parts[0])) {
+            String version = parts[1];
+            String name = stripJson(parts[3]);
+            switch (parts[2]) {
+                case "messages":  return "schema:table:hl7v2." + version + "." + name;
+                case "segments":
+                case "groups":
+                case "datatypes": return "schema:type:hl7v2." + version + "." + name;
+                case "tables":    return "schema:enum:hl7v2." + version + "." + name;
+                default:          return null;
+            }
+        }
+        if (parts.length == 3 && "schemas".equals(parts[0]) && "shared".equals(parts[1])) {
+            return sharedId.get();   // e.g. schema:shared:hl7v2.message-envelope
+        }
+        return null;
+    }
+
+    private static String stripJson(String fileName) {
+        return fileName.endsWith(".json") ? fileName.substring(0, fileName.length() - ".json".length()) : fileName;
+    }
+
+    private static String readIdFromStream(InputStream in) {
+        if (in == null) {
+            return null;
+        }
+        try (InputStream s = in) {
+            return readIdFromString(new String(s.readAllBytes(), StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static String readIdFromString(String json) {
         JsonObject obj = GSON.fromJson(json, JsonObject.class);
         if (obj != null && obj.has("id")) {
             String id = obj.get("id").getAsString();
             if (id.startsWith("schema:")) {
-                byId.put(id, json);
+                return id;
             }
+        }
+        return null;
+    }
+
+    private static String readClasspath(String resource) {
+        InputStream in = SchemaRegistry.class.getResourceAsStream("/" + resource);
+        if (in == null) {
+            throw new UncheckedIOException(new IOException("schema resource vanished: " + resource));
+        }
+        try (InputStream s = in) {
+            return new String(s.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read schema " + resource, e);
+        }
+    }
+
+    private static String readFile(Path file) {
+        try {
+            return Files.readString(file);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read schema " + file, e);
         }
     }
 
     /**
      * Merge an extension pack's schemas (DESIGN §7) by walking {@code extDir} for
      * {@code *.json} files carrying a {@code schema:} id. Throws {@link IllegalStateException}
-     * on a duplicate id (the no-dup-across-packs rule, §7.3 boot validation) —
-     * fail fast rather than silently shadow base or peer content.
+     * on a duplicate id (the no-dup-across-packs rule, §7.3 boot validation) — fail
+     * fast rather than silently shadow base or peer content. Extension content is
+     * small and read here, so it is kept in memory rather than re-read on demand.
      */
     public void mergeExtension(Path extDir) {
         if (!Files.isDirectory(extDir)) {
@@ -133,23 +212,15 @@ public final class SchemaRegistry {
         }
         try (Stream<Path> walk = Files.walk(extDir)) {
             walk.filter(p -> p.toString().endsWith(".json")).forEach(file -> {
-                try {
-                    String json = Files.readString(file);
-                    JsonObject obj = GSON.fromJson(json, JsonObject.class);
-                    if (obj == null || !obj.has("id")) {
-                        return;   // manifest.json / structure-index.json carry no schema id
-                    }
-                    String id = obj.get("id").getAsString();
-                    if (!id.startsWith("schema:")) {
-                        return;
-                    }
-                    if (byId.containsKey(id)) {
-                        throw new IllegalStateException("duplicate schema id across extensions: " + id);
-                    }
-                    byId.put(id, json);
-                } catch (IOException e) {
-                    throw new UncheckedIOException("Failed to read extension schema " + file, e);
+                String json = readFile(file);
+                String id = readIdFromString(json);   // manifest.json / structure-index carry no schema id
+                if (id == null) {
+                    return;
                 }
+                if (loaders.containsKey(id)) {
+                    throw new IllegalStateException("duplicate schema id across extensions: " + id);
+                }
+                loaders.put(id, () -> json);
             });
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to scan extension dir " + extDir, e);
@@ -158,19 +229,19 @@ public final class SchemaRegistry {
 
     /** Raw schema JSON for {@code schemaId}, or throw {@code noSuchObjectError}. */
     public String getSchema(String schemaId) {
-        String json = byId.get(schemaId);
-        if (json == null) {
+        Supplier<String> loader = loaders.get(schemaId);
+        if (loader == null) {
             throw ProducerException.noSuchSchema(schemaId);
         }
-        return json;
+        return loader.get();
     }
 
     public boolean has(String schemaId) {
-        return byId.containsKey(schemaId);
+        return loaders.containsKey(schemaId);
     }
 
     public int size() {
-        return byId.size();
+        return loaders.size();
     }
 
     /**
@@ -181,7 +252,7 @@ public final class SchemaRegistry {
     public List<String> messageStructures(String version) {
         String prefix = "schema:table:hl7v2." + version + ".";
         List<String> out = new ArrayList<>();
-        for (String id : byId.keySet()) {
+        for (String id : loaders.keySet()) {
             if (id.startsWith(prefix)) {
                 out.add(id.substring(prefix.length()));
             }
@@ -192,14 +263,13 @@ public final class SchemaRegistry {
 
     /**
      * All message-structure names → their collection schema id, across every
-     * namespace (base {@code v27} + extension namespaces like {@code epic}). Drives
+     * namespace (base version slots + extension namespaces like {@code epic}). Drives
      * the namespace-agnostic {@code /by-type/<X>} listing once extensions are merged.
-     * Insertion order: base then extensions.
      */
     public Map<String, String> messageStructureIds() {
         Map<String, String> out = new LinkedHashMap<>();
         String pre = "schema:table:hl7v2.";
-        for (String id : byId.keySet()) {
+        for (String id : loaders.keySet()) {
             if (id.startsWith(pre)) {
                 String tail = id.substring(pre.length());      // <namespace>.<name>
                 int dot = tail.indexOf('.');

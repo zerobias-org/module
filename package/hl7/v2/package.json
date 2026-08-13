@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-hl7-v2",
-  "version": "1.2.0",
+  "version": "1.2.4",
   "description": "HL7 v2.x MLLP receiver (DataProducer)",
   "type": "module",
   "moduleId": "369d38b0-2c23-43f0-bbc4-33f453ee75c8",
@@ -38,6 +38,8 @@
     "@zerobias-org/module-interface-dataproducer": "^2.1.5",
     "@zerobias-org/product-auditmation-generic-dataproducer": "latest",
     "@zerobias-org/product-hl7-hl7": "latest",
+    "@zerobias-org/product-stryker-procuity": "latest",
+    "@zerobias-org/product-iatric-jaguar": "latest",
     "@zerobias-org/util-connector": "^1.0.31",
     "axios": "^1.13.2"
   },

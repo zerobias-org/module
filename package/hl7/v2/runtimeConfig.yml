@@ -13,13 +13,28 @@
 # Always-on: start at node boot, ignore idle timeouts, never passivate. (DESIGN §1)
 daemonMode: true
 
-# Extra TCP port the receiver binds beyond the 8888 operations port. Hub Node
-# injects the resolved value as LISTENER_PORT_MLLP, binds it 1:1 in the container,
-# and maps it 1:1 to the host — so this number IS the address sending systems use.
-# It MUST be prescribed: a daemon MLLP listener with no fixed port is unusable
-# (nobody can know where to connect), which is why we default to 2575 — the
-# IANA-registered HL7-over-MLLP port and the industry default. Operators may
-# override per-deployment if 2575 is taken. (DESIGN §3.2, §3.3)
+# MLLP listener ports the receiver binds beyond the 8888 operations port. Each
+# entry becomes one bound HAPI listener; ALL feed the one shared buffer. Hub Node
+# binds each 1:1 in the container and maps it 1:1 to the host — so each port IS the
+# address sending systems use. At least one is MANDATORY: a daemon MLLP listener
+# with no fixed port is unusable (nobody can know where to connect), which is why
+# the primary port defaults to 2575 — the IANA-registered HL7-over-MLLP port and
+# the industry default. Operators may override per-deployment if 2575 is taken.
+#
+# MULTI-PORT (one MLLP port per sending system — cleaner ACLs, easier triage):
+# add more entries with DISTINCT names. The `name` is the feed identity — it is
+# stamped on every message that port receives (provenance) and exposed as the
+# `/by-port/<name>` data-explorer views and a `sourcePort` field per message.
+# Names must be distinct; prefer the delivered runtime-config FILE (verbatim,
+# collision-safe names) over the LISTENER_PORT_<NAME> env fallback, whose key
+# normalization can collide two names. (DESIGN §3.2, §3.3, §11.1, §11.4)
+#
+# Example of a second, named feed (uncomment + pin or leave port null for ephemeral):
+#   - name: epic-adt
+#     protocol: tcp
+#     port: 2576
+#     bindAddress: "0.0.0.0"
+#     tls: false
 listenerPorts:
   - name: mllp
     protocol: tcp

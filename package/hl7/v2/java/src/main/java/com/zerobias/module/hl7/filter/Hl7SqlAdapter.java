@@ -51,12 +51,26 @@ public class Hl7SqlAdapter implements Adapter {
     /** lite-filter adapter-registry key. */
     public static final String KEY = "SQL";
 
-    /** Top-level envelope properties that map to real columns (not JSON paths). */
-    private static final Map<String, String> ENVELOPE_COLUMNS = Map.of(
-        "controlId", "control_id",
-        "receivedAt", "received_at",
-        "status", "status",
-        "leaseId", "lease_id"
+    /**
+     * Top-level envelope + provenance properties that map to real (indexed-friendly,
+     * denormalized) columns instead of {@code json_extract} over {@code mapped_json}.
+     * These are the fast search axes — schema, version, port, sender, structure —
+     * so {@code (&(hl7Version=2.4)(sourcePort=...)(messageStructure=ADT_A01))} hits
+     * columns, not JSON paths.
+     */
+    private static final Map<String, String> ENVELOPE_COLUMNS = Map.ofEntries(
+        Map.entry("controlId", "control_id"),
+        Map.entry("receivedAt", "received_at"),
+        Map.entry("status", "status"),
+        Map.entry("leaseId", "lease_id"),
+        Map.entry("hl7Version", "hl7_version"),
+        Map.entry("sourcePort", "source_port"),
+        Map.entry("messageStructure", "message_structure"),
+        Map.entry("messageCode", "message_code"),
+        Map.entry("triggerEvent", "trigger_event"),
+        Map.entry("sendingApp", "sending_app"),
+        Map.entry("sendingFacility", "sending_facility"),
+        Map.entry("schemaId", "schema_id")
     );
 
     /** Columns stored as epoch-millis INTEGERs. */

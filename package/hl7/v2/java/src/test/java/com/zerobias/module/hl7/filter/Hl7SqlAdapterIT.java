@@ -19,6 +19,7 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,9 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * running both over the same seeded buffer.
  *
  * <p>Parity is asserted only for operators the evaluator actually supports.
- * (The evaluator's {@code >}/{@code >=} are numeric-only and throw on date
- * strings, so {@code receivedAt>=<ISO>} is SQL-only — exercised separately in
- * {@link #designExampleFiltersRunOnSqlite}.)
+ * (As of lite-filter 1.0.4 the evaluator's {@code >}/{@code >=} compare ISO-8601
+ * strings lexicographically — which matches chronological order — so a
+ * {@code receivedAt>=<ISO>} datetime works in-memory too; its epoch-millis SQL
+ * rendering is exercised in {@link #timeOfDayInComparisonRendersEpochMillis}.)
  */
 class Hl7SqlAdapterIT {
 
@@ -148,9 +150,8 @@ class Hl7SqlAdapterIT {
         try (BufferStore store = load(dir, msgs)) {
             // §2.6 example 1: ADT from EPIC, since 2026-05-27, un-acked. Uses the
             // date-only form the interface's FilterSyntax.md documents
-            // (modified>=2025-01-01) — a full ISO datetime is NOT parseable, see
-            // parserRejectsTimeOfDayInComparison(). receivedAt>= is SQL-only
-            // (the evaluator can't compare date strings).
+            // (modified>=2025-01-01); the full ISO-datetime form is covered by
+            // timeOfDayInComparisonRendersEpochMillis().
             String f1 = "(&(msh.sendingApplication.namespaceId=EPIC)"
                 + "(msh.messageType.messageCode=ADT)"
                 + "(receivedAt>=2026-05-27)"
@@ -170,14 +171,21 @@ class Hl7SqlAdapterIT {
     }
 
     @Test
-    void parserRejectsTimeOfDayInComparison() {
-        // Locks a real lite-filter limitation: its RFC4515 parser treats the first
-        // colon as the start of a :function: operator, so an ISO datetime value
-        // (2026-05-27T00:00:00Z) in a >= clause is mis-read as operator ':00:'.
-        // Date-only literals and the :withinDays:/:year: extensions are the
-        // supported ways to filter by time. (Fixing the parser is org/util scope.)
-        assertThrows(IllegalArgumentException.class,
-            () -> Hl7Filter.parse("(receivedAt>=2026-05-27T00:00:00Z)"));
+    void timeOfDayInComparisonRendersEpochMillis(@TempDir Path dir) throws Exception {
+        // Regression for the lite-filter parser bug (fixed in lite-filter 1.0.4): the
+        // colons in a full ISO-8601 datetime's time-of-day (00:00:00) used to be
+        // mis-read as a :function: operator, throwing "Unknown operator: :00:". The
+        // datetime now parses and the adapter renders it to the epoch-millis form.
+        String filter = "(receivedAt>=2026-05-27T00:00:00Z)";
+        String where = Hl7Filter.toWhereClause(filter);
+        assertTrue(where.contains("received_at >= (unixepoch('2026-05-27T00:00:00Z') * 1000)"),
+            "time-of-day datetime coerced to epoch-millis: " + where);
+
+        try (BufferStore store = load(dir, seed())) {
+            // M1-M3 are 2026-05-28; M4 is 2025-12-31 and is excluded.
+            assertEquals(new TreeSet<>(List.of("M1", "M2", "M3")), selected(store, where),
+                filter + " -> " + where);
+        }
     }
 
     @Test
@@ -225,5 +233,20 @@ class Hl7SqlAdapterIT {
             () -> Hl7Filter.toWhereClause("(pid.fam-ily=SMITH)")); // hyphen: adapter segment guard
         assertThrows(IllegalArgumentException.class,
             () -> Hl7Filter.toWhereClause("(pid.x');DROP TABLE messages;--=X)"));
+    }
+
+    @Test
+    void provenancePropertiesRenderToDenormalizedColumns() {
+        // The fast search axes (version / port / structure / sender) resolve to real
+        // columns, not json_extract over mapped_json — so multi-axis search is indexed.
+        assertTrue(Hl7Filter.toWhereClause("(hl7Version=2.4)").contains("hl7_version"));
+        assertTrue(Hl7Filter.toWhereClause("(sourcePort=Scheduling SIU)").contains("source_port"));
+        assertTrue(Hl7Filter.toWhereClause("(messageStructure=ADT_A01)").contains("message_structure"));
+        assertTrue(Hl7Filter.toWhereClause("(sendingApp=EPIC)").contains("sending_app"));
+        assertTrue(Hl7Filter.toWhereClause("(sendingFacility=GPAMB)").contains("sending_facility"));
+        assertFalse(Hl7Filter.toWhereClause("(hl7Version=2.4)").contains("json_extract"),
+            "denormalized column, not a JSON path");
+        // A message-body field still routes through json_extract (unchanged).
+        assertTrue(Hl7Filter.toWhereClause("(pid.setIDPID=1)").contains("json_extract"));
     }
 }

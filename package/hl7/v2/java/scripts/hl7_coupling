@@ -1,0 +1,616 @@
+#!/usr/bin/env python3
+"""hl7_coupling — one HL7 v2 DataProducer target is an *omnibus* receiver: its
+getCollectionElements collection is, definitionally, every message received from
+every sender on every listening port (DataProducer spec: paged PagedResults,
+count = total matching rows). This tool drains that whole collection, slices it
+into channels (by listening port and/or sender), and finds where the *same
+message* is fanned out to more than one channel — then checks the fan-out.
+
+Why not just key on MSH-10? Because an interface engine re-stamps the message
+control id per outbound channel: on a real omnibus, MSH-10 is unique on every
+row, so 0 messages would ever look "coupled". The same clinical message instead
+shows up on N channels differing ONLY in transport fields (MSH-10, and sometimes
+MSH-7 datetime / MSH-3..6 routing). So coupling is detected by a **content
+fingerprint** that ignores those per-hop transport fields.
+
+Three checks, matching the ask:
+
+  1. COUPLINGS   Group messages by fingerprint (all content minus --ignore
+                 transport fields; or, with --identity, minus everything that
+                 isn't a chosen business key). A fingerprint on >1 channel is a
+                 coupled message.
+
+  2. POPULATION  Two channels that fan out to each other should carry the same
+                 message population. For every coupled channel pair we show the
+                 shared count and the asymmetric remainder — messages present on
+                 one side but missing on the other. Those remainders are gaps.
+
+  3. FIELDS      For a coupled message, every field must match across its
+                 channels. Per-receipt envelope columns (receivedAt / sourcePort
+                 / status / leaseId / response) are dropped; a field that differs
+                 and is NOT in --ignore is a CONFLICT (genuine divergence). Fields
+                 in --ignore (MSH-10 &c.) are expected to differ and reported as
+                 benign.
+
+Same wire mechanics as hl7_validator: PUT {base}/{method} Hub RPC envelope.
+
+Required env:
+  ZB_URL         base platform URL          e.g. https://uat.zerobias.com
+  ZB_TOKEN       session token              (sent as `authorization: session <token>`)
+  ZB_ORG_ID      dana org id                (sent as `dana-org-id`)
+  ZB_TARGET_ID   the omnibus hub target id  (ZB_TARGET_IDS, a comma list, is also
+                 accepted and pooled).
+
+Optional env:
+  ZB_COOKIE      raw Cookie header value    (for targets behind Cloudflare/WAF)
+
+Options:
+  --channel-by=<spec>  slice into channels. Tokens joined with '+': port
+                       (sourcePort, the channel name), sender (MSH sender, see
+                       --sender-field), target. default: port
+  --sender-field=<f>   sendingFacility (MSH-4) | sendingApplication (MSH-3).
+                       default: sendingFacility (MSH-3 is often blank).
+  --ignore=<substrs>   comma list of field-path substrings that may differ per
+                       hop and so are excluded from the fingerprint and never
+                       count as a conflict. default: the MSH transport set
+                       (messageControlID,dateTimeOfMessage,sendingApplication,
+                       sendingFacility,receivingApplication,receivingFacility).
+  --identity=<substrs> comma list of field-path substrings that DEFINE message
+                       identity. When given, the fingerprint is built from ONLY
+                       these fields (a business key, e.g. "PID,placerOrder,
+                       fillerOrder"); every other non-ignored field is then
+                       eligible to surface as a conflict.
+  --filter=<rfc4515>   RFC4515 filter. default: (receivedAt>=<now-1h UTC>)
+  --since=<Nh|Nd|Nm>   convenience window, e.g. 24h / 7d / 90m
+  --objectId=<path>    collection object id. default: /hl7-v2-receiver/messages
+  --min-overlap=<n>    min shared fingerprints to treat a channel pair as
+                       coupled for the population check. default: 1
+  --out=<file>         report path. default: hl7_coupling_report.html
+  --page-size=<n>      elements per page. default: 100
+  --max=<n>            cap messages fetched (0 = all, the default)
+
+Exit status is non-zero when any content conflict is found.
+"""
+
+import argparse
+import html
+import json
+import os
+import re
+import sys
+from datetime import datetime, timedelta, timezone
+from itertools import combinations
+from urllib import error, request
+
+# Per-receipt envelope / ACK columns overlaid by Hl7ProducerFacade.toElement —
+# receipt metadata, never message content. controlId is the top-level MSH-10
+# duplicate (the body's msh.messageControlID is the canonical copy).
+ENVELOPE_META = {"receivedAt", "sourcePort", "status", "leaseId", "response",
+                 "controlId", "elementKey", "messageId", "id", "_key"}
+
+# MSH transport fields an interface engine legitimately re-stamps per hop. Excluded
+# from the fingerprint and treated as benign in the field comparison.
+DEFAULT_IGNORE = ["messageControlID", "dateTimeOfMessage",
+                  "sendingApplication", "sendingFacility",
+                  "receivingApplication", "receivingFacility"]
+
+_INDEX = re.compile(r"\[\d+\]")
+
+
+def die(msg):
+    print(f"hl7_coupling: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def env(name, required=True):
+    val = os.environ.get(name)
+    if required and not val:
+        die(f"missing required env var {name}")
+    return val
+
+
+def now_iso(offset_hours=0):
+    return (datetime.now(timezone.utc) + timedelta(hours=offset_hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_since(spec):
+    m = re.fullmatch(r"(\d+)([hdm])", spec.strip().lower())
+    if not m:
+        die(f"--since must look like 24h / 7d / 90m, got {spec!r}")
+    n, unit = int(m.group(1)), m.group(2)
+    return n * {"h": 1, "d": 24, "m": 1 / 60}[unit]
+
+
+class Client:
+    """Thin wrapper over the Hub RPC envelope: PUT {base}/{method} with a JSON body."""
+
+    def __init__(self, base, headers):
+        self.base = base
+        self.headers = headers
+
+    def call(self, method, body):
+        data = json.dumps(body).encode()
+        last = None
+        for _ in range(4):
+            req = request.Request(f"{self.base}/{method}", data=data,
+                                  headers=self.headers, method="PUT")
+            try:
+                with request.urlopen(req, timeout=60) as resp:
+                    return json.loads(resp.read().decode())
+            except error.HTTPError as e:
+                detail = e.read().decode(errors="replace")[:400]
+                die(f"HTTP {e.code} from {method}: {detail}")
+            except (error.URLError, TimeoutError) as e:
+                last = e
+        die(f"connection error calling {method} after retries: {getattr(last, 'reason', last)}")
+
+
+def fetch_elements(client, object_id, filt, page_size, cap, tag):
+    """Drain the whole paged collection. getCollectionElements is definitionally
+    paged (PagedResults {items,count,...}); the hub proxy may hand back a bare
+    array instead. cap<=0 means unlimited (all messages)."""
+    out, page, total = [], 1, None
+    while cap <= 0 or len(out) < cap:
+        res = client.call("getCollectionElements",
+                          {"objectId": object_id, "filter": filt,
+                           "pageNumber": page, "pageSize": page_size})
+        if isinstance(res, list):
+            batch = res
+        else:
+            batch = res.get("items", [])
+            if total is None and isinstance(res.get("count"), (int, float)):
+                total = int(res["count"])
+        if not batch:
+            break
+        for el in batch:
+            el["_target"] = tag
+        out.extend(batch)
+        tot = f"/{total}" if total is not None else ""
+        print(f"  [{tag}] page {page}: +{len(batch)} (total {len(out)}{tot})", file=sys.stderr)
+        if len(batch) < page_size or (total is not None and len(out) >= total):
+            break
+        page += 1
+    return out[:cap] if cap > 0 else out
+
+
+# --- flatten / channel / fingerprint --------------------------------------
+
+def flatten(value, prefix=""):
+    """Flatten a materialized element into {path: scalar}; array items index into
+    the path (obx[0].value). Top-level receipt/underscore keys are dropped."""
+    flat = {}
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if not prefix and (k in ENVELOPE_META or k.startswith("_")):
+                continue
+            flat.update(flatten(v, k if not prefix else f"{prefix}.{k}"))
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            flat.update(flatten(v, f"{prefix}[{i}]"))
+    else:
+        flat[prefix] = value
+    return flat
+
+
+def _seg(el, name):
+    v = el.get(name)
+    if isinstance(v, list):
+        v = v[0] if v else None
+    return v or {}
+
+
+def sender_of(el, field):
+    v = _seg(el, "msh").get(field)
+    if v is None:
+        return "∅"
+    if isinstance(v, dict):
+        return v.get("namespaceID") or v.get("universalID") or json.dumps(v, sort_keys=True)
+    return str(v)
+
+
+def channel_key(el, tokens, sender_field):
+    parts = []
+    for tok in tokens:
+        if tok == "port":
+            parts.append(str(el.get("sourcePort") or "∅"))
+        elif tok == "sender":
+            parts.append(sender_of(el, sender_field))
+        elif tok == "target":
+            parts.append(str(el.get("_target") or "∅"))
+        else:
+            die(f"unknown --channel-by token {tok!r} (use port/sender/target)")
+    return " | ".join(parts)
+
+
+def fingerprint(flat, ignore, identity):
+    """Message identity from a flattened element. --identity (allow-list) wins;
+    else all content minus --ignore (transport) substrings."""
+    if identity:
+        kept = {k: v for k, v in flat.items() if any(s in k for s in identity)}
+    else:
+        kept = {k: v for k, v in flat.items() if not any(s in k for s in ignore)}
+    return json.dumps(kept, sort_keys=True, ensure_ascii=False)
+
+
+def descriptor(flat):
+    """Best-effort human label: MSG type + patient, for display."""
+    def first(*suffixes):
+        for p, v in flat.items():
+            if v not in (None, "") and any(p.endswith(s) for s in suffixes):
+                return v
+        return None
+    mt = first(".messageType.messageType", ".messageType")
+    te = first(".triggerEvent")
+    fam = first(".familyName", ".patientLastName", ".surname")
+    given = first(".givenName", ".patientFirstName")
+    bits = []
+    if mt:
+        bits.append(f"{mt}^{te}" if te else str(mt))
+    if fam:
+        bits.append(f"{fam}{',' + str(given) if given else ''}")
+    return " · ".join(bits) or "?"
+
+
+# --- analysis -------------------------------------------------------------
+
+def analyze(elements, tokens, sender_field, ignore, identity):
+    """One pass: flatten each element, assign channel + fingerprint. Returns
+    (records, channels, index, skipped) where a record is a dict per element and
+    index is fingerprint -> {channel: record} (first per channel). In --identity
+    mode, messages carrying NONE of the identity fields produce an empty
+    fingerprint; those are skipped (counted in `skipped`) rather than collapsed
+    into one giant false coupling."""
+    records, channels, index, skipped = [], {}, {}, 0
+    for el in elements:
+        flat = flatten(el)
+        fp = fingerprint(flat, ignore, identity)
+        if identity and fp == "{}":
+            skipped += 1
+            continue
+        chan = channel_key(el, tokens, sender_field)
+        rec = {"chan": chan, "flat": flat, "fp": fp,
+               "controlId": el.get("controlId"), "receivedAt": el.get("receivedAt")}
+        records.append(rec)
+        channels.setdefault(chan, []).append(rec)
+        index.setdefault(fp, {}).setdefault(chan, rec)
+    return records, channels, index, skipped
+
+
+def couplings_of(index, ignore):
+    """Fingerprints on >1 channel. For each: channels, per-channel control ids,
+    differing field paths split into conflicts (not in --ignore) and benign."""
+    out = []
+    for fp, bucket in index.items():
+        if len(bucket) < 2:
+            continue
+        flats = {c: r["flat"] for c, r in bucket.items()}
+        paths = set().union(*flats.values())
+        conflicts, benign = [], []
+        for p in sorted(paths):
+            vals = {c: f.get(p) for c, f in flats.items()}
+            if len({json.dumps(v, ensure_ascii=False) for v in vals.values()}) == 1:
+                continue
+            row = {"path": p, "vals": {c: ("⌀ absent" if p not in f else f[p]) for c, f in flats.items()}}
+            (benign if any(s in p for s in ignore) else conflicts).append(row)
+        out.append({
+            "fp": fp,
+            "channels": sorted(bucket),
+            "ctrl": {c: r["controlId"] for c, r in bucket.items()},
+            "desc": descriptor(next(iter(flats.values()))),
+            "conflicts": conflicts,
+            "benign": benign,
+            "consistent": not conflicts,
+        })
+    out.sort(key=lambda c: (c["consistent"], -len(c["channels"]), c["desc"]))
+    return out
+
+
+def _fp_reps(channels):
+    """chan -> {fingerprint: representative record} (first seen per message)."""
+    reps = {}
+    for c, recs in channels.items():
+        d = {}
+        for r in recs:
+            d.setdefault(r["fp"], r)
+        reps[c] = d
+    return reps
+
+
+def pair_gaps(channels, min_overlap, min_share):
+    """Per channel pair that is genuinely a mirror — shares >= min_overlap distinct
+    messages AND the shared set is >= min_share of the *union* (Jaccard, so a small
+    subset feed swallowed by a busy channel isn't mistaken for a mirror) — the
+    actual messages present on one side but missing from the other. Pairs with no
+    gap are dropped; only asymmetry is reported."""
+    reps = _fp_reps(channels)
+    out = []
+    for a, b in combinations(sorted(channels), 2):
+        fa, fb = reps[a], reps[b]
+        sa, sb = set(fa), set(fb)
+        shared = sa & sb
+        union = len(sa | sb) or 1
+        jaccard = len(shared) / union
+        if len(shared) < min_overlap or jaccard < min_share:
+            continue
+        only_a = [fa[fp] for fp in fa if fp not in sb]
+        only_b = [fb[fp] for fp in fb if fp not in sa]
+        if not only_a and not only_b:
+            continue
+        out.append({"a": a, "b": b, "shared": len(shared), "share": jaccard,
+                    "only_a": only_a, "only_b": only_b})
+    out.sort(key=lambda p: -(len(p["only_a"]) + len(p["only_b"])))
+    return out
+
+
+# --- HTML report ----------------------------------------------------------
+
+def esc(x):
+    return html.escape("" if x is None else str(x))
+
+
+def clip(x, n=70):
+    s = "" if x is None else str(x)
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+GAP_CAP = 300  # max itemized missing messages shown per channel pair
+
+
+def render(channels, index, couplings, gaps, meta, sender_field):
+    total = sum(len(v) for v in channels.values())
+    conflicts = [c for c in couplings if not c["consistent"]]
+    labels = sorted(channels)
+    total_missing = sum(len(p["only_a"]) + len(p["only_b"]) for p in gaps)
+
+    chan_rows = "\n".join(
+        f'<tr><td class="mono sm">{esc(chan)}</td>'
+        f'<td class="ctr num">{len(recs)}</td>'
+        f'<td class="ctr num">{len({r["fp"] for r in recs})}</td>'
+        f'<td class="sm">{esc(clip(", ".join(sorted({sender_of_rec(r) for r in recs})), 60))}</td></tr>'
+        for chan, recs in sorted(channels.items(), key=lambda kv: -len(kv[1]))) \
+        or '<tr><td colspan="4" class="muted ctr">no messages</td></tr>'
+
+    fpsets = {c: {r["fp"] for r in recs} for c, recs in channels.items()}
+    head = "".join(f'<th class="ctr" title="{esc(l)}">{esc(clip(l,14))}</th>' for l in labels)
+    mtx_rows = ""
+    for a in labels:
+        cells = ""
+        for b in labels:
+            if a == b:
+                cells += '<td class="ctr muted">–</td>'
+            else:
+                n = len(fpsets[a] & fpsets[b])
+                cells += f'<td class="ctr num {"hot" if n else "muted"}">{n or ""}</td>'
+        mtx_rows += f'<tr><td class="mono sm" title="{esc(a)}">{esc(clip(a,20))}</td>{cells}</tr>'
+
+    # Population gaps — itemized: each row is one message on one channel of a
+    # coupled pair, absent from the other. "delivered to X but not Y".
+    def gap_row(rec, delivered, missing):
+        return (f'<tr class="row-warn"><td class="sm">{esc(clip(descriptor(rec["flat"]),44))}</td>'
+                f'<td class="mono sm">{esc(rec["controlId"])}</td>'
+                f'<td class="sm">{esc(rec["receivedAt"])}</td>'
+                f'<td class="mono sm">{esc(clip(delivered,26))}</td>'
+                f'<td class="mono sm bad-fg">{esc(clip(missing,26))}</td></tr>')
+    gap_rows = ""
+    for p in gaps:
+        na, nb = len(p["only_a"]), len(p["only_b"])
+        gap_rows += (f'<tr class="sub"><td colspan="5"><b>{esc(p["a"])}</b> ⇄ <b>{esc(p["b"])}</b>'
+                     f' &middot; {p["shared"]} shared ({p["share"]*100:.0f}% overlap) &middot; '
+                     f'<span class="bad-fg">{na}</span> only on A &middot; '
+                     f'<span class="bad-fg">{nb}</span> only on B</td></tr>')
+        shown = 0
+        for rec in p["only_a"]:
+            if shown >= GAP_CAP:
+                break
+            gap_rows += gap_row(rec, p["a"], p["b"]); shown += 1
+        for rec in p["only_b"]:
+            if shown >= GAP_CAP:
+                break
+            gap_rows += gap_row(rec, p["b"], p["a"]); shown += 1
+        if na + nb > shown:
+            gap_rows += (f'<tr><td colspan="5" class="muted sm">… {na + nb - shown} more '
+                         f'not shown (raise GAP_CAP / narrow --since)</td></tr>')
+    gap_rows = gap_rows or '<tr><td colspan="5" class="muted ctr">every coupled channel pair carries the same message population — no gaps</td></tr>'
+
+    def valcell(vals):
+        return "<br>".join(
+            f'<span class="mono sm"><b>{esc(clip(ch,28))}</b>: {esc(clip(json.dumps(v, ensure_ascii=False)))}</span>'
+            for ch, v in vals.items())
+    mm_rows = ""
+    for c in conflicts:
+        for r in c["conflicts"]:
+            mm_rows += (f'<tr class="row-bad"><td class="sm">{esc(clip(c["desc"],34))}</td>'
+                        f'<td class="mono sm">{esc(r["path"])}</td>'
+                        f'<td>{valcell(r["vals"])}</td></tr>')
+    mm_rows = mm_rows or '<tr><td colspan="3" class="muted ctr">every coupled message is field-identical across its channels (only transport fields differ)</td></tr>'
+
+    return TEMPLATE.format(
+        url=esc(meta["url"]), target=esc(meta["target"]), object_id=esc(meta["objectId"]),
+        channel_by=esc(meta["channelBy"]), ident=esc(meta["identity"]),
+        filt=esc(meta["filter"]), generated=esc(meta["generated"]), capped=esc(meta["capped"]),
+        n_channels=len(channels), total=total, distinct=len(index), coupled=len(couplings),
+        conflicts=len(conflicts), gap_pairs=len(gaps), total_missing=total_missing,
+        chan_rows=chan_rows, matrix_head=head, matrix_rows=mtx_rows,
+        gap_rows=gap_rows, mm_rows=mm_rows)
+
+
+# sender_of works on a record's flat dict via its underlying element; records
+# don't keep the element, so recompute from the msh paths already flattened.
+def sender_of_rec(rec):
+    flat = rec["flat"]
+    for suffix in (".sendingFacility.namespaceID", ".sendingApplication.namespaceID"):
+        for p, v in flat.items():
+            if p.endswith(suffix) and v:
+                return str(v)
+    return "∅"
+
+
+TEMPLATE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HL7 coupling report</title>
+<style>
+  :root {{ color-scheme: light dark;
+    --bg:#fff; --fg:#1a1a1a; --muted:#6b7280; --card:#f6f7f9; --border:#e2e5ea;
+    --ok:#0a7d33; --okbg:#e6f4ea; --bad:#b42318; --badbg:#fdeceb; --warn:#8a6d00; --warnbg:#fdf4e0;
+    --hot:#1849a9; --hotbg:#e8f0fe; }}
+  @media (prefers-color-scheme: dark) {{ :root {{
+    --bg:#0f1115; --fg:#e6e8eb; --muted:#9aa1ac; --card:#171a20; --border:#272b33;
+    --ok:#4ade80; --okbg:#0f2a18; --bad:#f87171; --badbg:#2a1414; --warn:#fbbf24; --warnbg:#2a2410;
+    --hot:#93c5fd; --hotbg:#122036; }} }}
+  * {{ box-sizing:border-box; }}
+  body {{ margin:0; padding:24px; background:var(--bg); color:var(--fg);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }}
+  h1 {{ font-size:20px; margin:0 0 4px; }} h2 {{ font-size:15px; margin:26px 0 10px; }}
+  .meta {{ color:var(--muted); font-size:12px; margin-bottom:14px; }}
+  .meta code {{ background:var(--card); padding:1px 5px; border-radius:4px; }}
+  .cards {{ display:flex; flex-wrap:wrap; gap:12px; margin-bottom:6px; }}
+  .card {{ background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px 18px; min-width:104px; }}
+  .card .n {{ font-size:26px; font-weight:650; }}
+  .card .l {{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }}
+  .card.ok .n {{ color:var(--ok); }} .card.bad .n {{ color:var(--bad); }} .card.warn .n {{ color:var(--warn); }}
+  .wrap {{ overflow-x:auto; border:1px solid var(--border); border-radius:10px; }}
+  table {{ border-collapse:collapse; width:100%; }}
+  th,td {{ text-align:left; padding:7px 12px; border-bottom:1px solid var(--border); vertical-align:top; }}
+  td {{ font-size:12px; }}
+  th {{ position:sticky; top:0; background:var(--card); font-size:11px; text-transform:uppercase;
+    letter-spacing:.04em; color:var(--muted); }}
+  tr.row-bad td {{ background:var(--badbg); }}
+  tr.row-warn td {{ background:var(--warnbg); }}
+  tr.sub td {{ background:var(--card); font-weight:600; position:sticky; }}
+  .mono {{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }}
+  .sm {{ font-size:12px; }} .num {{ font-variant-numeric:tabular-nums; }}
+  .ctr {{ text-align:center; white-space:nowrap; }} .muted {{ color:var(--muted); }}
+  .bad-fg {{ color:var(--bad); font-weight:650; }}
+  .badge {{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:650; }}
+  .badge.ok {{ background:var(--okbg); color:var(--ok); }}
+  .badge.bad {{ background:var(--badbg); color:var(--bad); }}
+  td.hot {{ color:var(--hot); background:var(--hotbg); font-weight:650; }}
+</style></head><body>
+<h1>HL7 v2 omnibus coupling</h1>
+<div class="meta">
+  <code>{url}</code> &middot; target <code>{target}</code> &middot; object <code>{object_id}</code><br>
+  channel-by <code>{channel_by}</code> &middot; identity <code>{ident}</code> &middot;
+  filter <code>{filt}</code> &middot; generated {generated}{capped}
+</div>
+<div class="cards">
+  <div class="card"><div class="n">{n_channels}</div><div class="l">channels</div></div>
+  <div class="card"><div class="n">{total}</div><div class="l">messages</div></div>
+  <div class="card"><div class="n">{coupled}</div><div class="l">coupled (fanned out)</div></div>
+  <div class="card warn"><div class="n">{gap_pairs}</div><div class="l">pairs w/ gaps</div></div>
+  <div class="card warn"><div class="n">{total_missing}</div><div class="l">missing deliveries</div></div>
+  <div class="card bad"><div class="n">{conflicts}</div><div class="l">content conflicts</div></div>
+</div>
+<div class="meta">Only anomalies are listed below — consistent, fully-mirrored couplings are omitted.</div>
+
+<h2>Channels</h2>
+<div class="wrap"><table>
+<thead><tr><th>channel</th><th class="ctr">messages</th><th class="ctr">distinct</th><th>senders</th></tr></thead>
+<tbody>
+{chan_rows}
+</tbody></table></div>
+
+<h2>Shared-message overlap (fingerprints in common)</h2>
+<div class="wrap"><table>
+<thead><tr><th></th>{matrix_head}</tr></thead>
+<tbody>
+{matrix_rows}
+</tbody></table></div>
+
+<h2>Population gaps &mdash; delivered to one channel but not its coupled partner</h2>
+<div class="wrap"><table>
+<thead><tr><th>message</th><th>control id</th><th>received</th>
+  <th>delivered to</th><th>NOT delivered to</th></tr></thead>
+<tbody>
+{gap_rows}
+</tbody></table></div>
+
+<h2>Content conflicts &mdash; coupled messages that differ on a non-transport field</h2>
+<div class="wrap"><table>
+<thead><tr><th>message</th><th>field</th><th>value per channel</th></tr></thead>
+<tbody>
+{mm_rows}
+</tbody></table></div>
+</body></html>
+"""
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="hl7_coupling", add_help=True,
+                                 description="Find HL7 messages fanned out to multiple channels of one omnibus receiver.")
+    ap.add_argument("--channel-by", default="port", help="port | sender | target, joined with '+'. default port")
+    ap.add_argument("--sender-field", default="sendingFacility",
+                    choices=["sendingFacility", "sendingApplication"],
+                    help="MSH sender field for the 'sender' token (default sendingFacility = MSH-4)")
+    ap.add_argument("--ignore", default=None, help="field-path substrings excluded from the fingerprint (default: MSH transport set)")
+    ap.add_argument("--identity", default=None, help="field-path substrings that DEFINE identity (allow-list; overrides --ignore for matching)")
+    ap.add_argument("--filter", default=None, help="RFC4515 filter (default: last hour by receivedAt)")
+    ap.add_argument("--since", default=None, help="convenience window, e.g. 24h / 7d / 90m")
+    ap.add_argument("--objectId", default="/hl7-v2-receiver/messages", help="collection object id")
+    ap.add_argument("--min-overlap", type=int, default=3, help="min shared messages to consider a channel pair coupled")
+    ap.add_argument("--min-share", type=float, default=0.5,
+                    help="min Jaccard overlap (shared / union of the two channels' messages) for a pair to count as a mirror (0-1). default 0.5")
+    ap.add_argument("--out", default="hl7_coupling_report.html", help="output HTML path")
+    ap.add_argument("--page-size", type=int, default=100)
+    ap.add_argument("--max", type=int, default=0, help="cap messages fetched (0 = all, the default)")
+    args = ap.parse_args()
+
+    zb_url = env("ZB_URL").rstrip("/")
+    ids = [t.strip() for t in (os.environ.get("ZB_TARGET_IDS") or env("ZB_TARGET_ID")).split(",") if t.strip()]
+    tokens = [t.strip() for t in args.channel_by.split("+") if t.strip()]
+    ignore = [s.strip() for s in args.ignore.split(",")] if args.ignore else list(DEFAULT_IGNORE)
+    identity = [s.strip() for s in args.identity.split(",") if s.strip()] if args.identity else None
+
+    headers = {
+        "authorization": f"session {env('ZB_TOKEN')}",
+        "dana-org-id": env("ZB_ORG_ID"),
+        "content-type": "application/json",
+        "accept": "application/json, text/plain, */*",
+        "origin": zb_url,
+    }
+    cookie = env("ZB_COOKIE", required=False)
+    if cookie:
+        headers["cookie"] = cookie
+
+    if args.filter:
+        filt = args.filter
+    else:
+        hours = parse_since(args.since) if args.since else 1
+        filt = f"(receivedAt>={now_iso(-hours)})"
+
+    print(f"draining {args.objectId} from {len(ids)} target(s), filter {filt}, channel-by {args.channel_by}",
+          file=sys.stderr)
+    elements = []
+    for tid in ids:
+        remaining = args.max - len(elements) if args.max > 0 else 0
+        client = Client(f"{zb_url}/api/hub/targets/{tid}", headers)
+        elements.extend(fetch_elements(client, args.objectId, filt, args.page_size, remaining, tid[:8]))
+        if args.max > 0 and len(elements) >= args.max:
+            break
+    capped = args.max > 0 and len(elements) >= args.max
+
+    print(f"analyzing {len(elements)} message(s) …", file=sys.stderr)
+    _, channels, index, skipped = analyze(elements, tokens, args.sender_field, ignore, identity)
+    if skipped:
+        print(f"  --identity: skipped {skipped} message(s) carrying none of the identity fields",
+              file=sys.stderr)
+    couplings = couplings_of(index, ignore)
+    gaps = pair_gaps(channels, args.min_overlap, args.min_share)
+
+    meta = {"url": zb_url, "target": ",".join(ids), "objectId": args.objectId,
+            "channelBy": args.channel_by, "filter": filt, "generated": now_iso(),
+            "identity": (",".join(identity) if identity else f"content − [{','.join(ignore)}]"),
+            "capped": f' &middot; <b>capped at {args.max}</b> (more may match)' if capped else ""}
+    with open(args.out, "w", encoding="utf-8") as f:
+        f.write(render(channels, index, couplings, gaps, meta, args.sender_field))
+
+    conflicts = sum(1 for c in couplings if not c["consistent"])
+    total_missing = sum(len(p["only_a"]) + len(p["only_b"]) for p in gaps)
+    print(f"\nwrote {args.out}: {len(channels)} channels, {len(elements)} messages, "
+          f"{len(index)} distinct, {len(couplings)} coupled, {conflicts} content conflict(s), "
+          f"{len(gaps)} coupled pair(s) with gaps, {total_missing} missing deliveries",
+          file=sys.stderr)
+    sys.exit(1 if (conflicts or total_missing) else 0)
+
+
+if __name__ == "__main__":
+    main()

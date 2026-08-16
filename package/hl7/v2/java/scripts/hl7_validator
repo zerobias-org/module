@@ -1,0 +1,397 @@
+#!/usr/bin/env python3
+"""hl7_validator — search an HL7 v2 DataProducer collection and validate every
+matching message against its registered schema (via the module's ops/validate,
+which checks BOTH reps: the stored element and the form re-materialized from the
+retained raw ER7), then write a self-contained HTML report.
+
+The report is a *reasons rollup*: each distinct failure reason (error text with
+array indices normalized away, so per-observation repeats collapse) gets a code
+Rn, a count of how many messages hit it, and a total occurrence count; each
+message lists the reason codes that applied to it.
+
+Required env:
+  ZB_URL        base platform URL          e.g. https://uat.zerobias.com
+  ZB_TOKEN      session token              (sent as `authorization: session <token>`)
+  ZB_ORG_ID     dana org id                (sent as `dana-org-id`)
+  ZB_TARGET_ID  hub target (module) id
+
+Optional env:
+  ZB_COOKIE     raw Cookie header value    (for targets behind Cloudflare/WAF)
+
+Options:
+  --filter=<rfc4515>   RFC4515 filter over the collection.
+                       default: (receivedAt>=<now-1h, ISO-8601 UTC>)
+  --since=<Nh|Nd>      convenience: sets the default filter to receivedAt>=now-N
+                       (ignored if --filter is given).  e.g. --since=24h
+  --objectId=<path>    collection to search.  default: /hl7-v2-receiver/messages
+  --out=<file>         report path.           default: hl7_validation_report.html
+  --page-size=<n>      elements per page.     default: 50
+  --max=<n>            cap messages examined. default: 500
+
+Exit status is non-zero when any message failed validation (useful in CI).
+"""
+
+import argparse
+import html
+import json
+import os
+import re
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+from urllib import error, request
+
+VALIDATE_FN = "/hl7-v2-receiver/ops/validate"
+_INDEX = re.compile(r"\[\d+\]")
+
+
+def die(msg):
+    print(f"hl7_validator: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def env(name, required=True):
+    val = os.environ.get(name)
+    if required and not val:
+        die(f"missing required env var {name}")
+    return val
+
+
+def now_iso(offset_hours=0):
+    return (datetime.now(timezone.utc) + timedelta(hours=offset_hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_since(spec):
+    """'24h' / '2d' / '90m' -> hours (float)."""
+    m = re.fullmatch(r"(\d+)([hdm])", spec.strip().lower())
+    if not m:
+        die(f"--since must look like 24h / 2d / 90m, got {spec!r}")
+    n, unit = int(m.group(1)), m.group(2)
+    return n * {"h": 1, "d": 24, "m": 1 / 60}[unit]
+
+
+class Client:
+    """Thin wrapper over the Hub RPC envelope: PUT {base}/{method} with a JSON body."""
+
+    def __init__(self, base, headers):
+        self.base = base
+        self.headers = headers
+
+    def call(self, method, body):
+        data = json.dumps(body).encode()
+        last = None
+        for _ in range(4):   # retry transient network/SSL timeouts
+            req = request.Request(f"{self.base}/{method}", data=data,
+                                  headers=self.headers, method="PUT")
+            try:
+                with request.urlopen(req, timeout=45) as resp:
+                    return json.loads(resp.read().decode())
+            except error.HTTPError as e:
+                detail = e.read().decode(errors="replace")[:400]
+                die(f"HTTP {e.code} from {method}: {detail}")
+            except (error.URLError, TimeoutError) as e:
+                last = e
+        die(f"connection error calling {method} after retries: {getattr(last, 'reason', last)}")
+
+
+def fetch_elements(client, object_id, filt, page_size, cap):
+    out = []
+    page = 1
+    while len(out) < cap:
+        res = client.call("getCollectionElements",
+                          {"objectId": object_id, "filter": filt,
+                           "pageNumber": page, "pageSize": page_size})
+        batch = res if isinstance(res, list) else res.get("items", [])
+        if not batch:
+            break
+        out.extend(batch)
+        print(f"  page {page}: +{len(batch)} (total {len(out)})", file=sys.stderr)
+        if len(batch) < page_size:
+            break
+        page += 1
+    return out[:cap]
+
+
+def parse_schema_id(sid):
+    """schema:table:hl7v2.v251.ORU_R01 -> ('ORU_R01', '2.5.1').  Non-table ids -> (None, None)."""
+    if not sid:
+        return (None, None)
+    m = re.match(r"schema:table:hl7v2\.v(\d+)\.(.+)$", sid)
+    if not m:
+        return (None, None)
+    digits, struct = m.group(1), m.group(2)
+    ver = digits[0] + ("." + ".".join(digits[1:]) if len(digits) > 1 else "")
+    return (struct, ver)
+
+
+def msh_fallback(element):
+    """MSG type + HL7 version from MSH, for rows whose schema id isn't a table schema.
+    Bean names vary by version (v2.3 messageType vs v2.4+ messageCode/messageStructure)."""
+    msh = element.get("msh")
+    if isinstance(msh, list):
+        msh = msh[0] if msh else None
+    msh = msh or {}
+    mt = msh.get("messageType") or {}
+    code = mt.get("messageCode") or mt.get("messageType")
+    struct = mt.get("messageStructure") or ("^".join(p for p in (code, mt.get("triggerEvent")) if p) or None)
+    ver = msh.get("versionID")
+    return struct, (ver.get("versionID") if isinstance(ver, dict) else ver)
+
+
+def validate_one(client, element):
+    row = {
+        "controlId": element.get("controlId"),
+        "receivedAt": element.get("receivedAt"),
+        "status": element.get("status"),
+        "sourcePort": element.get("sourcePort"),
+    }
+    fb_struct, fb_ver = msh_fallback(element)
+    cid = row["controlId"]
+    if not cid:
+        row["note"] = "element has no controlId; cannot validate"
+        row["msgType"], row["hl7Version"] = fb_struct, fb_ver
+        return row
+    v = client.call("invokeFunction", {"objectId": VALIDATE_FN, "requestBody": {"elementKey": cid}})
+    stored = v.get("stored") or {}
+    remat = v.get("rematerialized") or {}
+    row.update(
+        schemaId=v.get("schemaId"),
+        valid=bool(stored.get("valid")),
+        errors=stored.get("errors") or [],
+        rematValid=remat.get("valid"),
+        repsAgree=v.get("repsAgree"),
+    )
+    struct, ver = parse_schema_id(row["schemaId"])
+    row["msgType"] = struct or fb_struct
+    row["hl7Version"] = ver or fb_ver
+    return row
+
+
+# --- aggregation ----------------------------------------------------------
+
+def normalize(err):
+    """Collapse a specific error into a reason: drop array indices (obx[0], obx[12] → obx[])."""
+    return _INDEX.sub("[]", err)
+
+
+def aggregate(results):
+    """Attach reason codes to each message; return the reason catalog (code, text, #msgs, #occ)."""
+    registry = {}  # reason -> {"msgs": set, "occ": int}
+    for r in results:
+        cid = r.get("controlId")
+        reasons = set()
+        for e in (r.get("errors") or []):
+            reason = normalize(e)
+            info = registry.setdefault(reason, {"msgs": set(), "occ": 0})
+            info["occ"] += 1
+            info["msgs"].add(cid)
+            reasons.add(reason)
+        r["_reasons"] = reasons
+    ordered = sorted(registry.items(), key=lambda kv: (-len(kv[1]["msgs"]), -kv[1]["occ"], kv[0]))
+    code_of, catalog = {}, []
+    for i, (reason, info) in enumerate(ordered, 1):
+        code = f"R{i}"
+        code_of[reason] = code
+        catalog.append({"code": code, "text": reason,
+                        "msgs": len(info["msgs"]), "occ": info["occ"]})
+    for r in results:
+        r["_codes"] = sorted((code_of[x] for x in r.get("_reasons", ())), key=lambda c: int(c[1:]))
+    return catalog
+
+
+# --- HTML report ----------------------------------------------------------
+
+def esc(x):
+    return html.escape("" if x is None else str(x))
+
+
+def render(results, catalog, meta):
+    total = len(results)
+    valid = sum(1 for r in results if r.get("valid"))
+    skipped = sum(1 for r in results if "note" in r)
+    invalid = total - valid - skipped
+    disagree = sum(1 for r in results if r.get("repsAgree") is False)
+    pct = (valid / total * 100) if total else 0
+
+    reason_rows = "\n".join(
+        f'<tr id="{c["code"]}"><td class="mono">{c["code"]}</td>'
+        f'<td class="ctr num">{c["msgs"]}</td><td class="ctr num">{c["occ"]}</td>'
+        f'<td class="mono sm">{esc(c["text"])}</td></tr>'
+        for c in catalog) or '<tr><td colspan="4" class="muted ctr">no failures</td></tr>'
+
+    def chips(r):
+        if "note" in r:
+            return f'<span class="muted">{esc(r["note"])}</span>'
+        if r.get("valid"):
+            return '<span class="chip ok">clean</span>'
+        text_of = {c["code"]: c["text"] for c in catalog}
+        return " ".join(f'<a class="chip bad" href="#{code}" title="{esc(text_of.get(code, ""))}">{code}</a>'
+                        for code in r.get("_codes", []))
+
+    def verdict(r):
+        if "note" in r:
+            return '<span class="badge warn">SKIP</span>'
+        return ('<span class="badge ok">VALID</span>' if r.get("valid")
+                else '<span class="badge bad">INVALID</span>')
+
+    msg_rows = "\n".join(
+        f'<tr class="{"row-bad" if r.get("valid") is False and "note" not in r else ""}">'
+        f'<td class="mono">{esc(r.get("controlId"))}</td>'
+        f'<td class="mono sm">{esc(r.get("msgType"))}</td>'
+        f'<td class="ctr sm num">{esc(r.get("hl7Version"))}</td>'
+        f'<td class="sm">{esc(r.get("sourcePort"))}</td>'
+        f'<td class="sm">{esc(r.get("receivedAt"))}</td>'
+        f'<td class="ctr">{verdict(r)}</td>'
+        f'<td class="ctr">{"—" if r.get("repsAgree") is None else ("✓" if r.get("repsAgree") else "✗")}</td>'
+        f'<td>{chips(r)}</td></tr>'
+        for r in results) or '<tr><td colspan="8" class="muted ctr">no messages matched</td></tr>'
+
+    return TEMPLATE.format(
+        url=esc(meta["url"]), target=esc(meta["target"]), object_id=esc(meta["objectId"]),
+        filt=esc(meta["filter"]), generated=esc(meta["generated"]), capped=esc(meta["capped"]),
+        total=total, valid=valid, invalid=invalid, skipped=skipped,
+        reasons=len(catalog), disagree=disagree, pct=f"{pct:.1f}",
+        reason_rows=reason_rows, msg_rows=msg_rows)
+
+
+TEMPLATE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HL7 validation rollup</title>
+<style>
+  :root {{ color-scheme: light dark;
+    --bg:#fff; --fg:#1a1a1a; --muted:#6b7280; --card:#f6f7f9; --border:#e2e5ea;
+    --ok:#0a7d33; --okbg:#e6f4ea; --bad:#b42318; --badbg:#fdeceb; --warn:#8a6d00; --warnbg:#fdf4e0; }}
+  @media (prefers-color-scheme: dark) {{ :root {{
+    --bg:#0f1115; --fg:#e6e8eb; --muted:#9aa1ac; --card:#171a20; --border:#272b33;
+    --ok:#4ade80; --okbg:#0f2a18; --bad:#f87171; --badbg:#2a1414; --warn:#fbbf24; --warnbg:#2a2410; }} }}
+  * {{ box-sizing:border-box; }}
+  body {{ margin:0; padding:24px; background:var(--bg); color:var(--fg);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }}
+  h1 {{ font-size:20px; margin:0 0 4px; }} h2 {{ font-size:15px; margin:26px 0 10px; }}
+  .meta {{ color:var(--muted); font-size:12px; margin-bottom:20px; }}
+  .meta code {{ background:var(--card); padding:1px 5px; border-radius:4px; }}
+  .cards {{ display:flex; flex-wrap:wrap; gap:12px; }}
+  .card {{ background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px 18px; min-width:104px; }}
+  .card .n {{ font-size:26px; font-weight:650; }}
+  .card .l {{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }}
+  .card.ok .n {{ color:var(--ok); }} .card.bad .n {{ color:var(--bad); }} .card.warn .n {{ color:var(--warn); }}
+  .wrap {{ overflow-x:auto; border:1px solid var(--border); border-radius:10px; }}
+  table {{ border-collapse:collapse; width:100%; }}
+  th,td {{ text-align:left; padding:7px 12px; border-bottom:1px solid var(--border); vertical-align:top; }}
+  td {{ font-size:12px; }}   /* uniform row typography */
+  th {{ position:sticky; top:0; background:var(--card); font-size:11px; text-transform:uppercase;
+    letter-spacing:.04em; color:var(--muted); }}
+  tr.row-bad td {{ background:var(--badbg); }}
+  tr:target td {{ background:var(--warnbg); }}
+  .mono {{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }}
+  .sm {{ font-size:12px; }} .num {{ font-variant-numeric:tabular-nums; }}
+  .ctr {{ text-align:center; white-space:nowrap; }} .muted {{ color:var(--muted); }}
+  .badge {{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:650; }}
+  .badge.ok {{ background:var(--okbg); color:var(--ok); }}
+  .badge.bad {{ background:var(--badbg); color:var(--bad); }}
+  .badge.warn {{ background:var(--warnbg); color:var(--warn); }}
+  .chip {{ display:inline-block; padding:1px 7px; margin:1px; border-radius:6px; font-size:11px;
+    font-family:ui-monospace,monospace; text-decoration:none; }}
+  .chip.bad {{ background:var(--badbg); color:var(--bad); }}
+  .chip.ok {{ background:var(--okbg); color:var(--ok); }}
+</style></head><body>
+<h1>HL7 v2 validation rollup</h1>
+<div class="meta">
+  <code>{url}</code> &middot; target <code>{target}</code> &middot; object <code>{object_id}</code><br>
+  filter <code>{filt}</code> &middot; generated {generated}{capped}
+</div>
+<div class="cards">
+  <div class="card"><div class="n">{total}</div><div class="l">messages</div></div>
+  <div class="card ok"><div class="n">{valid}</div><div class="l">valid ({pct}%)</div></div>
+  <div class="card bad"><div class="n">{invalid}</div><div class="l">invalid</div></div>
+  <div class="card"><div class="n">{reasons}</div><div class="l">distinct reasons</div></div>
+  <div class="card warn"><div class="n">{disagree}</div><div class="l">reps differ</div></div>
+  <div class="card"><div class="n">{skipped}</div><div class="l">skipped</div></div>
+</div>
+
+<h2>Reasons &mdash; by messages affected</h2>
+<div class="wrap"><table>
+<thead><tr><th>code</th><th class="ctr">messages</th><th class="ctr">occurrences</th><th>reason</th></tr></thead>
+<tbody>
+{reason_rows}
+</tbody></table></div>
+
+<h2>Messages</h2>
+<div class="wrap"><table>
+<thead><tr><th>control id</th><th>MSG</th><th class="ctr">HL7</th><th>recv port</th><th>received</th>
+  <th class="ctr">verdict</th><th class="ctr">reps</th><th>reasons</th></tr></thead>
+<tbody>
+{msg_rows}
+</tbody></table></div>
+</body></html>
+"""
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="hl7_validator", add_help=True,
+                                 description="Validate HL7 v2 DataProducer messages into an HTML reasons rollup.")
+    ap.add_argument("--filter", default=None, help="RFC4515 filter (default: last hour by receivedAt)")
+    ap.add_argument("--since", default=None, help="convenience window, e.g. 24h / 2d / 90m")
+    ap.add_argument("--objectId", default="/hl7-v2-receiver/messages", help="collection object id")
+    ap.add_argument("--out", default="hl7_validation_report.html", help="output HTML path")
+    ap.add_argument("--page-size", type=int, default=50)
+    ap.add_argument("--max", type=int, default=500)
+    ap.add_argument("--concurrency", type=int, default=8, help="parallel validate calls")
+    args = ap.parse_args()
+
+    zb_url = env("ZB_URL").rstrip("/")
+    base = f"{zb_url}/api/hub/targets/{env('ZB_TARGET_ID')}"
+    headers = {
+        "authorization": f"session {env('ZB_TOKEN')}",
+        "dana-org-id": env("ZB_ORG_ID"),
+        "content-type": "application/json",
+        "accept": "application/json, text/plain, */*",
+        "origin": zb_url,
+    }
+    cookie = env("ZB_COOKIE", required=False)
+    if cookie:
+        headers["cookie"] = cookie
+
+    if args.filter:
+        filt = args.filter
+    else:
+        hours = parse_since(args.since) if args.since else 1
+        filt = f"(receivedAt>={now_iso(-hours)})"
+
+    client = Client(base, headers)
+    print(f"searching {args.objectId} with filter {filt}", file=sys.stderr)
+    elements = fetch_elements(client, args.objectId, filt, args.page_size, args.max)
+    capped = len(elements) >= args.max
+    print(f"validating {len(elements)} message(s) via {VALIDATE_FN} …", file=sys.stderr)
+
+    done = [0]
+    lock = threading.Lock()
+
+    def work(el):
+        row = validate_one(client, el)
+        with lock:
+            done[0] += 1
+            if done[0] % 25 == 0 or done[0] == len(elements):
+                print(f"  validated {done[0]}/{len(elements)}", file=sys.stderr)
+        return row
+
+    workers = max(1, min(args.concurrency, len(elements) or 1))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(work, elements))   # order preserved
+
+    catalog = aggregate(results)
+    meta = {"url": zb_url, "target": os.environ["ZB_TARGET_ID"], "objectId": args.objectId,
+            "filter": filt, "generated": now_iso(),
+            "capped": f' &middot; <b>capped at {args.max}</b> (more may match)' if capped else ""}
+    with open(args.out, "w", encoding="utf-8") as f:
+        f.write(render(results, catalog, meta))
+
+    invalid = sum(1 for r in results if r.get("valid") is False and "note" not in r)
+    print(f"\nwrote {args.out}: {len(results)} message(s), {len(results) - invalid} valid, "
+          f"{invalid} invalid, {len(catalog)} distinct reasons", file=sys.stderr)
+    sys.exit(1 if invalid else 0)
+
+
+if __name__ == "__main__":
+    main()

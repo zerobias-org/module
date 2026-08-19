@@ -1,0 +1,342 @@
+openapi: 3.0.3
+info:
+  version: 0.0.0
+  title: '@zerobias-org/module-microsoft-azure-azureresourcegraph'
+  description: Azure Resource Graph
+  x-impl-name: azureresourcegraph
+  x-product-infos:
+    # Array of external references to Products (versions of products) involved in the module.
+    - $ref: "./node_modules/@zerobias-org/product-microsoft-azure-azureresourcegraph/catalog.yml#/Product"
+tags:
+  - name: resource
+    description: Azure resource inventory operations (Azure Resource Graph `Resources` table)
+  - name: resourceContainer
+    description: Azure resource container operations — subscriptions, resource groups and management groups (Azure Resource Graph `ResourceContainers` table)
+components:
+  parameters:
+    pageSizeParam:
+      $ref: "./node_modules/@zerobias-org/types-core/schema/pageSizeParam.yml"
+    pageTokenParam:
+      $ref: "./node_modules/@zerobias-org/types-core/schema/pageTokenParam.yml"
+    subscriptionIdsParam:
+      name: subscriptionIds
+      in: query
+      required: false
+      description: >-
+        Optional list of Azure subscription IDs to scope the query to.
+        When omitted (and managementGroupIds is also omitted) the query runs
+        at tenant scope and returns everything the service principal can read.
+      schema:
+        type: array
+        items:
+          type: string
+    managementGroupIdsParam:
+      name: managementGroupIds
+      in: query
+      required: false
+      description: >-
+        Optional list of Azure management group IDs to scope the query to.
+        When omitted (and subscriptionIds is also omitted) the query runs
+        at tenant scope and returns everything the service principal can read.
+      schema:
+        type: array
+        items:
+          type: string
+  headers:
+    pagedLinkHeader:
+      $ref: "./node_modules/@zerobias-org/types-core/schema/pagedLinkHeader.yml"
+  securitySchemes:
+    oauth-client-credentials:
+      type: oauth2
+      description: >-
+        Azure AD (Microsoft Entra ID) OAuth2 client-credentials flow. The module
+        exchanges the connection profile's directoryId (tenant), client_id and
+        client_secret for a bearer token at
+        https://login.microsoftonline.com/{directoryId}/oauth2/v2.0/token and calls
+        Azure Resource Manager with it. The service principal needs the Azure RBAC
+        Reader role at subscription or management-group scope; Azure Resource Graph
+        silently omits rows the principal cannot read.
+      flows:
+        clientCredentials:
+          tokenUrl: https://login.microsoftonline.com/organizations/oauth2/v2.0/token
+          scopes:
+            https://management.azure.com/.default: Call Azure Resource Manager APIs as the service principal
+  schemas:
+    Resource:
+      type: object
+      description: >-
+        An Azure resource row from the Azure Resource Graph `Resources` table
+        (resultFormat objectArray). Property names map 1:1 to the ARG column names.
+      required:
+        - id
+        - name
+        - type
+      properties:
+        id:
+          type: string
+          description: Full Azure Resource Manager ID of the resource. Maps to ARG column `id`.
+        name:
+          type: string
+          description: Resource name. Maps to ARG column `name`.
+        type:
+          type: string
+          description: >-
+            Azure resource type, e.g. `microsoft.compute/virtualmachines`.
+            Maps to ARG column `type`. Carried downstream as the `assetType`
+            discriminator on the base `Asset` interface.
+        tenantId:
+          type: string
+          description: Azure AD tenant ID that owns the resource. Maps to ARG column `tenantId`.
+        kind:
+          type: string
+          description: Resource kind qualifier (resource-type specific). Maps to ARG column `kind`.
+        location:
+          type: string
+          description: Azure region the resource lives in. Maps to ARG column `location`.
+        resourceGroup:
+          type: string
+          description: Name of the resource group containing the resource. Maps to ARG column `resourceGroup`.
+        subscriptionId:
+          type: string
+          description: ID of the subscription containing the resource. Maps to ARG column `subscriptionId`.
+        managedBy:
+          type: string
+          description: ID of the resource managing this resource, when applicable. Maps to ARG column `managedBy`.
+        sku:
+          $ref: '#/components/schemas/ResourceSku'
+        plan:
+          $ref: '#/components/schemas/ResourcePlan'
+        identity:
+          $ref: '#/components/schemas/ResourceIdentity'
+        extendedLocation:
+          $ref: '#/components/schemas/ExtendedLocation'
+        zones:
+          type: array
+          description: Availability zones of the resource. Maps to ARG column `zones`.
+          items:
+            type: string
+        properties:
+          type: object
+          description: >-
+            Resource-type-specific property bag as returned by ARG column
+            `properties`. Shape varies per resource type; passed through unmodified.
+          additionalProperties: true
+        tags:
+          type: object
+          description: Azure resource tags (key/value). Maps to ARG column `tags`.
+          additionalProperties:
+            type: string
+    ResourceSku:
+      type: object
+      description: SKU of a resource as returned in the ARG `sku` column.
+      properties:
+        name:
+          type: string
+          description: SKU name. Maps to `sku.name`.
+        tier:
+          type: string
+          description: SKU tier. Maps to `sku.tier`.
+        size:
+          type: string
+          description: SKU size. Maps to `sku.size`.
+        family:
+          type: string
+          description: SKU family. Maps to `sku.family`.
+        capacity:
+          type: integer
+          description: SKU capacity. Maps to `sku.capacity`.
+    ResourcePlan:
+      type: object
+      description: Marketplace plan of a resource as returned in the ARG `plan` column.
+      properties:
+        name:
+          type: string
+          description: Plan name. Maps to `plan.name`.
+        publisher:
+          type: string
+          description: Plan publisher. Maps to `plan.publisher`.
+        product:
+          type: string
+          description: Plan product. Maps to `plan.product`.
+        promotionCode:
+          type: string
+          description: Plan promotion code. Maps to `plan.promotionCode`.
+        version:
+          type: string
+          description: Plan version. Maps to `plan.version`.
+    ResourceIdentity:
+      type: object
+      description: Managed identity of a resource as returned in the ARG `identity` column.
+      properties:
+        type:
+          type: string
+          description: Managed identity type (e.g. `SystemAssigned`, `UserAssigned`). Maps to `identity.type`.
+        principalId:
+          type: string
+          description: Principal ID of the system-assigned identity. Maps to `identity.principalId`.
+        tenantId:
+          type: string
+          description: Tenant ID of the system-assigned identity. Maps to `identity.tenantId`.
+        userAssignedIdentities:
+          type: object
+          description: >-
+            Map of user-assigned identity resource IDs to their principal/client IDs.
+            Maps to `identity.userAssignedIdentities`; passed through unmodified.
+          additionalProperties: true
+    ExtendedLocation:
+      type: object
+      description: Extended location of a resource as returned in the ARG `extendedLocation` column.
+      properties:
+        name:
+          type: string
+          description: Extended location name. Maps to `extendedLocation.name`.
+        type:
+          type: string
+          description: Extended location type (e.g. `EdgeZone`). Maps to `extendedLocation.type`.
+    ResourceContainer:
+      type: object
+      description: >-
+        A container row from the Azure Resource Graph `ResourceContainers` table —
+        a subscription (`microsoft.resources/subscriptions`), a resource group
+        (`microsoft.resources/subscriptions/resourcegroups`) or a management group
+        (`microsoft.management/managementgroups`). Property names map 1:1 to the
+        ARG column names.
+      required:
+        - id
+        - name
+        - type
+      properties:
+        id:
+          type: string
+          description: Full Azure Resource Manager ID of the container. Maps to ARG column `id`.
+        name:
+          type: string
+          description: Container name (display name for subscriptions and management groups). Maps to ARG column `name`.
+        type:
+          type: string
+          description: >-
+            Container type — `microsoft.resources/subscriptions`,
+            `microsoft.resources/subscriptions/resourcegroups` or
+            `microsoft.management/managementgroups`. Maps to ARG column `type`.
+        tenantId:
+          type: string
+          description: Azure AD tenant ID that owns the container. Maps to ARG column `tenantId`.
+        location:
+          type: string
+          description: Azure region of the container, when applicable (resource groups). Maps to ARG column `location`.
+        subscriptionId:
+          type: string
+          description: ID of the owning subscription, when applicable. Maps to ARG column `subscriptionId`.
+        resourceGroup:
+          type: string
+          description: Resource group name, populated for resource group rows. Maps to ARG column `resourceGroup`.
+        properties:
+          type: object
+          description: >-
+            Container-type-specific property bag as returned by ARG column
+            `properties` (e.g. subscription state, management group details);
+            passed through unmodified.
+          additionalProperties: true
+        tags:
+          type: object
+          description: Azure tags on the container (key/value). Maps to ARG column `tags`.
+          additionalProperties:
+            type: string
+paths:
+  # ---- DataProducer interface paths ----
+  # Referenced from the BUNDLED spec of @zerobias-org/module-interface-dataproducer
+  # (same pattern as package/hl7/v2/api.yml). All 15 interface paths are wired so
+  # all six producer APIs (Objects/Collections/Documents/Functions/Binary/Schemas)
+  # generate; ARG is read-only, so every write/upload/bulk operation throws.
+  /objects:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects'
+  /objects/{objectId}:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}'
+  /objects/{objectId}/children:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1children'
+  /objects/{objectId}/search:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1search'
+  /objects/{objectId}/searchChildren:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1searchChildren'
+  /objects/{objectId}/collection/elements:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1elements'
+  /objects/{objectId}/collection/bulk:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1bulk'
+  /objects/{objectId}/collection/elements/{elementKey}:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1elements~1{elementKey}'
+  /objects/{objectId}/collection/search:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1search'
+  /objects/{objectId}/invoke:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1invoke'
+  /objects/{objectId}/upload:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1upload'
+  /objects/{objectId}/document:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1document'
+  /objects/{objectId}/download:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1download'
+  /objects/{objectId}/validate:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1validate'
+  /schemas/{schemaId}:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1schemas~1{schemaId}'
+  # ---- Module-native paths ----
+  /resources:
+    get:
+      tags:
+        - resource
+      operationId: listResources
+      x-method-name: list
+      summary: Retrieve resources
+      description: >-
+        Retrieve Azure resources from the Azure Resource Graph `Resources` table
+        (POST https://management.azure.com/providers/Microsoft.ResourceGraph/resources,
+        api-version 2024-04-01, resultFormat objectArray). Runs at tenant scope by
+        default; pass subscriptionIds and/or managementGroupIds to narrow the scope.
+        Pagination is cursor-based via the ARG `$skipToken`.
+      parameters:
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/pageTokenParam'
+        - $ref: '#/components/parameters/subscriptionIdsParam'
+        - $ref: '#/components/parameters/managementGroupIdsParam'
+      responses:
+        '200':
+          description: List of resources
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Resource'
+  /resourceContainers:
+    get:
+      tags:
+        - resourceContainer
+      operationId: listResourceContainers
+      x-method-name: list
+      summary: Retrieve resource containers
+      description: >-
+        Retrieve subscriptions, resource groups and management groups from the
+        Azure Resource Graph `ResourceContainers` table
+        (POST https://management.azure.com/providers/Microsoft.ResourceGraph/resources,
+        api-version 2024-04-01, resultFormat objectArray). Runs at tenant scope by
+        default; pass subscriptionIds and/or managementGroupIds to narrow the scope.
+        Pagination is cursor-based via the ARG `$skipToken`.
+      parameters:
+        - $ref: '#/components/parameters/pageSizeParam'
+        - $ref: '#/components/parameters/pageTokenParam'
+        - $ref: '#/components/parameters/subscriptionIdsParam'
+        - $ref: '#/components/parameters/managementGroupIdsParam'
+      responses:
+        '200':
+          description: List of resource containers
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResourceContainer'

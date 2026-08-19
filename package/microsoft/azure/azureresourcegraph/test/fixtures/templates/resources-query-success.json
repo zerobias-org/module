@@ -1,0 +1,67 @@
+{
+  "totalRecords": 3,
+  "count": 3,
+  "data": [
+    {
+      "id": "/subscriptions/aaaa1111-bbbb-2222-cccc-333344445555/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-web-01",
+      "name": "vm-web-01",
+      "type": "microsoft.compute/virtualmachines",
+      "tenantId": "00000000-1111-2222-3333-444444444444",
+      "kind": "",
+      "location": "eastus",
+      "resourceGroup": "rg-prod",
+      "subscriptionId": "aaaa1111-bbbb-2222-cccc-333344445555",
+      "managedBy": "",
+      "sku": null,
+      "plan": null,
+      "identity": {
+        "type": "SystemAssigned",
+        "principalId": "99999999-8888-7777-6666-555544443333",
+        "tenantId": "00000000-1111-2222-3333-444444444444"
+      },
+      "zones": ["1"],
+      "extendedLocation": null,
+      "properties": {
+        "provisioningState": "Succeeded",
+        "hardwareProfile": { "vmSize": "Standard_D2s_v3" }
+      },
+      "tags": { "env": "prod", "owner": "platform" }
+    },
+    {
+      "id": "/subscriptions/aaaa1111-bbbb-2222-cccc-333344445555/resourceGroups/rg-prod/providers/Microsoft.Storage/storageAccounts/stprodartifacts",
+      "name": "stprodartifacts",
+      "type": "microsoft.storage/storageaccounts",
+      "tenantId": "00000000-1111-2222-3333-444444444444",
+      "kind": "StorageV2",
+      "location": "eastus",
+      "resourceGroup": "rg-prod",
+      "subscriptionId": "aaaa1111-bbbb-2222-cccc-333344445555",
+      "managedBy": null,
+      "sku": { "name": "Standard_LRS", "tier": "Standard" },
+      "plan": null,
+      "identity": null,
+      "zones": null,
+      "extendedLocation": null,
+      "properties": { "provisioningState": "Succeeded" },
+      "tags": {}
+    },
+    {
+      "id": "/subscriptions/aaaa1111-bbbb-2222-cccc-333344445555/resourceGroups/rg-net/providers/Microsoft.Network/virtualNetworks/vnet-hub",
+      "name": "vnet-hub",
+      "type": "microsoft.network/virtualnetworks",
+      "tenantId": "00000000-1111-2222-3333-444444444444",
+      "kind": "",
+      "location": "eastus",
+      "resourceGroup": "rg-net",
+      "subscriptionId": "aaaa1111-bbbb-2222-cccc-333344445555",
+      "managedBy": null,
+      "sku": null,
+      "plan": null,
+      "identity": null,
+      "zones": null,
+      "extendedLocation": null,
+      "properties": { "addressSpace": { "addressPrefixes": ["10.0.0.0/16"] } },
+      "tags": null
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "name": "@zerobias-org/module-microsoft-azure-azureresourcegraph",
+  "version": "0.0.0",
+  "description": "Azure Resource Graph",
+  "type": "module",
+  "moduleId": "255c7fd5-d08c-427b-aca9-643c673be5d6",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "clean": "rm -rf build/ dist/ generated/ hub-sdk/generated hub-sdk/dist hub-sdk/tsconfig.json module-microsoft-azure-azureresourcegraph.yml full.yml"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zerobias-org/module",
+    "directory": "package/microsoft/azure/azureresourcegraph"
+  },
+  "license": "UNLICENSED",
+  "author": "joe@runningbulltech.com",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": [
+    "dist",
+    "generated/api/manifest.json",
+    "api.yml",
+    "connectionProfile.yml",
+    "connectionState.yml"
+  ],
+  "zerobias": {
+    "package": "microsoft.azure.azureresourcegraph.module",
+    "dataloader-version": "1.0.0",
+    "import-artifact": "module"
+  },
+  "overrides": {
+    "diff": ">=8.0.3",
+    "serialize-javascript": ">=7.0.3",
+    "@zerobias-org/util-connector": {
+      "@zerobias-org/types-core": "^2.0.1",
+      "@zerobias-org/types-core-js": "^2.0.3"
+    },
+    "@zerobias-org/util-hub-module-utils": {
+      "@zerobias-org/types-core": "^2.0.1",
+      "@zerobias-org/types-core-js": "^2.0.3"
+    },
+    "@zerobias-org/util-api-client-base": {
+      "@zerobias-org/types-core": "^2.0.1",
+      "@zerobias-org/types-core-js": "^2.0.3"
+    },
+    "@zerobias-org/data-utils": {
+      "@zerobias-org/types-core": "^2.0.1",
+      "@zerobias-org/types-core-js": "^2.0.3"
+    }
+  },
+  "dependencies": {
+    "@zerobias-org/product-microsoft-azure-azureresourcegraph": "latest",
+    "@zerobias-org/data-utils": "^2.1.7",
+    "@zerobias-org/module-interface-dataproducer": "^2.2.1",
+    "@zerobias-org/logger": "^3.0.9",
+    "@zerobias-org/util-connector": "^1.0.40",
+    "@zerobias-org/util-hub-module-utils": "^2.0.50",
+    "axios": "1.19.0"
+  },
+  "peerDependencies": {
+    "@zerobias-org/types-core": "^2.0.1",
+    "@zerobias-org/types-core-js": "^2.0.3"
+  },
+  "devDependencies": {
+    "@types/chai": "4.3.20",
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.19.17",
+    "@zerobias-org/eslint-config": "1.0.36",
+    "@zerobias-org/module-test-client": "1.0.3",
+    "@zerobias-org/util-api-client-base": "^1.0.44",
+    "@zerobias-org/util-codegen": "^2.0.55",
+    "@redocly/cli": "2.29.0",
+    "chai": "4.5.0",
+    "mocha": "11.7.5",
+    "nock": "14.0.12",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3"
+  }
+}

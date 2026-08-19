@@ -1,0 +1,21 @@
+type: object
+title: ConnectionProfile
+description: >-
+  Connection profile for Azure Resource Graph. Authenticates via the Azure AD
+  (Microsoft Entra ID) OAuth2 client-credentials grant: the module exchanges
+  directoryId (tenant) + client_id + client_secret for a bearer token with
+  audience https://management.azure.com/.default. The service principal needs
+  the Azure RBAC Reader role at subscription or management-group scope.
+allOf:
+  - $ref: './node_modules/@zerobias-org/types-core/schema/oauthClientProfile.yml'
+  - type: object
+    required:
+      - directoryId
+    properties:
+      directoryId:
+        type: string
+        description: >-
+          Azure AD (Microsoft Entra ID) directory (tenant) ID the service
+          principal lives in. Used as the tenant segment of the token endpoint
+          https://login.microsoftonline.com/{directoryId}/oauth2/v2.0/token.
+        example: 72f988bf-86f1-41af-91ab-2d7cd011db47

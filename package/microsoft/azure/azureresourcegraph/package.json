@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-microsoft-azure-azureresourcegraph",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Azure Resource Graph",
   "type": "module",
   "moduleId": "255c7fd5-d08c-427b-aca9-643c673be5d6",

@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@zerobias-org/product-zerobias-zerobias": "latest",
-    "@zerobias-org/util-connector": "^1.0.40",
+    "@zerobias-org/util-connector": "^2.0.4",
     "axios": "^1.19.0"
   },
   "peerDependencies": {

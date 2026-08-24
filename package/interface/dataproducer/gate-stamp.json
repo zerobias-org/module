@@ -1,5 +1,5 @@
 {
-  "version": "2.2.5-uat.0",
+  "version": "2.2.6",
   "branch": "refactor/dataproducer-object-rename",
   "sourceHash": "6f40766b5c0117b1f7f8a5615a93e3637de6d9bde581dfa8b67c373bafaccef1",
   "testHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",

@@ -21,7 +21,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Object'
+                $ref: '#/components/schemas/DataProducerObject'
   /objects/{objectId}:
     get:
       tags:
@@ -37,7 +37,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Object'
+                $ref: '#/components/schemas/DataProducerObject'
   /objects/{objectId}/children:
     post:
       tags:
@@ -60,7 +60,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Object'
+                $ref: '#/components/schemas/DataProducerObject'
     get:
       tags:
         - objects
@@ -109,7 +109,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Object'
+                  $ref: '#/components/schemas/DataProducerObject'
     put:
       tags:
         - objects
@@ -135,7 +135,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Object'
+                $ref: '#/components/schemas/DataProducerObject'
     delete:
       tags:
         - objects
@@ -201,7 +201,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Object'
+                  $ref: '#/components/schemas/DataProducerObject'
   /objects/{objectId}/searchChildren:
     get:
       tags:
@@ -256,7 +256,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Object'
+                  $ref: '#/components/schemas/DataProducerObject'
   # Collection Operations
   /objects/{objectId}/collection/elements:
     get:
@@ -498,7 +498,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Object'
+                $ref: '#/components/schemas/DataProducerObject'
   # Document Operations
   /objects/{objectId}/document:
     get:
@@ -740,7 +740,7 @@ components:
         domain to share the same name; a discriminator-less ID would be ambiguous.
       pattern: '^(schema:(table|view|type|enum):[^:.]+\.[^:.]+\.[^:.]+|schema:function:[^:.]+\.[^:.]+\.[^:.]+:(input|output)|schema:shared:[^:]+)$'
       example: 'schema:table:mydb.public.customers'
-    Object:
+    DataProducerObject:
       type: object
       required:
         - id

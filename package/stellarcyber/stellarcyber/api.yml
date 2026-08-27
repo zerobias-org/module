@@ -1,0 +1,189 @@
+openapi: 3.0.3
+info:
+  x-product-infos:
+    - $ref: './node_modules/@zerobias-org/product-stellarcyber-stellarcyber/catalog.yml#/Product'
+  version: '0.0.0'
+  title: '@zerobias-org/module-stellarcyber-stellarcyber'
+  x-impl-name: StellarCyber
+  description: 'Stellar Cyber'
+paths:
+  /cases:
+    get:
+      summary: List Cases
+      description: List Stellar Cyber cases (correlated groups of alerts — threat findings).
+      operationId: listCases
+      x-method-name: list
+      tags:
+        - case
+      parameters:
+        - $ref: '#/components/parameters/pageNumber'
+        - $ref: '#/components/parameters/pageSize'
+        - $ref: '#/components/parameters/caseStatus'
+      responses:
+        '200':
+          description: A list of cases
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLink'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Case'
+  /cases/{caseId}/alerts:
+    get:
+      summary: List Case Alerts
+      description: List the alerts within a case (the resource / threat detail).
+      operationId: listCaseAlerts
+      x-method-name: listAlerts
+      tags:
+        - case
+      parameters:
+        - $ref: '#/components/parameters/caseId'
+        - $ref: '#/components/parameters/pageNumber'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: A list of case alerts
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLink'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CaseAlert'
+components:
+  headers:
+    pagedLink:
+      $ref: './node_modules/@zerobias-org/types-core/schema/pagedLinkHeader.yml'
+  parameters:
+    pageNumber:
+      $ref: './node_modules/@zerobias-org/types-core/schema/pageNumberParam.yml'
+    pageSize:
+      $ref: './node_modules/@zerobias-org/types-core/schema/pageSizeParam.yml'
+    caseId:
+      name: caseId
+      in: path
+      required: true
+      description: The id of the case.
+      schema:
+        type: string
+    caseStatus:
+      name: status
+      in: query
+      required: false
+      description: Filter cases by status (e.g. New, In Progress, Closed).
+      schema:
+        type: string
+  schemas:
+    Case:
+      type: object
+      description: A Stellar Cyber case — a correlated group of alerts representing a threat finding.
+      properties:
+        id:
+          type: string
+          description: Stellar Cyber case id.
+        name:
+          type: string
+          description: Case title / threat name.
+        severity:
+          type: string
+          description: Case severity (Critical, High, Medium, Low).
+        score:
+          type: number
+          description: Case score.
+        status:
+          type: string
+          description: Case status (e.g. New, In Progress, Closed).
+        size:
+          type: integer
+          description: Number of alerts correlated into the case.
+        createdAt:
+          type: integer
+          format: int64
+          description: Case creation time, in epoch milliseconds.
+        tenantName:
+          type: string
+          description: Stellar Cyber tenant name.
+    CaseAlert:
+      type: object
+      description: An alert within a case, carrying the resource and threat detail.
+      properties:
+        id:
+          type: string
+          description: Alert id.
+        source:
+          $ref: '#/components/schemas/AlertSource'
+    AlertSource:
+      type: object
+      description: The alert detail (Stellar Cyber Interflow record).
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Alert timestamp.
+        severity:
+          type: integer
+          description: Numeric alert severity (0-100).
+        username:
+          type: string
+          description: Associated username, if any.
+        xdrEvent:
+          $ref: '#/components/schemas/XdrEvent'
+        awsGuardduty:
+          $ref: '#/components/schemas/AwsGuardduty'
+    XdrEvent:
+      type: object
+      description: XDR detection event detail.
+      properties:
+        displayName:
+          type: string
+          description: Detection display name.
+        description:
+          type: string
+          description: Detection description.
+        tactic:
+          $ref: '#/components/schemas/MitreRef'
+        technique:
+          $ref: '#/components/schemas/MitreRef'
+    MitreRef:
+      type: object
+      description: A MITRE ATT&CK tactic or technique reference.
+      properties:
+        id:
+          type: string
+          description: MITRE ATT&CK id.
+        name:
+          type: string
+          description: MITRE ATT&CK name.
+    AwsGuardduty:
+      type: object
+      description: AWS GuardDuty finding context, when the alert derives from GuardDuty.
+      properties:
+        accountId:
+          type: string
+          description: AWS account id.
+        region:
+          type: string
+          description: AWS region the GuardDuty finding was raised in (used to build the affected-resource ARN).
+        arn:
+          type: string
+          description: GuardDuty finding ARN.
+        type:
+          type: string
+          description: GuardDuty finding type.
+        resource:
+          $ref: '#/components/schemas/AwsGuarddutyResource'
+    AwsGuarddutyResource:
+      type: object
+      description: The AWS resource the GuardDuty finding concerns.
+      properties:
+        resourceType:
+          type: string
+          description: AWS resource type (e.g. Instance, AccessKey).
+        instanceId:
+          type: string
+          description: EC2 instance id when resourceType is Instance (used to build the affected-resource ARN).

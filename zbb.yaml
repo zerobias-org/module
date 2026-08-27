@@ -11,6 +11,42 @@ env:
     type: string
     mask: true
 
+  # ── Org-first SDLC credentials (managed by setup-org-credentials.sh;
+  # declared so `zbb env set` works — undeclared vars are a silent no-op).
+  ZB_API_KEY:
+    type: secret
+    mask: true
+    description: >-
+      ORG key — org OWNER API key of the target org/env. Resolves the
+      ${ZB_API_KEY} placeholders in .mcp.json and the zb MCP 'env'
+      profile at claude session start.
+
+  ZB_ORG_ID:
+    type: string
+    description: >-
+      Target org UUID. Resolves the ${ZB_ORG_ID} placeholder in
+      .mcp.json (zb-knowledge dana-org-id header).
+
+  ZB_PLATFORM_URL:
+    type: string
+    default: "https://app.zerobias.com/api"
+    description: Platform API base of the target environment
+
+  NPM_CONFIG_TAG:
+    type: string
+    default: "dev"
+    description: >-
+      npm dist-tag for org-private rc publishes (npm 11 refuses
+      prerelease publishes without one).
+
+  KNOWLEDGE_MCP_URL:
+    type: string
+    default: "https://api.app.zerobias.com/knowledge-mcp/mcp"
+    description: >-
+      Per-env zb-knowledge MCP endpoint (keys are per-env; the .mcp.json
+      default is PROD, so non-prod slots need their own value —
+      setup-org-credentials.sh derives it from ZB_PLATFORM_URL).
+
   AWS_ACCESS_KEY_ID:
     source: vault
     vault: "aws-auth/tools/ecr/creds/ecr-push.access_key"

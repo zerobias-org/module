@@ -1,5 +1,33 @@
 # Claude Instructions
 
+> [!IMPORTANT]
+> **Do not hand-author modules in this repo.**
+>
+> Modules are **generated**, never written by hand. New modules for `zerobias-org` are
+> built through the meta-repo:
+>
+> **https://github.com/zerobias-org/zerobias** -> `.claude/skills/create-connector/`
+>
+> That skill orchestrates `/create-product` -> `/create-module` -> `/create-collector`.
+> Part 2 runs `/create-module` here, which invokes `yo @zerobias-org/module` and the
+> specialist-agent pipeline described below. Do **not** bypass it with a manual `yo`
+> call, and do not write `package.json` / `api.yml` by hand.
+>
+> Two things a hand-authored module always gets wrong:
+>
+> - **`moduleId`** is the id of the catalog's module record, issued by the platform.
+>   Minting a UUID produces a module that resolves to nothing.
+> - **`packageNames`** is not an authoring field. It appears in `store.Module.list`
+>   *responses* only. Multi-product wiring is product dependencies + `x-product-infos`.
+>
+> Base branch is **`dev`**, not `main`.
+>
+> **Who contributes where.** `zerobias-org` is the contribution surface for the
+> zerobias.com catalog; auditlogic is internal. Contributor location follows *who is
+> contributing*, not whether a package is new — and content never moves from a private
+> auditlogic repo into a public `zerobias-org` one.
+
+
 ## Architecture
 
 **Flat, two-level structure:** You → Specialized worker agents (no intermediate orchestration)

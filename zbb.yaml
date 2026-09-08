@@ -31,6 +31,16 @@ imports:
       - NPM_CONFIG_TAG
 
 env:
+  DATALOADER_SERVICE_URL:
+    type: string
+    default: "https://app.zerobias.com/api/dataloader"
+    description: >-
+      Dataloader endpoint for the GATE's Neon step (separate from
+      ZB_PLATFORM_URL — the gate does not honor that var). LEAVE ON THE
+      PROD DEFAULT even for non-prod org targets: the step auths with the
+      prod-issued ZB_TOKEN, and a per-env override makes that key 401.
+      The org load never reads this (it uses ZB_PLATFORM_URL + ZB_API_KEY).
+
 
   VAULT_ADDR:
     type: string
@@ -103,6 +113,13 @@ lifecycle:
   gateCheck:   ./gradlew gaateCheck
   version:     ./gradlew versionStandardPackages
   publish:     ./gradlew publish
+  # Org-first SDLC: publish an org-private rc + queue the org dataloader
+  # job. The -PorgPublish=true flag is what flips the shared publish
+  # pipeline into org mode — zbb does not inject it on its own, and the
+  # zb.base `publishOrg` alias reads the flag at CONFIGURATION time, so
+  # without this entry zbb falls back to a bare `./gradlew publishOrg`
+  # that hard-fails.
+  publishOrg: ./gradlew publishOrg -PorgPublish=true
   dockerBuild: ./gradlew dockerBuild
 
 # ── Tools registry — referenced by lifecycle.<cmd>.tools ─────────────

@@ -117,6 +117,7 @@ dist
 # Gradle
 .gradle/
 build/
+.zbb-gradle/
 
 # Local properties (developer overrides)
 gradle-local.properties

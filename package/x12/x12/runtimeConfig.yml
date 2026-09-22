@@ -1,0 +1,68 @@
+# Module-author-declared deployment runtime defaults.
+#
+# Read by the dataloader at publish time → stored as `module_version.runtime_config`
+# (hl7/v2 PLATFORM_UPDATES.md §6.3). Conforms to `DeploymentRuntimeConfig.yml`.
+# MANDATORY here because this module declares `daemonMode: true`.
+#
+# These are DEFAULTS. An operator may override per-deployment fields; Hub Server
+# resolves operator overrides over these defaults at EnsureDeployment time.
+# Arrays replace wholesale (no merge).
+
+# Always-on: start at node boot, ignore idle timeouts, never passivate. (DESIGN §1)
+daemonMode: true
+
+# NO listener ports. This receiver has no sockets — X12 files arrive on the
+# mounted `x12-inbox` volume below and are discovered by polling. That is the one
+# structural difference from hl7/v2 (which binds MLLP ports). (DESIGN §3)
+
+# Two durable volumes:
+#   x12-buffer — the SQLite buffer (buffer.db). Survives passivation/re-deploy.
+#   x12-inbox  — the drop directory the clearinghouse / payer feed (or an operator's
+#                SFTP landing job) writes X12 files into. The module polls it, reads
+#                stable files, and renames consumed ones to `<file>.done` (parse
+#                failures to `<file>.error`). Operators typically bind this to a host
+#                path instead of a named volume; either way the module only needs a
+#                readable + renameable directory. (DESIGN §4)
+# The node provisions/mounts volumes but does NOT cap their size, so buffer
+# TRIMMING is module-owned (`config.retention`) and inbox hygiene is the feed's job.
+durability:
+  - volumeName: x12-buffer
+    mountPath: /var/lib/module
+    access: rw
+  - volumeName: x12-inbox
+    mountPath: /var/lib/x12/inbox
+    access: rw
+
+# Container memory cap. JVM heap is -Xmx512m (Dockerfile); 1024 MB keeps the heap
+# at ~50% of the cap. The node's 512 MB default would OOM-kill this daemon
+# immediately, so declaring this is mandatory. (hl7/v2 DESIGN §8, PLAN D15)
+resources:
+  memoryMb: 1024
+
+# Opaque, module-defined config. Transported verbatim (runtimeConfig.config →
+# MODULE_CONFIG env) and NEVER parsed by the platform. Read by the module at boot.
+config:
+  # Watched source directories. Each becomes a `/by-source/<name>` node and stamps
+  # `sourceName` on every transaction it yields (provenance). `path` is INSIDE the
+  # container (a durability mountPath or a subdirectory of one). (DESIGN §4.1)
+  sources:
+    - name: inbox
+      path: /var/lib/x12/inbox
+      # Glob of files to consider; everything else in the directory is ignored.
+      pattern: "*.{x12,edi,txt,835,837,277,999,dat}"
+      # Poll cadence.
+      pollIntervalSec: 30
+      # A file is only read once its size has been unchanged for this long —
+      # daily drops land as partial writes more often than people expect.
+      stableForSec: 60
+  # Suffix conventions (renamed in place, same directory): consumed → .done,
+  # unparseable → .error. Never delete. (DESIGN §4.3)
+  consumedSuffix: ".done"
+  errorSuffix: ".error"
+  # SQLite durability for the consume path, applied at buffer open. (DESIGN §8.1)
+  ackDurability: normal
+  # Buffer trimming — evicts ACKED transaction rows past these ceilings (un-acked
+  # rows are never evicted). Omit either field to disable that axis. (DESIGN §8.3)
+  retention:
+    maxBytes: 10737418240   # 10 GiB
+    maxAge: P90D

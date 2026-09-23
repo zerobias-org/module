@@ -1,0 +1,21 @@
+{
+  "version": "0.0.0-uat.0",
+  "branch": "x12_v1",
+  "sourceHash": "045c7f5044828dea74cfa94469d723167272bcf5273b75ee5251a3eb474e8174",
+  "testHash": "5c876954c74f27e8fce17ff5b07b3182467477b2f20d26e40e2f9b92dbae08e7",
+  "tasks": {
+    "validate": "passed",
+    "lint": "passed",
+    "compile": "passed",
+    "test": "passed",
+    "testDirect": "passed",
+    "testDocker": "passed",
+    "testDataloader": "passed",
+    "buildArtifacts": "passed"
+  },
+  "tests": {
+      "unit": { "expected": 0, "ran": 0, "status": "skipped" },
+      "integration": { "expected": 0, "ran": 0, "status": "skipped" },
+      "e2e": { "expected": 0, "ran": 0, "status": "skipped" }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "name": "@zerobias-org/module-x12-x12",
+  "version": "0.0.0",
+  "description": "X12 EDI file receiver (DataProducer) \u2014 polls a mounted volume, parses 005010 interchanges with imsweb x12-parser",
+  "type": "module",
+  "moduleId": "5521a4bd-1bac-40b1-9d63-1c8fad475168",
+  "implementationType": "java-http",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "engines": {
+    "node": ">=22.21.1"
+  },
+  "scripts": {},
+  "author": "zerobias",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:zerobias-org/module.git",
+    "directory": "package/x12/x12"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "files": [
+    "dist",
+    "generated/api/manifest.json",
+    "api.yml",
+    "connectionProfile.yml",
+    "runtimeConfig.yml",
+    "Dockerfile"
+  ],
+  "zerobias": {
+    "package": "x12.x12.module",
+    "dataloader-version": "1.0.0",
+    "import-artifact": "module"
+  },
+  "dependencies": {
+    "@zerobias-org/module-interface-dataproducer": "^2.1.5",
+    "@zerobias-org/product-auditmation-generic-dataproducer": "latest",
+    "@zerobias-org/product-x12-x12": "latest",
+    "@zerobias-org/util-connector": "^1.0.31",
+    "axios": "^1.13.2"
+  },
+  "peerDependencies": {
+    "@zerobias-org/types-core": "^2.0.1",
+    "@zerobias-org/types-core-js": "^2.0.3"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^2.25.1",
+    "@types/chai": "^4.3.4",
+    "@types/mocha": "^10.0.1",
+    "@types/node": "^22.0.0",
+    "@zerobias-org/eslint-config": "1.0.35",
+    "@zerobias-org/util-api-client-base": "^1.0.39",
+    "@zerobias-org/util-codegen": "^2.0.37",
+    "@zerobias-org/module-test-client": "^1.0.1",
+    "chai": "^4.3.7",
+    "mocha": "^10.2.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  }
+}

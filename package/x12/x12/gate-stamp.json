@@ -1,8 +1,8 @@
 {
   "version": "0.0.0-uat.0",
-  "branch": "feat/module-x12-x12",
-  "sourceHash": "a247c65a3c73fc3b15b9961f4268e41fcd6e8446ac65ec33fd1e5bbed409f71c",
-  "testHash": "239c34124d2a7f5ee3febc5a7bb95ee01dd58df79eaf98096c65c6a0f42c334e",
+  "branch": "x12_v1",
+  "sourceHash": "045c7f5044828dea74cfa94469d723167272bcf5273b75ee5251a3eb474e8174",
+  "testHash": "5c876954c74f27e8fce17ff5b07b3182467477b2f20d26e40e2f9b92dbae08e7",
   "tasks": {
     "validate": "passed",
     "lint": "passed",

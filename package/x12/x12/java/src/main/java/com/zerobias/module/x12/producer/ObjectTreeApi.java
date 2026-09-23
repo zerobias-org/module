@@ -71,6 +71,34 @@ public interface ObjectTreeApi {
      */
     BinaryContent downloadBinary(String id) throws SQLException;
 
+    /**
+     * Write bytes as {@code fileName} into the container {@code id} (DESIGN §2.9,
+     * {@code uploadBinaryContent}). Only the live {@code /inbox} branch accepts this; the
+     * default and the {@code /files} projection reject it, since {@code /files} is a view
+     * of the buffer rather than of the volume.
+     */
+    default Map<String, Object> uploadBinary(String id, String fileName, byte[] bytes) throws SQLException {
+        throw ProducerException.unsupported("Files are receive-only; drop them in the inbox, not via upload");
+    }
+
+    /**
+     * Create a child container (mkdir) named {@code name} under {@code id} (DESIGN §2.9,
+     * {@code createChildObject}). Only the live {@code /inbox} branch accepts this.
+     */
+    default Map<String, Object> createChildContainer(String id, String name) throws SQLException {
+        throw ProducerException.unsupported("Object tree is fixed (receive-only): createChildObject");
+    }
+
+    /**
+     * Delete the object at {@code id} (DESIGN §2.9, {@code deleteObject}). Only the live
+     * {@code /inbox} branch accepts this: a file is unlinked, an empty directory removed.
+     * The emergent branches cannot be deleted — they are projections of the buffer, and
+     * {@code ops/purge} is how buffer rows leave.
+     */
+    default void deleteObject(String id) throws SQLException {
+        throw ProducerException.unsupported("Object tree is fixed (receive-only): deleteObject");
+    }
+
     /** Root container only; every other id is unknown. */
     ObjectTreeApi ROOT_ONLY = new ObjectTreeApi() {
         @Override

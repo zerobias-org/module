@@ -28,7 +28,8 @@ class ModuleRuntimeConfigTest {
         + "\"consumedSuffix\":\".ok\",\"errorSuffix\":\".bad\","
         + "\"ackDurability\":\"full\","
         + "\"retention\":{\"maxBytes\":10737418240,\"maxAge\":\"P90D\"},"
-        + "\"allowBareTransactionSets\":true}";
+        + "\"allowBareTransactionSets\":true,"
+        + "\"allowFileManagement\":true}";
 
     @Test
     void absentOrEmptyMeansDefaults() {
@@ -44,6 +45,7 @@ class ModuleRuntimeConfigTest {
             assertFalse(c.fullDurability());
             assertFalse(c.retention().isBounded());
             assertFalse(c.allowBareTransactionSets());
+            assertFalse(c.allowFileManagement(), "file management is opt-in, never a default");
         }
     }
 
@@ -59,6 +61,18 @@ class ModuleRuntimeConfigTest {
         assertEquals(10737418240L, c.retention().maxBytes());
         assertEquals(Duration.ofDays(90), c.retention().maxAge());
         assertTrue(c.allowBareTransactionSets());
+        assertTrue(c.allowFileManagement());
+    }
+
+    @Test
+    void fileManagementIsOnlyEnabledByALiteralTrue() {
+        // A typo, a string, or a missing key must all leave the write surface shut: this is
+        // the flag that decides whether an API caller can put files on the volume.
+        for (String s : new String[] {"{}", "{\"allowFileManagement\":false}", "{\"allowFileManagement\":\"true\"}",
+                "{\"allowFileManagement\":1}", "{\"allowFileManagment\":true}", "{\"allowFileManagement\":null}"}) {
+            assertFalse(ModuleRuntimeConfig.parse(s).allowFileManagement(), s);
+        }
+        assertTrue(ModuleRuntimeConfig.parse("{\"allowFileManagement\":true}").allowFileManagement());
     }
 
     @Test
@@ -130,14 +144,14 @@ class ModuleRuntimeConfigTest {
         Path file = Files.writeString(dir.resolve("notadir"), "x");
         ModuleRuntimeConfig ok = new ModuleRuntimeConfig(
             List.of(new SourceConfig("a", good.toString(), "*", 1, 0)), ".done", ".error", false,
-            com.zerobias.module.x12.buffer.RetentionConfig.none(), false);
+            com.zerobias.module.x12.buffer.RetentionConfig.none(), false, false);
         assertEquals(List.of(), ok.validateSources());
 
         ModuleRuntimeConfig bad = new ModuleRuntimeConfig(
             List.of(new SourceConfig("a", good.toString(), "*", 1, 0),
                     new SourceConfig("a", dir.resolve("missing").toString(), "*", 1, 0),
                     new SourceConfig("b", file.toString(), "*", 1, 0)),
-            ".same", ".same", false, com.zerobias.module.x12.buffer.RetentionConfig.none(), false);
+            ".same", ".same", false, com.zerobias.module.x12.buffer.RetentionConfig.none(), false, false);
         List<String> problems = bad.validateSources();
         assertTrue(problems.stream().anyMatch(p -> p.contains("duplicate source name: a")), problems.toString());
         assertTrue(problems.stream().anyMatch(p -> p.contains("does not exist")), problems.toString());

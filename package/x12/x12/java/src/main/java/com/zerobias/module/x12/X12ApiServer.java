@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,7 +45,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@code GET  /connections/{id}/metadata} — connection metadata</li>
  *   <li>{@code GET  /connections/{id}/isSupported/{operationId}}</li>
  *   <li>{@code POST /connections/{id}/{method}} — dispatch via {@link OperationRouter};
- *       {@code BinaryApi.downloadBinaryContent} streams the file bytes (DESIGN §2.8)</li>
+ *       {@code BinaryApi.downloadBinaryContent} streams the file bytes (DESIGN §2.8) and
+ *       {@code BinaryApi.uploadBinaryContent} takes them as the request body (DESIGN §2.9)</li>
  *   <li>{@code GET  /healthz} — daemon health probe (DESIGN §9)</li>
  * </ul>
  *
@@ -59,6 +61,15 @@ public final class X12ApiServer {
 
     /** Profile fields safe to log/display (the profile is informational; the daemon never reads it). */
     private static final Set<String> NONSENSITIVE_PROFILE_FIELDS = Set.of("ackDurability");
+
+    /** Data-write operations this receiver never supports: transactions arrive as inbox files. */
+    private static final Set<String> NEVER_SUPPORTED = Set.of(
+        "updateObject", "addCollectionElement", "updateCollectionElement",
+        "deleteCollectionElement", "executeBulkOperations", "updateDocumentData", "updateDocument");
+
+    /** File-management operations, supported only when {@code config.allowFileManagement} is set. */
+    private static final Set<String> FILE_MANAGEMENT = Set.of(
+        "uploadBinaryContent", "uploadBinary", "createChildObject", "deleteObject");
 
     private final Map<String, String> connections = new ConcurrentHashMap<>();
     private X12ProducerFacade facade;
@@ -175,12 +186,16 @@ public final class X12ApiServer {
     static X12ProducerFacade buildFacade(BufferStore buffer, ModuleRuntimeConfig mc, PollerHandle pollers) {
         SchemaRegistry schemas = SchemaRegistry.fromClasspath();
         String consumedSuffix = mc == null ? ModuleRuntimeConfig.DEFAULT_CONSUMED_SUFFIX : mc.consumedSuffix();
-        ObjectTreeApi tree = new ObjectTree(buffer, schemas, () -> pollers, consumedSuffix);
+        String errorSuffix = mc == null ? ModuleRuntimeConfig.DEFAULT_ERROR_SUFFIX : mc.errorSuffix();
+        List<SourceConfig> sources = mc == null ? List.of() : mc.sources();
+        boolean fileManagement = mc != null && mc.allowFileManagement();
+        ObjectTreeApi tree = new ObjectTree(buffer, schemas, () -> pollers, consumedSuffix, sources, errorSuffix);
         RecastHook recaster = new MaterializerRecastHook(new StructureResolver(), Clock.systemUTC());
         OperationsApi ops = new X12Operations(buffer, X12ProducerFacade::toElement, () -> pollers, schemas, recaster);
-        LOG.info("Producer: {} schema(s), tree={}, ops={}", schemas.size(),
-            tree.getClass().getSimpleName(), ops.getClass().getSimpleName());
-        return new X12ProducerFacade(buffer, tree, schemas, ops);
+        LOG.info("Producer: {} schema(s), tree={}, ops={}, fileManagement={}", schemas.size(),
+            tree.getClass().getSimpleName(), ops.getClass().getSimpleName(),
+            fileManagement ? "ENABLED (uploads/mkdir/delete accepted under /inbox)" : "disabled (receive-only)");
+        return new X12ProducerFacade(buffer, tree, schemas, ops, fileManagement);
     }
 
     private void registerRoutes(Javalin app) {
@@ -216,12 +231,21 @@ public final class X12ApiServer {
 
         app.get("/connections/{connectionId}/isSupported/{operationId}", ctx -> {
             requireConnection(ctx.pathParam("connectionId"));
-            ctx.result("{\"supported\":true}");
+            JsonObject body = new JsonObject();
+            body.addProperty("supported", supported(ctx.pathParam("operationId")));
+            ctx.result(body.toString());
         });
 
         app.post("/connections/{connectionId}/{method}", ctx -> {
             requireConnection(ctx.pathParam("connectionId"));
             String method = ctx.pathParam("method");
+            if (OperationRouter.isBinaryUpload(method)) {
+                // DESIGN §2.9: the request body is the file's bytes, so this one op cannot
+                // read its arguments from the JSON argMap envelope. Handled before any
+                // attempt to parse the body as JSON.
+                ctx.status(201).contentType("application/json").result(upload(ctx));
+                return;
+            }
             Map<String, Object> requestBody = castMap(GSON.fromJson(ctx.body(), Map.class));
             Map<String, Object> argMap = castMap(requestBody.get("argMap"));
             if (OperationRouter.isBinaryDownload(method)) {
@@ -261,6 +285,66 @@ public final class X12ApiServer {
             body.addProperty("message", String.valueOf(e.getMessage()));
             ctx.status(500).contentType("application/json").result(body.toString());
         });
+    }
+
+    /**
+     * {@code BinaryApi.uploadBinaryContent} (DESIGN §2.9). Two intakes, because the RPC
+     * envelope has nowhere to put raw bytes:
+     * <ul>
+     *   <li><b>raw</b> — the body is the file, {@code ?objectId=&fileName=} carry the
+     *       arguments. Symmetric with download (JSON in, bytes out) and the only form that
+     *       does not inflate a large interchange by a third.</li>
+     *   <li><b>JSON envelope</b> — {@code {"argMap":{"objectId":…,"fileName":…,
+     *       "contentBase64":…}}}, for an invoker that can only speak the uniform envelope.</li>
+     * </ul>
+     * Returns the new file's object metadata as the interface's {@code 201} body.
+     */
+    private String upload(io.javalin.http.Context ctx) throws Exception {
+        String objectId = ctx.queryParam("objectId");
+        String fileName = ctx.queryParam("fileName");
+        byte[] bytes = ctx.bodyAsBytes();
+        if (objectId == null || objectId.isBlank()) {
+            Map<String, Object> argMap = castMap(castMap(GSON.fromJson(ctx.body(), Map.class)).get("argMap"));
+            objectId = asString(argMap.get("objectId"));
+            fileName = fileName != null ? fileName : asString(argMap.get("fileName"));
+            Object encoded = argMap.get("contentBase64");
+            if (encoded == null) {
+                throw ProducerException.illegalArgument(
+                    "uploadBinaryContent needs either raw bytes with ?objectId=&fileName=, "
+                    + "or an argMap carrying objectId, fileName and contentBase64");
+            }
+            try {
+                bytes = Base64.getDecoder().decode(asString(encoded));
+            } catch (IllegalArgumentException malformed) {
+                throw ProducerException.illegalArgument("contentBase64 is not valid base64");
+            }
+        }
+        return facade.uploadBinary(objectId, fileName, bytes);
+    }
+
+    /**
+     * {@code isSupported}: the receiver's real capability set, not a blanket yes. Data
+     * writes are never supported (transactions arrive as files); the file-management ops
+     * follow {@code config.allowFileManagement}, so an operator can see from the outside
+     * whether this deployment accepts uploads.
+     */
+    boolean supported(String operationId) {
+        String op = operationId == null ? "" : operationId.trim();
+        int dot = op.lastIndexOf('.');   // accept "deleteObject" and "ObjectsApi.deleteObject" alike
+        if (dot >= 0) {
+            op = op.substring(dot + 1);
+        }
+        if (NEVER_SUPPORTED.contains(op)) {
+            return false;
+        }
+        if (FILE_MANAGEMENT.contains(op)) {
+            return facade != null && facade.fileManagementEnabled();
+        }
+        return true;
+    }
+
+    private static String asString(Object o) {
+        return o == null ? null : o.toString();
     }
 
     private void requireConnection(String connectionId) {

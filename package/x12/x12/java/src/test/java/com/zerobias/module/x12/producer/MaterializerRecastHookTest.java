@@ -51,7 +51,7 @@ class MaterializerRecastHookTest {
         Path inbox = Files.createDirectories(dir.resolve("inbox"));
         ModuleRuntimeConfig cfg = new ModuleRuntimeConfig(
             List.of(new SourceConfig("inbox", inbox.toString(), "*", 1, 0)),
-            ".done", ".error", false, RetentionConfig.none(), true);
+            ".done", ".error", false, RetentionConfig.none(), true, false);
         StructureResolver resolver = new StructureResolver();
         FileConsumer consumer = new FileConsumer(buffer, null, cfg, resolver, clock);
         SourceConfig src = cfg.sources().get(0);
@@ -96,7 +96,7 @@ class MaterializerRecastHookTest {
             Path inbox = Files.createDirectories(dir.resolve("sys-inbox"));
             ModuleRuntimeConfig cfg = new ModuleRuntimeConfig(
                 List.of(new SourceConfig("inbox", inbox.toString(), "*", 1, 0)),
-                ".done", ".error", false, RetentionConfig.none(), false);
+                ".done", ".error", false, RetentionConfig.none(), false, false);
             StructureResolver resolver = new StructureResolver();
             FileConsumer consumer = new FileConsumer(b, null, cfg, resolver, system);
             Path a = Files.write(inbox.resolve("remit.835"), Fixtures.bytes(Fixtures.F835));

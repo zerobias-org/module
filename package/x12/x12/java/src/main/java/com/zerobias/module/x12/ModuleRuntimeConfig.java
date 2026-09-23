@@ -27,8 +27,16 @@ import java.util.Set;
  *   "consumedSuffix": ".done", "errorSuffix": ".error",
  *   "ackDurability": "normal",
  *   "retention": { "maxBytes": 10737418240, "maxAge": "P90D" },
- *   "allowBareTransactionSets": false }
+ *   "allowBareTransactionSets": false,
+ *   "allowFileManagement": false }
  * </pre>
+ *
+ * <p>{@code allowFileManagement} opens the DataProducer write surface over the mounted
+ * volume — {@code uploadBinaryContent}, {@code createChildObject} (mkdir) and
+ * {@code deleteObject} under {@code /x12-receiver/inbox} (DESIGN §2.9). It defaults to
+ * <b>false</b>: a production receiver takes files from the feed, and an open upload path
+ * would let any Hub-authenticated caller inject claims. Enable it per deployment (e2e,
+ * operator-driven replay) and {@code isSupported} answers accordingly.
  *
  * <p>Resolution order ({@link #resolve}): {@code MODULE_CONFIG} env → the {@code config}
  * block of a runtime-config file ({@link RuntimeConfigFile}: node JSON, then the image's
@@ -44,7 +52,8 @@ public record ModuleRuntimeConfig(
         String errorSuffix,
         boolean fullDurability,
         RetentionConfig retention,
-        boolean allowBareTransactionSets) {
+        boolean allowBareTransactionSets,
+        boolean allowFileManagement) {
 
     private static final Logger LOG = LoggerFactory.getLogger(ModuleRuntimeConfig.class);
     private static final Gson GSON = new Gson();
@@ -64,7 +73,7 @@ public record ModuleRuntimeConfig(
         return new ModuleRuntimeConfig(
             List.of(new SourceConfig(DEFAULT_SOURCE_NAME, DEFAULT_SOURCE_PATH, DEFAULT_SOURCE_PATTERN,
                 SourceConfig.DEFAULT_POLL_INTERVAL_SEC, SourceConfig.DEFAULT_STABLE_FOR_SEC)),
-            DEFAULT_CONSUMED_SUFFIX, DEFAULT_ERROR_SUFFIX, false, RetentionConfig.none(), false);
+            DEFAULT_CONSUMED_SUFFIX, DEFAULT_ERROR_SUFFIX, false, RetentionConfig.none(), false, false);
     }
 
     /** Resolve from the process env and the image's runtimeConfig.yml location. */
@@ -121,11 +130,9 @@ public record ModuleRuntimeConfig(
             String consumed = str(obj, "consumedSuffix", d.consumedSuffix());
             String error = str(obj, "errorSuffix", d.errorSuffix());
             boolean full = "full".equalsIgnoreCase(str(obj, "ackDurability", "normal"));
-            boolean bare = obj.has("allowBareTransactionSets")
-                && obj.get("allowBareTransactionSets").isJsonPrimitive()
-                && obj.get("allowBareTransactionSets").getAsJsonPrimitive().isBoolean()
-                && obj.get("allowBareTransactionSets").getAsBoolean();
-            return new ModuleRuntimeConfig(sources, consumed, error, full, parseRetention(obj), bare);
+            boolean bare = bool(obj, "allowBareTransactionSets");
+            boolean fileMgmt = bool(obj, "allowFileManagement");
+            return new ModuleRuntimeConfig(sources, consumed, error, full, parseRetention(obj), bare, fileMgmt);
         } catch (RuntimeException malformed) {
             LOG.warn("module config has wrong-typed fields ({}); using defaults", malformed.toString());
             return d;
@@ -214,6 +221,14 @@ public record ModuleRuntimeConfig(
             return v.isBlank() ? dflt : v;
         }
         return dflt;
+    }
+
+    /** A strict boolean flag: absent, non-boolean or false all mean false (opt-in only). */
+    private static boolean bool(JsonObject o, String key) {
+        return o.has(key)
+            && o.get(key).isJsonPrimitive()
+            && o.getAsJsonPrimitive(key).isBoolean()
+            && o.get(key).getAsBoolean();
     }
 
     private static int integer(JsonObject o, String key, int dflt) {

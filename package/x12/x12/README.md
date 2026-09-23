@@ -47,6 +47,7 @@ getting the file onto the volume is the feed's job.
 ├── /by-version/005010X221A1 …
 ├── /by-sender/<ISA06>
 ├── /by-source/<inbox name>   one node per watched directory
+├── /inbox                    the LIVE volume: /inbox/<source>/… real dirs and files
 ├── /stats                    document
 └── /ops                      take · ack · release · replay · recast · purge · raw · validate · rescan
 ```
@@ -55,9 +56,27 @@ getting the file onto the volume is the feed's job.
 
 Everything daemon-level lives in `runtimeConfig.yml` and reaches the container as `MODULE_CONFIG`:
 `sources[]` (`name`, `path`, `pattern`, `pollIntervalSec`, `stableForSec`), `consumedSuffix`
-(`.done`), `errorSuffix` (`.error`), `ackDurability`, `retention`. Two volumes are declared:
-`x12-buffer` (the SQLite buffer) and `x12-inbox` (the drop directory). See the file for the
-annotated defaults.
+(`.done`), `errorSuffix` (`.error`), `ackDurability`, `retention`, `allowFileManagement`. Two
+volumes are declared: `x12-buffer` (the SQLite buffer) and `x12-inbox` (the drop directory). See
+the file for the annotated defaults.
+
+### Browsing and managing the volume
+
+`/files` shows what has been **consumed** (it is a projection of the buffer). `/inbox` shows
+what is **on the volume right now** — one node per configured source, then real directories and
+files, listed by a fresh readdir on every call, so a file that has never been ingested is still
+browsable and downloadable. Each live file node carries an `ingest` field (`watched`,
+`ignored:pattern`, `ignored:suffix`, `ignored:subdirectory`) saying what the poller will do with
+it.
+
+With `allowFileManagement: true` the same branch accepts the interface's container/binary write
+ops, which is how a test or an operator loads data without reaching around the module:
+`uploadBinaryContent` (atomic write into any chosen directory, never replacing an existing
+name), `createChildObject` (mkdir, so you choose where uploads land) and `deleteObject` (unlink
+a file, remove an empty directory). It defaults to **false** — a production receiver takes files
+from the feed, and an open upload path would let any Hub-authenticated caller inject claims.
+`isSupported/{operationId}` reports the real capability set, so a caller can tell the difference.
+See [`DESIGN.md`](DESIGN.md) §2.9.
 
 ## Guides supported in v1
 
@@ -70,6 +89,7 @@ annotated defaults.
 ```bash
 (cd java && mvn test)                        # JUnit unit suite (needs GitHub Packages auth for lite-filter)
 (cd java && mvn verify)                      # + integration tests
+java/scripts/e2e-local.sh                    # real container; loads the 835 through the DP API
 java/scripts/fetch-x12org-examples.py        # local-only conformance set from x12.org (never committed)
 cd <repo-root>/package/x12/x12 && zbb --slot <slot> gate
 ```

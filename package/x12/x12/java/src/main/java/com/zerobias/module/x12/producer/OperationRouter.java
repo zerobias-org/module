@@ -2,6 +2,8 @@ package com.zerobias.module.x12.producer;
 
 import com.google.gson.Gson;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -10,8 +12,11 @@ import java.util.Map;
  * dispatch contract the SQL generic module and hl7/v2 use, so the Hub Node's
  * java-http invoker drives this module unchanged.
  *
- * <p>Binary download ({@link #isBinaryDownload}) is the one op whose result is not a
- * JSON string; the HTTP layer short-circuits it to {@link X12ProducerFacade#downloadBinary}.
+ * <p>The two binary ops are the exceptions, because their bodies are bytes rather than
+ * JSON: download ({@link #isBinaryDownload}) returns bytes and upload
+ * ({@link #isBinaryUpload}) receives them, so the HTTP layer short-circuits both to
+ * {@link X12ProducerFacade#downloadBinary} / {@link X12ProducerFacade#uploadBinary} and
+ * this router rejects them.
  */
 public final class OperationRouter {
 
@@ -27,6 +32,20 @@ public final class OperationRouter {
      */
     public static boolean isBinaryDownload(String method) {
         return method != null && (method.endsWith(".downloadBinaryContent") || method.endsWith(".downloadBinary"));
+    }
+
+    /**
+     * Whether {@code method} is the binary upload op ({@code BinaryApi.uploadBinaryContent};
+     * the bare {@code uploadBinary} name is accepted too). Its request body is raw bytes
+     * rather than the JSON {@code argMap} envelope, so the HTTP layer must read the body
+     * itself — {@link #executeOperation} rejects it, symmetrically with download.
+     */
+    public static boolean isBinaryUpload(String method) {
+        return method != null && (method.endsWith(".uploadBinaryContent") || method.endsWith(".uploadBinary"));
+    }
+
+    private static boolean isUploadName(String methodName) {
+        return "uploadBinaryContent".equals(methodName) || "uploadBinary".equals(methodName);
     }
 
     public static String executeOperation(X12ProducerFacade facade, String method,
@@ -71,8 +90,11 @@ public final class OperationRouter {
                     getInt(argMap, "pageSize", 100),
                     getInt(argMap, "pageNumber", 1));
             case "createChildObject":
-            case "updateObject":
+                return facade.createChildObject(
+                    str(argMap, "objectId"), childName(argMap), childClasses(argMap));
             case "deleteObject":
+                return facade.deleteObject(str(argMap, "objectId"));
+            case "updateObject":
                 throw ProducerException.unsupported(
                     "Object tree is fixed (receive-only): " + methodName);
             default:
@@ -149,14 +171,53 @@ public final class OperationRouter {
     }
 
     private static String binary(String methodName) {
-        if ("uploadBinaryContent".equals(methodName) || "uploadBinary".equals(methodName)) {
-            throw ProducerException.unsupported("Files are receive-only; drop them in the inbox, not via upload");
+        if (isUploadName(methodName)) {
+            throw ProducerException.illegalArgument(
+                "uploadBinaryContent carries raw bytes and is served by the HTTP layer, not the JSON router");
         }
         if ("downloadBinaryContent".equals(methodName) || "downloadBinary".equals(methodName)) {
             throw ProducerException.illegalArgument(
                 "downloadBinary is served by the HTTP layer (bytes), not the JSON router");
         }
         throw ProducerException.unsupported("Unsupported BinaryApi method: " + methodName);
+    }
+
+    // --- createChildObject args (CreateObjectRequest) ----------------------
+
+    /**
+     * The new child's name: {@code name}, or {@code id} (the interface's
+     * {@code CreateObjectRequest} makes {@code id} optional and generated, and callers
+     * send one or the other). Taken from {@code object}/{@code body} when the caller nests
+     * the request rather than flattening it into the argMap.
+     */
+    private static String childName(Map<String, Object> argMap) {
+        Map<String, Object> req = nested(argMap);
+        String name = str(req, "name");
+        return name != null ? name : str(req, "id");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> childClasses(Map<String, Object> argMap) {
+        Object classes = nested(argMap).get("objectClass");
+        if (classes instanceof List) {
+            List<String> out = new ArrayList<>();
+            for (Object c : (List<Object>) classes) {
+                out.add(String.valueOf(c));
+            }
+            return out;
+        }
+        return List.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> nested(Map<String, Object> argMap) {
+        for (String key : new String[] {"object", "body", "requestBody", "createObjectRequest"}) {
+            Object v = argMap.get(key);
+            if (v instanceof Map) {
+                return (Map<String, Object>) v;
+            }
+        }
+        return argMap;
     }
 
     // --- arg coercion ------------------------------------------------------

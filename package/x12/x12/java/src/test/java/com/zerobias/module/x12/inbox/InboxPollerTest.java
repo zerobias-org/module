@@ -64,7 +64,7 @@ class InboxPollerTest {
     private ModuleRuntimeConfig config(Path inbox, int stableForSec, boolean allowBare) {
         return new ModuleRuntimeConfig(
             List.of(new SourceConfig("inbox", inbox.toString(), "*", 1, stableForSec)),
-            ".done", ".error", false, RetentionConfig.none(), allowBare);
+            ".done", ".error", false, RetentionConfig.none(), allowBare, false);
     }
 
     private X12InboxPollerFactory.Handle open(Path dir, ModuleRuntimeConfig cfg, MutableClock clock,
@@ -197,7 +197,7 @@ class InboxPollerTest {
         Path inbox = inbox(dir);
         ModuleRuntimeConfig cfg = new ModuleRuntimeConfig(
             List.of(new SourceConfig("inbox", inbox.toString(), "*.{x12,835}", 1, 0)),
-            ".done", ".error", false, RetentionConfig.none(), false);
+            ".done", ".error", false, RetentionConfig.none(), false, false);
         open(dir, cfg, new MutableClock(T0), null);
         drop(inbox, "REMIT.X12", Fixtures.bytes(Fixtures.F835));
         drop(inbox, "notes.txt", "hello".getBytes(StandardCharsets.UTF_8));
@@ -466,7 +466,7 @@ class InboxPollerTest {
         Path b = Files.createDirectories(dir.resolve("b"));
         ModuleRuntimeConfig cfg = new ModuleRuntimeConfig(
             List.of(new SourceConfig("payer-a", a.toString(), "*", 1, 0), new SourceConfig("payer-b", b.toString(), "*", 1, 0)),
-            ".done", ".error", false, RetentionConfig.none(), false);
+            ".done", ".error", false, RetentionConfig.none(), false, false);
         open(dir, cfg, new MutableClock(T0), null);
         drop(a, "one.835", Fixtures.bytes(Fixtures.F835));
         drop(b, "two.837", Fixtures.bytes(Fixtures.F837P));

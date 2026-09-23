@@ -48,6 +48,10 @@ build time, JUnit test surface, `zb.java-module` build — is inherited unchange
    ├─ /by-version                     container → /by-version/<GS08>       collections, e.g. 005010X221A1
    ├─ /by-sender                      container → /by-sender/<ISA06>       collections
    ├─ /by-source                      container → /by-source/<sourceName>  collections — one per watched dir
+   ├─ /inbox                          container → one child per configured source (LIVE filesystem, §2.9)
+   │    └─ /inbox/<source>            container — that source's directory
+   │         ├─ /inbox/<source>/<dir>   container — a real subdirectory
+   │         └─ /inbox/<source>/<file>  ["binary"] — a real file, ingested or not
    ├─ /stats                          document — poller + buffer metrics
    └─ /ops                            container → take · ack · release · replay · recast · purge · raw · validate · rescan
 ```
@@ -176,6 +180,64 @@ statusCode}` + subtype fields). 404 for unknown object/schema/lease/file, 400
 path is resolved from the `files` table, so download keeps working after consumption; after the
 file is removed by inbox hygiene → 404 with `reason: gone`, the transactions remain). Range is not
 in the generated signature (interface prose only); v1 serves 200 full-content.
+
+### 2.9 Live inbox browse and file management
+
+`/files` is a projection of the SQLite `files` table: it shows what has been **consumed**.
+That makes it useless for driving or observing the volume itself — a file that just landed
+appears nowhere until the poller has ingested it. `/inbox` closes that gap: it is the
+**live filesystem**, one child per configured source, then real directories and real files
+beneath.
+
+**Nothing in this branch is cached.** Every `getChildren` is a fresh readdir and every
+`getObject` a fresh `stat`, so an uploaded file is visible immediately and a file removed
+behind the module's back vanishes on the next call. There is no invalidation step, because
+there is nothing to invalidate. Dotfiles are hidden, exactly as the poller skips them.
+
+Each live file node carries an `ingest` field stating what the poller will do with it,
+computed per call from config — never guessed by the caller:
+
+| `ingest` | meaning |
+|---|---|
+| `watched` | in a source root, matches the source `pattern` → will be consumed on the next scan |
+| `ignored:pattern` | in a source root, but the name does not match `pattern` |
+| `ignored:suffix` | already carries `consumedSuffix`/`errorSuffix` |
+| `ignored:subdirectory` | under a subdirectory — **the poller scans each source flat** (§4.2), so it will never be consumed where it sits |
+
+The write surface is the interface's own container/binary write ops (Concepts.md
+"Operations Matrix"), scoped to this branch:
+
+- **`uploadBinaryContent`** — write bytes into any live container. The body is raw bytes,
+  so `objectId`/`fileName` ride on the query string; a JSON-only invoker may instead send
+  `{"argMap":{"objectId","fileName","contentBase64"}}`. Bytes land on a dot-prefixed
+  temporary in the destination directory and are `ATOMIC_MOVE`d into place, so the poller
+  can never observe a partial file regardless of `stableForSec`. **An existing name is
+  refused, never replaced**: `fileId` is `<path>@<hash12>`, so overwriting bytes at a
+  consumed path would fork one path into two identities and desynchronise the `.done`
+  bookkeeping (§4.2). Delete first if you mean to replace.
+- **`createChildObject`** — mkdir, so a caller can choose where uploads land. Containers
+  only; there is no way to conjure a file without bytes.
+- **`deleteObject`** — unlink a file, or remove an **empty** directory. A non-empty
+  directory is refused rather than deleted recursively: a blind recursive delete over a
+  live feed directory is how un-ingested claims get lost. The branch root and the
+  configured source roots are never deletable — the daemon validated those mounts at boot
+  (§3) and removing one takes the receiver down.
+- Path traversal cannot escape: every segment is decoded, `.`/`..`/empty are rejected, and
+  the normalized result must still sit under the source root.
+
+All three are **off unless the deployment sets `config.allowFileManagement: true`**
+(default `false` in `runtimeConfig.yml`). This is a revenue-cycle feed: an open upload path
+lets any Hub-authenticated caller inject claims, so production takes files from the feed
+and nothing else. `isSupported/{operationId}` answers from the same flag — and reports
+`false` for the data writes the receiver never supports (`updateObject`,
+`addCollectionElement`, `updateCollectionElement`, `deleteCollectionElement`,
+`executeBulkOperations`, `updateDocumentData`) — so a caller can discover this deployment's
+real capability set instead of being told a blanket yes. Browsing `/inbox` is unaffected by
+the flag; only writes are gated.
+
+The emergent branches reject all three ops whatever the flag says. `/files` is a view of
+the buffer, so "uploading" into it would mean inventing a consumed file that never arrived,
+and buffer rows leave through `ops/purge`, not `deleteObject`.
 
 ## 3. Runtime shape
 

@@ -67,17 +67,18 @@ class ObjectTreeTest {
         assertEquals(R, item(rootKids, 0).get("id").getAsString());
 
         JsonObject kids = page(facade.getChildren(R, 100, 1));
-        assertEquals(8, kids.get("count").getAsInt());
-        assertEquals(List.of("files", "transactions", "by-type", "by-version", "by-sender", "by-source", "stats", "ops"),
-            names(kids));
+        assertEquals(9, kids.get("count").getAsInt());
+        assertEquals(List.of("files", "inbox", "transactions", "by-type", "by-version", "by-sender", "by-source",
+                "stats", "ops"),
+            names(kids), "/inbox (live volume) sits next to /files (the consumed projection)");
         assertEquals(1, kids.get("pageNumber").getAsInt(), "1-based on the wire");
 
-        JsonObject all = item(kids, 1);
+        JsonObject all = item(kids, 2);
         assertEquals(List.of("collection"), classes(all));
         assertEquals(ObjectTree.ENVELOPE_SCHEMA, all.get("collectionSchema").getAsString());
         assertEquals(5, all.get("collectionSize").getAsLong(), "collectionSize = countWhere(all)");
 
-        JsonObject stats = item(kids, 6);
+        JsonObject stats = item(kids, 7);
         assertEquals(List.of("document"), classes(stats));
         assertEquals("schema:shared:x12.receiver-stats", stats.get("documentSchema").getAsString());
 
@@ -322,6 +323,9 @@ class ObjectTreeTest {
     @Test
     void everyWriteOpIsRejectedThroughTheRouter() throws Exception {
         String coll = R + "/transactions";
+        // This facade was built without allowFileManagement, so createChildObject and
+        // deleteObject are refused by the gate exactly as the data writes are refused
+        // outright. InboxFilesTest covers what they do once the flag is on.
         List<String[]> writes = List.of(
             new String[] {"ObjectsApi.createChildObject", R},
             new String[] {"ObjectsApi.updateObject", R},
@@ -329,8 +333,7 @@ class ObjectTreeTest {
             new String[] {"CollectionsApi.addCollectionElement", coll},
             new String[] {"CollectionsApi.updateCollectionElement", coll},
             new String[] {"CollectionsApi.deleteCollectionElement", coll},
-            new String[] {"DocumentsApi.updateDocumentData", R + "/stats"},
-            new String[] {"BinaryApi.uploadBinaryContent", R + "/files/" + ObjectTree.encodeSegment(FILE_A)});
+            new String[] {"DocumentsApi.updateDocumentData", R + "/stats"});
         for (String[] w : writes) {
             Map<String, Object> args = Map.of("objectId", w[1], "elementKey", "k", "element", Map.of());
             ProducerException e = assertThrows(ProducerException.class,
@@ -338,6 +341,15 @@ class ObjectTreeTest {
             assertEquals(400, e.httpStatus(), w[0]);
             assertEquals("err.unsupported.operation", e.key(), w[0]);
         }
+
+        // Upload is not a JSON op at all: its body is bytes, so the router refuses it as a
+        // malformed call and the HTTP layer serves it (symmetric with downloadBinary).
+        ProducerException upload = assertThrows(ProducerException.class,
+            () -> OperationRouter.executeOperation(facade, "BinaryApi.uploadBinaryContent",
+                Map.of("objectId", R + "/files/" + ObjectTree.encodeSegment(FILE_A))));
+        assertEquals(400, upload.httpStatus());
+        assertEquals("err.illegal.argument", upload.key());
+        assertTrue(OperationRouter.isBinaryUpload("BinaryApi.uploadBinaryContent"));
         assertEquals(400, assertThrows(ProducerException.class,
             () -> facade.invokeFunction(R + "/transactions", "{}")).httpStatus(), "invoking a non-function");
 

@@ -61,6 +61,15 @@ config:
   errorSuffix: ".error"
   # SQLite durability for the consume path, applied at buffer open. (DESIGN §8.1)
   ackDurability: normal
+  # File management over the mounted volume (DESIGN §2.9): uploadBinaryContent,
+  # createChildObject (mkdir) and deleteObject under the live /x12-receiver/inbox
+  # branch. DEFAULT false, and deliberately so — this is a revenue-cycle feed, and an
+  # open upload path lets any Hub-authenticated caller inject claims. Turn it on per
+  # deployment (e2e runs, operator-driven replay, a staging box); isSupported then
+  # reports these ops as supported, so a caller can discover the difference. Browsing
+  # /inbox is always available and always live: every listing is a fresh readdir, never
+  # a cache, so an uploaded file is visible before the poller has looked at it.
+  allowFileManagement: false
   # Buffer trimming — evicts ACKED transaction rows past these ceilings (un-acked
   # rows are never evicted). Omit either field to disable that axis. (DESIGN §8.3)
   retention:

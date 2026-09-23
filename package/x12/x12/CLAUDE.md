@@ -35,7 +35,7 @@ java/
     ├── materializer/ Materializer, X12Normalizer, StructureIndex, StructureResolver
     ├── buffer/       BufferStore, LeaseManager, RetentionSweeper, TransactionRow, FileRow, Lease, Status
     ├── filter/       X12SqlAdapter, X12Filter   (RFC4515 → SQLite)
-    ├── producer/     OperationRouter, X12ProducerFacade, ObjectTree, SchemaRegistry, X12Operations, MaterializerRecastHook, ProducerException
+    ├── producer/     OperationRouter, X12ProducerFacade, ObjectTree, InboxFiles (live /inbox browse + file mgmt), SchemaRegistry, X12Operations, MaterializerRecastHook, ProducerException
     └── health/       HealthCheck
 ```
 
@@ -45,7 +45,7 @@ java/
 (cd java && mvn test)          # unit; `mvn verify` adds integration (failsafe). Needs GitHub Packages auth for lite-filter.
 cd <repo-root> && ./gradlew :x12:x12:test   # via the gate task
 java/scripts/fetch-x12org-examples.py       # once, locally: populates the git-ignored x12org conformance set
-java/scripts/e2e-local.sh                   # real container + real file drop → take/ack/purge
+java/scripts/e2e-local.sh                   # real container, data loaded THROUGH the DP API → take/ack/purge + file mgmt
 cd <repo-root>/package/x12/x12 && zbb --slot <slot> gate   # the truth
 ```
 
@@ -73,6 +73,21 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
   git-ignored on purpose; the fetch script is the only way it gets populated.
 - **No listener ports.** Do not add `listenerPorts` to `runtimeConfig.yml` or a
   `LISTENER_PORT_*` precondition to `startup.sh`; the inbox is a volume, not a socket.
+- **`/inbox` must never be cached.** It is the live volume (DESIGN §2.9): every
+  `getChildren` is a readdir, every `getObject` a `stat`. Do not memoize listings, and do
+  not "optimize" it by joining against the `files` table — the whole point is that it shows
+  files the buffer has never heard of. `/files` is the consumed projection; keep the two
+  distinct.
+- **File management is gated and stays gated.** `uploadBinaryContent`,
+  `createChildObject` (mkdir) and `deleteObject` are refused unless
+  `config.allowFileManagement` is literally `true` (default false; `e2e-local.sh` turns it
+  on). Do not default it on, do not add a second way to enable it, and keep
+  `isSupported` answering from the same flag. Upload never replaces an existing name
+  (that would fork a path's `fileId`), and delete never recurses.
+- **The poller scans each source flat** (`newDirectoryStream`, DESIGN §4.2). A file
+  uploaded into a subdirectory is browsable and downloadable but will never be consumed
+  where it sits — that is what the `ingest` field on a live file node reports. If recursive
+  ingest is ever wanted, that is a poller change with its own design, not a browse change.
 
 ## Conventions
 

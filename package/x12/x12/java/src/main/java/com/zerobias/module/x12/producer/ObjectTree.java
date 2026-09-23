@@ -1,5 +1,7 @@
 package com.zerobias.module.x12.producer;
 
+import com.zerobias.module.x12.ModuleRuntimeConfig;
+import com.zerobias.module.x12.SourceConfig;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.FileRow;
 import com.zerobias.module.x12.buffer.Status;
@@ -74,6 +76,7 @@ public final class ObjectTree implements ObjectTreeApi {
     private final SchemaRegistryApi schemas;
     private final Supplier<PollerStatus> poller;
     private final String consumedSuffix;
+    private final InboxFiles inbox;
 
     /** {@code poller} feeds {@code /stats}; it may yield null (treated as {@link PollerStatus#DOWN}). */
     public ObjectTree(BufferStore buffer, Supplier<PollerStatus> poller) {
@@ -91,10 +94,22 @@ public final class ObjectTree implements ObjectTreeApi {
      */
     public ObjectTree(BufferStore buffer, SchemaRegistryApi schemas, Supplier<PollerStatus> poller,
             String consumedSuffix) {
+        this(buffer, schemas, poller, consumedSuffix, List.of(), ModuleRuntimeConfig.DEFAULT_ERROR_SUFFIX);
+    }
+
+    /**
+     * @param sources     the configured inbox directories, which become the live
+     *                    {@code /inbox/<source>} branch ({@link InboxFiles}); empty means the
+     *                    branch lists nothing
+     * @param errorSuffix the {@code .error} suffix, for the {@code ingest} field on live file nodes
+     */
+    public ObjectTree(BufferStore buffer, SchemaRegistryApi schemas, Supplier<PollerStatus> poller,
+            String consumedSuffix, List<SourceConfig> sources, String errorSuffix) {
         this.buffer = buffer;
         this.schemas = schemas == null ? SchemaRegistryApi.EMPTY : schemas;
         this.poller = poller == null ? () -> PollerStatus.DOWN : poller;
         this.consumedSuffix = consumedSuffix == null || consumedSuffix.isBlank() ? DEFAULT_CONSUMED_SUFFIX : consumedSuffix;
+        this.inbox = new InboxFiles(sources, this.consumedSuffix, errorSuffix);
     }
 
     // --- id encoding ---------------------------------------------------------
@@ -296,6 +311,9 @@ public final class ObjectTree implements ObjectTreeApi {
     }
 
     private Map<String, Object> dynamicObject(String id) throws SQLException {
+        if (InboxFiles.owns(id)) {
+            return inbox.object(id);   // a fresh stat; never cached (DESIGN §2.9)
+        }
         String[] file = parseFileId(id);
         if (file != null) {
             FileRow f = requireFile(file[0], id);
@@ -355,6 +373,7 @@ public final class ObjectTree implements ObjectTreeApi {
                 return out;
             case RECEIVER:
                 out.add(object(FILES));
+                out.add(object(InboxFiles.INBOX));
                 out.add(object(TRANSACTIONS));
                 out.add(object(BY_TYPE));
                 out.add(object(BY_VERSION));
@@ -404,6 +423,9 @@ public final class ObjectTree implements ObjectTreeApi {
      * {@code transactions} collection; a multi-guide {@code /by-type/<TS>} lists its versions.
      */
     private List<Map<String, Object>> dynamicChildren(String id) throws SQLException {
+        if (InboxFiles.owns(id)) {
+            return inbox.children(id);   // a fresh readdir; never cached (DESIGN §2.9)
+        }
         List<Map<String, Object>> out = new ArrayList<>();
         String[] file = parseFileId(id);
         if (file != null && file[1] == null) {
@@ -535,6 +557,9 @@ public final class ObjectTree implements ObjectTreeApi {
      */
     @Override
     public BinaryContent downloadBinary(String id) throws SQLException {
+        if (InboxFiles.owns(id)) {
+            return inbox.downloadBinary(id);   // read straight off the volume, ingested or not
+        }
         String[] file = parseFileId(id);
         if (file == null || file[1] != null) {
             object(id);
@@ -550,6 +575,46 @@ public final class ObjectTree implements ObjectTreeApi {
         } catch (IOException e) {
             throw ProducerException.fileGone(f.fileId());
         }
+    }
+
+    // --- write surface: the live /inbox branch only (DESIGN §2.9) -----------
+
+    /**
+     * {@code uploadBinaryContent}: write bytes into a live {@code /inbox} container. The
+     * emergent branches reject it — {@code /files} is a projection of the buffer, so
+     * "uploading" into it would mean inventing a consumed file that never arrived.
+     */
+    @Override
+    public Map<String, Object> uploadBinary(String id, String fileName, byte[] bytes) throws SQLException {
+        if (InboxFiles.owns(id)) {
+            return inbox.upload(id, fileName, bytes);
+        }
+        object(id);   // 404 an unknown id before reporting it unsupported
+        throw ProducerException.unsupported(
+            "Upload targets a directory under " + InboxFiles.INBOX + ", not " + id);
+    }
+
+    /** {@code createChildObject}: mkdir under a live {@code /inbox} container. */
+    @Override
+    public Map<String, Object> createChildContainer(String id, String name) throws SQLException {
+        if (InboxFiles.owns(id)) {
+            return inbox.mkdir(id, name);
+        }
+        object(id);
+        throw ProducerException.unsupported(
+            "Directories can only be created under " + InboxFiles.INBOX + ", not " + id);
+    }
+
+    /** {@code deleteObject}: unlink a live file or remove an empty live directory. */
+    @Override
+    public void deleteObject(String id) throws SQLException {
+        if (InboxFiles.owns(id)) {
+            inbox.delete(id);
+            return;
+        }
+        object(id);
+        throw ProducerException.unsupported(
+            "Only objects under " + InboxFiles.INBOX + " are deletable; buffer rows leave via ops/purge: " + id);
     }
 
     // --- object builders ---------------------------------------------------

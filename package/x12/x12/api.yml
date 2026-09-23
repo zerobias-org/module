@@ -12,6 +12,11 @@ info:
 # directly from the interface module; the implementation is Java (see java/).
 # Adds /objects/{objectId}/download (binary) over hl7/v2: each X12 file node is
 # also a binary object whose raw EDI bytes are downloadable.
+# Adds /objects/{objectId}/upload for file management over the mounted volume
+# (DESIGN §2.9). createChildObject (mkdir) and deleteObject need no extra entry —
+# they are the POST/DELETE of the /objects/{objectId}[/children] path items above.
+# All three are refused unless the deployment sets config.allowFileManagement=true,
+# and isSupported reports that per deployment.
 paths:
   # ---- DataProducer interface paths ----
   /objects:
@@ -38,6 +43,8 @@ paths:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1document'
   /objects/{objectId}/download:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1download'
+  /objects/{objectId}/upload:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1upload'
   /schemas/{schemaId}:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1schemas~1{schemaId}'
   # ---- Connection lifecycle (required for Docker-based modules) ----

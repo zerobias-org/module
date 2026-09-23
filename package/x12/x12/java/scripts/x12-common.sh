@@ -28,8 +28,11 @@ dk() {
   fi
 }
 
+# allowFileManagement is ON here so the scripted run can load data through the
+# DataProducer API (upload/mkdir/delete under /x12-receiver/inbox) instead of reaching
+# around the module to write the bind mount. It ships false in runtimeConfig.yml.
 x12_module_config() {   # $1 = pollIntervalSec, $2 = stableForSec
-  printf '{"sources":[{"name":"inbox","path":"/var/lib/x12/inbox","pattern":"*.{x12,edi,txt,835,837,277,999,dat}","pollIntervalSec":%s,"stableForSec":%s}],"consumedSuffix":".done","errorSuffix":".error","ackDurability":"normal"}' \
+  printf '{"sources":[{"name":"inbox","path":"/var/lib/x12/inbox","pattern":"*.{x12,edi,txt,835,837,277,999,dat}","pollIntervalSec":%s,"stableForSec":%s}],"consumedSuffix":".done","errorSuffix":".error","ackDurability":"normal","allowFileManagement":true}' \
     "${1:-2}" "${2:-1}"
 }
 
@@ -90,6 +93,32 @@ x12_rpc_bin() {
   curl -fsS -m10 -X POST "$X12_API/connections/$X12_CONN/$1" -H 'content-type: application/json' \
     -d "{\"argMap\":$2}" -o "$3"
 }
+
+# upload OBJECT_ID FILE_NAME LOCAL_FILE  -> the new file's object JSON
+# The body is the raw bytes, so objectId/fileName ride on the query string (DESIGN §2.9).
+x12_upload() {
+  curl -fsS -m30 -X POST \
+    "$X12_API/connections/$X12_CONN/BinaryApi.uploadBinaryContent?objectId=$(x12_urlenc "$1")&fileName=$(x12_urlenc "$2")" \
+    -H 'content-type: application/octet-stream' --data-binary "@$3"
+}
+
+# mkdir PARENT_OBJECT_ID NAME  -> the new container's object JSON
+x12_mkdir() {
+  x12_rpc ObjectsApi.createChildObject \
+    "{\"objectId\":$(jstr "$1"),\"object\":{\"name\":$(jstr "$2"),\"objectClass\":[\"container\"]}}"
+}
+
+# delete OBJECT_ID
+x12_delete() {
+  x12_rpc ObjectsApi.deleteObject "{\"objectId\":$(jstr "$1")}"
+}
+
+# is_supported OPERATION_ID -> "True"/"False"
+x12_is_supported() {
+  jget "$(curl -fsS -m5 "$X12_API/connections/$X12_CONN/isSupported/$1")" 'j["supported"]'
+}
+
+x12_urlenc() { python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
 
 x12_fn() {   # $1 = function name, $2 = requestBody JSON
   x12_rpc "FunctionsApi.invokeFunction" "{\"objectId\":\"$X12_RECEIVER/ops/$1\",\"requestBody\":${2:-{\}}}"

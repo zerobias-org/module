@@ -27,9 +27,13 @@ import java.util.Map;
  * {@code SchemaRegistry} and {@code X12Operations}; until then the defaults serve the
  * root and 404 everything else.
  *
- * <p>The producer is <b>receive-only</b>: files arrive in the inbox, never through the
- * DataProducer write surface — every mutating op is rejected with
- * {@code UnsupportedOperationError}. Draining is {@code ops/take}, not element mutation.
+ * <p>The producer is <b>receive-only for data</b>: transactions arrive as inbox files, so
+ * every collection/document mutation is rejected with {@code UnsupportedOperationError},
+ * and draining is {@code ops/take}, not element mutation. The one exception is file
+ * management over the volume itself — {@code uploadBinaryContent},
+ * {@code createChildObject} (mkdir) and {@code deleteObject} under the live
+ * {@code /inbox} branch — which is off unless the deployment sets
+ * {@code config.allowFileManagement=true} (DESIGN §2.9).
  */
 public final class X12ProducerFacade {
 
@@ -42,19 +46,38 @@ public final class X12ProducerFacade {
     private final ObjectTreeApi tree;
     private final SchemaRegistryApi schemas;
     private final OperationsApi ops;
+    private final boolean allowFileManagement;
 
     public X12ProducerFacade(BufferStore buffer, ObjectTreeApi tree, SchemaRegistryApi schemas,
             OperationsApi ops) {
+        this(buffer, tree, schemas, ops, false);
+    }
+
+    /**
+     * @param allowFileManagement {@code config.allowFileManagement} — the single gate on the
+     *                            file-management write surface ({@code uploadBinaryContent},
+     *                            {@code createChildObject}, {@code deleteObject} under
+     *                            {@code /inbox}). Default false: production receivers take
+     *                            files from the feed, not from API callers (DESIGN §2.9).
+     */
+    public X12ProducerFacade(BufferStore buffer, ObjectTreeApi tree, SchemaRegistryApi schemas,
+            OperationsApi ops, boolean allowFileManagement) {
         this.buffer = buffer;
         this.tree = tree == null ? ObjectTreeApi.ROOT_ONLY : tree;
         this.schemas = schemas == null ? SchemaRegistryApi.EMPTY : schemas;
         this.ops = ops == null ? OperationsApi.NONE : ops;
+        this.allowFileManagement = allowFileManagement;
         X12Filter.register();
     }
 
     /** The foundation skeleton: root only, no schemas, no functions. */
     public static X12ProducerFacade skeleton(BufferStore buffer) {
         return new X12ProducerFacade(buffer, ObjectTreeApi.ROOT_ONLY, SchemaRegistryApi.EMPTY, OperationsApi.NONE);
+    }
+
+    /** Whether the file-management write surface is enabled ({@code isSupported} reads this). */
+    public boolean fileManagementEnabled() {
+        return allowFileManagement;
     }
 
     public ObjectTreeApi tree() {
@@ -145,6 +168,54 @@ public final class X12ProducerFacade {
     public BinaryContent downloadBinary(String objectId) throws SQLException {
         requireId(objectId);
         return tree.downloadBinary(objectId);
+    }
+
+    // --- File management: gated by config.allowFileManagement (DESIGN §2.9) --
+
+    /**
+     * {@code uploadBinaryContent} — write {@code bytes} as {@code fileName} into the live
+     * {@code /inbox} container {@code objectId}. Returns the new file's object metadata
+     * (the interface's {@code 201} body).
+     */
+    public String uploadBinary(String objectId, String fileName, byte[] bytes) throws SQLException {
+        requireId(objectId);
+        requireFileManagement("uploadBinaryContent");
+        return GSON.toJson(tree.uploadBinary(objectId, fileName, bytes));
+    }
+
+    /**
+     * {@code createChildObject} — mkdir under a live {@code /inbox} container. Only
+     * containers can be created: there is no way to conjure a file without bytes, and
+     * bytes arrive through {@code uploadBinaryContent}.
+     */
+    public String createChildObject(String objectId, String name, List<String> objectClass)
+            throws SQLException {
+        requireId(objectId);
+        requireFileManagement("createChildObject");
+        if (objectClass != null && !objectClass.isEmpty() && !objectClass.contains("container")) {
+            throw ProducerException.illegalArgument(
+                "Only container children can be created (a directory); got objectClass=" + objectClass);
+        }
+        return GSON.toJson(tree.createChildContainer(objectId, name));
+    }
+
+    /** {@code deleteObject} — unlink a live file or remove an empty live directory. */
+    public String deleteObject(String objectId) throws SQLException {
+        requireId(objectId);
+        requireFileManagement("deleteObject");
+        tree.deleteObject(objectId);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("status", "deleted");
+        body.put("id", objectId);
+        return GSON.toJson(body);
+    }
+
+    private void requireFileManagement(String operationId) {
+        if (!allowFileManagement) {
+            throw ProducerException.unsupported(operationId
+                + " is disabled: the receiver is receive-only unless the deployment sets "
+                + "config.allowFileManagement=true");
+        }
     }
 
     // --- Write surface: rejected (receive-only) ---------------------------

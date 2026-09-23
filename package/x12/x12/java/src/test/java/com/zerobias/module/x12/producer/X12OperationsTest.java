@@ -255,4 +255,40 @@ class X12OperationsTest {
 
         assertEquals(404, assertThrows(ProducerException.class, () -> ops.invoke("nope", Map.of())).httpStatus());
     }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void packsReportsTheBundledContentAndFiltersIt() throws Exception {
+        Map<String, Object> all = ops.invoke("packs", Map.of());
+        int packCount = (Integer) all.get("packCount");
+        assertTrue(packCount >= 12, "one pack per guide label, plus codes and core; got " + packCount);
+        assertTrue((Integer) all.get("schemaCount") > 0);
+        assertTrue((Integer) all.get("registrySize") > 0, "the registry the packs resolve against");
+        assertTrue(((List<String>) all.get("guides")).contains("005010X221A1"));
+
+        List<Map<String, Object>> packs = (List<Map<String, Object>>) all.get("packs");
+        assertEquals(packCount, packs.size());
+        for (Map<String, Object> p : packs) {
+            assertEquals("bundled", p.get("source"), String.valueOf(p.get("name")));
+            assertEquals("active", p.get("status"), String.valueOf(p.get("name")));
+            assertEquals(List.of(), p.get("missingSchemas"), String.valueOf(p.get("name")));
+        }
+
+        // narrowing by name and by guide
+        Map<String, Object> one = ops.invoke("packs", Map.of("name", "x12-guide-005010X221A1"));
+        assertEquals(1, one.get("packCount"));
+        Map<String, Object> only = ((List<Map<String, Object>>) one.get("packs")).get(0);
+        assertEquals("835", only.get("transactionType"));
+        assertEquals("structure-index/005010X221A1.json", only.get("structureIndex"));
+        assertEquals(Boolean.FALSE, only.get("core"));
+
+        assertEquals(1, ops.invoke("packs", Map.of("gs08", "005010X214")).get("packCount"));
+        Map<String, Object> core = ((List<Map<String, Object>>) ops.invoke("packs",
+            Map.of("name", "x12-core")).get("packs")).get(0);
+        assertEquals(Boolean.TRUE, core.get("core"));
+
+        // an unknown pack is an empty report, not an error: "is it present?" is the question
+        assertEquals(0, ops.invoke("packs", Map.of("name", "x12-guide-nope")).get("packCount"));
+        assertEquals(0, ops.invoke("packs", Map.of("gs08", "005010X999")).get("packCount"));
+    }
 }

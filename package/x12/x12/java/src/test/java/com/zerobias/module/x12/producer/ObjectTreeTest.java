@@ -89,7 +89,8 @@ class ObjectTreeTest {
     @Test
     void opsFunctionsCarrySchemasAndThrows() throws Exception {
         JsonObject ops = page(facade.getChildren(R + "/ops", 100, 1));
-        assertEquals(List.of("take", "ack", "release", "replay", "recast", "purge", "raw", "validate", "rescan"), names(ops));
+        assertEquals(List.of("take", "ack", "release", "replay", "recast", "purge", "raw", "validate", "rescan",
+            "packs"), names(ops));
         JsonObject take = item(ops, 0);
         assertEquals(List.of("function"), classes(take));
         assertEquals("schema:function:x12.ops.take:input", take.get("inputSchema").getAsString());

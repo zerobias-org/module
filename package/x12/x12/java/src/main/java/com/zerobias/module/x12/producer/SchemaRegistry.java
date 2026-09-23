@@ -304,7 +304,7 @@ public final class SchemaRegistry implements SchemaRegistryApi {
 
     /** The {@code /ops/<fn>} names, in DESIGN §2.1 order. */
     public static final List<String> OPS_FUNCTIONS =
-        List.of("take", "ack", "release", "replay", "recast", "purge", "raw", "validate", "rescan");
+        List.of("take", "ack", "release", "replay", "recast", "purge", "raw", "validate", "rescan", "packs");
 
     public static String functionInputId(String fn) {
         return "schema:function:" + CATALOG + ".ops." + fn + ":input";
@@ -392,6 +392,17 @@ public final class SchemaRegistry implements SchemaRegistryApi {
             prop("discovered", "integer", true, null),
             prop("consumed", "integer", true, null),
             prop("errored", "integer", true, null))));
+        // packs (DESIGN §7): what content this deployment has, and where it came from
+        put(out, schema(functionInputId("packs"), List.of(
+            prop("name", "string", false, "Report only this pack; omitted = all"),
+            prop("gs08", "string", false, "Report only the pack covering this guide"))));
+        put(out, schema(functionOutputId("packs"), List.of(
+            prop("packCount", "integer", true, "Packs loaded"),
+            prop("schemaCount", "integer", true, "Schemas declared across those packs"),
+            prop("registrySize", "integer", true, "Schemas the registry can actually serve"),
+            multi(prop("guides", "string", true, "GS08 ids covered, aliases included")),
+            multi(prop("packs", "string", true, "name, namespace, source, version, gs08, aliasOf, "
+                + "transactionType, idScope, schemaCount, structureIndex, core, status, missingSchemas")))));
         return out;
     }
 

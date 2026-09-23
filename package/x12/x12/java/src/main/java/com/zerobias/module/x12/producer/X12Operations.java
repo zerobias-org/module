@@ -60,6 +60,8 @@ public final class X12Operations implements OperationsApi {
     private final Supplier<PollerHandle> pollers;
     private final SchemaRegistryApi schemas;
     private final RecastHook recaster;
+    /** Lazily read once: the bundled catalog is classpath-immutable for the process's life. */
+    private PackCatalog packCatalog;
 
     public X12Operations(BufferStore buffer, Supplier<PollerHandle> pollers, SchemaRegistryApi schemas) {
         this(buffer, X12ProducerFacade::toElement, pollers, schemas, RecastHook.NONE);
@@ -96,9 +98,63 @@ public final class X12Operations implements OperationsApi {
                 return validate(in);
             case "rescan":
                 return rescan(in);
+            case "packs":
+                return packs(in);
             default:
                 throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/ops/" + fn);
         }
+    }
+
+    // --- content packs (DESIGN §7) -------------------------------------------
+
+    /**
+     * What content this deployment has and where it came from: the bundled packs from
+     * {@code packs.json}, each reported with the schema ids it declares and whether the
+     * registry can actually serve them ({@code status: active|degraded}).
+     *
+     * <p>Read-only by design. Installing a delivered pack needs a delivery path first
+     * (npm at image build, or upload + validate); this op is what makes the bundled floor
+     * discoverable, so a caller can tell a stock deployment from an extended one without
+     * reading container logs.
+     *
+     * <p>{@code name} / {@code gs08} narrow the report; an unknown value is not an error,
+     * it is an empty list, because "is this pack present?" is exactly the question being
+     * asked.
+     */
+    private Map<String, Object> packs(Map<String, Object> input) {
+        final PackCatalog catalog = catalog();
+        final String name = strArg(input, "name");
+        final String gs08 = strArg(input, "gs08");
+
+        final List<Map<String, Object>> described = new ArrayList<>();
+        for (PackCatalog.Pack p : catalog.packs()) {
+            if (name != null && !name.equals(p.name())) {
+                continue;
+            }
+            if (gs08 != null && !gs08.equals(p.gs08())) {
+                continue;
+            }
+            described.add(p.describe(schemas));
+        }
+
+        final Map<String, Object> out = new LinkedHashMap<>();
+        out.put("packCount", described.size());
+        int declared = 0;
+        for (Map<String, Object> d : described) {
+            declared += (Integer) d.get("schemaCount");
+        }
+        out.put("schemaCount", declared);
+        out.put("registrySize", schemas instanceof SchemaRegistry ? ((SchemaRegistry) schemas).size() : -1);
+        out.put("guides", catalog.guides());
+        out.put("packs", described);
+        return out;
+    }
+
+    private PackCatalog catalog() {
+        if (packCatalog == null) {
+            packCatalog = PackCatalog.fromClasspath();
+        }
+        return packCatalog;
     }
 
     // --- drain ---------------------------------------------------------------

@@ -25,7 +25,7 @@ runtimeConfig.yml      daemonMode + durability[x12-buffer, x12-inbox] + resource
 Dockerfile  nginx.conf  nginx-insecure.conf  startup.sh    container (nginx → java on 8889)
 java/
 ├── pom.xml            uber jar (maven-shade); codegen runs at generate-resources (NOT a profile)
-├── codegen/           BUILD-TIME ONLY — reads imsweb mapping XML → schemas/ + structure-index/
+├── codegen/           BUILD-TIME ONLY — reads imsweb mapping XML → schemas/ + structure-index/ + packs.json
 ├── scripts/           fetch-x12org-examples.py (local, never committed output), e2e-local.sh, x12-live.sh
 └── src/main/java/com/zerobias/module/x12/
     ├── X12ApiServer.java          entry point: boots buffer + pollers + Javalin RPC routes
@@ -35,7 +35,7 @@ java/
     ├── materializer/ Materializer, X12Normalizer, StructureIndex, StructureResolver
     ├── buffer/       BufferStore, LeaseManager, RetentionSweeper, TransactionRow, FileRow, Lease, Status
     ├── filter/       X12SqlAdapter, X12Filter   (RFC4515 → SQLite)
-    ├── producer/     OperationRouter, X12ProducerFacade, ObjectTree, InboxFiles (live /inbox browse + file mgmt), SchemaRegistry, X12Operations, MaterializerRecastHook, ProducerException
+    ├── producer/     OperationRouter, X12ProducerFacade, ObjectTree, InboxFiles (live /inbox browse + file mgmt), SchemaRegistry, PackCatalog (content packs), X12Operations, MaterializerRecastHook, ProducerException
     └── health/       HealthCheck
 ```
 
@@ -84,6 +84,13 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
   on). Do not default it on, do not add a second way to enable it, and keep
   `isSupported` answering from the same flag. Upload never replaces an existing name
   (that would fork a path's `fileId`), and delete never recurses.
+- **Every generated schema belongs to exactly one pack.** The codegen attributes each
+  `write()` to the current pack and emits `packs.json` + `schemas/index.json`; the codegen
+  test asserts the two reconcile (every emitted id is indexed, and the pack schema counts sum
+  to the index size). Add a new emission phase without setting `currentPack` and that test
+  fails — which is the point. `x12-core` is the module's own contract and is marked
+  `core: true`; never let content supersede it. External packs will need namespaced ids
+  (`schema:type:x12.<vendor>.<gs08>.<xid>`), so don't widen the id shape in the meantime.
 - **The poller scans each source flat** (`newDirectoryStream`, DESIGN §4.2). A file
   uploaded into a subdirectory is browsable and downloadable but will never be consumed
   where it sits — that is what the `ingest` field on a live file node reports. If recursive

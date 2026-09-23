@@ -9,10 +9,14 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** End-to-end: generate two guides (one with an alias) into a temp dir and check the layout (DESIGN §6). */
@@ -70,15 +74,62 @@ class SchemaGeneratorTest {
             assertEquals("schema:shared:x12." + f, s.get("id").getAsString());
         }
 
-        // Every emitted file's id is canonical and its path matches its id.
+        // Every emitted schema file's id is canonical and its path matches its id.
+        // index.json is the enumeration, not a schema — skip it.
+        final List<Path> schemaFiles = new ArrayList<>();
         try (Stream<Path> files = Files.walk(out.resolve("schemas"))) {
             for (Path p : files.filter(Files::isRegularFile).toList()) {
+                if (p.getFileName().toString().equals("index.json")) {
+                    continue;
+                }
+                schemaFiles.add(p);
                 final String id = read(p).get("id").getAsString();
                 assertTrue(SchemaIds.isValid(id), id);
                 final String name = p.getFileName().toString().replace(".json", "");
                 assertTrue(id.endsWith("." + name) || id.endsWith(":x12." + name), p + " vs " + id);
             }
         }
+
+        // schemas/index.json enumerates every schema file, by id, with a resolvable path.
+        final JsonObject index = read(out.resolve("schemas/index.json"));
+        assertEquals(schemaFiles.size(), index.size(), "index.json covers every emitted schema");
+        for (Path p : schemaFiles) {
+            final String id = read(p).get("id").getAsString();
+            assertTrue(index.has(id), "index.json is missing " + id);
+            assertEquals(out.resolve("schemas").relativize(p).toString(), index.get(id).getAsString(), id);
+        }
+
+        // packs.json: one pack per guide label, plus codes and core (DESIGN §7).
+        final JsonArray packs = GSON.fromJson(Files.readString(out.resolve("packs.json")), JsonArray.class);
+        final Map<String, JsonObject> byName = new LinkedHashMap<>();
+        int declared = 0;
+        for (var el : packs) {
+            final JsonObject pack = el.getAsJsonObject();
+            byName.put(pack.get("name").getAsString(), pack);
+            assertEquals("x12", pack.get("namespace").getAsString());
+            assertEquals("bundled", pack.get("source").getAsString());
+            assertFalse(pack.has("version"), "a bundled pack's version IS the module's");
+            declared += pack.get("schemaCount").getAsInt();
+            assertEquals(pack.get("schemaCount").getAsInt(), pack.getAsJsonArray("schemaIds").size());
+            for (var id : pack.getAsJsonArray("schemaIds")) {
+                assertTrue(index.has(id.getAsString()), "pack declares an unemitted id: " + id);
+            }
+        }
+        assertEquals(index.size(), declared, "every emitted schema belongs to exactly one pack");
+
+        final JsonObject guide = byName.get("x12-guide-005010X223A2");
+        assertEquals("005010X223A2", guide.get("gs08").getAsString());
+        assertEquals("837I", guide.get("transactionType").getAsString());
+        assertEquals("structure-index/005010X223A2.json", guide.get("structureIndex").getAsString());
+        assertEquals("x12.005010X223A2.*", guide.get("idScope").getAsString());
+        assertTrue(guide.getAsJsonArray("schemaIds").contains(
+            GSON.toJsonTree("schema:table:x12.005010X223A2.837I")), "the table id is the guide pack's");
+
+        assertEquals("005010X223A2", byName.get("x12-guide-005010X223A1").get("aliasOf").getAsString(),
+            "the alias label X223A1 gets its own pack, pointing back at canonical X223A2");
+        assertFalse(byName.get("x12-guide-005010X223A2").has("aliasOf"), "the canonical label has no aliasOf");
+        assertFalse(byName.get("x12-codes").has("gs08"), "code sets span guides");
+        assertFalse(byName.get("x12-core").has("structureIndex"), "the core pack has no guide structure");
     }
 
     private static JsonObject read(Path p) throws IOException {

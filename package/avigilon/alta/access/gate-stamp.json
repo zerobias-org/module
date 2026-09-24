@@ -1,7 +1,7 @@
 {
-  "version": "2.0.6-uat.0",
-  "branch": "feat/x12-packs",
-  "sourceHash": "bd1fd113bb7317ed26955d74cf4809a17b79fb136892d479d63699a87ac52ddf",
+  "version": "2.0.6",
+  "branch": "main",
+  "sourceHash": "b1c966533eae3b8035e939dbcafcd86d98617c004004ceef9d156fc1cf19913a",
   "testHash": "c86593489cf8da5826b448b6e769abb3937c8ec54cb6b4e2a647b4f9c55c30fc",
   "tasks": {
     "validate": "passed",

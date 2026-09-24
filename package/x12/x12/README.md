@@ -49,7 +49,7 @@ getting the file onto the volume is the feed's job.
 ├── /by-source/<inbox name>   one node per watched directory
 ├── /inbox                    the LIVE volume: /inbox/<source>/… real dirs and files
 ├── /stats                    document
-└── /ops                      take · ack · release · replay · recast · purge · raw · validate · rescan
+└── /ops                      take · ack · release · replay · recast · purge · raw · validate · rescan · packs
 ```
 
 ## Configuration

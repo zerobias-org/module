@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.zerobias.module.x12.codegen.mapping.Mapping;
 import com.zerobias.module.x12.codegen.mapping.MappingLoader;
 import com.zerobias.module.x12.codegen.model.DataType;
+import com.zerobias.module.x12.codegen.model.Pack;
 import com.zerobias.module.x12.codegen.model.Property;
 import com.zerobias.module.x12.codegen.model.Schema;
 
@@ -52,6 +53,13 @@ public final class SchemaGenerator {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     private final Set<String> emittedIds = new LinkedHashSet<>();
     private final List<Schema> emittedSchemas = new ArrayList<>();
+
+    /** Schema id → path relative to {@code schemas/}, emitted as {@code schemas/index.json}. */
+    private final Map<String, String> index = new LinkedHashMap<>();
+    /** The bundled packs, in emission order, emitted as {@code packs.json} (DESIGN §7). */
+    private final List<Pack> packs = new ArrayList<>();
+    /** The pack {@link #write} attributes schemas to; set as each phase starts. */
+    private Pack currentPack;
 
     public SchemaGenerator(Path outputDir) {
         this.outputDir = outputDir;
@@ -110,10 +118,15 @@ public final class SchemaGenerator {
             }
         }
 
-        // Pass 2: emit guides.
+        // Pass 2: emit guides — one pack each, so a companion-guide pack can later
+        // supersede exactly one guide instead of shadowing the whole core (DESIGN §7).
         for (StructureWalker w : walkers) {
             final StructureWalker.Generated gen = w.emit();
             gen.table.properties.addAll(SharedSchemas.envelopeProperties());
+
+            currentPack = newPack("x12-guide-" + w.gs08(), SchemaIds.CATALOG + "." + w.gs08() + ".*")
+                .guide(w.gs08(), gen.index.aliasOf, w.transactionType(),
+                    "structure-index/" + w.gs08() + ".json");
 
             final Path guideRoot = outputDir.resolve("schemas").resolve(w.gs08());
             deleteTree(guideRoot);
@@ -131,7 +144,10 @@ public final class SchemaGenerator {
                 gen.loops.size(), gen.segments.size(), gen.composites.size());
         }
 
-        // Code-set enums (union across the walked guides + codes.xml).
+        // Code-set enums (union across the walked guides + codes.xml). Their own pack: X12
+        // republishes CARC/RARC/claim-status quarterly, and a code refresh must not mean
+        // regenerating every guide (DESIGN §7).
+        currentPack = newPack("x12-codes", SchemaIds.CATALOG + "." + SchemaIds.CODES + ".*");
         final Path codesRoot = outputDir.resolve("schemas").resolve(SchemaIds.CODES);
         if (all) {
             deleteTree(codesRoot);
@@ -143,7 +159,9 @@ public final class SchemaGenerator {
         }
         System.out.printf("Generated %d code-set enum(s) under schemas/%s.%n", enums, SchemaIds.CODES);
 
-        // Receiver-owned enums + shared schemas.
+        // Receiver-owned enums + shared schemas: the module's own contract, not content.
+        // A pack for reporting symmetry; nothing may ever supersede it.
+        currentPack = newPack("x12-core", SchemaIds.CATALOG + ".{ops,shared}.*");
         final Path opsRoot = outputDir.resolve("schemas").resolve(SchemaIds.OPS);
         deleteTree(opsRoot);
         writeAll(opsRoot, SharedSchemas.opsEnums());
@@ -155,7 +173,10 @@ public final class SchemaGenerator {
         write(sharedRoot.resolve("receiver-stats-source.json"), SharedSchemas.receiverStatsSource());
 
         verifyReferences();
-        System.out.printf("Wrote %d schema(s) to %s.%n", emittedSchemas.size(), outputDir);
+        writeIndex();
+        writePacks();
+        System.out.printf("Wrote %d schema(s) in %d pack(s) to %s.%n",
+            emittedSchemas.size(), packs.size(), outputDir);
     }
 
     /** {@code schema:enum:x12.codes.<dataEle>} with the merged value set. */
@@ -230,8 +251,50 @@ public final class SchemaGenerator {
         }
         fillDataTypes(schema);
         emittedSchemas.add(schema);
+        index.put(schema.id, relativeToSchemas(file));
+        if (currentPack != null) {
+            currentPack.add(schema.id);
+        }
         Files.createDirectories(file.getParent());
         Files.writeString(file, gson.toJson(schema) + "\n");
+    }
+
+    /** Register a pack and make it the attribution target for subsequent {@link #write} calls. */
+    private Pack newPack(String name, String idScope) {
+        final Pack p = new Pack(name, SchemaIds.CATALOG, idScope);
+        packs.add(p);
+        return p;
+    }
+
+    /** {@code schemas/}-relative, forward-slashed — the form {@code index.json} keys resolve against. */
+    private String relativeToSchemas(Path file) {
+        return outputDir.resolve("schemas").relativize(file).toString().replace(java.io.File.separatorChar, '/');
+    }
+
+    /**
+     * {@code schemas/index.json}: schema id → {@code schemas/}-relative path. The runtime
+     * registry prefers this over walking the classpath, so enumeration is explicit and a
+     * schema that failed to emit is a missing key rather than a silently absent file.
+     */
+    private void writeIndex() throws IOException {
+        final Path file = outputDir.resolve("schemas").resolve("index.json");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, gson.toJson(index) + "\n");
+        System.out.printf("Wrote schemas/index.json (%d id(s)).%n", index.size());
+    }
+
+    /**
+     * {@code packs.json}: the bundled content packs (DESIGN §7). Same manifest shape an
+     * npm-delivered or uploaded pack carries, so the loader has one code path and
+     * {@code ops/packs} reports provenance uniformly.
+     */
+    private void writePacks() throws IOException {
+        final Path file = outputDir.resolve("packs.json");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, gson.toJson(packs) + "\n");
+        for (Pack p : packs) {
+            System.out.printf("  pack %-28s %4d schema(s)  %s%n", p.name, p.schemaCount, p.idScope);
+        }
     }
 
     private static void deleteTree(Path root) throws IOException {

@@ -1,8 +1,8 @@
 {
   "version": "0.0.0-uat.0",
-  "branch": "feat/x12-packs",
-  "sourceHash": "1511ae022bf28ea935f7144e4b8305329717fd6eafbd60796330fdb404eac512",
-  "testHash": "6edec3ed4d04c24287837f725f0972ec064744840d15d991098f217874a2fa7e",
+  "branch": "feat/module-x12-x12",
+  "sourceHash": "12e2c3579261efdbd833fff040ca3813d4863cc565168e189706ca6af28705b3",
+  "testHash": "29a4698fcf59ccb91043313c4ceac0c62502d52850de939b1f3e5d219fa2e62d",
   "tasks": {
     "validate": "passed",
     "lint": "passed",
@@ -16,6 +16,6 @@
   "tests": {
       "unit": { "expected": 0, "ran": 0, "status": "skipped" },
       "integration": { "expected": 0, "ran": 0, "status": "skipped" },
-      "e2e": { "expected": 0, "ran": 0, "status": "skipped" }
+      "e2e": { "expected": 44, "ran": 44, "status": "passed" }
   }
 }

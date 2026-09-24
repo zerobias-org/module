@@ -37,12 +37,12 @@ public final class SharedSchemas {
     /**
      * The envelope overlay every transaction row carries at top level (DESIGN §5),
      * appended to each {@code schema:table:} and the whole of the shared envelope
-     * schema. {@code elementKey} is the primary key ({@code <fileId>:<GS06>:<ST02>}).
+     * schema. {@code elementKey} is the primary key ({@code <fileId>:<ISA13>:<GS06>:<ST02>}).
      */
     public static List<Property> envelopeProperties() {
         final List<Property> p = new ArrayList<>();
         p.add(new Property("elementKey", CoreTypes.STRING).required(true).primaryKey(true)
-            .description("Atom key: <fileId>:<GS06>:<ST02>"));
+            .description("Atom key: <fileId>:<ISA13>:<GS06>:<ST02>"));
         p.add(new Property("fileId", CoreTypes.STRING).required(true)
             .description("Interchange file id: <absolute path at discovery>@<first 12 hex of sha256>")
             .references(new Reference(FILE_ID, "fileId")));
@@ -90,7 +90,7 @@ public final class SharedSchemas {
         s.properties.add(new Property("consumedAt", CoreTypes.DATE_TIME));
         s.properties.add(new Property("status", CoreTypes.STRING).required(true)
             .references(new Reference(SchemaIds.opsEnum(FILE_STATUS))));
-        s.properties.add(new Property("tags", CoreTypes.STRING).multi(true).description("source:<name>, status:<consumed|error>"));
+        s.properties.add(new Property("tags", CoreTypes.STRING).multi(true).description("source:<name>, status:<consumed|error|duplicate>"));
         s.properties.add(new Property("isaCount", CoreTypes.INTEGER).description("ISA_LOOPs in the file"));
         s.properties.add(new Property("transactionCount", CoreTypes.INTEGER).description("ST..SE atoms buffered from the file"));
         s.properties.add(new Property("errorMessage", CoreTypes.STRING));
@@ -106,18 +106,20 @@ public final class SharedSchemas {
         s.properties.add(new Property("up", CoreTypes.BOOLEAN).required(true).description("Every poller thread alive"));
         s.properties.add(new Property("lastScan", CoreTypes.DATE_TIME));
         s.properties.add(new Property("lastConsumed", CoreTypes.DATE_TIME));
-        s.properties.add(new Property("bufferDepth", CoreTypes.INTEGER).required(true).description("Un-acked transactions"));
+        s.properties.add(new Property("bufferDepth", CoreTypes.INTEGER).required(true)
+            .description("Un-acked transactions (new + in_flight)"));
         s.properties.add(new Property("oldestUnackedSec", CoreTypes.INTEGER));
         s.properties.add(new Property("backpressure", CoreTypes.BOOLEAN).required(true));
-        s.properties.add(new Property("newCount", CoreTypes.INTEGER).description("Transactions with status new"));
-        s.properties.add(new Property("inFlightCount", CoreTypes.INTEGER).description("Transactions with status in_flight"));
-        s.properties.add(new Property("ackedCount", CoreTypes.INTEGER).description("Transactions with status acked"));
-        s.properties.add(new Property("fileCount", CoreTypes.INTEGER).description("Rows in the files table"));
-        s.properties.add(new Property("doneFileCount", CoreTypes.INTEGER).description(".done files still in the inboxes"));
+        s.properties.add(new Property("newCount", CoreTypes.INTEGER).required(true).description("Transactions with status new"));
+        s.properties.add(new Property("inFlightCount", CoreTypes.INTEGER).required(true).description("Transactions with status in_flight"));
+        s.properties.add(new Property("ackedCount", CoreTypes.INTEGER).required(true).description("Transactions with status acked"));
+        s.properties.add(new Property("fileCount", CoreTypes.INTEGER).required(true).description("Rows in the files table"));
+        s.properties.add(new Property("doneFileCount", CoreTypes.INTEGER).required(true).description(".done files still in the inboxes"));
         s.properties.add(new Property("oldestDoneFileAgeSec", CoreTypes.INTEGER));
-        s.properties.add(new Property("walBytes", CoreTypes.INTEGER));
-        s.properties.add(new Property("lastCheckpoint", CoreTypes.DATE_TIME));
-        s.properties.add(new Property("sources", CoreTypes.STRING).multi(true)
+        s.properties.add(new Property("walBytes", CoreTypes.INTEGER).required(true).description("Size of the WAL file"));
+        s.properties.add(new Property("dbSizeBytes", CoreTypes.INTEGER).required(true)
+            .description("Size of the database file, free pages included"));
+        s.properties.add(new Property("sources", CoreTypes.STRING).multi(true).required(true)
             .references(new Reference(STATS_SOURCE_ID)));
         return s;
     }
@@ -127,9 +129,10 @@ public final class SharedSchemas {
         s.properties.add(new Property("name", CoreTypes.STRING).required(true));
         s.properties.add(new Property("path", CoreTypes.STRING).required(true));
         s.properties.add(new Property("writable", CoreTypes.BOOLEAN).required(true));
-        s.properties.add(new Property("pending", CoreTypes.INTEGER).description("Candidate files not yet consumed"));
-        s.properties.add(new Property("errored", CoreTypes.INTEGER).description(".error files"));
-        s.properties.add(new Property("lastScan", CoreTypes.DATE_TIME));
+        s.properties.add(new Property("pending", CoreTypes.INTEGER).required(true).description("Candidate files not yet consumed"));
+        s.properties.add(new Property("errored", CoreTypes.INTEGER).required(true).description(
+            "The source's files rows with status error: files sent to .error and files recorded after repeated failed reads"));
+        s.properties.add(new Property("lastScanCompleted", CoreTypes.DATE_TIME).description("When this source's last scan finished"));
         return s;
     }
 

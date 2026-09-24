@@ -26,14 +26,9 @@ public final class StructureResolver {
         this(StructureIndex::fromClasspath);
     }
 
-    /** Custom loader (tests, or a future extension pack). */
+    /** Indexes from {@code loader} (GS08 → index, empty for the envelope-only degrade) instead of the classpath. */
     public StructureResolver(Function<String, Optional<StructureIndex>> loader) {
         this.loader = loader;
-    }
-
-    /** A resolver that finds nothing: every transaction takes the envelope-only degrade. */
-    public static StructureResolver none() {
-        return new StructureResolver(gs08 -> Optional.empty());
     }
 
     public Optional<StructureIndex> resolve(String gs08) {
@@ -42,11 +37,6 @@ public final class StructureResolver {
         }
         String key = TransactionTypes.canonical(gs08).orElse(gs08.trim());
         return cache.computeIfAbsent(key, loader);
-    }
-
-    /** {@code schema:table:x12.<GS08>.<TS>} when an index exists, else the shared envelope id. */
-    public String schemaIdFor(String gs08) {
-        return resolve(gs08).map(i -> i.tableSchemaId).orElse(ENVELOPE_SCHEMA);
     }
 
     /** A materializer for the guide, or empty for the envelope-only degrade. */

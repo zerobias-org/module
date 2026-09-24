@@ -96,22 +96,20 @@ public final class MappingLoader {
             }
         }
         return new Mapping.Loop(el.getAttribute("xid"), attrOrChild(el, "name"), attrOrChild(el, "usage"),
-            attrOrChild(el, "pos"), attrOrChild(el, "repeat"), blankToNull(el.getAttribute("type")), children);
+            attrOrChild(el, "pos"), attrOrChild(el, "repeat"), children);
     }
 
     private Mapping.Segment readSegment(Element el) {
         final List<Mapping.Field> fields = new ArrayList<>();
-        final List<String> syntax = new ArrayList<>();
         for (Element c : elementChildren(el)) {
             switch (c.getTagName()) {
                 case "element" -> fields.add(readElement(c));
                 case "composite" -> fields.add(readComposite(c));
-                case "syntax" -> syntax.add(c.getTextContent().trim());
-                default -> { /* metadata */ }
+                default -> { /* metadata, syntax rules, end_tag */ }
             }
         }
         return new Mapping.Segment(el.getAttribute("xid"), attrOrChild(el, "name"), attrOrChild(el, "usage"),
-            attrOrChild(el, "pos"), attrOrChild(el, "max_use"), blankToNull(attrOrChild(el, "end_tag")), syntax, fields);
+            attrOrChild(el, "pos"), attrOrChild(el, "max_use"), fields);
     }
 
     private Mapping.Composite readComposite(Element el) {
@@ -134,8 +132,7 @@ public final class MappingLoader {
             }
         }
         return new Mapping.Element(el.getAttribute("xid"), attrOrChild(el, "data_ele"), attrOrChild(el, "name"),
-            attrOrChild(el, "usage"), seq(el), intOrNull(attrOrChild(el, "repeat")), codes, external,
-            blankToNull(attrOrChild(el, "regex")));
+            attrOrChild(el, "usage"), seq(el), intOrNull(attrOrChild(el, "repeat")), codes, external);
     }
 
     private static int seq(Element el) {

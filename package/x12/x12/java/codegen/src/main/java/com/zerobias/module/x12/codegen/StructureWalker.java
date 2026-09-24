@@ -13,9 +13,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
- * Walks one pyx12 transaction map for one GS08 label and accumulates the
+ * Walks one pyx12 transaction map for one guide and accumulates the
  * DataProducer schemas (DESIGN §2.3/§2.4) plus the materializer structure index
  * (DESIGN §5).
  *
@@ -23,7 +24,7 @@ import java.util.TreeMap;
  * children of {@code ST_LOOP}; a loop references its segments and nested loops;
  * a segment references its composites; elements map to core dataTypes and, when
  * the IG codes that position ({@code valid_codes} / {@code external=}), carry a
- * {@code schema:enum:} reference to the data element's code set.
+ * {@code schema:enum:} reference to its code set ({@link CodeRegistry} names it).
  *
  * <p><b>Merging.</b> A guide reuses xids: {@code REF} appears several times in
  * one loop with different qualifiers, {@code NM1} appears in every name loop,
@@ -45,9 +46,14 @@ public final class StructureWalker {
     /** The loop whose subtree is the transaction-set atom (ST..SE). */
     public static final String TRANSACTION_LOOP = "ST_LOOP";
 
+    /** Data element 1251: its wire format is named by the 1250 qualifier beside it, not by its type (AN). */
+    static final String DATE_TIME_PERIOD = "1251";
+    /** How the receiver's materializer writes a 1251 (X12Normalizer.dateTimePeriod). */
+    static final String DATE_TIME_PERIOD_FORMAT = "ISO 8601 when the Date Time Period Format Qualifier (1250) beside"
+        + " it is D8 (YYYY-MM-DD), RD8 (YYYY-MM-DD/YYYY-MM-DD) or DT (YYYY-MM-DDTHH:MM:SS); as sent otherwise";
+
     private final String gs08;
     private final String transactionType;
-    private final String aliasOf;
     private final String mapFile;
     private final Map<String, Mapping.DataElement> dataElements;
     private final CodeRegistry codes;
@@ -58,11 +64,10 @@ public final class StructureWalker {
     private final Set<String> warnings = new LinkedHashSet<>();
     private Mapping.Transaction transaction;
 
-    public StructureWalker(String gs08, String transactionType, String aliasOf, String mapFile,
+    public StructureWalker(String gs08, String transactionType, String mapFile,
                            Map<String, Mapping.DataElement> dataElements, CodeRegistry codes) {
         this.gs08 = gs08;
         this.transactionType = transactionType;
-        this.aliasOf = aliasOf;
         this.mapFile = mapFile;
         this.dataElements = dataElements;
         this.codes = codes;
@@ -163,13 +168,13 @@ public final class StructureWalker {
         if (f instanceof Mapping.Composite comp) {
             acc.composite = comp.dataEle();
         } else {
-            acc.coded |= codes.register(gs08, (Mapping.Element) f);
+            acc.codeSources.addAll(codes.register(gs08, (Mapping.Element) f));
         }
     }
 
     // ---- emission -----------------------------------------------------------
 
-    /** Everything generated for one GS08 label. */
+    /** Everything generated for one guide. */
     public static final class Generated {
         public final Schema table;
         public final Map<String, Schema> loops = new LinkedHashMap<>();
@@ -203,7 +208,6 @@ public final class StructureWalker {
         index.transactionType = transactionType;
         index.transactionXid = transaction.xid();
         index.mapFile = com.zerobias.module.x12.codegen.mapping.MappingLoader.RESOURCE_DIR + mapFile;
-        index.aliasOf = aliasOf;
         index.transactionLoop = TRANSACTION_LOOP;
         index.tableSchemaId = g.table.id;
 
@@ -294,24 +298,32 @@ public final class StructureWalker {
                 warn("data element " + f.dataEle + " (" + f.xid + ") missing from dataele.xml; treated as AN");
             }
             final String x12Type = de == null ? "AN" : de.type();
-            final String core = CoreTypes.forX12(x12Type);
+            final boolean controlNumber = CoreTypes.CONTROL_NUMBERS.contains(f.dataEle);
+            final String core = controlNumber ? CoreTypes.STRING : CoreTypes.forX12(x12Type);
             if (de != null && !isKnownType(x12Type)) {
                 warn("data element " + f.dataEle + " has unknown data_type '" + x12Type + "'; treated as string");
             }
             e.x12Type = x12Type;
             e.coreType = core;
-            e.impliedDecimals = CoreTypes.impliedDecimals(x12Type);
+            e.impliedDecimals = controlNumber ? null : CoreTypes.impliedDecimals(x12Type);
             e.minLen = de == null ? null : de.minLen();
             e.maxLen = de == null ? null : de.maxLen();
             p = new Property(prop, core).format(CoreTypes.formatHint(x12Type));
             // Enum reference only where the IG codes THIS position (valid_codes / external=),
             // never just because the data element has a value set somewhere else.
-            if (f.coded && CoreTypes.STRING.equals(core) && codes.hasCodes(f.dataEle)) {
-                e.codes = f.dataEle;
-                p.references(new Reference(SchemaIds.codes(f.dataEle)));
+            if (!f.codeSources.isEmpty() && CoreTypes.STRING.equals(core)) {
+                final String key = codes.bind(f.dataEle, f.codeSources);
+                if (key != null) {
+                    e.codes = key;
+                    p.references(new Reference(SchemaIds.codes(key)));
+                }
             }
         }
-        p.description(describe(f)).required(required).multi(multi);
+        String description = describe(f);
+        if (DATE_TIME_PERIOD.equals(f.dataEle)) {
+            description = (description == null ? "" : description + ". ") + DATE_TIME_PERIOD_FORMAT;
+        }
+        p.description(description).required(required).multi(multi);
         schema.properties.add(p);
         fields.add(e);
     }
@@ -418,7 +430,7 @@ public final class StructureWalker {
         int usedIn;
         Integer repeat;
         String composite;
-        boolean coded;      // some use of this position carries valid_codes / external=
+        final Set<String> codeSources = new TreeSet<>();   // CodeRegistry.register over every use
 
         FieldAcc(int seq, String xid, String dataEle) {
             this.seq = seq;

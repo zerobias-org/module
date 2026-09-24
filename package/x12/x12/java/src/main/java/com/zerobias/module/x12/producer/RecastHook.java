@@ -6,13 +6,12 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * ==== MATERIALIZER SEAM ====
  * Re-materialization of a buffered row from its stored {@code raw_x12} under the
  * currently-loaded definitions, for {@code ops/recast} and {@code ops/validate}
- * (DESIGN §2.5). {@link MaterializerRecastHook} is the production implementation
- * (parse {@code raw_x12} with imsweb → {@code Materializer} → typed JSON); {@link #NONE}
- * is the degrade: {@code recast} rewrites nothing and says so, {@code validate} reports
- * {@code rematerialized: null}.
+ * (DESIGN §2.5). {@link MaterializerRecastHook} is the production implementation (parse
+ * {@code raw_x12} with imsweb → {@code Materializer} → typed JSON); the interface lets the
+ * {@link X12Operations} tests drive the recast/validate bookkeeping with rows that fail
+ * or rewrite on demand.
  */
 public interface RecastHook {
 
@@ -52,22 +51,4 @@ public interface RecastHook {
     default Mapping rematerialize(TransactionRow row) throws Exception {
         return recast(row).orElse(new Mapping(row.schemaId(), row.mappedJson()));
     }
-
-    /** True when a real materializer is behind this hook. */
-    default boolean available() {
-        return true;
-    }
-
-    /** No materializer configured: nothing is ever recast. */
-    RecastHook NONE = new RecastHook() {
-        @Override
-        public Optional<Mapping> recast(TransactionRow row) {
-            return Optional.empty();
-        }
-
-        @Override
-        public boolean available() {
-            return false;
-        }
-    };
 }

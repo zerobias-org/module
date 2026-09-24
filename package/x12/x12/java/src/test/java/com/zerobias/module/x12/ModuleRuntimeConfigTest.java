@@ -1,5 +1,7 @@
 package com.zerobias.module.x12;
 
+import com.zerobias.module.x12.ModuleRuntimeConfig.InvalidConfigException;
+import com.zerobias.module.x12.buffer.RetentionConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -11,14 +13,14 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Parsing of the opaque MODULE_CONFIG (DESIGN §3, §4.1) and its resolution chain:
  * env → runtime config file (JSON or the image's runtimeConfig.yml) → defaults.
- * Malformed input must degrade to safe defaults, never crash; directory validation
- * is separate and fatal by design.
+ * Defaults apply only when no config is present; a present-but-malformed config fails
+ * the boot. Directory validation is separate and fatal by design.
  */
 class ModuleRuntimeConfigTest {
 
@@ -26,14 +28,19 @@ class ModuleRuntimeConfigTest {
         + "\"sources\":[{\"name\":\"payer-a\",\"path\":\"/in/a\",\"pattern\":\"*.835\",\"pollIntervalSec\":5,\"stableForSec\":2},"
         + "             {\"name\":\"payer-b\",\"path\":\"/in/b\"}],"
         + "\"consumedSuffix\":\".ok\",\"errorSuffix\":\".bad\","
-        + "\"ackDurability\":\"full\","
+        + "\"ackDurability\":\"normal\","
+        + "\"maxFileBytes\":1048576,"
         + "\"retention\":{\"maxBytes\":10737418240,\"maxAge\":\"P90D\"},"
         + "\"allowBareTransactionSets\":true,"
         + "\"allowFileManagement\":true}";
 
+    private static ModuleRuntimeConfig config(List<SourceConfig> sources) {
+        return new ModuleRuntimeConfig(sources, ".done", ".error", true, RetentionConfig.none(), false, ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES);
+    }
+
     @Test
     void absentOrEmptyMeansDefaults() {
-        for (String s : new String[] {null, "", "{}", "not json", "[1,2]"}) {
+        for (String s : new String[] {null, "", "  ", "{}"}) {
             ModuleRuntimeConfig c = ModuleRuntimeConfig.parse(s);
             assertEquals(1, c.sources().size(), "default source for input: " + s);
             assertEquals("inbox", c.sources().get(0).name());
@@ -42,7 +49,8 @@ class ModuleRuntimeConfigTest {
             assertEquals(60, c.sources().get(0).stableForSec());
             assertEquals(".done", c.consumedSuffix());
             assertEquals(".error", c.errorSuffix());
-            assertFalse(c.fullDurability());
+            assertTrue(c.fullDurability(), "the rename-is-the-ack guarantee needs fsync per commit");
+            assertEquals(64L * 1024 * 1024, c.maxFileBytes());
             assertFalse(c.retention().isBounded());
             assertFalse(c.allowBareTransactionSets());
             assertFalse(c.allowFileManagement(), "file management is opt-in, never a default");
@@ -57,7 +65,8 @@ class ModuleRuntimeConfigTest {
             new SourceConfig("payer-b", "/in/b", "*", 30, 60)), c.sources(), "per-source defaults applied");
         assertEquals(".ok", c.consumedSuffix());
         assertEquals(".bad", c.errorSuffix());
-        assertTrue(c.fullDurability());
+        assertFalse(c.fullDurability());
+        assertEquals(1048576L, c.maxFileBytes());
         assertEquals(10737418240L, c.retention().maxBytes());
         assertEquals(Duration.ofDays(90), c.retention().maxAge());
         assertTrue(c.allowBareTransactionSets());
@@ -76,31 +85,59 @@ class ModuleRuntimeConfigTest {
     }
 
     @Test
-    void ackDurabilityIsCaseInsensitiveAndUnknownIsNormal() {
+    void ackDurabilityIsCaseInsensitiveAndAnythingElseIsRejected() {
         assertTrue(ModuleRuntimeConfig.parse("{\"ackDurability\":\"FULL\"}").fullDurability());
-        assertFalse(ModuleRuntimeConfig.parse("{\"ackDurability\":\"normal\"}").fullDurability());
-        assertFalse(ModuleRuntimeConfig.parse("{\"ackDurability\":\"bogus\"}").fullDurability());
+        assertFalse(ModuleRuntimeConfig.parse("{\"ackDurability\":\"Normal\"}").fullDurability());
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse("{\"ackDurability\":\"bogus\"}"));
     }
 
     @Test
-    void malformedSourceEntriesAreSkippedAndEmptyListFallsBackToDefault() {
-        ModuleRuntimeConfig c = ModuleRuntimeConfig.parse(
-            "{\"sources\":[{\"name\":\"ok\",\"path\":\"/x\"},{\"name\":\"nopath\"},\"junk\",{\"path\":\"/noname\"}]}");
-        assertEquals(List.of(new SourceConfig("ok", "/x", "*", 30, 60)), c.sources());
-
-        ModuleRuntimeConfig empty = ModuleRuntimeConfig.parse("{\"sources\":[]}");
-        assertEquals("inbox", empty.sources().get(0).name(), "empty sources[] → default source");
-        ModuleRuntimeConfig wrongType = ModuleRuntimeConfig.parse("{\"sources\":\"nope\"}");
-        assertEquals("inbox", wrongType.sources().get(0).name());
+    void malformedConfigFailsInsteadOfFallingBackToDefaults() {
+        for (String bad : new String[] {
+            "not json",
+            "{\"sources\":",
+            "[1,2]",
+            "\"a string\"",
+            "{\"sources\":[{\"name\":\"ok\",\"path\":\"/x\"},{\"name\":\"nopath\"}]}",
+            "{\"sources\":[\"junk\"]}",
+            "{\"sources\":[{\"path\":\"/noname\"}]}",
+            "{\"sources\":[]}",
+            "{\"sources\":\"nope\"}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pollIntervalSec\":\"30\"}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pollIntervalSec\":0}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pollIntervalSec\":1.5}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"stableForSec\":-1}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pattern\":\"*.{x12\"}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"patern\":\"*\"}]}",
+            "{\"consumedSuffix\":7}",
+            "{\"errorSuffix\":\"\"}",
+            "{\"consumedSuffix\":\"/../x\"}",
+            "{\"allowBareTransactionSets\":\"yes\"}",
+            "{\"maxFileBytes\":0}",
+            "{\"maxFileBytes\":\"64MB\"}",
+            "{\"maxFileBytes\":2147483648}",
+            "{\"retention\":\"P90D\"}",
+            "{\"retention\":{\"maxBytes\":\"10GB\"}}",
+            "{\"retention\":{\"maxAge\":\"90 days\"}}",
+            "{\"retention\":{\"maxAge\":\"PT0S\"}}",
+            "{\"retension\":{\"maxAge\":\"P90D\"}}",
+        }) {
+            assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse(bad), bad);
+        }
     }
 
     @Test
-    void badMaxAgeDisablesOnlyAgeAxis() {
-        ModuleRuntimeConfig c = ModuleRuntimeConfig.parse(
-            "{\"consumedSuffix\":\".x\",\"retention\":{\"maxBytes\":2048,\"maxAge\":\"90 days\"}}");
-        assertNull(c.retention().maxAge());
-        assertEquals(2048L, c.retention().maxBytes());
-        assertEquals(".x", c.consumedSuffix(), "bad maxAge must not discard the rest");
+    void duplicateNamesAndSameOrNestedPathsAreRejectedAtLoad() {
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse(
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/in/a\"},{\"name\":\"a\",\"path\":\"/in/b\"}]}"));
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse(
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/in/a\"},{\"name\":\"b\",\"path\":\"/in/x/../a/\"}]}"),
+            "same directory once normalized");
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse(
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/in\"},{\"name\":\"b\",\"path\":\"/in/b\"}]}"), "nested");
+        assertEquals(2, ModuleRuntimeConfig.parse(
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/in/a\"},{\"name\":\"b\",\"path\":\"/in/ab\"}]}").sources().size(),
+            "a shared name prefix is not nesting");
     }
 
     @Test
@@ -132,26 +169,71 @@ class ModuleRuntimeConfigTest {
         // 4. Nothing present → defaults.
         ModuleRuntimeConfig dflt = ModuleRuntimeConfig.resolve(Map.of(), dir.resolve("missing.yml").toString());
         assertEquals(".done", dflt.consumedSuffix());
-        // An unreadable RUNTIME_CONFIG_FILE falls through to the yml, never crashes.
-        ModuleRuntimeConfig badPointer = ModuleRuntimeConfig.resolve(
+        // A RUNTIME_CONFIG_FILE that does not exist is absent: fall through to the yml.
+        ModuleRuntimeConfig missingPointer = ModuleRuntimeConfig.resolve(
             Map.of("RUNTIME_CONFIG_FILE", dir.resolve("nope.json").toString()), yml.toString());
-        assertEquals(".yml-done", badPointer.consumedSuffix());
+        assertEquals(".yml-done", missingPointer.consumedSuffix());
+    }
+
+    @Test
+    void presentButBrokenConfigFailsWhicheverChannelItCameThrough(@TempDir Path dir) throws Exception {
+        Path garbage = Files.writeString(dir.resolve("runtime.json"), "{\"config\":");
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.resolve(
+            Map.of("RUNTIME_CONFIG_FILE", garbage.toString()), dir.resolve("missing.yml").toString()));
+        Path wrongType = Files.writeString(dir.resolve("runtimeConfig.yml"), "config:\n  maxFileBytes: lots\n");
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.resolve(Map.of(), wrongType.toString()));
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.resolve(
+            Map.of("MODULE_CONFIG", "{\"ackDurability\":\"sometimes\"}"), wrongType.toString()));
+    }
+
+    @Test
+    void maxFileBytesIsBounded() {
+        List<SourceConfig> one = List.of(new SourceConfig("a", "/a", "*", 1, 0));
+        assertThrows(InvalidConfigException.class, () -> new ModuleRuntimeConfig(one, ".done", ".error", true,
+            RetentionConfig.none(), false, 0));
+        assertThrows(InvalidConfigException.class, () -> new ModuleRuntimeConfig(one, ".done", ".error", true,
+            RetentionConfig.none(), false, ModuleRuntimeConfig.MAX_MAX_FILE_BYTES + 1));
+        assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES, config(one).maxFileBytes());
+        // One transaction set's typed JSON runs 3–4½× its X12 and SQLite stores no value over 1e9 bytes.
+        assertEquals(128L * 1024 * 1024, ModuleRuntimeConfig.MAX_MAX_FILE_BYTES);
+        assertThrows(InvalidConfigException.class,
+            () -> ModuleRuntimeConfig.parse("{\"maxFileBytes\":" + (256L * 1024 * 1024) + "}"));
+    }
+
+    @Test
+    void theBootProbeRenamesWithTheConfiguredSuffixes(@TempDir Path dir) throws Exception {
+        Path good = Files.createDirectory(dir.resolve("good"));
+        List<SourceConfig> one = List.of(new SourceConfig("a", good.toString(), "*", 1, 0));
+        assertEquals(List.of(), new ModuleRuntimeConfig(one, ".ok", ".bad", true, RetentionConfig.none(), false, ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES)
+            .validateSources());
+        // A suffix no file name can carry (past the filesystem's 255-byte name limit) fails at boot,
+        // not on the first file every scan.
+        String tooLong = "." + "x".repeat(250);
+        for (ModuleRuntimeConfig c : List.of(
+                new ModuleRuntimeConfig(one, tooLong, ".error", true, RetentionConfig.none(), false, ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES),
+                new ModuleRuntimeConfig(one, ".done", tooLong, true, RetentionConfig.none(), false, ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES))) {
+            List<String> problems = c.validateSources();
+            assertEquals(1, problems.size(), problems.toString());
+            assertTrue(problems.get(0).contains("is not writable/renameable")
+                && problems.get(0).contains("'" + tooLong + "'"), problems.get(0));
+        }
+        try (var s = Files.list(good)) {
+            assertEquals(0, s.count(), "the probe cleans up after a failed rename too");
+        }
     }
 
     @Test
     void validateSourcesReportsMissingDuplicateAndSuffixProblems(@TempDir Path dir) throws Exception {
         Path good = Files.createDirectory(dir.resolve("good"));
         Path file = Files.writeString(dir.resolve("notadir"), "x");
-        ModuleRuntimeConfig ok = new ModuleRuntimeConfig(
-            List.of(new SourceConfig("a", good.toString(), "*", 1, 0)), ".done", ".error", false,
-            com.zerobias.module.x12.buffer.RetentionConfig.none(), false, false);
+        ModuleRuntimeConfig ok = config(List.of(new SourceConfig("a", good.toString(), "*", 1, 0)));
         assertEquals(List.of(), ok.validateSources());
 
         ModuleRuntimeConfig bad = new ModuleRuntimeConfig(
             List.of(new SourceConfig("a", good.toString(), "*", 1, 0),
                     new SourceConfig("a", dir.resolve("missing").toString(), "*", 1, 0),
                     new SourceConfig("b", file.toString(), "*", 1, 0)),
-            ".same", ".same", false, com.zerobias.module.x12.buffer.RetentionConfig.none(), false, false);
+            ".same", ".same", false, RetentionConfig.none(), false, ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES);
         List<String> problems = bad.validateSources();
         assertTrue(problems.stream().anyMatch(p -> p.contains("duplicate source name: a")), problems.toString());
         assertTrue(problems.stream().anyMatch(p -> p.contains("does not exist")), problems.toString());
@@ -161,5 +243,15 @@ class ModuleRuntimeConfigTest {
         try (var s = Files.list(good)) {
             assertEquals(0, s.count(), "writability probe cleaned up");
         }
+    }
+
+    @Test
+    void validateSourcesCatchesTwoSourcesAliasingOneDirectoryThroughASymlink(@TempDir Path dir) throws Exception {
+        Path real = Files.createDirectory(dir.resolve("real"));
+        Path alias = Files.createSymbolicLink(dir.resolve("alias"), real);
+        ModuleRuntimeConfig c = config(List.of(new SourceConfig("a", real.toString(), "*", 1, 0),
+            new SourceConfig("b", alias.toString(), "*", 1, 0)));
+        List<String> problems = c.validateSources();
+        assertTrue(problems.stream().anyMatch(p -> p.contains("same or nested")), problems.toString());
     }
 }

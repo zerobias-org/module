@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,8 +19,8 @@ import java.util.Optional;
  * Runtime twin of the codegen's {@code codegen.model.StructureIndex} (DESIGN §5/§6): the
  * materializer driver for one implementation guide, loaded from the classpath resource
  * {@code structure-index/<GS08>.json} the codegen emits at {@code generate-resources}.
- * Plain data; field names are the JSON keys (Gson). Keep in sync with the codegen model
- * — this copy exists so the runtime never depends on the build-time module.
+ * Plain data; field names are the JSON keys (Gson). This copy exists so the runtime never
+ * depends on the build-time module; StructureIndexTest fails when the two shapes drift.
  *
  * <p>Loop entries are keyed by loop xid (envelope loops included; {@link #transactionLoop}
  * names the atom root), segment entries by segment xid, composite entries by composite
@@ -35,12 +36,14 @@ public final class StructureIndex {
     public String transactionType;
     public String transactionXid;
     public String mapFile;
-    public String aliasOf;
     public String transactionLoop;
     public String tableSchemaId;
     public Map<String, LoopEntry> loops = new LinkedHashMap<>();
     public Map<String, SegmentEntry> segments = new LinkedHashMap<>();
     public Map<String, CompositeEntry> composites = new LinkedHashMap<>();
+
+    /** Loop xid → property name, from the loop references; built on first use (Gson skips transient fields). */
+    private transient volatile Map<String, String> loopNames;
 
     public StructureIndex() {
     }
@@ -122,21 +125,38 @@ public final class StructureIndex {
     }
 
     /**
+     * The JSON property of a loop, as its parent's reference names it ({@code 2100} →
+     * {@code loop2100}), so the runtime never re-derives the codegen's naming. imsweb parses with
+     * the map this index was generated from, so every loop it builds is referenced; an xid the
+     * index does not know comes back verbatim.
+     */
+    public String loopProperty(String xid) {
+        Map<String, String> names = loopNames;
+        if (names == null) {
+            names = new HashMap<>();
+            for (LoopEntry l : loops.values()) {
+                for (StructureRef ref : l.structures) {
+                    if (ref.isLoop()) {
+                        names.putIfAbsent(ref.xid, ref.name);
+                    }
+                }
+            }
+            loopNames = names;
+        }
+        return names.getOrDefault(xid, xid);
+    }
+
+    /**
      * Load the index for a GS08 from the classpath; any accepted spelling resolves through
-     * {@link TransactionTypes#canonical} first, then the literal id (the codegen also emits
-     * alias copies). Empty when no resource exists — e.g. a build with
-     * {@code -Dcodegen.skip=true} or a guide without a map.
+     * {@link TransactionTypes#canonical} (the codegen emits one index per canonical guide).
+     * Empty when no resource exists — e.g. a build with {@code -Dcodegen.skip=true} or an
+     * unsupported guide.
      */
     public static Optional<StructureIndex> fromClasspath(String gs08) {
         if (gs08 == null || gs08.isBlank()) {
             return Optional.empty();
         }
-        String canonical = TransactionTypes.canonical(gs08).orElse(gs08.trim());
-        Optional<StructureIndex> found = load(canonical);
-        if (found.isEmpty() && !canonical.equals(gs08.trim())) {
-            found = load(gs08.trim());
-        }
-        return found;
+        return load(TransactionTypes.canonical(gs08).orElse(gs08.trim()));
     }
 
     private static Optional<StructureIndex> load(String id) {

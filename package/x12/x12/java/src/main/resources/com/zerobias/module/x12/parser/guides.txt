@@ -1,0 +1,19 @@
+# The implementation guides the receiver ingests: one row per guide, whitespace-separated
+# columns. parser.TransactionTypes reads this file at runtime and java/codegen reads the same
+# file at build time, so the guides the receiver parses and the guides it has schemas for are
+# one list. Every row needs an imsweb 005010 FileType: a guide imsweb cannot parse (820 X218,
+# 270/271 X279, 837D X224) is not listed, and its files go to .error as unsupported-guide.
+#
+# The canonical GS08 is what imsweb's X12Reader compares the first GS08 against, what the
+# buffer stores and what schema ids embed; aliases are the other spellings seen on the wire.
+# 837I: imsweb maps X223.A1 but checks GS08 against the A2 errata id. 999: imsweb's maps.xml
+# keys the map as 005010X231; the wire carries 005010X231A1.
+#
+# GS08          type   imsweb FileType     pyx12 map (imsweb mapping/)   wire aliases
+005010X221A1    835    ANSI835_5010_X221   835.5010.X221.A1.xml          005010X221
+005010X222A1    837P   ANSI837_5010_X222   837.5010.X222.A1.xml          005010X222
+005010X223A2    837I   ANSI837_5010_X223   837Q3.I.5010.X223.A1.xml      005010X223,005010X223A1
+005010X214      277CA  ANSI277_5010_X214   277.5010.X214.xml
+005010X212      277    ANSI277_5010_X212   277.5010.X212.xml
+005010X231A1    999    ANSI837_5010_X231   999.5010.xml                  005010X231
+005010X220A1    834    ANSI834_5010_X220   834.5010.X220.A1.xml          005010X220

@@ -18,9 +18,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Function;
-import java.util.function.Supplier;
+import java.util.StringJoiner;
 
 /**
  * The Function objects under {@code /x12-receiver/ops/*} (DESIGN §2.5), invoked via
@@ -36,49 +36,74 @@ import java.util.function.Supplier;
  *       {@code elementKeys} subset (partial acks; un-acked rows revert at TTL).</li>
  *   <li>{@code replay} — force in_flight rows back to {@code new}, optionally filtered.</li>
  *   <li>{@code recast} — re-materialize rows from stored raw under current definitions via
- *       the {@link RecastHook} seam; without a materializer nothing is rewritten.</li>
+ *       the {@link RecastHook}.</li>
  *   <li>{@code purge} — delete acked rows older than a duration (default: all acked).</li>
  *   <li>{@code raw} — the stored ST..SE segments verbatim (+ ISA/GS context) for one row.</li>
  *   <li>{@code validate} — {@code stored} verdict (schema registered, typed JSON parses,
- *       envelope complete) and, through the seam, the {@code rematerialized} verdict.</li>
+ *       envelope complete) and the {@code rematerialized} verdict from the stored raw.</li>
  *   <li>{@code rescan} — force an immediate poll through the {@link PollerHandle}.</li>
  * </ul>
  *
- * <p>The declared {@code throws} codes ({@code lease_capacity_exceeded}, {@code backpressure},
- * {@code lease_expired}) are on the objects but not raised in v1: there is no outstanding-lease
- * cap, backpressure is applied on the inbox path (files left untouched), and a finalized or
- * expired lease has no {@code in_flight} rows left — {@code ack}/{@code release} report the
- * affected count and 0 is the signal (the buffer clears {@code lease_id} on finalize, so an
- * unknown and an already-finalized lease are indistinguishable).
+ * <p>Every input is checked against the function's declared input schema
+ * ({@link SchemaRegistry#functionInputs}) before anything runs: an unknown key, a wrong
+ * type, a missing required property or an unparseable filter/duration is a 400, never a
+ * silently-dropped argument — {@code purge {"olderthan": "P30D"}} must not purge every acked
+ * row. {@link #validateInput} runs the same check without executing.
+ *
+ * <p>The only function-specific error is {@code not_found} ({@link #declaredErrors}): an
+ * unknown {@code elementKey} ({@code raw}, {@code validate}), source ({@code rescan}) or
+ * lease ({@code ack}, {@code release}).
  */
-public final class X12Operations implements OperationsApi {
+public final class X12Operations {
+
+    static final int DEFAULT_MAX = 100;
+    static final int MAX_CAP = 1000;
+    static final Duration DEFAULT_TTL = Duration.ofMinutes(5);
 
     private static final Gson GSON = new Gson();
 
     private final BufferStore buffer;
-    private final Function<TransactionRow, Map<String, Object>> elementMapper;
-    private final Supplier<PollerHandle> pollers;
-    private final SchemaRegistryApi schemas;
+    private final PollerHandle pollers;
+    private final SchemaRegistry schemas;
     private final RecastHook recaster;
     /** Lazily read once: the bundled catalog is classpath-immutable for the process's life. */
     private PackCatalog packCatalog;
 
-    public X12Operations(BufferStore buffer, Supplier<PollerHandle> pollers, SchemaRegistryApi schemas) {
-        this(buffer, X12ProducerFacade::toElement, pollers, schemas, RecastHook.NONE);
+    public X12Operations(BufferStore buffer, PollerHandle pollers, SchemaRegistry schemas, RecastHook recaster) {
+        this.buffer = Objects.requireNonNull(buffer, "buffer");
+        this.pollers = Objects.requireNonNull(pollers, "pollers");
+        this.schemas = Objects.requireNonNull(schemas, "schemas");
+        this.recaster = Objects.requireNonNull(recaster, "recaster");
     }
 
-    public X12Operations(BufferStore buffer, Function<TransactionRow, Map<String, Object>> elementMapper,
-            Supplier<PollerHandle> pollers, SchemaRegistryApi schemas, RecastHook recaster) {
-        this.buffer = buffer;
-        this.elementMapper = elementMapper == null ? X12ProducerFacade::toElement : elementMapper;
-        this.pollers = pollers == null ? () -> null : pollers;
-        this.schemas = schemas == null ? SchemaRegistryApi.EMPTY : schemas;
-        this.recaster = recaster == null ? RecastHook.NONE : recaster;
+    /** The {@code throws} map of {@code /ops/<fn>}: error code → schema of the body raised for it. */
+    static Map<String, String> declaredErrors(String fn) {
+        switch (fn) {
+            case "ack":
+            case "release":
+            case "raw":
+            case "validate":
+            case "rescan":
+                return Map.of("not_found", SchemaRegistry.NOT_FOUND_ERROR_SCHEMA);
+            default:
+                return Map.of();
+        }
     }
 
-    @Override
+    /**
+     * Dispatch a {@code /x12-receiver/ops/<fn>} invocation; the map is serialized as the
+     * function output. Unknown {@code fn} → {@code noSuchObjectError}; input that fails its
+     * schema → {@code illegalArgumentError} and nothing runs.
+     */
     public Map<String, Object> invoke(String fn, Map<String, Object> input) throws SQLException {
+        requireFunction(fn);
         Map<String, Object> in = input == null ? Map.of() : input;
+        List<Issue> errors = check(fn, in).errors();
+        if (!errors.isEmpty()) {
+            StringJoiner msg = new StringJoiner("; ", "Invalid input for " + fn + ": ", "");
+            errors.forEach(e -> msg.add(e.path().isEmpty() ? e.message() : e.path() + ": " + e.message()));
+            throw ProducerException.illegalArgument(msg.toString());
+        }
         switch (fn) {
             case "take":
                 return take(in);
@@ -96,78 +121,203 @@ public final class X12Operations implements OperationsApi {
                 return raw(in);
             case "validate":
                 return validate(in);
-            case "rescan":
-                return rescan(in);
-            case "packs":
-                return packs(in);
             default:
-                throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/ops/" + fn);
+                return rescan(in);
         }
     }
 
-    // --- content packs (DESIGN §7) -------------------------------------------
-
     /**
-     * What content this deployment has and where it came from: the bundled packs from
-     * {@code packs.json}, each reported with the schema ids it declares and whether the
-     * registry can actually serve them ({@code status: active|degraded}).
-     *
-     * <p>Read-only by design. Installing a delivered pack needs a delivery path first
-     * (npm at image build, or upload + validate); this op is what makes the bundled floor
-     * discoverable, so a caller can tell a stock deployment from an extended one without
-     * reading container logs.
-     *
-     * <p>{@code name} / {@code gs08} narrow the report; an unknown value is not an error,
-     * it is an empty list, because "is this pack present?" is exactly the question being
-     * asked.
+     * {@code validateFunctionInput}: the interface {@code ValidationResult} for {@code input}
+     * — the same check {@link #invoke} applies, so {@code valid} means invoke will accept it.
+     * Warnings flag input that runs but is adjusted (a {@code max} or {@code leaseTtl} above
+     * its cap); in {@code strict} mode they count as errors.
      */
-    private Map<String, Object> packs(Map<String, Object> input) {
-        final PackCatalog catalog = catalog();
-        final String name = strArg(input, "name");
-        final String gs08 = strArg(input, "gs08");
-
-        final List<Map<String, Object>> described = new ArrayList<>();
-        for (PackCatalog.Pack p : catalog.packs()) {
-            if (name != null && !name.equals(p.name())) {
-                continue;
-            }
-            if (gs08 != null && !gs08.equals(p.gs08())) {
-                continue;
-            }
-            described.add(p.describe(schemas));
+    public Map<String, Object> validateInput(String fn, Object input, boolean strict) {
+        requireFunction(fn);
+        List<Issue> errors = new ArrayList<>();
+        List<Issue> warnings = new ArrayList<>();
+        if (input != null && !(input instanceof Map)) {
+            errors.add(new Issue("", "input must be a JSON object", "type"));
+        } else {
+            @SuppressWarnings("unchecked")
+            Check c = check(fn, input == null ? Map.of() : (Map<String, Object>) input);
+            errors.addAll(c.errors());
+            warnings.addAll(c.warnings());
         }
-
-        final Map<String, Object> out = new LinkedHashMap<>();
-        out.put("packCount", described.size());
-        int declared = 0;
-        for (Map<String, Object> d : described) {
-            declared += (Integer) d.get("schemaCount");
+        if (strict) {
+            errors.addAll(warnings);
+            warnings.clear();
         }
-        out.put("schemaCount", declared);
-        out.put("registrySize", schemas instanceof SchemaRegistry ? ((SchemaRegistry) schemas).size() : -1);
-        out.put("guides", catalog.guides());
-        out.put("packs", described);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("valid", errors.isEmpty());
+        out.put("errors", issues(errors, true));
+        out.put("warnings", issues(warnings, false));
         return out;
     }
 
-    private PackCatalog catalog() {
-        if (packCatalog == null) {
-            packCatalog = PackCatalog.fromClasspath();
+    private static void requireFunction(String fn) {
+        if (!SchemaRegistry.OPS_FUNCTIONS.contains(fn)) {
+            throw ProducerException.noSuchObject(ObjectTree.RECEIVER + "/ops/" + fn);
         }
-        return packCatalog;
+    }
+
+    // --- input checking ------------------------------------------------------
+
+    /** One problem in a function input: the property ({@code ""} = the input itself), what, and a code. */
+    record Issue(String path, String message, String code) {
+    }
+
+    private record Check(List<Issue> errors, List<Issue> warnings) {
+    }
+
+    /** Schema check (keys, types, required) then the per-property value rules. */
+    private static Check check(String fn, Map<String, Object> input) {
+        List<Issue> errors = new ArrayList<>();
+        List<Issue> warnings = new ArrayList<>();
+        List<SchemaRegistry.Param> params = SchemaRegistry.functionInputs(fn);
+        List<String> names = new ArrayList<>();
+        params.forEach(p -> names.add(p.name()));
+        for (String key : input.keySet()) {
+            if (!names.contains(key)) {
+                errors.add(new Issue(key, "unknown property (expected "
+                    + (names.isEmpty() ? "none" : String.join(", ", names)) + ")", "unknown_property"));
+            }
+        }
+        for (SchemaRegistry.Param p : params) {
+            Object v = input.get(p.name());
+            if (v == null) {
+                if (p.required()) {
+                    errors.add(new Issue(p.name(), "is required", "required"));
+                }
+                continue;
+            }
+            if (p.multi()) {
+                if (!(v instanceof List)) {
+                    errors.add(new Issue(p.name(), "must be an array of " + p.dataType(), "type"));
+                    continue;
+                }
+                List<?> items = (List<?>) v;
+                for (int i = 0; i < items.size(); i++) {
+                    if (!hasType(items.get(i), p.dataType())) {
+                        errors.add(new Issue(p.name() + "[" + i + "]", "must be a " + p.dataType(), "type"));
+                    }
+                }
+            } else if (!hasType(v, p.dataType())) {
+                errors.add(new Issue(p.name(), "must be a" + ("integer".equals(p.dataType()) ? "n " : " ")
+                    + p.dataType(), "type"));
+            } else {
+                checkValue(p.name(), v, errors, warnings);
+            }
+        }
+        if (names.contains("elementKeys")) {
+            checkElementKeys(input.get("elementKeys"), errors);
+        }
+        return new Check(errors, warnings);
+    }
+
+    private static boolean hasType(Object v, String dataType) {
+        switch (dataType) {
+            case "integer":
+                if (v instanceof Integer || v instanceof Long || v instanceof Short) {
+                    return ((Number) v).longValue() == ((Number) v).intValue();
+                }
+                if (v instanceof Double || v instanceof Float) {
+                    double d = ((Number) v).doubleValue();
+                    return d == Math.rint(d) && d >= Integer.MIN_VALUE && d <= Integer.MAX_VALUE;
+                }
+                return false;
+            case "boolean":
+                return v instanceof Boolean;
+            default:
+                return v instanceof String;
+        }
+    }
+
+    /** Value rules beyond the type, for properties whose type already checked out. */
+    private static void checkValue(String name, Object v, List<Issue> errors, List<Issue> warnings) {
+        switch (name) {
+            case "filter":
+                try {
+                    renderFilter((String) v);
+                } catch (ProducerException e) {
+                    errors.add(new Issue(name, e.getMessage(), "malformed_filter"));
+                }
+                break;
+            case "max":
+                int max = ((Number) v).intValue();
+                if (max < 1) {
+                    errors.add(new Issue(name, "must be at least 1", "out_of_range"));
+                } else if (max > MAX_CAP) {
+                    warnings.add(new Issue(name, "is capped at " + MAX_CAP, "capped"));
+                }
+                break;
+            case "leaseTtl":
+                if (checkDuration(name, (String) v, false, errors)
+                        && Duration.parse((String) v).compareTo(BufferStore.MAX_LEASE_TTL) > 0) {
+                    warnings.add(new Issue(name, "is capped at " + BufferStore.MAX_LEASE_TTL, "capped"));
+                }
+                break;
+            case "olderThan":
+                checkDuration(name, (String) v, true, errors);
+                break;
+            case "leaseId":
+            case "elementKey":
+                if (((String) v).isBlank()) {
+                    errors.add(new Issue(name, "must not be blank", "required"));
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    /** True when {@code raw} is a duration in range; otherwise the problem is added to {@code errors}. */
+    private static boolean checkDuration(String name, String raw, boolean zeroAllowed, List<Issue> errors) {
+        try {
+            Duration d = Duration.parse(raw);
+            if (d.isNegative() || (!zeroAllowed && d.isZero())) {
+                errors.add(new Issue(name, zeroAllowed ? "must not be negative" : "must be positive", "out_of_range"));
+                return false;
+            }
+            return true;
+        } catch (DateTimeParseException e) {
+            errors.add(new Issue(name, "must be an ISO-8601 duration (e.g. PT5M): " + raw, "invalid_duration"));
+            return false;
+        }
+    }
+
+    /** An empty subset would mean "the whole lease" to the buffer — never what a caller listing keys meant. */
+    private static void checkElementKeys(Object v, List<Issue> errors) {
+        if (v instanceof List && ((List<?>) v).isEmpty()) {
+            errors.add(new Issue("elementKeys", "must not be empty; omit it to cover the whole lease", "out_of_range"));
+        }
+    }
+
+    private static List<Map<String, Object>> issues(List<Issue> list, boolean withCode) {
+        List<Map<String, Object>> out = new ArrayList<>(list.size());
+        for (Issue i : list) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("path", i.path());
+            m.put("message", i.message());
+            if (withCode) {
+                m.put("code", i.code());
+            }
+            out.add(m);
+        }
+        return out;
     }
 
     // --- drain ---------------------------------------------------------------
 
     private Map<String, Object> take(Map<String, Object> input) throws SQLException {
-        int max = clampMax(intArg(input, "max", DEFAULT_MAX));
+        int max = Math.min(intArg(input, "max", DEFAULT_MAX), MAX_CAP);
         Duration ttl = durationArg(input, "leaseTtl", DEFAULT_TTL);
         String where = renderFilter(strArg(input, "filter"));
 
         Lease lease = buffer.takeWhere(where, max, ttl);
         List<Map<String, Object>> transactions = new ArrayList<>(lease.transactions().size());
         for (TransactionRow r : lease.transactions()) {
-            transactions.add(elementMapper.apply(r));
+            transactions.add(X12ProducerFacade.toElement(r));
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("leaseId", lease.leaseId());      // null when nothing was drainable (serializeNulls)
@@ -177,15 +327,32 @@ public final class X12Operations implements OperationsApi {
     }
 
     private Map<String, Object> ack(Map<String, Object> input) throws SQLException {
-        String leaseId = requireLeaseId(input);
+        String leaseId = strArg(input, "leaseId");
         int acked = buffer.ack(leaseId, elementKeys(input));
+        if (acked == 0) {
+            requireLease(leaseId);
+        }
         return Map.of("acked", acked);
     }
 
     private Map<String, Object> release(Map<String, Object> input) throws SQLException {
-        String leaseId = requireLeaseId(input);
+        String leaseId = strArg(input, "leaseId");
         int released = buffer.release(leaseId, elementKeys(input));
+        if (released == 0) {
+            requireLease(leaseId);
+        }
         return Map.of("released", released);
+    }
+
+    /**
+     * 404 when no in-flight row carries {@code leaseId}. Checked only after a finalize
+     * touched nothing: 0 against a live lease is a subset naming keys outside it, reported
+     * as a count, not an error.
+     */
+    private void requireLease(String leaseId) throws SQLException {
+        if (!buffer.exists("lease_id = " + ObjectTree.sql(leaseId) + " AND status = 'in_flight'")) {
+            throw ProducerException.noSuchLease(leaseId);
+        }
     }
 
     private Map<String, Object> replay(Map<String, Object> input) throws SQLException {
@@ -197,11 +364,10 @@ public final class X12Operations implements OperationsApi {
      * Re-materialize stored rows from their raw X12 under the currently-loaded definitions,
      * rewriting {@code mapped_json}/{@code schema_id} only where the result differs. Leased
      * ({@code in_flight}) rows are excluded; per-row failures are counted, never fatal; at
-     * most {@code max} rows (newest first) per call. Without a materializer behind the
-     * {@link RecastHook} seam every examined row is reported {@code unchanged} plus a {@code note}.
+     * most {@code max} rows (newest first) per call.
      */
     private Map<String, Object> recast(Map<String, Object> input) throws SQLException {
-        int max = clampMax(intArg(input, "max", MAX_CAP));
+        int max = Math.min(intArg(input, "max", MAX_CAP), MAX_CAP);
         String where = renderFilter(strArg(input, "filter"));
 
         List<TransactionRow> rows = buffer.recastable(where, max);
@@ -227,9 +393,6 @@ public final class X12Operations implements OperationsApi {
         out.put("recast", recast);
         out.put("unchanged", unchanged);
         out.put("failed", failed);
-        if (!recaster.available()) {
-            out.put("note", "recast requires the materializer");
-        }
         return out;
     }
 
@@ -259,12 +422,12 @@ public final class X12Operations implements OperationsApi {
     }
 
     /**
-     * Validate one buffered row. {@code stored} checks what the producer can see without a
-     * materializer: the row's {@code schemaId} is registered, {@code mapped_json} parses as
-     * a JSON object, and the envelope columns are complete. {@code rematerialized} /
-     * {@code repsAgree} come through the {@link RecastHook} seam and are null without one.
-     * {@code parserErrors} are the non-fatal imsweb errors the re-parse reported (empty
-     * without a materializer); {@code parserErrorCount} is the count recorded at ingest.
+     * Validate one buffered row. {@code stored} checks the row as buffered: its
+     * {@code schemaId} is registered, {@code mapped_json} parses as a JSON object, and the
+     * envelope columns are complete. {@code rematerialized} applies the same checks to the
+     * form re-derived from the stored raw, and {@code repsAgree} says whether the two are
+     * byte-identical. {@code parserErrors} are the non-fatal imsweb errors the re-parse
+     * reported; {@code parserErrorCount} is the count recorded at ingest.
      */
     private Map<String, Object> validate(Map<String, Object> input) throws SQLException {
         TransactionRow row = requireRow(input);
@@ -273,25 +436,20 @@ public final class X12Operations implements OperationsApi {
         out.put("schemaId", row.schemaId());
         out.put("stored", storedVerdict(row));
         List<String> parserErrors = List.of();
-        if (recaster.available()) {
-            try {
-                RecastHook.Mapping m = recaster.rematerialize(row);
-                Map<String, Object> rv = storedVerdict(row.withMapping(m.schemaId(), m.mappedJson()));
-                rv.put("schemaId", m.schemaId());
-                out.put("rematerialized", rv);
-                out.put("repsAgree", m.reproduces(row));
-                parserErrors = m.parserErrors();
-            } catch (Exception e) {
-                Map<String, Object> rv = new LinkedHashMap<>();
-                rv.put("valid", false);
-                rv.put("errors", List.of("re-materialization failed: " + e.getMessage()));
-                out.put("rematerialized", rv);
-                out.put("repsAgree", false);
-            }
-        } else {
-            // ==== MATERIALIZER SEAM ==== no re-materialization available (RecastHook.NONE)
-            out.put("rematerialized", null);
-            out.put("repsAgree", null);
+        try {
+            RecastHook.Mapping m = recaster.rematerialize(row);
+            Map<String, Object> rv = storedVerdict(row.withMapping(m.schemaId(), m.mappedJson()));
+            rv.put("schemaId", m.schemaId());
+            out.put("rematerialized", rv);
+            out.put("repsAgree", m.reproduces(row));
+            parserErrors = m.parserErrors();
+        } catch (Exception e) {
+            Map<String, Object> rv = new LinkedHashMap<>();
+            rv.put("valid", false);
+            rv.put("errors", List.of("re-materialization failed: " + e.getMessage()));
+            rv.put("schemaId", null);   // always present, as on success; null: nothing was re-derived
+            out.put("rematerialized", rv);
+            out.put("repsAgree", false);
         }
         out.put("parserErrors", parserErrors);
         out.put("parserErrorCount", row.parserErrorCount());
@@ -342,55 +500,45 @@ public final class X12Operations implements OperationsApi {
 
     /**
      * Force an immediate poll of one source ({@code source} = its configured name) or of
-     * every source. 404 when no poller is running or the named source isn't watched.
+     * every source. 404 when the named source isn't watched. A scan that fails is a 500:
+     * the cause (a buffer or filesystem error) is logged by the HTTP layer, not echoed.
      */
     private Map<String, Object> rescan(Map<String, Object> input) {
-        PollerHandle handle = pollers.get();
-        if (handle == null) {
-            throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/ops/rescan (no inbox poller running)");
-        }
         String source = strArg(input, "source");
         if (source != null && source.isBlank()) {
             source = null;
         }
         if (source != null) {
             boolean known = false;
-            for (PollerStatus.SourceStatus s : handle.sources()) {
+            for (PollerStatus.SourceStatus s : pollers.sources()) {
                 if (source.equals(s.name())) {
                     known = true;
                     break;
                 }
             }
             if (!known) {
-                throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/by-source/" + ObjectTree.encodeSegment(source));
+                throw ProducerException.noSuchObject(ObjectTree.BY_SOURCE + "/" + ObjectTree.encodeSegment(source));
             }
         }
         PollerHandle.RescanResult r;
         try {
-            r = handle.rescan(source);
-        } catch (ProducerException e) {
-            throw e;
-        } catch (IllegalArgumentException e) {
-            throw ProducerException.illegalArgument(e.getMessage());
+            r = pollers.rescan(source);
         } catch (Exception e) {
-            throw new IllegalStateException("rescan failed: " + e.getMessage(), e);
+            throw new IllegalStateException("rescan failed", e);
         }
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("scanned", r == null ? 0 : r.scanned());
-        out.put("discovered", r == null ? 0 : r.discovered());
-        out.put("consumed", r == null ? 0 : r.consumed());
-        out.put("errored", r == null ? 0 : r.errored());
+        out.put("scanned", r.scanned());
+        out.put("discovered", r.discovered());
+        out.put("consumed", r.consumed());
+        out.put("errored", r.errored());
         return out;
     }
 
-    // --- input parsing -----------------------------------------------------
+    // --- input parsing (after check(): types and values are known good) --------
 
     /** The single buffered row for {@code elementKey} (the DataProducer key), or 404. */
     private TransactionRow requireRow(Map<String, Object> input) throws SQLException {
         String key = strArg(input, "elementKey");
-        if (key == null || key.isBlank()) {
-            throw ProducerException.illegalArgument("elementKey is required");
-        }
         Optional<TransactionRow> row = buffer.byElementKey(key);
         if (row.isEmpty()) {
             throw ProducerException.noSuchObject(ObjectTree.TRANSACTIONS + " / " + key);
@@ -409,35 +557,10 @@ public final class X12Operations implements OperationsApi {
         }
     }
 
-    private static String requireLeaseId(Map<String, Object> input) {
-        String leaseId = strArg(input, "leaseId");
-        if (leaseId == null || leaseId.isBlank()) {
-            throw ProducerException.illegalArgument("leaseId is required");
-        }
-        return leaseId;
-    }
-
     @SuppressWarnings("unchecked")
     private static List<String> elementKeys(Map<String, Object> input) {
         Object v = input.get("elementKeys");
-        if (v == null) {
-            return null;   // full-lease ack/release
-        }
-        if (v instanceof List) {
-            List<String> out = new ArrayList<>();
-            for (Object o : (List<Object>) v) {
-                out.add(String.valueOf(o));
-            }
-            return out;
-        }
-        throw ProducerException.illegalArgument("elementKeys must be an array");
-    }
-
-    private static int clampMax(int max) {
-        if (max <= 0) {
-            return DEFAULT_MAX;
-        }
-        return Math.min(max, MAX_CAP);
+        return v == null ? null : List.copyOf((List<String>) v);   // null = the whole lease
     }
 
     private static String strArg(Map<String, Object> input, String key) {
@@ -447,28 +570,11 @@ public final class X12Operations implements OperationsApi {
 
     private static int intArg(Map<String, Object> input, String key, int dflt) {
         Object v = input.get(key);
-        if (v instanceof Number) {
-            return ((Number) v).intValue();
-        }
-        if (v instanceof String) {
-            try {
-                return Integer.parseInt(((String) v).trim());
-            } catch (NumberFormatException e) {
-                throw ProducerException.illegalArgument(key + " must be an integer");
-            }
-        }
-        return dflt;
+        return v == null ? dflt : ((Number) v).intValue();
     }
 
     private static Duration durationArg(Map<String, Object> input, String key, Duration dflt) {
         String raw = strArg(input, key);
-        if (raw == null || raw.isBlank()) {
-            return dflt;
-        }
-        try {
-            return Duration.parse(raw);   // ISO-8601, e.g. PT5M
-        } catch (DateTimeParseException e) {
-            throw ProducerException.illegalArgument(key + " must be an ISO-8601 duration (e.g. PT5M): " + raw);
-        }
+        return raw == null ? dflt : Duration.parse(raw);
     }
 }

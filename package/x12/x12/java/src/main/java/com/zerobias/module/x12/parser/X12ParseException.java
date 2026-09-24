@@ -3,7 +3,7 @@ package com.zerobias.module.x12.parser;
 import java.util.List;
 
 /**
- * A file that cannot be ingested (DESIGN §4.2e): structural failure, unreadable
+ * A file that cannot be ingested (DESIGN §4.2 step 3e): structural failure, unreadable
  * separators, an unsupported implementation guide, or imsweb fatal errors. The message
  * starts with a stable kebab-case kind ({@code unsupported-guide}, {@code no-isa},
  * {@code bare-transaction-set}, {@code fatal}, ...) so operators and tests can match on

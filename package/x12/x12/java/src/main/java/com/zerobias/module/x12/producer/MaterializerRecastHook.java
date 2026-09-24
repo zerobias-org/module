@@ -8,6 +8,7 @@ import com.zerobias.module.x12.materializer.TransactionJson;
 import com.zerobias.module.x12.parser.X12Parse;
 
 import java.time.Clock;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -25,8 +26,8 @@ public final class MaterializerRecastHook implements RecastHook {
     private final Clock clock;
 
     public MaterializerRecastHook(StructureResolver resolver, Clock clock) {
-        this.resolver = resolver == null ? new StructureResolver() : resolver;
-        this.clock = clock == null ? Clock.systemUTC() : clock;
+        this.resolver = Objects.requireNonNull(resolver, "resolver");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override
@@ -44,7 +45,8 @@ public final class MaterializerRecastHook implements RecastHook {
         // Bare ST rows cannot exist (the raw always carries an envelope), but tolerate one.
         X12Parse.ParsedFile parsed = X12Parse.parse(raw, true, clock);
         X12Parse.Transaction tx = select(parsed, row);
-        Optional<Materializer> materializer = resolver.materializerFor(parsed.gs08(), parsed.separators());
+        // The transaction's own group guide, as at ingest: one file may mix guides per group.
+        Optional<Materializer> materializer = resolver.materializerFor(tx.gs08(), parsed.separators());
         String schemaId = materializer.map(m -> m.index().tableSchemaId).orElse(StructureResolver.ENVELOPE_SCHEMA);
         TransactionJson.Envelope env = new TransactionJson.Envelope(row.elementKey(), row.fileId(),
             FileRow.fileNameOf(row.fileId()), row.sourceName(), row.isaControl(), row.gsControl(), row.stControl(),

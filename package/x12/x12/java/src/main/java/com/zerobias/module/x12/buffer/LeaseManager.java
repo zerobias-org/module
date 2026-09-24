@@ -10,14 +10,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Lease mechanics over the {@code transactions} table (DESIGN §8, hl7/v2 §8.2):
  * {@code take} atomically returns a batch and marks it {@code in_flight} under a
  * lease; {@code ack} finalizes (partial subsets by element key allowed — un-acked
- * rows in the lease revert at TTL); {@code release} returns a lease early;
- * {@code reclaimExpired} reverts timed-out leases to {@code new}.
+ * rows in the lease become drainable again at TTL); {@code release} returns a lease
+ * early. An expired lease needs no sweeper: {@code take} treats its rows as drainable.
  *
  * <p>Operates on the {@link BufferStore}'s single connection; all entry points are
  * reached through the store's {@code synchronized} methods, so the
@@ -32,43 +33,28 @@ final class LeaseManager {
     private final Clock clock;
 
     LeaseManager(Connection conn, Clock clock) {
-        this.conn = conn;
-        this.clock = clock;
-    }
-
-    Lease take(String schemaId, int max, Duration leaseTtl) throws SQLException {
-        return take(schemaId, null, max, leaseTtl);
+        this.conn = Objects.requireNonNull(conn, "conn");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     /**
-     * As {@link #take(String, int, Duration)} but with an additional pre-rendered WHERE
-     * fragment (the RFC4515 {@code take.filter}, rendered by {@code X12SqlAdapter}).
-     * Candidates are still constrained to drainable rows (new or expired in_flight).
+     * Lease up to {@code max} drainable rows (new, or in_flight with an expired lease),
+     * oldest first, optionally narrowed by a pre-rendered WHERE fragment (the RFC4515
+     * {@code take.filter}, rendered by {@code X12SqlAdapter}; null/blank = all).
      */
-    Lease take(String schemaId, String extraWhere, int max, Duration leaseTtl) throws SQLException {
+    Lease take(String extraWhere, int max, Duration leaseTtl) throws SQLException {
         final long now = now();
         final Duration ttl = clampTtl(leaseTtl);
-
-        final boolean prev = conn.getAutoCommit();
-        conn.setAutoCommit(false);
-        try {
-            final List<Long> ids = candidateIds(schemaId, extraWhere, max, now);
+        return SqlTransaction.run(conn, () -> {
+            final List<Long> ids = candidateIds(extraWhere, max, now);
             if (ids.isEmpty()) {
-                conn.commit();
                 return Lease.empty(backlog(now));
             }
             final String leaseId = UUID.randomUUID().toString();
             markInFlight(ids, leaseId, now + ttl.toMillis());
             final List<TransactionRow> rows = fetchByIds(ids);
-            final long remaining = backlog(now);
-            conn.commit();
-            return new Lease(leaseId, rows, remaining);
-        } catch (SQLException e) {
-            conn.rollback();
-            throw e;
-        } finally {
-            conn.setAutoCommit(prev);
-        }
+            return new Lease(leaseId, rows, backlog(now));
+        });
     }
 
     int ack(String leaseId, List<String> elementKeys) throws SQLException {
@@ -83,15 +69,6 @@ final class LeaseManager {
             "UPDATE transactions SET status='new', lease_id=NULL, in_flight_until=NULL "
                 + "WHERE lease_id=? AND status='in_flight'",
             leaseId, elementKeys, null);
-    }
-
-    int reclaimExpired() throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE transactions SET status='new', lease_id=NULL, in_flight_until=NULL "
-                    + "WHERE status='in_flight' AND in_flight_until IS NOT NULL AND in_flight_until < ?")) {
-            ps.setLong(1, now());
-            return ps.executeUpdate();
-        }
     }
 
     /**
@@ -110,21 +87,29 @@ final class LeaseManager {
 
     // --- internals ---
 
-    private List<Long> candidateIds(String schemaId, String extraWhere, int max, long now)
-            throws SQLException {
+    /*
+     * Shaped for the transactions_unacked partial index (the un-acked rows in received_at
+     * order): "status <> 'acked'" is logically redundant but is that index's WHERE clause,
+     * which SQLite requires verbatim; the unary "+" keeps the planner from answering the
+     * status tests through transactions_acked instead — two lookups plus a sort of every
+     * drainable row per take, where the partial index stops after "max" rows.
+     */
+    private static final String DRAINABLE =
+        "status <> 'acked' AND (+status = 'new' OR (+status = 'in_flight' AND in_flight_until < ?))";
+
+    static final String BACKLOG_SQL = "SELECT count(*) FROM transactions WHERE " + DRAINABLE;
+
+    static String candidateSql(String extraWhere) {
         final boolean hasFilter = extraWhere != null && !extraWhere.isBlank();
-        final String sql = "SELECT id FROM transactions WHERE "
-            + "(status='new' OR (status='in_flight' AND in_flight_until < ?)) "
-            + (schemaId != null ? "AND schema_id = ? " : "")
+        return "SELECT id FROM transactions WHERE " + DRAINABLE + " "
             + (hasFilter ? "AND (" + extraWhere + ") " : "")
             + "ORDER BY received_at ASC, id ASC LIMIT ?";
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            int i = 1;
-            ps.setLong(i++, now);
-            if (schemaId != null) {
-                ps.setString(i++, schemaId);
-            }
-            ps.setInt(i, max);
+    }
+
+    private List<Long> candidateIds(String extraWhere, int max, long now) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(candidateSql(extraWhere))) {
+            ps.setLong(1, now);
+            ps.setInt(2, max);
             final List<Long> ids = new ArrayList<>();
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -168,9 +153,7 @@ final class LeaseManager {
 
     /** Approximate drainable backlog: rows that are new or have an expired lease. */
     private long backlog(long now) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT count(*) FROM transactions WHERE status='new' "
-                    + "OR (status='in_flight' AND in_flight_until < ?)")) {
+        try (PreparedStatement ps = conn.prepareStatement(BACKLOG_SQL)) {
             ps.setLong(1, now);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? rs.getLong(1) : 0L;

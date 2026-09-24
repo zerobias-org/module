@@ -5,9 +5,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static com.zerobias.module.x12.buffer.TestRows.BASE;
@@ -16,6 +24,8 @@ import static com.zerobias.module.x12.buffer.TestRows.FILE_B;
 import static com.zerobias.module.x12.buffer.TestRows.SCHEMA_835;
 import static com.zerobias.module.x12.buffer.TestRows.SCHEMA_837P;
 import static com.zerobias.module.x12.buffer.TestRows.file;
+import static com.zerobias.module.x12.buffer.TestRows.insert;
+import static com.zerobias.module.x12.buffer.TestRows.key;
 import static com.zerobias.module.x12.buffer.TestRows.tx;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -50,12 +60,12 @@ class BufferStoreTest {
     }
 
     @Test
-    void insertTransactionDedupsOnElementKeyAndRoundTrips(@TempDir Path dir) throws Exception {
+    void insertDedupsOnElementKeyAndRoundTrips(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
             TransactionRow row = tx("1", "0001", 0);
-            assertEquals(FILE_A + ":1:0001", row.elementKey(), "element key = <fileId>:<GS06>:<ST02>");
-            assertTrue(s.insertTransaction(row), "first insert");
-            assertFalse(s.insertTransaction(row), "duplicate element key dropped (ON CONFLICT DO NOTHING)");
+            assertEquals(FILE_A + ":000000001:1:0001", row.elementKey(), "fixture key = <fileId>:<ISA13>:<GS06>:<ST02>");
+            assertTrue(insert(s, row), "first insert");
+            assertFalse(insert(s, row), "a taken element key is reported, not inserted (consumeFile rolls back on it)");
             assertEquals(1, s.count());
             assertEquals(1, s.count(Status.NEW));
 
@@ -81,9 +91,8 @@ class BufferStoreTest {
     @Test
     void consumeFileIsOneUnitAndInsertsFileRowWithTransactions(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            List<TransactionRow> rows = List.of(tx("1", "0001", 0), tx("1", "0002", 0), tx("1", "0002", 0));
-            int inserted = s.consumeFile(file(FILE_A, "inbox", "abc123", FileStatus.CONSUMED, 2), rows);
-            assertEquals(2, inserted, "duplicate element key within a file is dropped, not fatal");
+            List<TransactionRow> rows = List.of(tx("1", "0001", 0), tx("1", "0002", 0));
+            assertEquals(2, s.consumeFile(file(FILE_A, "inbox", "abc123", FileStatus.CONSUMED, 2), rows));
             assertEquals(2, s.count());
             assertEquals(1, s.fileCount());
             assertEquals(1, s.fileCount(FileStatus.CONSUMED));
@@ -103,6 +112,45 @@ class BufferStoreTest {
     }
 
     @Test
+    void consumeFileRejectsACollidingElementKeyAndWritesNothing(@TempDir Path dir) throws Exception {
+        try (BufferStore s = open(dir, new MutableClock(BASE))) {
+            List<TransactionRow> rows = List.of(tx("1", "0001", 0), tx("1", "0002", 0), tx("1", "0002", 0));
+            DuplicateElementKeyException e = assertThrows(DuplicateElementKeyException.class,
+                () -> s.consumeFile(file(FILE_A, "inbox", "abc123", FileStatus.CONSUMED, 3), rows));
+            assertTrue(e.getMessage().startsWith(DuplicateElementKeyException.KIND + ": "), e.getMessage());
+            assertEquals(0, s.count(), "no transaction row survives");
+            assertEquals(0, s.fileCount(), "no files row either");
+        }
+    }
+
+    @Test
+    void consumeFileRollsBackOnAnErrorAndNeverCommitsPartialWork(@TempDir Path dir) throws Exception {
+        try (BufferStore s = open(dir, new MutableClock(BASE))) {
+            // The first row is inserted, then iteration dies with an Error (as an OOM would).
+            List<TransactionRow> rows = new AbstractList<>() {
+                @Override
+                public TransactionRow get(int i) {
+                    if (i == 1) {
+                        throw new OutOfMemoryError("simulated");
+                    }
+                    return tx("1", "000" + (i + 1), 0);
+                }
+
+                @Override
+                public int size() {
+                    return 2;
+                }
+            };
+            assertThrows(OutOfMemoryError.class,
+                () -> s.consumeFile(file(FILE_A, "inbox", "abc123", FileStatus.CONSUMED, 2), rows));
+            assertEquals(0, s.count(), "the row inserted before the Error was rolled back, not committed");
+            assertEquals(0, s.fileCount());
+            assertTrue(insert(s, tx("2", "0001", 1)), "connection back in autocommit");
+            assertEquals(1, s.count());
+        }
+    }
+
+    @Test
     void consumeFileRollsBackEverythingWhenTheFileRowFails(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
             s.insertFile(file(FILE_A, "inbox", "abc123", FileStatus.CONSUMED, 0));
@@ -113,7 +161,7 @@ class BufferStoreTest {
             assertEquals(0, s.count(), "transaction rows rolled back with the failed file row");
             assertEquals(1, s.fileCount());
             // and the connection is usable afterwards (autocommit restored)
-            assertTrue(s.insertTransaction(tx("2", "0001", 1)));
+            assertTrue(insert(s, tx("2", "0001", 1)));
         }
     }
 
@@ -181,8 +229,12 @@ class BufferStoreTest {
             assertEquals("/var/lib/x12/inbox/remit-a.835", f.currentPath(), "bytes are still at the discovery path");
             assertEquals(1, s.count(), "transactions untouched");
 
-            assertTrue(s.updateFilePath(FILE_A, "/archive/remit-a.835"));
-            assertEquals("/archive/remit-a.835", s.fileById(FILE_A).orElseThrow().currentPath());
+            // A later rename that succeeds (a redelivery) must clear the flag, not just move the path.
+            assertTrue(s.markRenamed(FILE_A, "/var/lib/x12/inbox/remit-a.835.done"));
+            f = s.fileById(FILE_A).orElseThrow();
+            assertEquals("/var/lib/x12/inbox/remit-a.835.done", f.currentPath());
+            assertFalse(f.renameFailed(), "rename_failed cleared");
+            assertFalse(s.markRenamed("/nope", "/x"));
         }
     }
 
@@ -210,8 +262,8 @@ class BufferStoreTest {
             List<FileRow> all = s.fileRows(null, 10, 0);
             assertEquals(List.of(FILE_B, FILE_A), all.stream().map(FileRow::fileId).toList());
             assertEquals(1, s.fileRows("source_name = 'payer-b'", 10, 0).size());
-            assertEquals(1, s.countFilesWhere("source_name = 'inbox'"));
-            assertEquals(2, s.countFilesWhere(null));
+            assertEquals(1, s.fileCount("source_name = 'inbox'"));
+            assertEquals(2, s.fileCount((String) null));
             assertEquals(1, s.fileRows(null, 1, 1).size(), "offset paging");
         }
     }
@@ -219,11 +271,11 @@ class BufferStoreTest {
     @Test
     void searchCountDistinctAndScopes(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            s.insertTransaction(tx("1", "0001", 0));
-            s.insertTransaction(tx("1", "0002", 1));
-            s.insertTransaction(tx(FILE_B, "payer-b", "7", "0001", 2, "005010X222A1", "837P", SCHEMA_837P, "SUBMIT1"));
+            insert(s, tx("1", "0001", 0));
+            insert(s, tx("1", "0002", 1));
+            insert(s, tx(FILE_B, "payer-b", "7", "0001", 2, "005010X222A1", "837P", SCHEMA_837P, "SUBMIT1"));
 
-            List<TransactionRow> newest = s.search(null, 10);
+            List<TransactionRow> newest = s.search(null, 10, 0);
             assertEquals(3, newest.size());
             assertEquals("837P", newest.get(0).transactionType(), "newest first");
             assertEquals(1, s.search(null, 1, 2).size(), "offset paging");
@@ -235,19 +287,39 @@ class BufferStoreTest {
             assertEquals(List.of("PAYERA", "SUBMIT1"), s.distinctValues("sender_id"));
             assertEquals(List.of("inbox", "payer-b"), s.distinctValues("source_name"));
             assertEquals(List.of(FILE_B, FILE_A), s.distinctValues("file_id"), "sorted");
-            assertEquals(List.of("005010X221A1"), s.distinctValues("gs08", "transaction_type = '835'"),
-                "scoped distinct for /by-type/<TS>/<GS08>");
+            assertEquals(Map.of("005010X221A1", 2L), s.distinctCounts("gs08", "transaction_type = '835'"),
+                "scoped: the guides of /by-type/<TS> with their sizes");
+            assertEquals(List.of(Map.entry("PAYERA", 2L), Map.entry("SUBMIT1", 1L)),
+                List.copyOf(s.distinctCounts("sender_id", null).entrySet()), "ascending, with counts");
+            assertTrue(s.exists("sender_id = 'SUBMIT1'"));
+            assertFalse(s.exists("sender_id = 'NOBODY'"));
+            assertTrue(s.exists(null));
             assertThrows(IllegalArgumentException.class, () -> s.distinctValues("mapped_json"),
                 "distinct column is allow-listed");
+            assertThrows(IllegalArgumentException.class, () -> s.distinctCounts("receiver_id", null),
+                "an unindexed column would scan the table");
+        }
+    }
+
+    @Test
+    void deleteStatementsAreBoundedToABatch(@TempDir Path dir) throws Exception {
+        int n = BufferStore.DELETE_BATCH * 2 + 7;
+        try (BufferStore s = open(dir, new MutableClock(BASE))) {
+            TestRows.seedAcked(s, FILE_A, n, 16);
+            assertEquals(BufferStore.DELETE_BATCH, s.deleteAckedOlderThanMillis(Long.MAX_VALUE, BufferStore.DELETE_BATCH),
+                "one statement removes one batch, so the store's lock is free again between batches");
+            assertEquals(n - BufferStore.DELETE_BATCH, s.count(Status.ACKED));
+            assertEquals(n - BufferStore.DELETE_BATCH, s.purge(Duration.ZERO), "purge loops until nothing is left");
+            assertEquals(0, s.count());
         }
     }
 
     @Test
     void recastableExcludesLeasedRowsAndUpdateMappingGuardsInFlight(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            s.insertTransaction(tx("1", "0001", 0));
-            s.insertTransaction(tx("1", "0002", 1));
-            Lease lease = s.take(null, 1, Duration.ofMinutes(5)); // leases 0001 (oldest)
+            insert(s, tx("1", "0001", 0));
+            insert(s, tx("1", "0002", 1));
+            Lease lease = s.takeWhere(null, 1, Duration.ofMinutes(5)); // leases 0001 (oldest)
             assertNotNull(lease.leaseId());
 
             List<TransactionRow> rc = s.recastable(null, 10);
@@ -270,7 +342,6 @@ class BufferStoreTest {
     void healthMetricsAndDbSize(@TempDir Path dir) throws Exception {
         MutableClock clock = new MutableClock(BASE.plusSeconds(1000));
         try (BufferStore s = open(dir, clock)) {
-            assertTrue(s.lastReceivedMillis().isEmpty());
             assertTrue(s.lastConsumedMillis().isEmpty());
             assertTrue(s.oldestUnackedSeconds().isEmpty());
             assertTrue(s.dbSizeBytes() > 0);
@@ -278,24 +349,112 @@ class BufferStoreTest {
 
             s.consumeFile(file(FILE_A, "inbox", "c1", FileStatus.CONSUMED, 2),
                 List.of(tx("1", "0001", 0), tx("1", "0002", 600)));
-            assertEquals(BASE.plusSeconds(600).toEpochMilli(), s.lastReceivedMillis().getAsLong());
             assertEquals(BASE.toEpochMilli(), s.lastConsumedMillis().getAsLong());
             assertEquals(1000L, s.oldestUnackedSeconds().getAsLong());
 
             // ack the oldest → oldestUnacked tracks the youngest remaining
-            s.ack(s.take(null, 1, Duration.ofMinutes(5)).leaseId(), null);
+            s.ack(s.takeWhere(null, 1, Duration.ofMinutes(5)).leaseId(), null);
             assertEquals(400L, s.oldestUnackedSeconds().getAsLong());
         }
     }
 
+    /**
+     * Take, backlog, the oldest-unacked probe and both retention deletes must reach their
+     * rows through an index: acked rows pile up for {@code maxAge}, and a full scan per take
+     * grows with them. EXPLAIN QUERY PLAN names the index; a bare "SCAN transactions" is
+     * the regression.
+     */
     @Test
-    void builderRequiresKeyPartsForDerivation() {
-        assertThrows(IllegalStateException.class, () -> TransactionRow.builder().fileId("/f").deriveElementKey());
-        TransactionRow r = TransactionRow.builder().fileId("/f").gsControl("1").stControl("2").deriveElementKey()
+    void hotQueriesUseIndexesNotTableScans(@TempDir Path dir) throws Exception {
+        Path db = dir.resolve("buffer.db");
+        try (BufferStore s = open(dir, new MutableClock(BASE))) {
+            insert(s, tx("1", "0001", 0));
+        }
+        try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + db)) {
+            assertEquals("transactions_unacked", indexUsed(c, LeaseManager.candidateSql(null)), "take");
+            assertEquals("transactions_unacked", indexUsed(c, LeaseManager.BACKLOG_SQL), "backlog");
+            assertEquals("transactions_unacked", indexUsed(c, BufferStore.OLDEST_UNACKED_SQL), "oldestUnacked");
+            assertEquals("transactions_acked", indexUsed(c, BufferStore.DELETE_ACKED_OLDER_THAN_SQL), "purge / maxAge");
+            assertEquals("transactions_acked", indexUsed(c, BufferStore.DELETE_OLDEST_ACKED_SQL), "maxBytes eviction");
+        }
+    }
+
+    /**
+     * The emergent tree's facet queries (children, their sizes, and the existence check that
+     * resolves an id) read a covering index in order: never the table, never a temp sort.
+     */
+    @Test
+    void facetQueriesReadAnIndexNeverTheTable(@TempDir Path dir) throws Exception {
+        Path db = dir.resolve("buffer.db");
+        try (BufferStore s = open(dir, new MutableClock(BASE))) {
+            insert(s, tx("1", "0001", 0));
+        }
+        String type = "transaction_type = '835'";
+        String typeGuide = type + " AND gs08 = '005010X221A1'";
+        try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + db)) {
+            Map<String, String> expected = new LinkedHashMap<>();
+            expected.put(BufferStore.distinctSql("transaction_type"), "transactions_type");
+            expected.put(BufferStore.distinctSql("gs08"), "transactions_gs08");
+            expected.put(BufferStore.distinctSql("sender_id"), "transactions_sender");
+            expected.put(BufferStore.distinctSql("source_name"), "transactions_source");
+            expected.put(BufferStore.distinctSql("file_id"), "transactions_file");
+            expected.put(BufferStore.distinctCountsSql("gs08", type), "transactions_type");
+            expected.put(BufferStore.distinctCountsSql("gs08", null), "transactions_gs08");
+            expected.put(BufferStore.distinctCountsSql("sender_id", null), "transactions_sender");
+            expected.put(BufferStore.distinctCountsSql("source_name", null), "transactions_source");
+            expected.put(BufferStore.existsSql(type), "transactions_type");
+            expected.put(BufferStore.existsSql(typeGuide), "transactions_type");
+            expected.put(BufferStore.existsSql("gs08 = '005010X221A1'"), "transactions_gs08");
+            expected.put(BufferStore.existsSql("sender_id = 'PAYERA'"), "transactions_sender");
+            expected.put(BufferStore.existsSql("source_name = 'inbox'"), "transactions_source");
+            expected.put(BufferStore.countSql(typeGuide), "transactions_type");
+            expected.put(BufferStore.countSql("gs08 = '005010X221A1'"), "transactions_gs08");
+            expected.put(BufferStore.countSql("sender_id = 'PAYERA'"), "transactions_sender");
+            expected.put(BufferStore.countSql("source_name = 'inbox'"), "transactions_source");
+            for (Map.Entry<String, String> q : expected.entrySet()) {
+                List<String> plan = plan(c, q.getKey());
+                assertEquals(q.getValue(), indexUsed(c, q.getKey()), q.getKey() + " -> " + plan);
+                for (String step : plan) {
+                    assertFalse(step.matches("SCAN transactions( |$)(?!USING).*") || step.contains("TEMP B-TREE"),
+                        q.getKey() + " -> " + plan);
+                }
+            }
+        }
+    }
+
+    private static List<String> plan(Connection c, String sql) throws SQLException {
+        List<String> plan = new ArrayList<>();
+        try (PreparedStatement ps = c.prepareStatement("EXPLAIN QUERY PLAN " + sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                plan.add(rs.getString("detail"));
+            }
+        }
+        return plan;
+    }
+
+    /** The index the plan's access to {@code transactions} goes through; fails on a full scan. */
+    private static String indexUsed(Connection c, String sql) throws SQLException {
+        List<String> plan = plan(c, sql);
+        for (String step : plan) {
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?:SCAN|SEARCH) transactions USING (?:COVERING )?INDEX (\\w+)").matcher(step);
+            if (m.find()) {
+                return m.group(1);
+            }
+        }
+        throw new AssertionError("no index used by: " + sql + " -> " + plan);
+    }
+
+    @Test
+    void builderBuildsANewUnleasedFileEnvelopeRow() {
+        TransactionRow r = TransactionRow.builder().fileId("/f").elementKey("/f:9:1:2").gsControl("1").stControl("2")
             .receivedAt(BASE).gs08("x").transactionType("835").schemaId("s").rawX12(new byte[0]).mappedJson("{}")
-            .build();
-        assertEquals("/f:1:2", r.elementKey());
+            .envelope(null).build();
+        assertEquals("/f:9:1:2", r.elementKey());
+        assertEquals(0, r.id(), "the store assigns the id");
         assertEquals(Status.NEW, r.status());
+        assertNull(r.leaseId());
         assertEquals(TransactionRow.ENVELOPE_FILE, r.envelope());
     }
 }

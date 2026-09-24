@@ -9,7 +9,12 @@ echo "Starting X12 Receiver Module..."
 # from MODULE_CONFIG (runtimeConfig.config.sources[].path); the Java process
 # validates every configured source at boot and refuses to start otherwise.
 echo "Buffer volume:      /var/lib/module"
-echo "MODULE_CONFIG:      ${MODULE_CONFIG:+set}${MODULE_CONFIG:-(absent — using runtimeConfig.yml defaults)}"
+# Only whether it is set: the value is the operator's whole config and has no place in logs.
+if [ -n "$MODULE_CONFIG" ]; then
+    echo "MODULE_CONFIG:      set"
+else
+    echo "MODULE_CONFIG:      absent (using runtimeConfig.yml defaults)"
+fi
 
 # Create SSL directory
 mkdir -p /opt/module/ssl
@@ -50,11 +55,18 @@ if ! kill -0 $NGINX_PID 2>/dev/null; then
 fi
 echo "nginx started (PID: $NGINX_PID)"
 
-# Graceful shutdown
+# Graceful shutdown: wait for Java to finish its shutdown hook (pollers stop, the buffer
+# closes) before exiting — exiting right after kill lets the runtime tear the container
+# down mid-commit. Then stop nginx the same way.
+JAVA_PID=
 shutdown() {
     echo "Shutting down..."
-    kill $JAVA_PID 2>/dev/null || true
-    kill $NGINX_PID 2>/dev/null || true
+    if [ -n "$JAVA_PID" ]; then
+        kill "$JAVA_PID" 2>/dev/null || true
+        wait "$JAVA_PID" 2>/dev/null || true
+    fi
+    kill "$NGINX_PID" 2>/dev/null || true
+    wait "$NGINX_PID" 2>/dev/null || true
     exit 0
 }
 trap shutdown TERM INT

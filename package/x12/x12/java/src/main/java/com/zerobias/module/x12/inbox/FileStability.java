@@ -71,8 +71,4 @@ public final class FileStability {
             }
         }
     }
-
-    public int trackedCount() {
-        return sightings.size();
-    }
 }

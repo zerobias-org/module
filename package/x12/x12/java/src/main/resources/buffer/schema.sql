@@ -2,9 +2,9 @@
 -- WAL mode handles concurrent reader/writer; the single Java process owns one
 -- writer thread. Timestamps are epoch-millis INTEGERs (see BufferStore).
 --
--- synchronous defaults to NORMAL (fsync at WAL checkpoints). Operators set
--- config.ackDurability=full -> synchronous=FULL (fsync per commit) for a zero-loss
--- consume path; BufferStore applies that PRAGMA at open, so it is NOT pinned here.
+-- synchronous is NORMAL here (fsync at WAL checkpoints) but BufferStore overrides it at
+-- open from config.ackDurability: full (the default) -> synchronous=FULL, fsync per commit,
+-- which the rename-is-the-ack guarantee needs; normal trades that for throughput.
 
 -- One row per interchange FILE discovered in an inbox. Rows are never evicted by
 -- retention — they are the audit trail, and the checksum index is what keeps a
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS files (
   file_path         TEXT NOT NULL,            -- absolute path at discovery (before the .done rename)
   file_name         TEXT NOT NULL,
   source_name       TEXT NOT NULL,            -- config.sources[].name (provenance)
-  current_path      TEXT NOT NULL,            -- after rename (.done/.error); == file_id when rename failed
+  current_path      TEXT NOT NULL,            -- after rename (.done/.error); == file_path when the rename failed
   size_bytes        INTEGER NOT NULL,
   checksum          TEXT NOT NULL,            -- sha256 hex of the bytes
   file_mtime        INTEGER NOT NULL,
@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS files_source ON files(source_name, status);
 -- One row per TRANSACTION SET (ST..SE) — the collection element / drain atom.
 CREATE TABLE IF NOT EXISTS transactions (
   id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-  element_key        TEXT NOT NULL UNIQUE,    -- <fileId>:<GS06>:<ST02>
+  element_key        TEXT NOT NULL UNIQUE,    -- <fileId>:<ISA13>:<GS06>:<ST02>
   file_id            TEXT NOT NULL,
   source_name        TEXT NOT NULL,
   received_at        INTEGER NOT NULL,
@@ -62,6 +62,23 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS transactions_drain ON transactions(schema_id, status, received_at);
 CREATE INDEX IF NOT EXISTS transactions_lease ON transactions(lease_id) WHERE lease_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS transactions_file ON transactions(file_id);
+-- Acked rows are most of the table (retention keeps them for maxAge), so every hot path
+-- must reach its rows without walking them.
+-- take + backlog + oldestUnacked: the un-acked rows, oldest first. A partial index is only
+-- used when the query repeats its WHERE term verbatim (LeaseManager / BufferStore do).
+CREATE INDEX IF NOT EXISTS transactions_unacked ON transactions(received_at) WHERE status <> 'acked';
+-- purge + retention (maxAge range, maxBytes oldest-acked-first) and the per-status counts.
+CREATE INDEX IF NOT EXISTS transactions_acked ON transactions(status, acked_at);
+-- newest-first browse (/transactions, search) without a sort over the whole table.
+CREATE INDEX IF NOT EXISTS transactions_received ON transactions(received_at);
+-- The emergent object tree (/by-type, /by-version, /by-sender, /by-source): its children are
+-- the distinct values of these columns and each child's size a count over one value, so both
+-- read a narrow covering index in order instead of every row plus a temp sort. (type, gs08)
+-- also serves the per-type guide list /by-type/<TS> and the (type, guide) collections.
+CREATE INDEX IF NOT EXISTS transactions_type ON transactions(transaction_type, gs08);
+CREATE INDEX IF NOT EXISTS transactions_gs08 ON transactions(gs08);
+CREATE INDEX IF NOT EXISTS transactions_sender ON transactions(sender_id);
+CREATE INDEX IF NOT EXISTS transactions_source ON transactions(source_name);
 
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;

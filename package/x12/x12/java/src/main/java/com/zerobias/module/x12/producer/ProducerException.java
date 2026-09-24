@@ -16,11 +16,16 @@ import java.util.Map;
  *   <li>{@code noSuchObjectError} (404) — adds {@code {type, id}}: unknown object /
  *       schema / lease / file.</li>
  *   <li>{@code illegalArgumentError} (400) — adds {@code {msg}}; backs <em>both</em> the
- *       {@code UnsupportedOperationError} response (every write op) and the
- *       {@code illegalArgumentError} response (malformed filter, page size out of range).</li>
+ *       {@code UnsupportedOperationError} response (every write op, every parameter this
+ *       producer does not implement) and the {@code illegalArgumentError} response
+ *       (malformed filter or function input, page bounds).</li>
+ *   <li>{@code unexpectedError} (500) — adds {@code {msg}}; always the same generic text,
+ *       because the cause (an SQLite or IO message) can name paths inside the container.</li>
  * </ul>
  */
 public final class ProducerException extends RuntimeException {
+
+    private static final String UNEXPECTED_MESSAGE = "Unexpected error";
 
     private final String key;
     private final int httpStatus;
@@ -64,14 +69,20 @@ public final class ProducerException extends RuntimeException {
             "Schema not found: " + schemaId, typeId("schema", schemaId));
     }
 
+    /**
+     * {@code ack}/{@code release} on a lease no in-flight row carries: unknown, already
+     * finalized, or expired and re-leased under a new id. The buffer forgets a lease once its
+     * rows leave {@code in_flight}, so the three are indistinguishable.
+     */
     public static ProducerException noSuchLease(String leaseId) {
         return new ProducerException("err.no.such.object", 404,
             "Lease not found: " + leaseId, typeId("lease", leaseId));
     }
 
     /**
-     * {@code noSuchObjectError} for a file whose bytes are gone (removed by inbox
-     * hygiene): DESIGN §2.8 — 404 with {@code reason: gone}; the transactions remain.
+     * {@code noSuchObjectError} for a file whose bytes cannot be served: removed by inbox
+     * hygiene, or no longer a regular file inside its source directory. DESIGN §2.8 — 404
+     * with {@code reason: gone}; the transactions remain.
      */
     public static ProducerException fileGone(String fileId) {
         Map<String, Object> m = typeId("file", fileId);
@@ -88,6 +99,11 @@ public final class ProducerException extends RuntimeException {
     /** {@code illegalArgumentError} body via the {@code illegalArgumentError} response. */
     public static ProducerException illegalArgument(String message) {
         return new ProducerException("err.illegal.argument", 400, message, msg(message));
+    }
+
+    /** {@code unexpectedError} body for a failure the caller cannot act on; log the cause, never echo it. */
+    public static ProducerException unexpected() {
+        return new ProducerException("err.unexpected", 500, UNEXPECTED_MESSAGE, msg(UNEXPECTED_MESSAGE));
     }
 
     private static Map<String, Object> typeId(String type, String id) {

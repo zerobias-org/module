@@ -13,6 +13,8 @@ import static com.zerobias.module.x12.buffer.TestRows.FILE_A;
 import static com.zerobias.module.x12.buffer.TestRows.FILE_B;
 import static com.zerobias.module.x12.buffer.TestRows.SCHEMA_835;
 import static com.zerobias.module.x12.buffer.TestRows.SCHEMA_837P;
+import static com.zerobias.module.x12.buffer.TestRows.insert;
+import static com.zerobias.module.x12.buffer.TestRows.key;
 import static com.zerobias.module.x12.buffer.TestRows.tx;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,8 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Lease/drain semantics (DESIGN §2.5, hl7/v2 §8.2): FIFO take, full + partial ack by
- * element key, release, TTL revert + reclaim, replay, filtered take, schema-scoped take,
- * and the TTL clamp. Time is a {@link MutableClock} so expiry is deterministic.
+ * element key, release, TTL expiry, replay, filtered take, and the TTL clamp. Time is a
+ * {@link MutableClock} so expiry is deterministic.
  */
 class LeaseTest {
 
@@ -38,11 +40,11 @@ class LeaseTest {
     @Test
     void takeLeasesFifoThenAck(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            s.insertTransaction(tx("1", "0001", 0));
-            s.insertTransaction(tx("1", "0002", 1));
-            s.insertTransaction(tx("1", "0003", 2));
+            insert(s, tx("1", "0001", 0));
+            insert(s, tx("1", "0002", 1));
+            insert(s, tx("1", "0003", 2));
 
-            Lease lease = s.take(null, 2, Duration.ofMinutes(5));
+            Lease lease = s.takeWhere(null, 2, Duration.ofMinutes(5));
             assertNotNull(lease.leaseId());
             assertEquals(List.of("0001", "0002"), sts(lease));
             assertEquals(Status.IN_FLIGHT, lease.transactions().get(0).status());
@@ -62,7 +64,7 @@ class LeaseTest {
     @Test
     void emptyTakeHasNullLeaseIdAndReportsBacklog(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            Lease none = s.take(null, 10, Duration.ofMinutes(5));
+            Lease none = s.takeWhere(null, 10, Duration.ofMinutes(5));
             assertTrue(none.isEmpty());
             assertNull(none.leaseId());
             assertEquals(0, none.remaining());
@@ -72,30 +74,30 @@ class LeaseTest {
     @Test
     void partialAckByElementKeyLeavesRestInFlight(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            s.insertTransaction(tx("1", "0001", 0));
-            s.insertTransaction(tx("1", "0002", 1));
-            Lease lease = s.take(null, 2, Duration.ofMinutes(5));
+            insert(s, tx("1", "0001", 0));
+            insert(s, tx("1", "0002", 1));
+            Lease lease = s.takeWhere(null, 2, Duration.ofMinutes(5));
 
-            assertEquals(1, s.ack(lease.leaseId(), List.of(FILE_A + ":1:0001")));
-            assertEquals(Status.ACKED, s.byElementKey(FILE_A + ":1:0001").orElseThrow().status());
-            assertEquals(Status.IN_FLIGHT, s.byElementKey(FILE_A + ":1:0002").orElseThrow().status(),
+            assertEquals(1, s.ack(lease.leaseId(), List.of(key(FILE_A, "1", "0001"))));
+            assertEquals(Status.ACKED, s.byElementKey(key(FILE_A, "1", "0001")).orElseThrow().status());
+            assertEquals(Status.IN_FLIGHT, s.byElementKey(key(FILE_A, "1", "0002")).orElseThrow().status(),
                 "0002 must remain in_flight");
-            assertEquals(0, s.ack("some-other-lease", List.of(FILE_A + ":1:0002")), "wrong lease acks nothing");
+            assertEquals(0, s.ack("some-other-lease", List.of(key(FILE_A, "1", "0002"))), "wrong lease acks nothing");
         }
     }
 
     @Test
     void releaseReturnsToNew(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            s.insertTransaction(tx("1", "0001", 0));
-            s.insertTransaction(tx("1", "0002", 1));
-            Lease lease = s.take(null, 2, Duration.ofMinutes(5));
+            insert(s, tx("1", "0001", 0));
+            insert(s, tx("1", "0002", 1));
+            Lease lease = s.takeWhere(null, 2, Duration.ofMinutes(5));
 
-            assertEquals(1, s.release(lease.leaseId(), List.of(FILE_A + ":1:0002")));
+            assertEquals(1, s.release(lease.leaseId(), List.of(key(FILE_A, "1", "0002"))));
             assertEquals(1, s.count(Status.NEW));
             assertEquals(1, s.release(lease.leaseId(), null));
             assertEquals(2, s.count(Status.NEW));
-            assertNull(s.byElementKey(FILE_A + ":1:0001").orElseThrow().leaseId());
+            assertNull(s.byElementKey(key(FILE_A, "1", "0001")).orElseThrow().leaseId());
         }
     }
 
@@ -103,33 +105,28 @@ class LeaseTest {
     void expiredLeaseRevertsAndIsRetakeable(@TempDir Path dir) throws Exception {
         MutableClock clock = new MutableClock(BASE);
         try (BufferStore s = open(dir, clock)) {
-            s.insertTransaction(tx("1", "0001", 0));
-            String first = s.take(null, 1, Duration.ofMinutes(1)).leaseId();
+            insert(s, tx("1", "0001", 0));
+            String first = s.takeWhere(null, 1, Duration.ofMinutes(1)).leaseId();
             assertNotNull(first);
 
             // Before expiry, the row is not drainable.
-            assertTrue(s.take(null, 1, Duration.ofMinutes(1)).isEmpty());
+            assertTrue(s.takeWhere(null, 1, Duration.ofMinutes(1)).isEmpty());
 
             clock.advance(Duration.ofMinutes(2));
-            // An expired in_flight row is drainable directly (candidate predicate)...
-            Lease retake = s.take(null, 1, Duration.ofMinutes(1));
+            // An expired in_flight row is drainable directly (candidate predicate).
+            Lease retake = s.takeWhere(null, 1, Duration.ofMinutes(1));
             assertFalse(retake.isEmpty());
             assertFalse(first.equals(retake.leaseId()), "new lease id");
             assertEquals(0, s.ack(first, null), "the old lease can no longer ack it");
-
-            // ...and reclaimExpired reverts the rest explicitly.
-            clock.advance(Duration.ofMinutes(2));
-            assertEquals(1, s.reclaimExpired());
-            assertEquals(1, s.count(Status.NEW));
         }
     }
 
     @Test
     void replayForcesInFlightBackToNewRegardlessOfTtl(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            s.insertTransaction(tx("1", "0001", 0));
-            s.insertTransaction(tx(FILE_B, "payer-b", "7", "0001", 1, "005010X222A1", "837P", SCHEMA_837P, "S"));
-            s.take(null, 2, Duration.ofHours(1));
+            insert(s, tx("1", "0001", 0));
+            insert(s, tx(FILE_B, "payer-b", "7", "0001", 1, "005010X222A1", "837P", SCHEMA_837P, "S"));
+            s.takeWhere(null, 2, Duration.ofHours(1));
             assertEquals(2, s.count(Status.IN_FLIGHT));
 
             assertEquals(1, s.replayInFlight("transaction_type = '837P'"));
@@ -140,18 +137,18 @@ class LeaseTest {
     }
 
     @Test
-    void takeWhereAndSchemaScopedTake(@TempDir Path dir) throws Exception {
+    void takeWhereNarrowsTheLease(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            s.insertTransaction(tx("1", "0001", 0));
-            s.insertTransaction(tx(FILE_B, "payer-b", "7", "0001", 1, "005010X222A1", "837P", SCHEMA_837P, "S"));
-            s.insertTransaction(tx("1", "0003", 2));
+            insert(s, tx("1", "0001", 0));
+            insert(s, tx(FILE_B, "payer-b", "7", "0001", 1, "005010X222A1", "837P", SCHEMA_837P, "S"));
+            insert(s, tx("1", "0003", 2));
 
             Lease filtered = s.takeWhere("source_name = 'payer-b'", 10, Duration.ofMinutes(5));
             assertEquals(1, filtered.transactions().size());
             assertEquals("837P", filtered.transactions().get(0).transactionType());
             assertEquals(2, filtered.remaining(), "backlog counts the unfiltered drainable rows");
 
-            Lease bySchema = s.take(SCHEMA_835, 10, Duration.ofMinutes(5));
+            Lease bySchema = s.takeWhere("schema_id = '" + SCHEMA_835 + "'", 10, Duration.ofMinutes(5));
             assertEquals(List.of("0001", "0003"), sts(bySchema));
             assertEquals(0, s.count(Status.NEW));
         }
@@ -160,15 +157,15 @@ class LeaseTest {
     @Test
     void ttlIsClampedToDefaultAndMax(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            s.insertTransaction(tx("1", "0001", 0));
-            s.insertTransaction(tx("1", "0002", 0));
-            s.insertTransaction(tx("1", "0003", 0));
+            insert(s, tx("1", "0001", 0));
+            insert(s, tx("1", "0002", 0));
+            insert(s, tx("1", "0003", 0));
             assertEquals(BASE.plus(LeaseManager.DEFAULT_TTL),
-                s.take(null, 1, null).transactions().get(0).inFlightUntil(), "null ttl → default");
+                s.takeWhere(null, 1, null).transactions().get(0).inFlightUntil(), "null ttl → default");
             assertEquals(BASE.plus(LeaseManager.DEFAULT_TTL),
-                s.take(null, 1, Duration.ZERO).transactions().get(0).inFlightUntil(), "zero ttl → default");
+                s.takeWhere(null, 1, Duration.ZERO).transactions().get(0).inFlightUntil(), "zero ttl → default");
             assertEquals(BASE.plus(LeaseManager.MAX_TTL),
-                s.take(null, 1, Duration.ofDays(3)).transactions().get(0).inFlightUntil(), "huge ttl → max");
+                s.takeWhere(null, 1, Duration.ofDays(3)).transactions().get(0).inFlightUntil(), "huge ttl → max");
         }
     }
 }

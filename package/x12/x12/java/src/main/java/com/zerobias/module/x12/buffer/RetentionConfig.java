@@ -17,10 +17,6 @@ public record RetentionConfig(Duration maxAge, Long maxBytes) {
         return new RetentionConfig(null, null);
     }
 
-    public static RetentionConfig maxAge(Duration maxAge) {
-        return new RetentionConfig(maxAge, null);
-    }
-
     public boolean isBounded() {
         return maxAge != null || maxBytes != null;
     }

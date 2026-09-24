@@ -4,16 +4,25 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.imsweb.x12.Segment;
 import com.zerobias.module.x12.parser.Fixtures;
+import com.zerobias.module.x12.parser.Separators;
 import com.zerobias.module.x12.parser.X12Parse;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -28,16 +37,20 @@ class MaterializerTest {
     }
 
     private static JsonObject materialize(byte[] bytes) throws Exception {
-        X12Parse.ParsedFile p = X12Parse.parse(bytes, true);
-        Materializer m = new StructureResolver().materializerFor(p.gs08(), p.separators()).orElseThrow();
-        Map<String, Object> tree = m.materializeTransaction(p.transactions().get(0).loop());
+        return materialize(X12Parse.parse(bytes, true, Clock.systemUTC()), 0);
+    }
+
+    private static JsonObject materialize(X12Parse.ParsedFile p, int transaction) {
+        X12Parse.Transaction tx = p.transactions().get(transaction);
+        Materializer m = new StructureResolver().materializerFor(tx.gs08(), p.separators()).orElseThrow();
+        Map<String, Object> tree = m.materializeTransaction(tx.loop());
         return JsonParser.parseString(m.toJson(tree)).getAsJsonObject();
     }
 
     @Test
     void the835FollowsTheSchemaKeysAndTypes() throws Exception {
         JsonObject tx = materialize(Fixtures.F835);
-        assertEquals(java.util.List.of("st", "header", "detail", "footer", "se"), tx.keySet().stream().toList(),
+        assertEquals(List.of("st", "header", "detail", "footer", "se"), tx.keySet().stream().toList(),
             "ST_LOOP children in index order");
         assertEquals("835", tx.getAsJsonObject("st").get("st01").getAsString());
         assertEquals("0001", tx.getAsJsonObject("st").get("st02").getAsString());
@@ -158,11 +171,14 @@ class MaterializerTest {
     void the837PNestsHierarchicalLoopsAndSplitsComposites() throws Exception {
         JsonObject tx = materialize(Fixtures.F837P);
         assertEquals("BATCH000001", tx.getAsJsonObject("header").getAsJsonObject("bht").get("bht03").getAsString());
-        assertEquals("12:00", tx.getAsJsonObject("header").getAsJsonObject("bht").get("bht05").getAsString(), "TM -> HH:MM");
+        assertEquals("12:00:00", tx.getAsJsonObject("header").getAsJsonObject("bht").get("bht05").getAsString(),
+            "TM -> HH:MM:SS");
         JsonObject loop2000A = tx.getAsJsonArray("detail").get(0).getAsJsonObject().getAsJsonArray("loop2000A").get(0).getAsJsonObject();
         assertEquals("20", loop2000A.getAsJsonObject("hl").get("hl03").getAsString());
         JsonObject loop2000B = loop2000A.getAsJsonArray("loop2000B").get(0).getAsJsonObject();
         assertEquals("18", loop2000B.getAsJsonObject("sbr").get("sbr02").getAsString());
+        JsonObject dmg = loop2000B.getAsJsonObject("loop2010BA").getAsJsonObject("dmg");
+        assertEquals("1980-01-15", dmg.get("dmg02").getAsString(), "DMG01 D8 names DMG02's format");
         JsonObject claim = loop2000B.getAsJsonArray("loop2300").get(0).getAsJsonObject();
         JsonObject clm = claim.getAsJsonObject("clm");
         assertEquals("CLM0001", clm.get("clm01").getAsString());
@@ -179,52 +195,168 @@ class MaterializerTest {
         JsonObject sv1 = lines.get(1).getAsJsonObject().getAsJsonObject("sv1");
         assertEquals("36415", sv1.getAsJsonObject("sv101").get("c00302").getAsString());
         assertEquals(0, new BigDecimal("100.00").compareTo(sv1.get("sv102").getAsBigDecimal()));
-        // DTP03 (data element 1251) is AN: its format is governed by DTP02 (D8/RD8), so it is not a DT and stays verbatim.
+        // DTP03 (data element 1251) is AN on the wire; DTP02 (1250) says how to read it.
         JsonObject dtp = lines.get(1).getAsJsonObject().getAsJsonArray("dtp").get(0).getAsJsonObject();
-        assertEquals("20260901", dtp.get("dtp03").getAsString());
+        assertEquals("2026-09-01", dtp.get("dtp03").getAsString(), "D8 -> ISO date");
         assertEquals("D8", dtp.get("dtp02").getAsString());
     }
 
     @Test
-    void repeatedElementsSplitOnTheRepetitionSeparator() throws Exception {
-        // HI01..HI12 are separate positions, so use a synthetic ^-repeat on a field the map marks repeating is not
-        // available in the fixtures; verify the mechanism directly on a segment entry that repeats.
-        StructureIndex idx = StructureIndex.fromClasspath("005010X222A1").orElseThrow();
-        StructureIndex.FieldEntry repeating = null;
-        String segId = null;
-        for (StructureIndex.SegmentEntry se : idx.segments.values()) {
-            for (StructureIndex.FieldEntry fe : se.fields) {
-                if (fe.repeat != null && fe.repeat > 1 && fe.composite == null) {
-                    repeating = fe;
-                    segId = se.xid;
-                    break;
-                }
-            }
-            if (repeating != null) {
-                break;
+    void rangeDatesBecomeIsoIntervals() throws Exception {
+        JsonObject claim = materialize(Fixtures.F837I).getAsJsonArray("detail").get(0).getAsJsonObject()
+            .getAsJsonArray("loop2000A").get(0).getAsJsonObject().getAsJsonArray("loop2000B").get(0).getAsJsonObject()
+            .getAsJsonArray("loop2300").get(0).getAsJsonObject();
+        JsonObject statement = null;
+        for (JsonElement d : claim.getAsJsonArray("dtp")) {
+            if ("434".equals(d.getAsJsonObject().get("dtp01").getAsString())) {
+                statement = d.getAsJsonObject();
             }
         }
-        if (repeating == null) {
-            return; // guide has no ^-repeating simple element; nothing to test here
-        }
-        com.imsweb.x12.Segment seg = new com.imsweb.x12.Segment(new com.imsweb.x12.Separators('~', '*', ':'));
-        StringBuilder sb = new StringBuilder(segId);
-        for (int i = 1; i <= repeating.seq; i++) {
-            sb.append('*').append(i == repeating.seq ? "A^B" : "");
-        }
-        seg.addElements(sb.toString());
-        Materializer m = new Materializer(idx, com.zerobias.module.x12.parser.Separators.DEFAULT);
-        Map<String, Object> out = m.materializeSegment(seg, idx.segment(segId));
-        assertTrue(out.get(repeating.name) instanceof java.util.List, repeating.name + " -> " + out);
-        assertEquals(2, ((java.util.List<?>) out.get(repeating.name)).size());
+        assertEquals("RD8", statement.get("dtp02").getAsString());
+        assertEquals("2026-09-05/2026-09-05", statement.get("dtp03").getAsString(), "RD8 -> ISO 8601 interval");
     }
 
     @Test
-    void unknownSegmentsAndTrailingElementsAreKeptGenerically() throws Exception {
-        // Append a trailing element to SE and drop a Z-style segment into the footer: nothing is lost.
+    void controlNumbersKeepTheirLeadingZeros() throws Exception {
+        // AK102 is data element 28 (N0), the acknowledged GS06: an identifier, not a quantity.
+        String t = Fixtures.text(Fixtures.F999).replace("AK1*HC*102*", "AK1*HC*000102*");
+        JsonObject ak1 = materialize(t.getBytes(StandardCharsets.UTF_8)).getAsJsonObject("header").getAsJsonObject("ak1");
+        assertTrue(ak1.get("ak102").getAsJsonPrimitive().isString());
+        assertEquals("000102", ak1.get("ak102").getAsString());
+        assertEquals("0001", materialize(Fixtures.F999).getAsJsonObject("header").getAsJsonArray("loop2000").get(0)
+            .getAsJsonObject().getAsJsonObject("ak2").get("ak202").getAsString());
+    }
+
+    @Test
+    void repeatedElementsSplitOnTheRepetitionSeparator() {
+        // The 834 map marks COB04 (a simple element) and DMG05 (composite C056) as ^-repeating.
+        StructureIndex idx = StructureIndex.fromClasspath("005010X220A1").orElseThrow();
+        assertEquals(Integer.valueOf(9), idx.segment("COB").fields.get(3).repeat);
+        assertEquals("C056", idx.segment("DMG").fields.get(4).composite);
+        Materializer m = new Materializer(idx, Separators.DEFAULT);
+
+        Map<String, Object> cob = m.materializeSegment(segment("COB*P*POLICY01*1*1^30^35"), idx.segment("COB"));
+        assertEquals(List.of("1", "30", "35"), cob.get("cob04"));
+        assertEquals(List.of("30"), m.materializeSegment(segment("COB*P*POLICY01*1*30"), idx.segment("COB")).get("cob04"),
+            "a repeating element is an array even with one value");
+
+        Map<String, Object> dmg = m.materializeSegment(segment("DMG*D8*19800115*F**:RET:2106-3^:RET:2186-5"),
+            idx.segment("DMG"));
+        List<?> races = (List<?>) dmg.get("dmg05");
+        assertEquals(2, races.size(), "each repetition is its own composite");
+        assertEquals(Map.of("c05602", "RET", "c05603", "2106-3"), races.get(0));
+        assertEquals(Map.of("c05602", "RET", "c05603", "2186-5"), races.get(1));
+        assertEquals("1980-01-15", dmg.get("dmg02"));
+    }
+
+    @Test
+    void trailingElementsBeyondTheLayoutAreKeptGenerically() throws Exception {
         String t = Fixtures.text(Fixtures.F835).replace("SE*42*0001~", "SE*42*0001*EXTRA~");
         JsonObject tx = materialize(t.getBytes(StandardCharsets.UTF_8));
         assertEquals("EXTRA", tx.getAsJsonObject("se").get("se03").getAsString());
-        assertFalse(tx.has("zzz"));
+    }
+
+    @Test
+    void unknownSegmentIsKeptGenericallyAndCountsAsAParserError() throws Exception {
+        // imsweb files an unmapped segment under the loop it is in and reports it (non-fatal).
+        String t = Fixtures.text(Fixtures.F835).replace("PLB*", "ZZZ*1*2~\nPLB*").replace("SE*42*0001~", "SE*43*0001~");
+        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals(List.of("Unable to find a matching segment format in loop 2110"), p.errors(),
+            "counted in parserErrorCount");
+        JsonObject line = materialize(p, 0).getAsJsonArray("detail").get(0).getAsJsonObject().getAsJsonArray("loop2000")
+            .get(0).getAsJsonObject().getAsJsonArray("loop2100").get(1).getAsJsonObject().getAsJsonArray("loop2110")
+            .get(0).getAsJsonObject();
+        assertEquals("1", line.getAsJsonObject("zzz").get("zzz01").getAsString());
+        assertEquals("2", line.getAsJsonObject("zzz").get("zzz02").getAsString());
+    }
+
+    @Test
+    void secondOccurrenceOfASingleUseSegmentKeepsTheSchemaShape() throws Exception {
+        String trn = "TRN*1*EFT000000101*1000000000~\n";
+        String t = Fixtures.text(Fixtures.F835).replace(trn, trn + trn.replace("101*", "102*"))
+            .replace("SE*42*0001~", "SE*43*0001~");
+        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals(List.of("TRN in loop HEADER appears too many times"), p.errors(), "counted in parserErrorCount");
+        JsonElement header = materialize(p, 0).getAsJsonObject("header").get("trn");
+        assertTrue(header.isJsonObject(), "TRN is single-use in the schema: " + header);
+        assertEquals("EFT000000101", header.getAsJsonObject().get("trn02").getAsString(), "first occurrence");
+    }
+
+    /** Every key the materializer writes for a committed fixture is a schema property of the matching type. */
+    @Test
+    void everyFixtureMaterializesToItsGeneratedSchema() throws Exception {
+        for (String fixture : List.of(Fixtures.F835, Fixtures.F837P, Fixtures.F837I, Fixtures.F277CA, Fixtures.F999)) {
+            X12Parse.ParsedFile p = X12Parse.parse(Fixtures.bytes(fixture), false, Clock.systemUTC());
+            Materializer m = new StructureResolver().materializerFor(p.gs08(), p.separators()).orElseThrow();
+            for (X12Parse.Transaction tx : p.transactions()) {
+                JsonObject json = JsonParser.parseString(m.toJson(m.materializeTransaction(tx.loop()))).getAsJsonObject();
+                assertConforms(json, m.index().tableSchemaId, fixture);
+            }
+        }
+    }
+
+    private static void assertConforms(JsonObject object, String schemaId, String path) {
+        Map<String, JsonObject> properties = new HashMap<>();
+        for (JsonElement p : schema(schemaId).getAsJsonArray("properties")) {
+            properties.put(p.getAsJsonObject().get("name").getAsString(), p.getAsJsonObject());
+        }
+        for (Map.Entry<String, JsonElement> e : object.entrySet()) {
+            String at = path + "." + e.getKey();
+            JsonObject property = properties.get(e.getKey());
+            assertNotNull(property, at + " is not a property of " + schemaId);
+            boolean multi = property.has("multi") && property.get("multi").getAsBoolean();
+            assertEquals(multi, e.getValue().isJsonArray(), at + " array-ness must follow multi=" + multi);
+            if (multi) {
+                for (JsonElement item : e.getValue().getAsJsonArray()) {
+                    assertValue(item, property, at + "[]");
+                }
+            } else {
+                assertValue(e.getValue(), property, at);
+            }
+        }
+    }
+
+    private static void assertValue(JsonElement value, JsonObject property, String at) {
+        String ref = property.has("references") ? property.getAsJsonObject("references").get("schemaId").getAsString() : null;
+        if (ref != null && ref.startsWith("schema:type:")) {
+            assertTrue(value.isJsonObject(), at + " composes " + ref + ": " + value);
+            assertConforms(value.getAsJsonObject(), ref, at);
+            return;
+        }
+        boolean string = value.isJsonPrimitive() && value.getAsJsonPrimitive().isString();
+        switch (property.get("dataType").getAsString()) {
+            case "decimal", "integer" -> assertTrue(value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber(),
+                at + " is a number: " + value);
+            case "date" -> assertTrue(string && value.getAsString().matches("\\d{4}-\\d{2}-\\d{2}"), at + " is a date: " + value);
+            default -> {
+                assertTrue(string, at + " is a string: " + value);
+                if (property.has("format") && "time".equals(property.get("format").getAsString())) {
+                    assertTrue(value.getAsString().matches("\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?"), at + " is a time: " + value);
+                }
+            }
+        }
+    }
+
+    /** {@code schema:table|type:x12.<GS08>.<name>} from the generated classpath tree. */
+    private static JsonObject schema(String id) {
+        String[] parts = id.substring(id.indexOf(':', "schema:".length()) + 1).split("\\.");
+        List<String> dirs = id.startsWith("schema:table:") ? List.of("transactions") : List.of("loops", "segments", "composites");
+        for (String dir : dirs) {
+            String resource = "schemas/" + parts[1] + "/" + dir + "/" + parts[2] + ".json";
+            try (InputStream in = MaterializerTest.class.getClassLoader().getResourceAsStream(resource)) {
+                if (in != null) {
+                    return JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+        throw new AssertionError("no generated schema for " + id);
+    }
+
+    private static Segment segment(String text) {
+        Segment seg = new Segment(new com.imsweb.x12.Separators('~', '*', ':'));
+        seg.addElements(text);
+        return seg;
     }
 }

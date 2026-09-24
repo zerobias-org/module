@@ -2,75 +2,103 @@ package com.zerobias.module.x12.parser;
 
 import com.imsweb.x12.reader.X12Reader;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * The fixed GS08 → (imsweb {@link X12Reader.FileType}, display type, canonical guide id) table.
+ * The GS08 → (canonical guide id, display type, imsweb {@link X12Reader.FileType}) table,
+ * read from {@value #RESOURCE}. The schema codegen reads the same file, so a guide is either
+ * parsed <em>and</em> has schemas, or is neither.
  *
- * <p>DESIGN §2.1 (display names), §4.2b (FileType selection), §6 (guides in v1). GS08 arrives in
+ * <p>DESIGN §2.1 (display names), §4.2 step 3b (FileType selection), §6 (guides in v1). GS08 arrives in
  * several spellings: the canonical id with its addenda suffix ({@code 005010X221A1}), the bare
  * guide without the suffix ({@code 005010X222} — what the x12.org 837 examples carry), and, for
  * 837I, both {@code A1} and {@code A2}. All forms resolve; {@link #canonical(String)} is what the
  * buffer stores in {@code gs08} and what schema ids embed, so one wire spelling never yields
- * two collections.
- *
- * <p>Guides imsweb 1.16 does not map at 005010 (270/271 X279, 276 X212 request side, 837D X224)
- * return {@link Optional#empty()} from {@link #fileTypeFor(String)}; the poller treats that as
- * {@code unsupported-guide} (DESIGN §4.2b) and the file goes to {@code .error}.
+ * two collections. A GS08 that is not in the table is {@code unsupported-guide} (DESIGN §4.2 step 3b)
+ * and the file goes to {@code .error}.
  */
 public final class TransactionTypes {
 
-    /** One row of the table. */
-    public record Guide(String canonicalGs08, String transactionType, X12Reader.FileType fileType) { }
+    /** The table, a classpath resource shared with the codegen. */
+    public static final String RESOURCE = "com/zerobias/module/x12/parser/guides.txt";
+
+    /** One row of the table; {@code mapFile} is the pyx12 map under imsweb's {@code mapping/}. */
+    public record Guide(String canonicalGs08, String transactionType, X12Reader.FileType fileType, String mapFile,
+                        List<String> aliases) { }
 
     private TransactionTypes() { }
 
+    /** The row for any accepted spelling, or empty when the guide is not supported. */
+    public static Optional<Guide> guide(String gs08) {
+        if (gs08 == null) return Optional.empty();
+        return Optional.ofNullable(BY_GS08.get(gs08.trim().toUpperCase(Locale.ROOT)));
+    }
+
     /** Canonical GS08 for any accepted spelling, or empty when the guide is unknown. */
     public static Optional<String> canonical(String gs08) {
-        if (gs08 == null) return Optional.empty();
-        Guide g = TABLE.get(gs08.trim().toUpperCase(Locale.ROOT));
-        return Optional.ofNullable(g).map(Guide::canonicalGs08);
+        return guide(gs08).map(Guide::canonicalGs08);
     }
 
     /** Display transaction type ({@code 835}, {@code 837P}, …) or the bare ST01 when unknown. */
     public static String transactionType(String gs08, String st01) {
-        Guide g = gs08 == null ? null : TABLE.get(gs08.trim().toUpperCase(Locale.ROOT));
-        return g != null ? g.transactionType() : (st01 == null ? "UNKNOWN" : st01.trim());
+        return guide(gs08).map(Guide::transactionType).orElse(st01 == null ? "UNKNOWN" : st01.trim());
     }
 
-    /** The imsweb definition to parse with, or empty when imsweb has no 005010 map for the guide. */
+    /** The imsweb definition to parse with, or empty when the guide is not supported. */
     public static Optional<X12Reader.FileType> fileTypeFor(String gs08) {
-        if (gs08 == null) return Optional.empty();
-        Guide g = TABLE.get(gs08.trim().toUpperCase(Locale.ROOT));
-        return g == null ? Optional.empty() : Optional.ofNullable(g.fileType());
+        return guide(gs08).map(Guide::fileType);
     }
 
-    /** True when the guide is known, even if imsweb cannot parse it (schemas still exist). */
-    public static boolean isKnown(String gs08) {
-        return canonical(gs08).isPresent();
+    /** Every row, in file order. */
+    public static List<Guide> guides() {
+        return GUIDES;
     }
 
     // ---- table ------------------------------------------------------------------------------
 
-    private static final Map<String, Guide> TABLE = buildTable();
+    private static final List<Guide> GUIDES = load();
+    private static final Map<String, Guide> BY_GS08 = index(GUIDES);
 
-    private static Map<String, Guide> buildTable() {
-        var m = new java.util.HashMap<String, Guide>();
-        add(m, new Guide("005010X221A1", "835",   X12Reader.FileType.ANSI835_5010_X221), "005010X221");
-        add(m, new Guide("005010X222A1", "837P",  X12Reader.FileType.ANSI837_5010_X222), "005010X222");
-        add(m, new Guide("005010X223A2", "837I",  X12Reader.FileType.ANSI837_5010_X223), "005010X223", "005010X223A1");
-        add(m, new Guide("005010X214",   "277CA", X12Reader.FileType.ANSI277_5010_X214));
-        add(m, new Guide("005010X212",   "277",   X12Reader.FileType.ANSI277_5010_X212));
-        add(m, new Guide("005010X231A1", "999",   X12Reader.FileType.ANSI837_5010_X231), "005010X231");
-        add(m, new Guide("005010X220A1", "834",   X12Reader.FileType.ANSI834_5010_X220), "005010X220");
-        add(m, new Guide("005010X218",   "820",   null));
-        return Map.copyOf(m);
+    private static List<Guide> load() {
+        List<Guide> out = new ArrayList<>();
+        try (InputStream in = TransactionTypes.class.getClassLoader().getResourceAsStream(RESOURCE)) {
+            if (in == null) {
+                throw new IllegalStateException(RESOURCE + " is not on the classpath");
+            }
+            BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+            for (String line; (line = r.readLine()) != null; ) {
+                String t = line.strip();
+                if (t.isEmpty() || t.startsWith("#")) continue;
+                String[] c = t.split("\\s+");
+                if (c.length < 4 || c.length > 5) {
+                    throw new IllegalStateException(RESOURCE + ": expected 4 or 5 columns: " + line);
+                }
+                List<String> aliases = c.length == 5 ? List.of(c[4].split(",")) : List.of();
+                out.add(new Guide(c[0], c[1], X12Reader.FileType.valueOf(c[2]), c[3], aliases));
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to read " + RESOURCE, e);
+        }
+        return List.copyOf(out);
     }
 
-    private static void add(Map<String, Guide> m, Guide g, String... aliases) {
-        m.put(g.canonicalGs08(), g);
-        for (String a : aliases) m.put(a, g);
+    private static Map<String, Guide> index(List<Guide> guides) {
+        Map<String, Guide> m = new HashMap<>();
+        for (Guide g : guides) {
+            m.put(g.canonicalGs08(), g);
+            for (String a : g.aliases()) m.put(a, g);
+        }
+        return Map.copyOf(m);
     }
 }

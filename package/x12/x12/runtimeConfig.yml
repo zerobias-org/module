@@ -33,9 +33,10 @@ durability:
     mountPath: /var/lib/x12/inbox
     access: rw
 
-# Container memory cap. JVM heap is -Xmx512m (Dockerfile); 1024 MB keeps the heap
-# at ~50% of the cap. The node's 512 MB default would OOM-kill this daemon
-# immediately, so declaring this is mandatory. (hl7/v2 DESIGN §8, PLAN D15)
+# Container memory cap. The JVM heap follows it (-XX:MaxRAMPercentage=70 in the
+# Dockerfile, ~700 MB here); raise it together with config.maxFileBytes. The node's
+# 512 MB default is too small for this daemon, so declaring this is mandatory.
+# (DESIGN §3; README "Sizing")
 resources:
   memoryMb: 1024
 
@@ -56,20 +57,18 @@ config:
       # daily drops land as partial writes more often than people expect.
       stableForSec: 60
   # Suffix conventions (renamed in place, same directory): consumed → .done,
-  # unparseable → .error. Never delete. (DESIGN §4.3)
+  # unparseable → .error. Never delete. (DESIGN §4.2)
   consumedSuffix: ".done"
   errorSuffix: ".error"
   # SQLite durability for the consume path, applied at buffer open. (DESIGN §8.1)
-  ackDurability: normal
-  # File management over the mounted volume (DESIGN §2.9): uploadBinaryContent,
-  # createChildObject (mkdir) and deleteObject under the live /x12-receiver/inbox
-  # branch. DEFAULT false, and deliberately so — this is a revenue-cycle feed, and an
-  # open upload path lets any Hub-authenticated caller inject claims. Turn it on per
-  # deployment (e2e runs, operator-driven replay, a staging box); isSupported then
-  # reports these ops as supported, so a caller can discover the difference. Browsing
-  # /inbox is always available and always live: every listing is a fresh readdir, never
-  # a cache, so an uploaded file is visible before the poller has looked at it.
-  allowFileManagement: false
+  # `full` fsyncs every commit, so a file is only renamed `.done` once its rows are on
+  # disk — the rename is the acknowledgement. `normal` is faster but a power loss can
+  # drop rows of files already renamed `.done`.
+  ackDurability: full
+  # Largest file read into memory for parsing (at most 134217728, 128 MiB); bigger
+  # files go to `.error` as `too-large` without being loaded. Parsing needs several
+  # times the file size in heap, so raise resources.memoryMb with it.
+  maxFileBytes: 67108864   # 64 MiB
   # Buffer trimming — evicts ACKED transaction rows past these ceilings (un-acked
   # rows are never evicted). Omit either field to disable that axis. (DESIGN §8.3)
   retention:

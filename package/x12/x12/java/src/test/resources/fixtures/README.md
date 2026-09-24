@@ -1,9 +1,8 @@
 # Synthetic X12 test fixtures
 
 Everything in this directory is **authored from scratch** for this module and is
-committed. Nothing here is derived from x12.org (those examples are ASC X12
-intellectual property and live in the git-ignored sibling `../x12org/`,
-populated by `java/scripts/fetch-x12org-examples.py`).
+committed. Nothing here is derived from the ASC X12 published examples, which are
+X12 intellectual property and are not reproduced in this repository.
 
 All parties are fictional and use the same identifiers everywhere:
 
@@ -98,10 +97,10 @@ Files are one segment per line (the `~` terminator is kept). Structural checks
 
 | File | What is wrong | Expected outcome |
 |------|---------------|------------------|
-| `truncated-no-iea.x12` | The 835 fixture cut off after `SE*42*0001~`: no `GE`, no `IEA` (44 segments). | Parse fails (unterminated GS/ISA loop); file renamed `.error`, `files.status = error`. |
-| `bad-separators.x12` | ISA is 106 chars but declares `\|` as element separator (and `ISA16 = \|` too); every following segment uses `*`. | Separator detection yields `\|`; nothing after ISA splits; parse fails. |
+| `truncated-no-iea.x12` | The 835 fixture cut off after `SE*42*0001~`: no `GE`, no `IEA` (44 segments). | Parse fails with `fatal` (imsweb: unterminated GS/ISA loop); file renamed `.error`, `files.status = error`. |
+| `bad-separators.x12` | ISA is 106 chars but declares `\|` as element separator (and `ISA16 = \|` too); every following segment uses `*`. | Parse fails with `bad-isa` (the ISA delimiters are not distinct); `.error`. |
 | `unknown-guide-gs08.x12` | Structurally perfect copy of the 835 fixture with `GS08 = 005010X999` (835 has no `ST03` to fall back on). | `TransactionTypes.fileTypeFor("005010X999")` → `unsupported-guide`; `.error`. |
-| `empty.x12` | Zero bytes. | Parse fails (no ISA); `.error`. |
+| `empty.x12` | Zero bytes. | Parse fails with `empty-file`; `.error`. |
 
 `check-x12-structure.py` reports the first, second and fourth as
 `EXPECTED-FAIL`; `unknown-guide-gs08.x12` is structurally valid on purpose so

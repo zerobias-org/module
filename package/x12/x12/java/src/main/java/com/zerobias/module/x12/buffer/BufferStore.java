@@ -14,7 +14,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -24,8 +27,10 @@ import java.util.Set;
  * {@code files} (audit trail, one per interchange file) and {@code transactions}
  * (drain atoms, one per ST..SE) tables.
  *
- * <p>Owns one JDBC connection; all methods are {@code synchronized}, which makes
- * the lease/drain operations race-free by construction (single writer). The
+ * <p>Owns one JDBC connection; every statement runs under this object's monitor, which makes
+ * the lease/drain operations race-free by construction (single writer). Bulk deletes
+ * ({@link #purge}, retention) and the vacuum after them run as bounded batches that take the
+ * monitor one batch at a time, so ingestion and drains interleave with them. The
  * consume path is one SQL transaction per file ({@link #consumeFile}) — the caller
  * renames the file {@code .done} only after that commit returns (rename is the ack).
  *
@@ -33,7 +38,7 @@ import java.util.Set;
  * comparison is correct for ordering/expiry, whereas {@code Instant.toString()}
  * varies in fractional precision and would mis-sort lexicographically.
  *
- * <p>Lease semantics (take/ack/release/reclaim) live in {@link LeaseManager};
+ * <p>Lease semantics (take/ack/release/replay) live in {@link LeaseManager};
  * retention policy lives in {@link RetentionSweeper}. This class owns the
  * connection, schema, inserts, lookups, counts, and the deletion primitives.
  */
@@ -49,13 +54,22 @@ public final class BufferStore implements AutoCloseable {
         + "error_message, rename_failed, redelivery_count";
 
     /**
-     * Columns {@link #distinctValues} may enumerate (interpolated, never caller-derived).
-     * These drive the emergent object tree: {@code /by-type}, {@code /by-version},
-     * {@code /by-sender}, {@code /by-source}, {@code /files}.
+     * Columns {@link #distinctValues}/{@link #distinctCounts} may enumerate (interpolated, never
+     * caller-derived) — the discriminators of the emergent object tree. Each leads an index
+     * (schema.sql), so enumerating one reads that index in order, never the table.
      */
     private static final Set<String> ALLOWED_DISTINCT_COLUMNS = Set.of(
-        "transaction_type", "gs08", "sender_id", "receiver_id", "source_name", "file_id",
-        "schema_id", "envelope");
+        "transaction_type", "gs08", "sender_id", "source_name", "file_id");
+
+    /**
+     * Rows per delete statement for {@code purge} and retention. Each batch is its own
+     * statement and commit and the store's lock is released between batches, so evicting
+     * millions of acked rows never stalls ingestion or a {@code take} for the whole sweep.
+     */
+    static final int DELETE_BATCH = 500;
+
+    /** Free pages handed back per {@code incremental_vacuum} step, for the same reason. */
+    static final int VACUUM_BATCH_PAGES = 1024;
 
     private static final String SCHEMA_RESOURCE = "/buffer/schema.sql";
 
@@ -65,8 +79,8 @@ public final class BufferStore implements AutoCloseable {
     private final String dbPath;
 
     public BufferStore(String dbPath, boolean fullDurability, Clock clock) throws SQLException {
-        this.clock = clock;
-        this.dbPath = dbPath;
+        this.clock = Objects.requireNonNull(clock, "clock");
+        this.dbPath = Objects.requireNonNull(dbPath, "dbPath");
         this.conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
         this.leases = new LeaseManager(conn, clock);
         init(fullDurability);
@@ -86,7 +100,8 @@ public final class BufferStore implements AutoCloseable {
                 st.execute(stmt);
             }
         }
-        // ackDurability=full -> fsync per commit (DESIGN §8); overrides the schema's NORMAL.
+        // ackDurability=full (the default) -> fsync per commit, so a commit that returned is on
+        // disk before the .done rename acknowledges the file (DESIGN §8); overrides the schema's NORMAL.
         try (Statement st = conn.createStatement()) {
             st.execute("PRAGMA synchronous=" + (fullDurability ? "FULL" : "NORMAL"));
         }
@@ -129,37 +144,29 @@ public final class BufferStore implements AutoCloseable {
 
     /**
      * Persist one interchange file and all of its transaction sets in ONE SQL
-     * transaction (DESIGN §4.2 step 3c): every row is inserted with
-     * {@code ON CONFLICT(element_key) DO NOTHING}, then the {@code files} row. On any
-     * failure the whole unit rolls back and the exception propagates (the caller then
-     * renames {@code .error}). Returns the number of transaction rows actually
-     * inserted (duplicates by element key are silently dropped). The caller renames
-     * {@code .done} only after this returns — rename is the ack.
+     * transaction (DESIGN §4.2 step 3c): the transaction rows, then the {@code files} row.
+     * Every row must land: the file's id is new, so an element key that is already taken
+     * means two transaction sets of this file collide, and the whole unit is rolled back
+     * with a {@link DuplicateElementKeyException} rather than committed with a set missing.
+     * On any failure (Errors included) nothing is written and the exception propagates.
+     * Returns the number of transaction rows inserted ({@code rows.size()}). The caller
+     * renames {@code .done} only after this returns — rename is the ack.
      */
     public synchronized int consumeFile(FileRow file, List<TransactionRow> rows) throws SQLException {
-        final boolean prev = conn.getAutoCommit();
-        conn.setAutoCommit(false);
-        try {
-            int inserted = 0;
+        return SqlTransaction.run(conn, () -> {
             for (TransactionRow r : rows) {
-                if (insertTransactionUnsynchronized(r)) {
-                    inserted++;
+                if (!insertTransactionUnsynchronized(r)) {
+                    throw new DuplicateElementKeyException(r.elementKey());
                 }
             }
             insertFileUnsynchronized(file);
-            conn.commit();
-            return inserted;
-        } catch (SQLException | RuntimeException e) {
-            conn.rollback();
-            throw e;
-        } finally {
-            conn.setAutoCommit(prev);
-        }
+            return rows.size();
+        });
     }
 
     /**
      * Insert a {@code files} row on its own (the {@code error} and {@code duplicate}
-     * paths, DESIGN §4.2 a/e). {@code file_id} ({@code <path>@<hash>}) is UNIQUE: the
+     * paths, DESIGN §4.2 steps 3a/3e). {@code file_id} ({@code <path>@<hash>}) is UNIQUE: the
      * same bytes re-landing at the same path is a redelivery ({@link #bumpRedelivery}),
      * never a second row — the consumer resolves that before inserting.
      */
@@ -168,14 +175,10 @@ public final class BufferStore implements AutoCloseable {
     }
 
     /**
-     * Persist one transaction set. Returns true if inserted, false if a row with the
-     * same {@code elementKey} already exists (silently dropped).
+     * One transaction row; false when its element key is already taken. The caller holds this
+     * store's monitor — {@link #consumeFile} does, inside its SQL transaction.
      */
-    public synchronized boolean insertTransaction(TransactionRow row) throws SQLException {
-        return insertTransactionUnsynchronized(row);
-    }
-
-    private boolean insertTransactionUnsynchronized(TransactionRow row) throws SQLException {
+    boolean insertTransactionUnsynchronized(TransactionRow row) throws SQLException {
         final String sql = "INSERT INTO transactions (element_key, file_id, source_name, received_at, "
             + "isa_control, gs_control, st_control, gs08, transaction_type, sender_id, receiver_id, "
             + "interchange_at, schema_id, raw_x12, mapped_json, parser_error_count, envelope, status, "
@@ -305,10 +308,14 @@ public final class BufferStore implements AutoCloseable {
         }
     }
 
-    /** Update where a file's bytes live now (e.g. an operator moved it). Returns true iff a row matched. */
-    public synchronized boolean updateFilePath(String fileId, String currentPath) throws SQLException {
+    /**
+     * Record a rename that succeeded: {@code current_path} moves to where the bytes are now
+     * and a {@code rename_failed} left by an earlier attempt is cleared. Returns true iff a
+     * row matched.
+     */
+    public synchronized boolean markRenamed(String fileId, String currentPath) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE files SET current_path=? WHERE file_id=?")) {
+                "UPDATE files SET current_path=?, rename_failed=0 WHERE file_id=?")) {
             ps.setString(1, currentPath);
             ps.setString(2, fileId);
             return ps.executeUpdate() > 0;
@@ -316,8 +323,10 @@ public final class BufferStore implements AutoCloseable {
     }
 
     /**
-     * Browse {@code files} rows, newest discovery first, narrowed by a pre-rendered WHERE
-     * fragment over the files table (null/blank = all). Drives {@code /files} children.
+     * One page of {@code files} rows, newest discovery first, narrowed by a pre-rendered
+     * WHERE fragment over the files table (null/blank = all). Paging happens in SQL, so
+     * {@code /files} never materializes the whole audit trail; {@link #fileCount(String)} is
+     * the matching total.
      */
     public synchronized List<FileRow> fileRows(String whereClause, int limit, int offset) throws SQLException {
         StringBuilder sql = new StringBuilder("SELECT ").append(FILE_COLS).append(" FROM files");
@@ -364,23 +373,23 @@ public final class BufferStore implements AutoCloseable {
     }
 
     /** Files row count matching a pre-rendered WHERE clause over {@code files} (null/blank = all). */
-    public synchronized long countFilesWhere(String whereClause) throws SQLException {
+    public synchronized long fileCount(String whereClause) throws SQLException {
         return queryLong("SELECT count(*) FROM files"
             + (whereClause != null && !whereClause.isBlank() ? " WHERE " + whereClause : ""));
     }
 
     // --- drain / lease (DESIGN §2.5) -----------------------------------------
 
-    public synchronized Lease take(String schemaId, int max, Duration leaseTtl) throws SQLException {
-        return leases.take(schemaId, max, leaseTtl);
-    }
+    /** The longest lease {@link #takeWhere} grants; a longer {@code leaseTtl} is capped to it. */
+    public static final Duration MAX_LEASE_TTL = LeaseManager.MAX_TTL;
 
     /**
      * Lease drainable rows narrowed by a pre-rendered WHERE fragment (the RFC4515
-     * {@code take.filter}). Used by {@code ops/take}.
+     * {@code take.filter}). Used by {@code ops/take}; {@code leaseTtl} is capped at
+     * {@link #MAX_LEASE_TTL}.
      */
     public synchronized Lease takeWhere(String whereClause, int max, Duration leaseTtl) throws SQLException {
-        return leases.take(null, whereClause, max, leaseTtl);
+        return leases.take(whereClause, max, leaseTtl);
     }
 
     /** Force in_flight rows back to new ({@code ops/replay}); null = all. */
@@ -395,11 +404,6 @@ public final class BufferStore implements AutoCloseable {
 
     public synchronized int release(String leaseId, List<String> elementKeys) throws SQLException {
         return leases.release(leaseId, elementKeys);
-    }
-
-    /** Revert expired in-flight leases to {@code new} (TTL revert). */
-    public synchronized int reclaimExpired() throws SQLException {
-        return leases.reclaimExpired();
     }
 
     // --- browse ----------------------------------------------------------------
@@ -420,17 +424,13 @@ public final class BufferStore implements AutoCloseable {
     /**
      * Read-only browse over transactions using a pre-rendered SQLite WHERE-clause
      * fragment (built by {@code X12SqlAdapter} from an RFC4515 filter, DESIGN §2.6).
-     * Returns up to {@code limit} rows, newest first. A null/blank clause matches all.
+     * Returns up to {@code limit} rows, newest first, skipping {@code offset} rows for
+     * page-number paging. A null/blank clause matches all.
      *
      * <p>The clause is interpolated, not bound — the adapter is the only producer and
      * it single-quote-escapes every literal — mirroring lite-filter's
      * {@code expression.as(...)} contract, which has no parameter seam.
      */
-    public synchronized List<TransactionRow> search(String whereClause, int limit) throws SQLException {
-        return search(whereClause, limit, 0);
-    }
-
-    /** As {@link #search(String, int)} but with an OFFSET for page-number paging. */
     public synchronized List<TransactionRow> search(String whereClause, int limit, int offset)
             throws SQLException {
         StringBuilder sql = new StringBuilder("SELECT ").append(TX_COLS).append(" FROM transactions");
@@ -504,30 +504,33 @@ public final class BufferStore implements AutoCloseable {
 
     /** Transaction row count matching a pre-rendered WHERE clause (null/blank = all). */
     public synchronized long countWhere(String whereClause) throws SQLException {
-        return queryLong("SELECT count(*) FROM transactions"
-            + (whereClause != null && !whereClause.isBlank() ? " WHERE " + whereClause : ""));
+        return queryLong(countSql(whereClause));
     }
 
-    /** Distinct non-null values of an allow-listed transactions column (emergent tree children). */
-    public synchronized List<String> distinctValues(String column) throws SQLException {
-        return distinctValues(column, null);
+    static String countSql(String whereClause) {
+        return "SELECT count(*) FROM transactions"
+            + (whereClause != null && !whereClause.isBlank() ? " WHERE " + whereClause : "");
     }
 
     /**
-     * Distinct non-null values of an allow-listed column within a pre-rendered scope (a
-     * WHERE fragment; null/blank = all rows) — e.g. the GS08 versions present for one
-     * transaction type ({@code /by-type/<TS>/<GS08>}). The column is interpolated, so it
-     * must never be caller-derived; the scope is a caller-escaped fragment.
+     * Whether any transaction row matches a pre-rendered WHERE clause: a single index probe,
+     * where a count would walk every match. Resolving an object id only needs to know that
+     * its discriminator value is present.
      */
-    public synchronized List<String> distinctValues(String column, String whereClause) throws SQLException {
-        if (!ALLOWED_DISTINCT_COLUMNS.contains(column)) {
-            throw new IllegalArgumentException("distinctValues not allowed for column: " + column);
+    public synchronized boolean exists(String whereClause) throws SQLException {
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(existsSql(whereClause))) {
+            return rs.next();
         }
-        String where = column + " IS NOT NULL"
-            + (whereClause != null && !whereClause.isBlank() ? " AND (" + whereClause + ")" : "");
-        try (Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT DISTINCT " + column + " FROM transactions WHERE "
-                 + where + " ORDER BY " + column)) {
+    }
+
+    static String existsSql(String whereClause) {
+        return "SELECT 1 FROM transactions"
+            + (whereClause != null && !whereClause.isBlank() ? " WHERE (" + whereClause + ")" : "") + " LIMIT 1";
+    }
+
+    /** Distinct non-null values of an allow-listed transactions column, ascending (emergent tree children). */
+    public synchronized List<String> distinctValues(String column) throws SQLException {
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery(distinctSql(column))) {
             List<String> out = new ArrayList<>();
             while (rs.next()) {
                 out.add(rs.getString(1));
@@ -536,41 +539,140 @@ public final class BufferStore implements AutoCloseable {
         }
     }
 
-    /** Delete acked rows acked longer ago than {@code olderThan} ({@code ops/purge}). */
-    public synchronized int purge(Duration olderThan) throws SQLException {
+    static String distinctSql(String column) {
+        requireDistinctColumn(column);
+        return "SELECT DISTINCT " + column + " FROM transactions WHERE " + column + " IS NOT NULL ORDER BY " + column;
+    }
+
+    /**
+     * Each distinct non-null value of an allow-listed column within a pre-rendered scope (a
+     * WHERE fragment; null/blank = all rows), ascending, with its row count — the children of
+     * a facet folder and their collection sizes in one ordered pass over the column's index,
+     * e.g. the GS08 guides present for one transaction type ({@code /by-type/<TS>}). The
+     * column is interpolated, so it must never be caller-derived; the scope is a
+     * caller-escaped fragment.
+     */
+    public synchronized Map<String, Long> distinctCounts(String column, String whereClause) throws SQLException {
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery(distinctCountsSql(column, whereClause))) {
+            Map<String, Long> out = new LinkedHashMap<>();
+            while (rs.next()) {
+                out.put(rs.getString(1), rs.getLong(2));
+            }
+            return out;
+        }
+    }
+
+    static String distinctCountsSql(String column, String whereClause) {
+        requireDistinctColumn(column);
+        return "SELECT " + column + ", count(*) FROM transactions WHERE " + column + " IS NOT NULL"
+            + (whereClause != null && !whereClause.isBlank() ? " AND (" + whereClause + ")" : "")
+            + " GROUP BY " + column + " ORDER BY " + column;
+    }
+
+    private static void requireDistinctColumn(String column) {
+        if (!ALLOWED_DISTINCT_COLUMNS.contains(column)) {
+            throw new IllegalArgumentException("distinct values not allowed for column: " + column);
+        }
+    }
+
+    /**
+     * Delete acked rows acked longer ago than {@code olderThan} ({@code ops/purge}) and hand
+     * the freed pages back to the filesystem, both in batches (see {@link #DELETE_BATCH}).
+     */
+    public int purge(Duration olderThan) throws SQLException {
         final long cutoff = nowMillis() - olderThan.toMillis();
-        return deleteAckedOlderThanMillis(cutoff);
+        int n = deleteAckedOlderThanMillis(cutoff);
+        incrementalVacuum();
+        return n;
     }
 
     // --- primitives used by RetentionSweeper ---
 
-    synchronized int deleteAckedOlderThanMillis(long cutoffMillis) throws SQLException {
+    /*
+     * Each reaches its rows through an index (schema.sql): the deletes through
+     * transactions_acked (status, acked_at) — so eviction goes by ack age, like maxAge —
+     * and the unacked probe through the transactions_unacked partial index, whose WHERE
+     * clause it must repeat verbatim for SQLite to use it. The deletes are LIMIT-bounded:
+     * one statement never removes more than a batch.
+     */
+    static final String DELETE_ACKED_OLDER_THAN_SQL =
+        "DELETE FROM transactions WHERE id IN (SELECT id FROM transactions WHERE status = 'acked' "
+        + "AND acked_at <= ? LIMIT ?)";
+    static final String DELETE_OLDEST_ACKED_SQL =
+        "DELETE FROM transactions WHERE id IN (SELECT id FROM transactions WHERE status = 'acked' "
+        + "ORDER BY acked_at ASC LIMIT ?)";
+    static final String OLDEST_UNACKED_SQL =
+        "SELECT min(received_at) FROM transactions WHERE status <> 'acked'";
+
+    /** Every acked row acked at or before {@code cutoffMillis}, one batch per statement; returns the total. */
+    int deleteAckedOlderThanMillis(long cutoffMillis) throws SQLException {
+        int total = 0;
+        int n;
+        do {
+            n = deleteAckedOlderThanMillis(cutoffMillis, DELETE_BATCH);
+            total += n;
+        } while (n == DELETE_BATCH);
+        return total;
+    }
+
+    synchronized int deleteAckedOlderThanMillis(long cutoffMillis, int limit) throws SQLException {
         // Inclusive boundary (age >= olderThan): purge(PT0S) means "all acked",
         // which must include rows acked at the current instant (acked_at == cutoff).
-        try (PreparedStatement ps = conn.prepareStatement(
-                "DELETE FROM transactions WHERE status='acked' AND acked_at IS NOT NULL AND acked_at <= ?")) {
+        try (PreparedStatement ps = conn.prepareStatement(DELETE_ACKED_OLDER_THAN_SQL)) {
             ps.setLong(1, cutoffMillis);
+            ps.setInt(2, limit);
             return ps.executeUpdate();
         }
     }
 
     synchronized int deleteOldestAcked(int limit) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "DELETE FROM transactions WHERE id IN (SELECT id FROM transactions WHERE status='acked' "
-                + "ORDER BY received_at ASC LIMIT ?)")) {
+        try (PreparedStatement ps = conn.prepareStatement(DELETE_OLDEST_ACKED_SQL)) {
             ps.setInt(1, limit);
             return ps.executeUpdate();
         }
     }
 
-    /** Current database size in bytes (page_count × page_size); {@code /stats} + backpressure. */
+    /** Size of the database file in bytes (page_count × page_size), free pages included; {@code /stats}. */
     public synchronized long dbSizeBytes() throws SQLException {
         return queryLong("PRAGMA page_count") * queryLong("PRAGMA page_size");
     }
 
-    synchronized void incrementalVacuum() throws SQLException {
+    /**
+     * Bytes held by live data ((page_count − freelist_count) × page_size) — the retention
+     * ceiling and backpressure measure. Pages freed by a delete sit on the freelist until
+     * vacuumed; counting them would keep the buffer "over capacity" after the very eviction
+     * that made room.
+     */
+    public synchronized long usedBytes() throws SQLException {
+        return (queryLong("PRAGMA page_count") - queryLong("PRAGMA freelist_count")) * queryLong("PRAGMA page_size");
+    }
+
+    /**
+     * Hand free pages back to the filesystem, {@link #VACUUM_BATCH_PAGES} per step, the lock
+     * released between steps.
+     */
+    void incrementalVacuum() throws SQLException {
+        long free = freePages();
+        while (free > 0) {
+            vacuumPages(VACUUM_BATCH_PAGES);
+            long left = freePages();
+            if (left >= free) {
+                return;   // auto_vacuum is off (a buffer created before it was enabled): nothing to hand back
+            }
+            free = left;
+        }
+    }
+
+    private synchronized long freePages() throws SQLException {
+        return queryLong("PRAGMA freelist_count");
+    }
+
+    private synchronized void vacuumPages(int pages) throws SQLException {
+        // The pragma frees one page per VM step: with this driver Statement.execute() steps once
+        // (one page), while executeUpdate() runs the statement to completion (up to `pages`).
         try (Statement st = conn.createStatement()) {
-            st.execute("PRAGMA incremental_vacuum");
+            st.executeUpdate("PRAGMA incremental_vacuum(" + pages + ")");
         }
     }
 
@@ -586,11 +688,6 @@ public final class BufferStore implements AutoCloseable {
         }
     }
 
-    /** Epoch-millis of the most recently received transaction, or empty if the buffer is empty. */
-    public synchronized OptionalLong lastReceivedMillis() throws SQLException {
-        return queryNullableLong("SELECT max(received_at) FROM transactions");
-    }
-
     /** Epoch-millis of the most recent file consumption, or empty if none yet. */
     public synchronized OptionalLong lastConsumedMillis() throws SQLException {
         return queryNullableLong("SELECT max(consumed_at) FROM files WHERE status='consumed'");
@@ -598,8 +695,7 @@ public final class BufferStore implements AutoCloseable {
 
     /** Age in seconds of the oldest not-yet-acked transaction, or empty if none are pending. */
     public synchronized OptionalLong oldestUnackedSeconds() throws SQLException {
-        OptionalLong oldest =
-            queryNullableLong("SELECT min(received_at) FROM transactions WHERE status != 'acked'");
+        OptionalLong oldest = queryNullableLong(OLDEST_UNACKED_SQL);
         if (oldest.isEmpty()) {
             return OptionalLong.empty();
         }

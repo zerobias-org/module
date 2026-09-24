@@ -3,14 +3,17 @@ package com.zerobias.module.x12.producer;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.zerobias.module.x12.ModuleRuntimeConfig;
 import com.zerobias.module.x12.SourceConfig;
 import com.zerobias.module.x12.buffer.BufferStore;
+import com.zerobias.module.x12.buffer.RetentionConfig;
 import com.zerobias.module.x12.buffer.TestRows;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,7 +41,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InboxFilesTest {
 
     private static final Gson GSON = new Gson();
-    private static final String R = ObjectTreeApi.RECEIVER;
+    private static final String R = ObjectTree.RECEIVER;
+    private static final SchemaRegistry SCHEMAS = SchemaRegistry.fromClasspath();
     private static final String INBOX = R + "/inbox";
     private static final byte[] EDI = "ISA*00*          *00*          *ZZ*SUB~".getBytes(StandardCharsets.UTF_8);
 
@@ -57,10 +61,12 @@ class InboxFilesTest {
             new TestRows.MutableClock(TestRows.BASE));
         SourceConfig source = new SourceConfig("inbox", inboxDir.toString(), "*.{x12,835}", 1, 0);
         ProducerFixture.StubPoller poller = new ProducerFixture.StubPoller(inboxDir);
-        tree = new ObjectTree(buffer, SchemaRegistryApi.EMPTY, () -> poller, ".done",
-            List.of(source), ".error");
-        readOnly = new X12ProducerFacade(buffer, tree, SchemaRegistryApi.EMPTY, OperationsApi.NONE, false);
-        writable = new X12ProducerFacade(buffer, tree, SchemaRegistryApi.EMPTY, OperationsApi.NONE, true);
+        ModuleRuntimeConfig config = new ModuleRuntimeConfig(List.of(source), ".done", ".error", false,
+            RetentionConfig.none(), false, ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES);
+        tree = new ObjectTree(buffer, SCHEMAS, poller, config);
+        X12Operations ops = new X12Operations(buffer, poller, SCHEMAS, ProducerFixture.REPRODUCES);
+        readOnly = new X12ProducerFacade(buffer, tree, SCHEMAS, ops, false);
+        writable = new X12ProducerFacade(buffer, tree, SCHEMAS, ops, true);
     }
 
     @AfterEach
@@ -74,17 +80,17 @@ class InboxFilesTest {
     void browseReflectsTheVolumeOnEveryCallWithNoBufferRows() throws Exception {
         assertEquals(0, buffer.fileCount(), "nothing ingested: /files would be empty");
 
-        JsonObject sources = page(readOnly.getChildren(INBOX, 100, 1));
+        JsonObject sources = page(readOnly.getChildren(INBOX, 1, 100));
         assertEquals(1, sources.get("count").getAsInt());
         assertEquals("inbox", item(sources, 0).get("name").getAsString());
         String sourceId = item(sources, 0).get("id").getAsString();
         assertEquals(INBOX + "/inbox", sourceId);
 
-        assertEquals(0, page(readOnly.getChildren(sourceId, 100, 1)).get("count").getAsInt());
+        assertEquals(0, page(readOnly.getChildren(sourceId, 1, 100)).get("count").getAsInt());
 
         // Land a file the way a feed would — no API involved, no poller running.
         Files.write(inboxDir.resolve("remit.835"), EDI);
-        JsonObject after = page(readOnly.getChildren(sourceId, 100, 1));
+        JsonObject after = page(readOnly.getChildren(sourceId, 1, 100));
         assertEquals(1, after.get("count").getAsInt(), "a fresh readdir, not a cached listing");
         JsonObject file = item(after, 0);
         assertEquals("remit.835", file.get("name").getAsString());
@@ -95,7 +101,7 @@ class InboxFilesTest {
 
         // ...and it goes away again the moment the bytes do.
         Files.delete(inboxDir.resolve("remit.835"));
-        assertEquals(0, page(readOnly.getChildren(sourceId, 100, 1)).get("count").getAsInt());
+        assertEquals(0, page(readOnly.getChildren(sourceId, 1, 100)).get("count").getAsInt());
     }
 
     @Test
@@ -120,7 +126,7 @@ class InboxFilesTest {
         Files.write(inboxDir.resolve(".hidden.835"), EDI);
 
         assertEquals(List.of("zzz-dir", "aaa.835"),
-            names(page(readOnly.getChildren(INBOX + "/inbox", 100, 1))),
+            names(page(readOnly.getChildren(INBOX + "/inbox", 1, 100))),
             "directories first, then files; dotfiles invisible exactly as the poller sees them");
     }
 
@@ -138,7 +144,9 @@ class InboxFilesTest {
         Files.write(inboxDir.resolve("raw.835"), EDI);
         BinaryContent bin = readOnly.downloadBinary(INBOX + "/inbox/raw.835");
         assertEquals("raw.835", bin.fileName());
-        assertEquals(new String(EDI, StandardCharsets.UTF_8), new String(bin.bytes(), StandardCharsets.UTF_8));
+        try (InputStream in = bin.open()) {
+            assertEquals(new String(EDI, StandardCharsets.UTF_8), new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
     }
 
     // --- the gate -----------------------------------------------------------
@@ -161,7 +169,7 @@ class InboxFilesTest {
 
         assertTrue(Files.exists(inboxDir.resolve("remit.835")), "a refused delete touches nothing");
         // Reading the same branch stays available with the flag off.
-        assertEquals(1, page(readOnly.getChildren(INBOX + "/inbox", 100, 1)).get("count").getAsInt());
+        assertEquals(1, page(readOnly.getChildren(INBOX + "/inbox", 1, 100)).get("count").getAsInt());
     }
 
     // --- upload -------------------------------------------------------------
@@ -181,7 +189,7 @@ class InboxFilesTest {
             entries.forEach(p -> left.add(p.getFileName().toString()));
             assertEquals(List.of("remit.835"), left, "no .part-* temporary left behind");
         }
-        assertEquals(1, page(readOnly.getChildren(INBOX + "/inbox", 100, 1)).get("count").getAsInt());
+        assertEquals(1, page(readOnly.getChildren(INBOX + "/inbox", 1, 100)).get("count").getAsInt());
         assertEquals(0, buffer.fileCount(), "upload does not fabricate a consumed-file row");
     }
 

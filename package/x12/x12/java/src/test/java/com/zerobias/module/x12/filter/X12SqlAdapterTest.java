@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.zerobias.litefilter.Expression;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.Status;
+import com.zerobias.module.x12.buffer.TestRows;
 import com.zerobias.module.x12.buffer.TransactionRow;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -31,6 +32,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * buffer. Envelope properties hit real columns; body paths go through json_extract.
  */
 class X12SqlAdapterTest {
+
+    private static final String A1 = TestRows.key("/in/a.835", "1", "0001");
+    private static final String A2 = TestRows.key("/in/a.835", "1", "0002");
+    private static final String B1 = TestRows.key("/in/b.837", "7", "0001");
+    private static final String C1 = TestRows.key("/in/c.837", "8", "0001");
 
     private static final Gson GSON = new Gson();
 
@@ -60,13 +66,13 @@ class X12SqlAdapterTest {
 
     private List<Tx> seed() {
         List<Tx> txs = new ArrayList<>();
-        txs.add(new Tx("/in/a.835:1:0001", "835", "005010X221A1", "ABCPAYER", "new", "2026-09-02T10:00:00Z",
+        txs.add(new Tx(A1, "835", "005010X221A1", "ABCPAYER", "new", "2026-09-02T10:00:00Z",
             nest("loop2100", nest("clp", nest("clp01", "CLAIM001", "clp02", 1, "clp04", 1500.25)))));
-        txs.add(new Tx("/in/a.835:1:0002", "835", "005010X221A1", "abcpayer", "acked", "2026-09-03T11:00:00Z",
+        txs.add(new Tx(A2, "835", "005010X221A1", "abcpayer", "acked", "2026-09-03T11:00:00Z",
             nest("loop2100", nest("clp", nest("clp01", "CLAIM002", "clp02", 4, "clp04", 0)))));
-        txs.add(new Tx("/in/b.837:7:0001", "837P", "005010X222A1", "SUBMIT1", "new", "2026-08-15T12:00:00Z",
+        txs.add(new Tx(B1, "837P", "005010X222A1", "SUBMIT1", "new", "2026-08-15T12:00:00Z",
             nest("loop2000A", nest("hl", nest("hl01", "1")), "note", "O'BRIEN")));
-        txs.add(new Tx("/in/c.837:8:0001", "837I", "005010X223A2", "SUBMIT2", "new", "2025-12-31T23:59:59Z",
+        txs.add(new Tx(C1, "837I", "005010X223A2", "SUBMIT2", "new", "2025-12-31T23:59:59Z",
             nest("loop2000A", nest("hl", nest("hl01", "1")))));
         return txs;
     }
@@ -79,7 +85,7 @@ class X12SqlAdapterTest {
                 null, "schema:table:x12." + t.gs08() + "." + t.type(), ("raw-" + t.key()).getBytes(),
                 GSON.toJson(t.body()), 0, TransactionRow.ENVELOPE_FILE, Status.fromWire(t.status()),
                 null, null, null);
-            assertTrue(store.insertTransaction(row), "insert " + t.key());
+            assertTrue(TestRows.insert(store, row), "insert " + t.key());
         }
         return store;
     }
@@ -90,7 +96,7 @@ class X12SqlAdapterTest {
     }
 
     private TreeSet<String> selected(BufferStore store, String where) throws Exception {
-        return store.search(where, 1000).stream().map(TransactionRow::elementKey)
+        return store.search(where, 1000, 0).stream().map(TransactionRow::elementKey)
             .collect(Collectors.toCollection(TreeSet::new));
     }
 
@@ -136,19 +142,19 @@ class X12SqlAdapterTest {
             String f1 = "(&(transactionType=835)(senderId=ABCPAYER)(receivedAt>=2026-09-01)(status=new))";
             String w1 = X12Filter.toWhereClause(f1);
             assertTrue(w1.contains("unixepoch("), "date literal coerced to epoch-millis: " + w1);
-            assertEquals(new TreeSet<>(List.of("/in/a.835:1:0001")), selected(store, w1), "f1 -> " + w1);
+            assertEquals(new TreeSet<>(List.of(A1)), selected(store, w1), "f1 -> " + w1);
 
             String f2 = "(|(transactionType=837P)(transactionType=837I))";
-            assertEquals(new TreeSet<>(List.of("/in/b.837:7:0001", "/in/c.837:8:0001")),
+            assertEquals(new TreeSet<>(List.of(B1, C1)),
                 selected(store, X12Filter.toWhereClause(f2)));
 
             String f3 = "(loop2100.clp.clp02=1)";
-            assertEquals(new TreeSet<>(List.of("/in/a.835:1:0001")), selected(store, X12Filter.toWhereClause(f3)));
+            assertEquals(new TreeSet<>(List.of(A1)), selected(store, X12Filter.toWhereClause(f3)));
 
             // §2.6 example 4 renders the epoch-millis relative form and executes.
             String w4 = X12Filter.toWhereClause("(receivedAt:withinDays:1)");
             assertTrue(w4.contains("received_at >= (unixepoch('now', '-1 days') * 1000)"), w4);
-            assertNotNull(store.search(w4, 10));
+            assertNotNull(store.search(w4, 10, 0));
         }
     }
 
@@ -157,7 +163,7 @@ class X12SqlAdapterTest {
         String where = X12Filter.toWhereClause("(receivedAt>=2026-09-01T00:00:00Z)");
         assertTrue(where.contains("received_at >= (unixepoch('2026-09-01T00:00:00Z') * 1000)"), where);
         try (BufferStore store = load(dir, seed())) {
-            assertEquals(new TreeSet<>(List.of("/in/a.835:1:0001", "/in/a.835:1:0002")), selected(store, where));
+            assertEquals(new TreeSet<>(List.of(A1, A2)), selected(store, where));
         }
         // interchangeDate is also an epoch column
         assertTrue(X12Filter.toWhereClause("(interchangeDate<2026-01-01)").contains("interchange_at < (unixepoch("));
@@ -171,7 +177,7 @@ class X12SqlAdapterTest {
         try (BufferStore store = load(dir, seed())) {
             String where = X12Filter.toWhereClause("(note=O'BRIEN)");
             assertTrue(where.contains("O''BRIEN"), where);
-            assertEquals(new TreeSet<>(List.of("/in/b.837:7:0001")), selected(store, where));
+            assertEquals(new TreeSet<>(List.of(B1)), selected(store, where));
         }
     }
 
@@ -180,6 +186,16 @@ class X12SqlAdapterTest {
         assertThrows(IllegalArgumentException.class, () -> X12Filter.toWhereClause("(loop-2100.clp=1)"));
         assertThrows(IllegalArgumentException.class,
             () -> X12Filter.toWhereClause("(x');DROP TABLE transactions;--=X)"));
+    }
+
+    @Test
+    void betweenBoundsMustBePlainDecimalsNotAnythingJavaParses() {
+        // Double.parseDouble accepts all of these; emitted unquoted they are SQL errors (a 500).
+        for (String bound : new String[] {"1d", "2f", "Infinity", "NaN", "0x1p3", "1e3", "+5"}) {
+            String filter = "(loop2100.clp.clp04:between:1," + bound + ")";
+            assertThrows(IllegalArgumentException.class, () -> X12Filter.toWhereClause(filter), filter);
+        }
+        assertTrue(X12Filter.toWhereClause("(loop2100.clp.clp04:between:-1.5,20)").contains("BETWEEN -1.5 AND 20"));
     }
 
     @Test

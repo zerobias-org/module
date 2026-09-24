@@ -11,26 +11,16 @@ properties:
   x12Version:
     type: string
     description: >-
-      X12 implementation version the receiver materializes against. Files are
-      accepted at any version; the transaction set's GS08 (e.g. 005010X221A1)
-      selects the parser definition, so this is informational. (DESIGN §11.5)
-    default: "005010"
+      Informational. Files are accepted at any X12 version: each functional
+      group's GS08 (e.g. 005010X221A1) selects the parser definition and schema
+      for its transaction sets.
     example: "005010"
   ackDurability:
     type: string
     description: >-
-      SQLite durability for the consume path. 'normal' (PRAGMA synchronous=NORMAL)
-      is faster; 'full' (synchronous=FULL, fsync per row) closes the WAL-window
-      gap between "committed" and "renamed .done". Daemon-level; the EFFECTIVE
-      value comes from runtimeConfig.config.ackDurability. (DESIGN §8.1)
-    enum: [normal, full]
-    default: normal
-  senderDiscriminator:
-    type: string
-    description: >-
-      Which envelope field keys the /by-sender views. ISA06 (interchange sender
-      ID, default) or GS02 (application sender code). (DESIGN §11.4)
-    enum: [ISA06, GS02]
-    default: ISA06
-required:
-  - x12Version
+      SQLite durability for the consume path. 'full' (synchronous=FULL, fsync per
+      commit) closes the WAL-window gap between "committed" and "renamed .done";
+      'normal' (synchronous=NORMAL) is faster. Daemon-level; the EFFECTIVE value
+      comes from runtimeConfig.config.ackDurability.
+    enum: [full, normal]
+    default: full

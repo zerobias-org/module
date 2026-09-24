@@ -37,12 +37,24 @@ public record FileRow(
     /** Hex digits of the sha256 that go into the id. */
     public static final int ID_HASH_CHARS = 12;
 
-    private static final Pattern ID_SUFFIX = Pattern.compile("@[0-9a-f]{" + ID_HASH_CHARS + "}$");
+    /** Id suffix of the error row for a file that could never be read, so has no hash. */
+    public static final String UNREADABLE = "unreadable";
+
+    private static final Pattern ID_SUFFIX = Pattern.compile("@([0-9a-f]{" + ID_HASH_CHARS + "}|" + UNREADABLE + ")$");
 
     /** {@code <absolutePath>@<first 12 hex of checksum>} (DESIGN §2.1). */
     public static String fileId(String absolutePath, String checksum) {
         String sum = checksum == null ? "" : checksum.toLowerCase();
         return absolutePath + "@" + sum.substring(0, Math.min(ID_HASH_CHARS, sum.length()));
+    }
+
+    /**
+     * {@code <absolutePath>@unreadable}: the id of the error row recorded for a file that
+     * kept failing to read. Its bytes were never seen, so there is no hash; one row per
+     * path, removed once the file is read.
+     */
+    public static String unreadableId(String absolutePath) {
+        return absolutePath + "@" + UNREADABLE;
     }
 
     /** The discovery path embedded in a {@code fileId}; an id without the hash suffix is returned as-is. */
@@ -62,11 +74,5 @@ public record FileRow(
         }
         int slash = path.lastIndexOf('/');
         return slash < 0 ? path : path.substring(slash + 1);
-    }
-
-    /** A copy with a different {@code currentPath} (e.g. after a successful rename). */
-    public FileRow withCurrentPath(String path) {
-        return new FileRow(id, fileId, filePath, fileName, sourceName, path, sizeBytes, checksum, fileMtime,
-            discoveredAt, consumedAt, status, isaCount, transactionCount, errorMessage, renameFailed, redeliveryCount);
     }
 }

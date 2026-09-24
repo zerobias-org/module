@@ -15,7 +15,8 @@ import java.util.Map;
  * {@code ST03} (mandatory for 005010 bare sets — without it the guide is unknowable); the
  * functional identifier from {@code ST01}; dates from the clock; sender/receiver are the
  * fixed {@link #SYNTHETIC_ID}. All transaction sets in the file land in one functional
- * group with {@code GS06 = 1}, so element keys are {@code <fileId>:1:<ST02>}.
+ * group with {@code GS06 = 1} under {@code ISA13 = 000000001}, so element keys are
+ * {@code <fileId>:000000001:1:<ST02>}.
  */
 public final class EnvelopeSynthesizer {
 
@@ -28,6 +29,16 @@ public final class EnvelopeSynthesizer {
         Map.entry("835", "HP"), Map.entry("837", "HC"), Map.entry("277", "HN"), Map.entry("276", "HR"),
         Map.entry("999", "FA"), Map.entry("997", "FA"), Map.entry("834", "BE"), Map.entry("820", "RA"),
         Map.entry("270", "HS"), Map.entry("271", "HB"), Map.entry("278", "HI"), Map.entry("275", "PI"));
+
+    /**
+     * Segment id → position of a composite whose first component is a qualifier: SV1-01, SV2-02,
+     * SV3-01, SVC-01, SVD-03 (C003), CLM05 (C023), HI01 (C022), PLB03 (C042), STC01 (C043),
+     * IK4-01 (C030).
+     */
+    private static final Map<String, Integer> COMPOSITES = Map.of(
+        "SV1", 1, "SV2", 2, "SV3", 1, "SVC", 1, "SVD", 3, "CLM", 5, "HI", 1, "PLB", 3, "STC", 1, "IK4", 1);
+
+    private static final String REPETITION_CANDIDATES = "^|!";
 
     private static final DateTimeFormatter YYMMDD = DateTimeFormatter.ofPattern("yyMMdd");
     private static final DateTimeFormatter CCYYMMDD = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -47,9 +58,10 @@ public final class EnvelopeSynthesizer {
 
     /**
      * Wrap {@code text} (which must satisfy {@link #isBare}) in a synthetic envelope. The
-     * element and segment delimiters are taken from the ST segment; the component
-     * separator is {@code :} (or {@code >} when {@code :} is the element separator) and
-     * the repetition separator {@code ^}.
+     * element and segment delimiters are taken from the ST segment and the component
+     * separator from the first composite that shows one ({@link #COMPOSITES}); only a file
+     * without any falls back to {@code :} (or {@code >} when {@code :} is the element
+     * separator). The repetition separator is {@code ^} unless that collides.
      */
     public static Wrapped wrap(String text, Clock clock) throws X12ParseException {
         if (!isBare(text)) {
@@ -76,10 +88,6 @@ public final class EnvelopeSynthesizer {
                 lineBreak = "\n";
             }
         }
-        char component = element == ':' ? '>' : ':';
-        char repetition = (element == '^' || component == '^') ? '|' : '^';
-        Separators seps = new Separators(element, repetition, component, segment, lineBreak);
-
         List<String> segments = new ArrayList<>();
         for (String s : text.split(java.util.regex.Pattern.quote(String.valueOf(segment)))) {
             String t = s.strip();
@@ -87,6 +95,15 @@ public final class EnvelopeSynthesizer {
                 segments.add(t);
             }
         }
+        char component = componentSeparator(segments, element, segment);
+        char repetition = '^';
+        for (char c : REPETITION_CANDIDATES.toCharArray()) {
+            if (c != element && c != component && c != segment) {
+                repetition = c;
+                break;
+            }
+        }
+        Separators seps = new Separators(element, repetition, component, segment, lineBreak);
         String[] st = seps.splitElements(segments.get(0));
         if (st.length < 3) {
             throw new X12ParseException("bare-transaction-set: ST segment has no ST02");
@@ -119,6 +136,30 @@ public final class EnvelopeSynthesizer {
         out.append("GE").append(element).append(stCount).append(element).append(GS_CONTROL).append(segment).append(lineBreak);
         out.append("IEA").append(element).append('1').append(element).append(ISA_CONTROL).append(segment).append(lineBreak);
         return new Wrapped(out.toString(), seps);
+    }
+
+    /**
+     * The component separator the bare file writes: the first character that is not a letter,
+     * digit or blank inside a composite that opens with a qualifier ({@code SV1*HC>99213},
+     * {@code HI*ABK>J069}). A guess would leave every composite unsplit when it is wrong.
+     */
+    static char componentSeparator(List<String> segments, char element, char segment) {
+        for (String s : segments) {
+            String[] tokens = s.split(java.util.regex.Pattern.quote(String.valueOf(element)), -1);
+            Integer position = COMPOSITES.get(tokens[0].trim());
+            if (position == null || position >= tokens.length) {
+                continue;
+            }
+            for (char c : tokens[position].toCharArray()) {
+                if (!Character.isLetterOrDigit(c) && c != ' ') {
+                    if (c != element && c != segment && !Separators.isDataChar(c)) {
+                        return c;
+                    }
+                    break;
+                }
+            }
+        }
+        return element == ':' ? '>' : ':';
     }
 
     /** The fixed-width ISA (105 chars before the terminator). */

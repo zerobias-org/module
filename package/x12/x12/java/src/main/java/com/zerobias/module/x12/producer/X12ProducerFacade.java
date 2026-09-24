@@ -2,7 +2,10 @@ package com.zerobias.module.x12.producer;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.FileRow;
 import com.zerobias.module.x12.buffer.TransactionRow;
@@ -13,43 +16,42 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
- * Implements the DataProducer operations (DESIGN §2) over the durable buffer. All
- * methods return JSON strings (the HTTP layer passes them through verbatim) and raise
- * {@link ProducerException} for the standard error cases (DESIGN §2.7).
- *
- * <p>Foundation SKELETON: this class owns the two things every later phase depends
- * on — the mandatory {@link #pagedResults PagedResults} envelope and the
- * {@link #toElement envelope overlay} (DESIGN §5) — and delegates the tree, schemas
- * and functions to {@link ObjectTreeApi}, {@link SchemaRegistryApi} and
- * {@link OperationsApi}. The producer phase supplies {@code ObjectTree},
- * {@code SchemaRegistry} and {@code X12Operations}; until then the defaults serve the
- * root and 404 everything else.
+ * Implements the DataProducer read operations (DESIGN §2) over the durable buffer: the
+ * {@link ObjectTree} for objects and documents, the {@link SchemaRegistry} for schemas,
+ * {@link X12Operations} for the {@code /ops/*} functions. All methods return JSON strings
+ * (the HTTP layer passes them through verbatim) and raise {@link ProducerException} for
+ * the standard error cases (DESIGN §2.7).
  *
  * <p>The producer is <b>receive-only for data</b>: transactions arrive as inbox files, so
- * every collection/document mutation is rejected with {@code UnsupportedOperationError},
- * and draining is {@code ops/take}, not element mutation. The one exception is file
- * management over the volume itself — {@code uploadBinaryContent},
- * {@code createChildObject} (mkdir) and {@code deleteObject} under the live
- * {@code /inbox} branch — which is off unless the deployment sets
+ * {@link OperationRouter} rejects every collection/document/object mutation with
+ * {@code UnsupportedOperationError}, and draining is {@code ops/take}, not element mutation.
+ * The one exception is file management over the volume itself —
+ * {@code uploadBinaryContent}, {@code createChildObject} (mkdir) and {@code deleteObject}
+ * under the live {@code /inbox} branch — which is refused unless the deployment sets
  * {@code config.allowFileManagement=true} (DESIGN §2.9).
  */
 public final class X12ProducerFacade {
 
+    static final int DEFAULT_PAGE_SIZE = 100;
+    static final int MAX_PAGE_SIZE = 1000;
+
     private static final Gson GSON = new Gson();
     /** Function output keeps null-valued required fields (e.g. take's leaseId on an empty lease). */
     private static final Gson GSON_NULLS = new GsonBuilder().serializeNulls().create();
-    private static final int MAX_PAGE_SIZE = 1000;
+    private static final Set<String> VALIDATE_REQUEST_KEYS = Set.of("input", "strict");
 
     private final BufferStore buffer;
-    private final ObjectTreeApi tree;
-    private final SchemaRegistryApi schemas;
-    private final OperationsApi ops;
+    private final ObjectTree tree;
+    private final SchemaRegistry schemas;
+    private final X12Operations ops;
     private final boolean allowFileManagement;
 
-    public X12ProducerFacade(BufferStore buffer, ObjectTreeApi tree, SchemaRegistryApi schemas,
-            OperationsApi ops) {
+    /** A receive-only producer: the file-management write surface is shut. */
+    public X12ProducerFacade(BufferStore buffer, ObjectTree tree, SchemaRegistry schemas, X12Operations ops) {
         this(buffer, tree, schemas, ops, false);
     }
 
@@ -57,45 +59,27 @@ public final class X12ProducerFacade {
      * @param allowFileManagement {@code config.allowFileManagement} — the single gate on the
      *                            file-management write surface ({@code uploadBinaryContent},
      *                            {@code createChildObject}, {@code deleteObject} under
-     *                            {@code /inbox}). Default false: production receivers take
-     *                            files from the feed, not from API callers (DESIGN §2.9).
+     *                            {@code /inbox}). Production receivers take files from the
+     *                            feed, not from API callers (DESIGN §2.9).
      */
-    public X12ProducerFacade(BufferStore buffer, ObjectTreeApi tree, SchemaRegistryApi schemas,
-            OperationsApi ops, boolean allowFileManagement) {
-        this.buffer = buffer;
-        this.tree = tree == null ? ObjectTreeApi.ROOT_ONLY : tree;
-        this.schemas = schemas == null ? SchemaRegistryApi.EMPTY : schemas;
-        this.ops = ops == null ? OperationsApi.NONE : ops;
+    public X12ProducerFacade(BufferStore buffer, ObjectTree tree, SchemaRegistry schemas, X12Operations ops,
+            boolean allowFileManagement) {
+        this.buffer = Objects.requireNonNull(buffer, "buffer");
+        this.tree = Objects.requireNonNull(tree, "tree");
+        this.schemas = Objects.requireNonNull(schemas, "schemas");
+        this.ops = Objects.requireNonNull(ops, "ops");
         this.allowFileManagement = allowFileManagement;
-        X12Filter.register();
     }
 
-    /** The foundation skeleton: root only, no schemas, no functions. */
-    public static X12ProducerFacade skeleton(BufferStore buffer) {
-        return new X12ProducerFacade(buffer, ObjectTreeApi.ROOT_ONLY, SchemaRegistryApi.EMPTY, OperationsApi.NONE);
-    }
-
-    /** Whether the file-management write surface is enabled ({@code isSupported} reads this). */
+    /** Whether the file-management write surface is enabled ({@code isSupported} answers from this). */
     public boolean fileManagementEnabled() {
         return allowFileManagement;
-    }
-
-    public ObjectTreeApi tree() {
-        return tree;
-    }
-
-    public SchemaRegistryApi schemas() {
-        return schemas;
-    }
-
-    public OperationsApi ops() {
-        return ops;
     }
 
     // --- Objects -----------------------------------------------------------
 
     public String getRootObject() throws SQLException {
-        return GSON.toJson(tree.object(ObjectTreeApi.ROOT));
+        return GSON.toJson(tree.object(ObjectTree.ROOT));
     }
 
     public String getObject(String objectId) throws SQLException {
@@ -103,35 +87,30 @@ public final class X12ProducerFacade {
         return GSON.toJson(tree.object(objectId));
     }
 
-    public String getChildren(String objectId, int pageSize, int pageNumber) throws SQLException {
+    /** One page of {@code objectId}'s children; {@code pageNumber} is 1-based. */
+    public String getChildren(String objectId, int pageNumber, int pageSize) throws SQLException {
         requireId(objectId);
-        List<Map<String, Object>> children = tree.children(objectId);
-        int size = clampPageSize(pageSize);
-        int from = Math.max(0, pageNumber - 1) * size;
-        int total = children.size();
-        List<Map<String, Object>> page = from >= total
-            ? List.of()
-            : children.subList(from, Math.min(total, from + size));
-        return pagedResults(page, total, size, pageNumber);
+        requirePage(pageNumber, pageSize);
+        ObjectTree.Page page = tree.children(objectId, pageSize, offset(pageNumber, pageSize));
+        return pagedResults(page.items(), page.total(), pageSize, pageNumber);
     }
 
     // --- Collections (read-only browse) -----------------------------------
 
-    public String getCollectionElements(String objectId, String filter, String sortBy,
-            String sortDir, int pageSize, int pageNumber, String pageToken) throws SQLException {
+    /** One page of a collection's elements, newest first, narrowed by an optional RFC4515 {@code filter}. */
+    public String getCollectionElements(String objectId, String filter, int pageNumber, int pageSize)
+            throws SQLException {
         requireId(objectId);
-        ObjectTreeApi.Collection coll = tree.resolveCollection(objectId);
-        int size = clampPageSize(pageSize);
-        int offset = Math.max(0, pageNumber - 1) * size;
+        requirePage(pageNumber, pageSize);
+        ObjectTree.Collection coll = tree.resolveCollection(objectId);
         String where = composeWhere(coll, filter);
 
-        List<TransactionRow> rows = buffer.search(where, size, offset);
+        List<TransactionRow> rows = buffer.search(where, pageSize, offset(pageNumber, pageSize));
         List<Map<String, Object>> elements = new ArrayList<>(rows.size());
         for (TransactionRow r : rows) {
             elements.add(toElement(r));
         }
-        long total = buffer.countWhere(where);
-        return pagedResults(elements, total, size, pageNumber);
+        return pagedResults(elements, buffer.countWhere(where), pageSize, pageNumber);
     }
 
     public String getCollectionElement(String objectId, String elementKey) throws SQLException {
@@ -139,8 +118,8 @@ public final class X12ProducerFacade {
         if (elementKey == null || elementKey.isBlank()) {
             throw ProducerException.illegalArgument("elementKey is required");
         }
-        ObjectTreeApi.Collection coll = tree.resolveCollection(objectId);
-        String where = and(coll.scopeWhere(), "element_key = " + sql(elementKey));
+        ObjectTree.Collection coll = tree.resolveCollection(objectId);
+        String where = and(coll.scopeWhere(), "element_key = " + ObjectTree.sql(elementKey));
         List<TransactionRow> rows = buffer.search(where, 1, 0);
         if (rows.isEmpty()) {
             throw ProducerException.noSuchObject(objectId + " / " + elementKey);
@@ -164,7 +143,10 @@ public final class X12ProducerFacade {
         return GSON.toJson(tree.documentData(objectId));
     }
 
-    /** The bytes of a {@code /files/<fileId>} node (DESIGN §2.8); served raw by the HTTP layer. */
+    /**
+     * Where the bytes of a {@code /files/<fileId>} or live {@code /inbox} file node live
+     * (DESIGN §2.8/§2.9); streamed by the HTTP layer.
+     */
     public BinaryContent downloadBinary(String objectId) throws SQLException {
         requireId(objectId);
         return tree.downloadBinary(objectId);
@@ -210,7 +192,8 @@ public final class X12ProducerFacade {
         return GSON.toJson(body);
     }
 
-    private void requireFileManagement(String operationId) {
+    /** The gate: {@code UnsupportedOperationError} for {@code operationId} unless file management is on. */
+    void requireFileManagement(String operationId) {
         if (!allowFileManagement) {
             throw ProducerException.unsupported(operationId
                 + " is disabled: the receiver is receive-only unless the deployment sets "
@@ -218,38 +201,77 @@ public final class X12ProducerFacade {
         }
     }
 
-    // --- Write surface: rejected (receive-only) ---------------------------
-
-    public String createCollectionElement(String objectId, String elementJson) {
-        throw ProducerException.unsupported(
-            "Collection is receive-only; transactions arrive as inbox files, not via addCollectionElement");
-    }
-
-    public String updateCollectionElement(String objectId, String elementKey, String elementJson) {
-        throw ProducerException.unsupported("Collection is read-only");
-    }
-
-    public void deleteCollectionElement(String objectId, String elementKey) {
-        throw ProducerException.unsupported("Collection is read-only; use ops/purge to evict acked rows");
-    }
-
     // --- Functions: ops/* (DESIGN §2.5) ------------------------------------
 
+    /**
+     * Run {@code /ops/<fn>} on {@code inputJson} (the {@code requestBody}: a JSON object,
+     * or blank/null for none). Malformed JSON, a non-object body or input that fails the
+     * function's schema is a 400 and nothing runs.
+     */
     public String invokeFunction(String objectId, String inputJson) throws SQLException {
+        String fn = requireFunction(objectId);
+        return GSON_NULLS.toJson(ops.invoke(fn, toMap(parseObject(inputJson, "requestBody"))));
+    }
+
+    /**
+     * {@code validateFunctionInput}: check {@code {input, strict}} against {@code /ops/<fn>}'s
+     * input schema without running it; the interface {@code ValidationResult}.
+     */
+    public String validateFunctionInput(String objectId, String requestJson) throws SQLException {
+        String fn = requireFunction(objectId);
+        JsonObject request = parseObject(requestJson, "validateFunctionInputRequest");
+        for (String key : request.keySet()) {
+            if (!VALIDATE_REQUEST_KEYS.contains(key)) {
+                throw ProducerException.illegalArgument("Unknown validateFunctionInputRequest property: " + key);
+            }
+        }
+        boolean strict = false;
+        JsonElement s = request.get("strict");
+        if (s != null && !s.isJsonNull()) {
+            if (!s.isJsonPrimitive() || !s.getAsJsonPrimitive().isBoolean()) {
+                throw ProducerException.illegalArgument("strict must be a boolean");
+            }
+            strict = s.getAsBoolean();
+        }
+        JsonElement input = request.get("input");
+        Object in = input == null || input.isJsonNull() ? null : GSON.fromJson(input, Object.class);
+        return GSON.toJson(ops.validateInput(fn, in, strict));
+    }
+
+    /** The function name behind {@code objectId}: 404 when unknown, 400 when not a function. */
+    private String requireFunction(String objectId) throws SQLException {
         requireId(objectId);
-        Map<String, Object> obj = tree.object(objectId); // 404 if unknown
-        @SuppressWarnings("unchecked")
-        List<String> classes = (List<String>) obj.get("objectClass");
-        if (classes == null || !classes.contains("function")) {
+        Map<String, Object> obj = tree.object(objectId);
+        Object classes = obj.get("objectClass");
+        if (!(classes instanceof List) || !((List<?>) classes).contains("function")) {
             throw ProducerException.unsupported("Object is not a function: " + objectId);
         }
-        String fn = objectId.substring(objectId.lastIndexOf('/') + 1);
+        return objectId.substring(objectId.lastIndexOf('/') + 1);
+    }
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> input = (inputJson == null || inputJson.isBlank())
-            ? Map.of()
-            : GSON.fromJson(inputJson, Map.class);
-        return GSON_NULLS.toJson(ops.invoke(fn, input == null ? Map.of() : input));
+    /** A request body as a JSON object; blank or JSON null is an empty object. */
+    private static JsonObject parseObject(String json, String what) {
+        if (json == null || json.isBlank()) {
+            return new JsonObject();
+        }
+        JsonElement el;
+        try {
+            el = JsonParser.parseString(json);
+        } catch (JsonParseException e) {
+            throw ProducerException.illegalArgument(what + " is not valid JSON");
+        }
+        if (el.isJsonNull()) {
+            return new JsonObject();
+        }
+        if (!el.isJsonObject()) {
+            throw ProducerException.illegalArgument(what + " must be a JSON object");
+        }
+        return el.getAsJsonObject();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> toMap(JsonObject obj) {
+        return GSON.fromJson(obj, Map.class);
     }
 
     // --- element mapping (DESIGN §5 envelope overlay) ----------------------
@@ -259,20 +281,23 @@ public final class X12ProducerFacade {
      * overlaid with the authoritative envelope (DESIGN §5): {@code elementKey, fileId,
      * fileName, sourceName, isaControlNumber, gsControlNumber, stControlNumber, gs08,
      * transactionType, senderId, receiverId, interchangeDate, receivedAt, status, leaseId,
-     * envelope, parserErrorCount}. Static so {@code X12Operations} can use it as its
-     * element mapper without a facade reference.
+     * envelope, parserErrorCount}.
+     *
+     * <p>Body values stay {@link JsonElement}s, which Gson writes back verbatim: converting
+     * them to Java objects would push every number through {@code double}, turning a
+     * {@code 300.00} amount into {@code 300.0} and rounding a long {@code N0} value.
      */
     public static Map<String, Object> toElement(TransactionRow r) {
         Map<String, Object> element = new LinkedHashMap<>();
         JsonObject body = r.mappedJson() == null ? null : GSON.fromJson(r.mappedJson(), JsonObject.class);
         if (body != null) {
-            for (String k : body.keySet()) {
-                element.put(k, GSON.fromJson(body.get(k), Object.class));
+            for (Map.Entry<String, JsonElement> e : body.entrySet()) {
+                element.put(e.getKey(), e.getValue());
             }
         }
         element.put("elementKey", r.elementKey());
         element.put("fileId", r.fileId());
-        element.put("fileName", fileName(r.fileId()));
+        element.put("fileName", FileRow.fileNameOf(r.fileId()));
         element.put("sourceName", r.sourceName());
         element.put("isaControlNumber", r.isaControl());
         element.put("gsControlNumber", r.gsControl());
@@ -290,13 +315,9 @@ public final class X12ProducerFacade {
         return element;
     }
 
-    private static String fileName(String fileId) {
-        return FileRow.fileNameOf(fileId);
-    }
-
     // --- helpers -----------------------------------------------------------
 
-    private String composeWhere(ObjectTreeApi.Collection coll, String filter) {
+    private static String composeWhere(ObjectTree.Collection coll, String filter) {
         String userFilter = null;
         if (filter != null && !filter.isBlank()) {
             try {
@@ -338,23 +359,25 @@ public final class X12ProducerFacade {
         return GSON.toJson(envelope);
     }
 
-    private int clampPageSize(int pageSize) {
-        if (pageSize <= 0) {
-            return 100;
+    /** The interface's paging bounds: {@code pageNumber >= 1}, {@code 1 <= pageSize <= 1000}. */
+    private static void requirePage(int pageNumber, int pageSize) {
+        if (pageNumber < 1) {
+            throw ProducerException.illegalArgument("pageNumber must be at least 1, got " + pageNumber);
         }
-        if (pageSize > MAX_PAGE_SIZE) {
-            throw ProducerException.illegalArgument("pageSize exceeds maximum of " + MAX_PAGE_SIZE);
+        if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+            throw ProducerException.illegalArgument(
+                "pageSize must be between 1 and " + MAX_PAGE_SIZE + ", got " + pageSize);
         }
-        return pageSize;
+    }
+
+    /** Row offset of a validated page; long arithmetic so a huge pageNumber cannot wrap negative. */
+    private static int offset(int pageNumber, int pageSize) {
+        return (int) Math.min(Integer.MAX_VALUE, (long) (pageNumber - 1) * pageSize);
     }
 
     private static void requireId(String objectId) {
         if (objectId == null || objectId.isBlank()) {
             throw ProducerException.illegalArgument("objectId is required");
         }
-    }
-
-    private static String sql(String value) {
-        return "'" + value.replace("'", "''") + "'";
     }
 }

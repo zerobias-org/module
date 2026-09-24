@@ -6,11 +6,11 @@ plugins {
 // src/, test/) and does NOT add the Java tree — so a Java change would never invalidate a
 // committed gate-stamp.json. Declare the real sources here (git-tracked files only are hashed;
 // the generated schemas/ and structure-index/ trees are git-ignored and correctly excluded).
-// DESIGN.md §11.5.
+// java/scripts/ holds local dev tools that are not part of the build, so it is not hashed.
 project.extra["sourceFiles"] = listOf(
     "api.yml", "tsconfig.json", "connectionProfile.yml", "runtimeConfig.yml",
     "Dockerfile", "startup.sh", "nginx.conf", "nginx-insecure.conf",
     "java/pom.xml", "java/codegen/pom.xml"
 )
 project.extra["sourceDirs"] = listOf("src", "java/src/main", "java/codegen/src/main")
-project.extra["testDirs"]   = listOf("java/src/test", "java/codegen/src/test", "java/scripts")
+project.extra["testDirs"]   = listOf("test", "java/src/test", "java/codegen/src/test")   // test/ = e2e suite (testDocker)

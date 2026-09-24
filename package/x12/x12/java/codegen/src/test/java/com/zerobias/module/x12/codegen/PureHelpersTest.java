@@ -46,7 +46,6 @@ class PureHelpersTest {
         assertEquals("stLoop", Names.loopProperty("ST_LOOP"));
         assertEquals("clp", Names.segmentProperty("CLP"));
         assertEquals("nm1", Names.segmentProperty("NM1"));
-        assertEquals("clp01", Names.elementProperty("CLP01"));
         assertEquals("c00301", Names.compositeElementProperty("C003", 1));
         assertEquals("c02212", Names.compositeElementProperty("C022", 12));
     }
@@ -76,14 +75,26 @@ class PureHelpersTest {
     }
 
     @Test
-    void guideCatalog() {
-        assertEquals(8, GuideCatalog.all().size());
+    void guideCatalogIsTheReceiversGuideTable() {
+        assertEquals(java.util.List.of("005010X221A1", "005010X222A1", "005010X223A2", "005010X214", "005010X212",
+            "005010X231A1", "005010X220A1"), GuideCatalog.ids());
         assertEquals("835", GuideCatalog.find("005010X221A1").transactionType());
+        assertEquals("837Q3.I.5010.X223.A1.xml", GuideCatalog.find("005010X223A2").mapFile());
         assertEquals("005010X223A2", GuideCatalog.find("005010X223A1").gs08(), "alias resolves to canonical");
+        assertEquals("005010X223A2", GuideCatalog.find("005010X223").gs08());
         assertEquals("005010X231A1", GuideCatalog.find("005010X231").gs08());
+        assertNull(GuideCatalog.find("005010X218"), "820: imsweb cannot parse it, so no schemas either");
         assertNull(GuideCatalog.find("004010X098A1"));
-        assertEquals(java.util.List.of("005010X223A2", "005010X223A1"), GuideCatalog.labels(GuideCatalog.find("005010X223A2")));
         assertEquals(java.util.List.of(GuideCatalog.find("005010X221A1")), SchemaGenerator.resolveGuides("005010X221A1"));
+        assertEquals(java.util.List.of(GuideCatalog.find("005010X223A2")), SchemaGenerator.resolveGuides("005010X223A1,005010X223A2"));
         assertThrows(IllegalArgumentException.class, () -> SchemaGenerator.resolveGuides("005010X999"));
+    }
+
+    @Test
+    void codeSetEnumTypeNames() {
+        assertEquals("ClaimStatusCat", SchemaGenerator.typeSuffix("claim_status_cat"));
+        assertEquals("1029", SchemaGenerator.typeSuffix("1029"));
+        assertEquals("I01", SchemaGenerator.typeSuffix("I01"));
+        assertTrue(SchemaIds.isValid(SchemaIds.codes("claim_status_cat")));
     }
 }

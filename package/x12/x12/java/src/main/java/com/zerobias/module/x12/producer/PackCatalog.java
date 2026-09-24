@@ -57,7 +57,7 @@ public final class PackCatalog {
         }
 
         /** The schema ids this pack declares but the registry cannot serve. */
-        public List<String> missingFrom(SchemaRegistryApi registry) {
+        public List<String> missingFrom(SchemaRegistry registry) {
             List<String> missing = new ArrayList<>();
             if (registry != null) {
                 for (String id : schemaIds) {
@@ -70,7 +70,7 @@ public final class PackCatalog {
         }
 
         /** Reporting view for {@code ops/packs}; {@code registry} may be null to skip resolution. */
-        public Map<String, Object> describe(SchemaRegistryApi registry) {
+        public Map<String, Object> describe(SchemaRegistry registry) {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("name", name);
             out.put("namespace", namespace);

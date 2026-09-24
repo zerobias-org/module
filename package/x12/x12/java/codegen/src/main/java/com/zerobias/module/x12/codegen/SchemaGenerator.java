@@ -32,7 +32,8 @@ import java.util.stream.Stream;
  *   <li>{@code schemas/<GS08>/loops/<xid>.json}       — {@code schema:type:x12.<GS08>.<xid>}</li>
  *   <li>{@code schemas/<GS08>/segments/<xid>.json}    — {@code schema:type:x12.<GS08>.<xid>}</li>
  *   <li>{@code schemas/<GS08>/composites/<C0nn>.json} — {@code schema:type:x12.<GS08>.<C0nn>}</li>
- *   <li>{@code schemas/codes/<dataEle>.json}          — {@code schema:enum:x12.codes.<dataEle>}</li>
+ *   <li>{@code schemas/codes/<key>.json}              — {@code schema:enum:x12.codes.<key>}, key = data
+ *       element or codes.xml codeset id ({@link CodeRegistry})</li>
  *   <li>{@code schemas/ops/<Name>.json}               — {@code schema:enum:x12.ops.<Name>}</li>
  *   <li>{@code schemas/shared/*.json}                 — envelope, file, receiver-stats(-source)</li>
  *   <li>{@code structure-index/<GS08>.json}           — runtime materializer driver</li>
@@ -45,7 +46,10 @@ import java.util.stream.Stream;
  *
  * <p>Usage: {@code SchemaGenerator <guides|ALL> <outputResourcesDir>} where
  * {@code guides} is a comma-separated list of GS08 ids (canonical or alias),
- * e.g. {@code 005010X221A1,005010X231A1}.
+ * e.g. {@code 005010X221A1,005010X231A1}; either way each guide is emitted
+ * under its canonical GS08 only. {@code ALL} first clears {@code schemas/} and
+ * {@code structure-index/}, so a guide dropped from the table leaves nothing
+ * behind.
  */
 public final class SchemaGenerator {
 
@@ -104,18 +108,17 @@ public final class SchemaGenerator {
         final MappingLoader loader = new MappingLoader();
         final Map<String, Mapping.DataElement> dataElements = loader.loadDataElements();
         final CodeRegistry codes = new CodeRegistry(loader.loadCodeSets());
+        if (all) {
+            deleteTree(outputDir.resolve("schemas"));
+            deleteTree(outputDir.resolve("structure-index"));
+        }
 
         // Pass 1: walk everything (the code registry is global across guides).
         final List<StructureWalker> walkers = new ArrayList<>();
         for (GuideCatalog.Guide g : guides) {
-            final Mapping.Transaction tx = loader.loadTransaction(g.mapFile());
-            for (String label : GuideCatalog.labels(g)) {
-                final String aliasOf = label.equals(g.gs08()) ? null : g.gs08();
-                final StructureWalker w = new StructureWalker(label, g.transactionType(), aliasOf, g.mapFile(),
-                    dataElements, codes);
-                w.walk(tx);
-                walkers.add(w);
-            }
+            final StructureWalker w = new StructureWalker(g.gs08(), g.transactionType(), g.mapFile(), dataElements, codes);
+            w.walk(loader.loadTransaction(g.mapFile()));
+            walkers.add(w);
         }
 
         // Pass 2: emit guides — one pack each, so a companion-guide pack can later
@@ -124,8 +127,10 @@ public final class SchemaGenerator {
             final StructureWalker.Generated gen = w.emit();
             gen.table.properties.addAll(SharedSchemas.envelopeProperties());
 
+            // Wire-level GS08 aliases resolve to the canonical guide before any lookup
+            // (guides.txt), so every guide pack is canonical and none is an alias.
             currentPack = newPack("x12-guide-" + w.gs08(), SchemaIds.CATALOG + "." + w.gs08() + ".*")
-                .guide(w.gs08(), gen.index.aliasOf, w.transactionType(),
+                .guide(w.gs08(), null, w.transactionType(),
                     "structure-index/" + w.gs08() + ".json");
 
             final Path guideRoot = outputDir.resolve("schemas").resolve(w.gs08());
@@ -139,9 +144,8 @@ public final class SchemaGenerator {
             Files.createDirectories(indexFile.getParent());
             Files.writeString(indexFile, gson.toJson(gen.index) + "\n");
 
-            System.out.printf("Generated %s (%s%s): 1 transaction, %d loop(s), %d segment(s), %d composite(s).%n",
-                w.gs08(), w.transactionType(), gen.index.aliasOf == null ? "" : ", alias of " + gen.index.aliasOf,
-                gen.loops.size(), gen.segments.size(), gen.composites.size());
+            System.out.printf("Generated %s (%s): 1 transaction, %d loop(s), %d segment(s), %d composite(s).%n",
+                w.gs08(), w.transactionType(), gen.loops.size(), gen.segments.size(), gen.composites.size());
         }
 
         // Code-set enums (union across the walked guides + codes.xml). Their own pack: X12
@@ -149,12 +153,9 @@ public final class SchemaGenerator {
         // regenerating every guide (DESIGN §7).
         currentPack = newPack("x12-codes", SchemaIds.CATALOG + "." + SchemaIds.CODES + ".*");
         final Path codesRoot = outputDir.resolve("schemas").resolve(SchemaIds.CODES);
-        if (all) {
-            deleteTree(codesRoot);
-        }
         int enums = 0;
-        for (String dataEle : codes.dataElements()) {
-            write(codesRoot.resolve(dataEle + ".json"), codeEnum(dataEle, dataElements, codes));
+        for (String key : codes.keys()) {
+            write(codesRoot.resolve(key + ".json"), codeEnum(key, dataElements, codes));
             enums++;
         }
         System.out.printf("Generated %d code-set enum(s) under schemas/%s.%n", enums, SchemaIds.CODES);
@@ -179,23 +180,45 @@ public final class SchemaGenerator {
             emittedSchemas.size(), packs.size(), outputDir);
     }
 
-    /** {@code schema:enum:x12.codes.<dataEle>} with the merged value set. */
-    static Schema codeEnum(String dataEle, Map<String, Mapping.DataElement> dataElements, CodeRegistry codes) {
-        final Mapping.DataElement de = dataElements.get(dataEle);
+    /** {@code schema:enum:x12.codes.<key>} with the merged value set; the key is a data element or a codeset id. */
+    static Schema codeEnum(String key, Map<String, Mapping.DataElement> dataElements, CodeRegistry codes) {
+        final Mapping.CodeSet cs = codes.codeSet(key);
         final StringBuilder desc = new StringBuilder();
-        desc.append(de == null || de.name() == null || de.name().isBlank() ? "X12 data element " + dataEle
-            : de.name() + " (X12 data element " + dataEle + ")");
+        if (cs != null) {
+            desc.append(cs.name() == null || cs.name().isBlank() ? "codes.xml codeset " + key : cs.name()
+                + " (codes.xml codeset " + key + ")");
+        } else {
+            final Mapping.DataElement de = dataElements.get(key);
+            desc.append(de == null || de.name() == null || de.name().isBlank() ? "X12 data element " + key
+                : de.name() + " (X12 data element " + key + ")");
+        }
         final Set<String> sources = new TreeSet<>();
-        for (String g : codes.guidesOf(dataEle)) {
+        for (String g : codes.guidesOf(key)) {
             sources.add("valid_codes in " + g);
         }
-        for (String cs : codes.codesetsOf(dataEle)) {
-            sources.add("codes.xml codeset " + cs);
+        for (String id : codes.codesetsOf(key)) {
+            sources.add("codes.xml codeset " + id);
         }
         if (!sources.isEmpty()) {
             desc.append("; value set from ").append(String.join(", ", sources));
         }
-        return SharedSchemas.enumSchema(SchemaIds.codes(dataEle), "x12Code" + dataEle, desc.toString(), codes.codesOf(dataEle));
+        return SharedSchemas.enumSchema(SchemaIds.codes(key), "x12Code" + typeSuffix(key), desc.toString(),
+            codes.codesOf(key));
+    }
+
+    /** {@code claim_status_cat} → {@code ClaimStatusCat}; a data element number stays as is. */
+    static String typeSuffix(String key) {
+        final StringBuilder sb = new StringBuilder();
+        boolean upNext = true;
+        for (char ch : key.toCharArray()) {
+            if (!Character.isLetterOrDigit(ch)) {
+                upNext = true;
+                continue;
+            }
+            sb.append(upNext ? Character.toUpperCase(ch) : ch);
+            upNext = false;
+        }
+        return sb.toString();
     }
 
     /**

@@ -19,13 +19,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** End-to-end: generate two guides (one with an alias) into a temp dir and check the layout (DESIGN §6). */
+/** End-to-end: generate guides into a temp dir and check the layout (DESIGN §6). */
 class SchemaGeneratorTest {
 
     private static final Gson GSON = new Gson();
 
     @Test
-    void generatesLayoutForGuideAndAlias(@TempDir Path out) throws IOException {
+    void generatesLayoutForCanonicalGuidesOnly(@TempDir Path out) throws IOException {
+        // An alias on the command line resolves to its canonical guide; nothing is emitted under the alias.
         new SchemaGenerator(out).run(SchemaGenerator.resolveGuides("005010X221A1,005010X223A1"), false);
 
         // 835.
@@ -48,15 +49,15 @@ class SchemaGeneratorTest {
         final JsonArray dts = clp.getAsJsonArray("dataTypes");
         assertEquals(2, dts.size(), "string + decimal");
 
-        // 837I emitted under the A2 id the wire carries, plus the A1 alias copy.
+        // 837I emitted once, under the A2 id the wire carries.
         assertEquals("schema:table:x12.005010X223A2.837I",
             read(out.resolve("schemas/005010X223A2/transactions/837I.json")).get("id").getAsString());
-        assertEquals("schema:table:x12.005010X223A1.837I",
-            read(out.resolve("schemas/005010X223A1/transactions/837I.json")).get("id").getAsString());
-        final JsonObject aliasIndex = read(out.resolve("structure-index/005010X223A1.json"));
-        assertEquals("005010X223A2", aliasIndex.get("aliasOf").getAsString());
-        assertEquals("005010X223A1", aliasIndex.get("gs08").getAsString());
-        assertTrue(read(out.resolve("structure-index/005010X223A2.json")).get("aliasOf") == null);
+        assertFalse(Files.exists(out.resolve("schemas/005010X223A1")), "no alias schema copies");
+        assertFalse(Files.exists(out.resolve("structure-index/005010X223A1.json")), "no alias index");
+        assertEquals("005010X223A2", read(out.resolve("structure-index/005010X223A2.json")).get("gs08").getAsString());
+        try (Stream<Path> dirs = Files.list(out.resolve("structure-index"))) {
+            assertEquals(2, dirs.count(), "one index per canonical guide");
+        }
 
         // Code sets, ops enums, shared.
         final JsonObject e1029 = read(out.resolve("schemas/codes/1029.json"));
@@ -65,7 +66,9 @@ class SchemaGeneratorTest {
         assertTrue(enumType.get("isEnum").getAsBoolean());
         assertTrue(enumType.getAsJsonArray("values").size() >= 10);
         assertEquals("code", e1029.getAsJsonArray("properties").get(0).getAsJsonObject().get("name").getAsString());
-        assertTrue(Files.exists(out.resolve("schemas/codes/156.json")), "states codeset bound via external=");
+        final JsonObject states = read(out.resolve("schemas/codes/states.json"));
+        assertEquals("schema:enum:x12.codes.states", states.get("id").getAsString(), "codeset bound via external= keeps its id");
+        assertEquals("x12CodeStates", states.getAsJsonArray("dataTypes").get(0).getAsJsonObject().get("name").getAsString());
         assertTrue(Files.exists(out.resolve("schemas/ops/TransactionStatus.json")));
         assertTrue(Files.exists(out.resolve("schemas/ops/EnvelopeOrigin.json")));
         assertTrue(Files.exists(out.resolve("schemas/ops/FileStatus.json")));
@@ -125,11 +128,26 @@ class SchemaGeneratorTest {
         assertTrue(guide.getAsJsonArray("schemaIds").contains(
             GSON.toJsonTree("schema:table:x12.005010X223A2.837I")), "the table id is the guide pack's");
 
-        assertEquals("005010X223A2", byName.get("x12-guide-005010X223A1").get("aliasOf").getAsString(),
-            "the alias label X223A1 gets its own pack, pointing back at canonical X223A2");
+        assertFalse(byName.containsKey("x12-guide-005010X223A1"),
+            "the alias label X223A1 resolves to X223A2 via guides.txt and gets no pack of its own");
         assertFalse(byName.get("x12-guide-005010X223A2").has("aliasOf"), "the canonical label has no aliasOf");
         assertFalse(byName.get("x12-codes").has("gs08"), "code sets span guides");
         assertFalse(byName.get("x12-core").has("structureIndex"), "the core pack has no guide structure");
+    }
+
+    @Test
+    void fullRunClearsGuidesNoLongerInTheTable(@TempDir Path out) throws IOException {
+        // Left over from a build that still emitted alias copies and the 820.
+        Files.createDirectories(out.resolve("schemas/005010X218/transactions"));
+        Files.writeString(out.resolve("schemas/005010X218/transactions/820.json"), "{}");
+        Files.createDirectories(out.resolve("structure-index"));
+        Files.writeString(out.resolve("structure-index/005010X223A1.json"), "{}");
+
+        new SchemaGenerator(out).run(SchemaGenerator.resolveGuides("005010X231A1"), true);
+
+        assertFalse(Files.exists(out.resolve("schemas/005010X218")));
+        assertFalse(Files.exists(out.resolve("structure-index/005010X223A1.json")));
+        assertTrue(Files.exists(out.resolve("structure-index/005010X231A1.json")));
     }
 
     private static JsonObject read(Path p) throws IOException {

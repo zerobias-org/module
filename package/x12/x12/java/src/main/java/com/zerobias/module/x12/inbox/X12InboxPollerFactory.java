@@ -1,6 +1,5 @@
 package com.zerobias.module.x12.inbox;
 
-import com.zerobias.module.x12.InboxPollerFactory;
 import com.zerobias.module.x12.ModuleRuntimeConfig;
 import com.zerobias.module.x12.PollerHandle;
 import com.zerobias.module.x12.SourceConfig;
@@ -12,25 +11,34 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The {@link InboxPollerFactory} provider ({@code META-INF/services}) that
- * {@link com.zerobias.module.x12.X12ApiServer#pollerFactory()} discovers: one
- * {@link InboxPoller} per {@code config.sources[]}, all sharing one {@link FileConsumer}
- * and {@link StructureResolver}. {@link #start} returns a {@link PollerHandle} reporting
- * the aggregate {@link com.zerobias.module.x12.health.PollerStatus}.
+ * Starts the inbox pollers once {@link com.zerobias.module.x12.X12ApiServer} has booted the
+ * buffer and sweeper (DESIGN §4): one {@link InboxPoller} per {@code config.sources[]}, all
+ * sharing one {@link FileConsumer} and {@link StructureResolver}. Every consumed file goes
+ * through {@link BufferStore#consumeFile} then the {@code .done} rename; the sweeper (null
+ * when retention is unbounded) is consulted for backpressure. The returned {@link Handle}
+ * reports the aggregate {@link com.zerobias.module.x12.health.PollerStatus}.
  */
-public final class X12InboxPollerFactory implements InboxPollerFactory {
+public final class X12InboxPollerFactory {
 
-    @Override
-    public PollerHandle start(ModuleRuntimeConfig config, BufferStore buffer, RetentionSweeper sweeper) {
+    private X12InboxPollerFactory() {
+    }
+
+    /** Start the scheduled pollers for {@code config.sources()} on the buffer's clock. */
+    public static Handle start(ModuleRuntimeConfig config, BufferStore buffer, RetentionSweeper sweeper) {
         return start(config, buffer, sweeper, buffer.clock(), true);
     }
 
-    /** Testable seam: build the pollers with a clock and optionally without starting the schedule. */
+    /**
+     * Build the pollers with an explicit clock, optionally without starting the schedule
+     * (tests drive {@link InboxPoller#scan()} themselves).
+     */
     public static Handle start(ModuleRuntimeConfig config, BufferStore buffer, RetentionSweeper sweeper,
                                Clock clock, boolean schedule) {
+        Objects.requireNonNull(clock, "clock");
         FileConsumer consumer = new FileConsumer(buffer, sweeper, config, new StructureResolver(), clock);
         List<InboxPoller> pollers = new ArrayList<>();
         for (SourceConfig s : config.sources()) {
@@ -139,11 +147,16 @@ public final class X12InboxPollerFactory implements InboxPollerFactory {
             return out;
         }
 
+        /** Every poller is told to stop first, then all share one {@link InboxPoller#CLOSE_WAIT}. */
         @Override
         public void close() {
             closed = true;
             for (InboxPoller p : pollers) {
-                p.close();
+                p.stop();
+            }
+            Instant deadline = Instant.now().plus(InboxPoller.CLOSE_WAIT);
+            for (InboxPoller p : pollers) {
+                p.awaitStopped(deadline);
             }
         }
     }

@@ -149,7 +149,7 @@
                         </configuration>
                     </execution>
 
-                    <!-- Run the codegen submodule's OWN tests (surefire + failsafe). The
+                    <!-- Run the codegen submodule's OWN tests (surefire). The
                          submodule is never a reactor member here, so without this its tests
                          silently never run. Bound to `test` because the gate's unit task is
                          `mvn test`; skipped under -DskipTests and under -Dcodegen.skip=true. -->
@@ -176,6 +176,23 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.1.2</version>
+                <executions>
+                    <!-- FileConsumerSmallHeapTest needs a heap smaller than a file the consumer may
+                         load, so that allocating the file's bytes really fails; it gets its own
+                         fork with one. In the default fork (a larger heap) it skips itself. -->
+                    <execution>
+                        <id>small-heap</id>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <includes>
+                                <include>**/FileConsumerSmallHeapTest.java</include>
+                            </includes>
+                            <argLine>-Xmx64m</argLine>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>

@@ -4,6 +4,7 @@ import com.zerobias.module.x12.codegen.model.DataType;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Maps pyx12 {@code dataele.xml} data types to DataProducer core dataTypes
@@ -24,6 +25,14 @@ public final class CoreTypes {
     public static final String DATE_TIME = "date-time";
     public static final String BYTE = "byte";
     public static final String MIME_TYPE = "mimeType";
+
+    /**
+     * Data elements that carry control numbers — interchange (I12, ISA13), group (28, GS06 and
+     * 999 AK102) and transaction set (329, ST02 and 999 AK202). I12 and 28 are {@code N0} on
+     * the wire, but leading zeros are part of the identity ({@code 000000101}), so they are
+     * strings, never decimals.
+     */
+    public static final Set<String> CONTROL_NUMBERS = Set.of("I12", "28", "329");
 
     private CoreTypes() {
     }

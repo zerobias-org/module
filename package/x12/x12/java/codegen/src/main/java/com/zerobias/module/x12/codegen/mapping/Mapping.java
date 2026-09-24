@@ -28,13 +28,13 @@ public final class Mapping {
     }
 
     /** {@code <loop>}: {@code repeat} is {@code 1}, {@code 10}, {@code >1}, ... */
-    public record Loop(String xid, String name, String usage, String pos, String repeat, String type,
+    public record Loop(String xid, String name, String usage, String pos, String repeat,
                        List<Structure> children) implements Structure {
     }
 
     /** {@code <segment>}: {@code maxUse} is {@code 1}, {@code 10}, {@code >1}, ... */
-    public record Segment(String xid, String name, String usage, String pos, String maxUse, String endTag,
-                          List<String> syntax, List<Field> fields) implements Structure {
+    public record Segment(String xid, String name, String usage, String pos, String maxUse,
+                          List<Field> fields) implements Structure {
     }
 
     /** A segment (or composite) slot: {@link Element} or {@link Composite}. */
@@ -58,7 +58,7 @@ public final class Mapping {
      * (a {@code codes.xml} codeset); either may be empty/null.
      */
     public record Element(String xid, String dataEle, String name, String usage, int seq, Integer repeat,
-                          List<String> validCodes, String externalCodes, String regex) implements Field {
+                          List<String> validCodes, String externalCodes) implements Field {
     }
 
     /** {@code <composite>}: {@code dataEle} is the composite id ({@code C003}). */

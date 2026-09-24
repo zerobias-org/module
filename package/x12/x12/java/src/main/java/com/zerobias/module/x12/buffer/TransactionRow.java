@@ -8,8 +8,9 @@ import java.time.Instant;
  *
  * <p>{@code rawX12} is the ST..SE segments verbatim plus the ISA/GS context lines
  * (audit / {@code ops/raw} / re-materialization); {@code mappedJson} is the typed JSON
- * (DESIGN §5). {@code elementKey} ({@code <fileId>:<GS06>:<ST02>}) is the natural key —
- * duplicate inserts are dropped. {@code leaseId}/{@code inFlightUntil} are set while
+ * (DESIGN §5). {@code elementKey} ({@code <fileId>:<ISA13>:<GS06>:<ST02>}) is the natural key;
+ * a collision rolls back the whole file ({@link DuplicateElementKeyException}).
+ * {@code leaseId}/{@code inFlightUntil} are set while
  * {@code status == IN_FLIGHT}; {@code ackedAt} when {@code ACKED}. {@code envelope} is
  * {@code file} or {@code synthetic} (DESIGN §4.3).
  */
@@ -94,18 +95,6 @@ public record TransactionRow(
         public Builder mappedJson(String v) { this.mappedJson = v; return this; }
         public Builder parserErrorCount(int v) { this.parserErrorCount = v; return this; }
         public Builder envelope(String v) { this.envelope = v; return this; }
-
-        /**
-         * Derive {@code elementKey} as {@code <fileId>:<GS06>:<ST02>} (DESIGN §2.1) from
-         * the fields already set. Requires fileId, gsControl and stControl.
-         */
-        public Builder deriveElementKey() {
-            if (fileId == null || gsControl == null || stControl == null) {
-                throw new IllegalStateException("deriveElementKey needs fileId, gsControl, stControl");
-            }
-            this.elementKey = fileId + ":" + gsControl + ":" + stControl;
-            return this;
-        }
 
         /** A {@code new} (unleased) row with id 0; the store assigns the real id. */
         public TransactionRow build() {

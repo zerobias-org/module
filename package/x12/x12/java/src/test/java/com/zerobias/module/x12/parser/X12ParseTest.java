@@ -24,14 +24,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** The imsweb wrapper against every committed fixture (DESIGN §4.2b, §4.3, §13). */
+/** The imsweb wrapper against every committed fixture (DESIGN §4.2 step 3b, §4.3, §12). */
 class X12ParseTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-09-22T12:00:00Z"), ZoneOffset.UTC);
 
     @Test
     void parses835FixtureIntoOneInterchangeGroupAndTransaction() throws Exception {
-        X12Parse.ParsedFile p = X12Parse.parse(bytes(F835), false);
+        X12Parse.ParsedFile p = X12Parse.parse(bytes(F835), false, Clock.systemUTC());
         assertEquals("005010X221A1", p.gs08());
         assertEquals("005010X221A1", p.rawGs08());
         assertEquals(X12Reader.FileType.ANSI835_5010_X221, p.fileType());
@@ -62,14 +62,14 @@ class X12ParseTest {
 
     @Test
     void rawX12IsAReparseableSingleTransactionInterchange() throws Exception {
-        X12Parse.ParsedFile p = X12Parse.parse(bytes(F835), false);
+        X12Parse.ParsedFile p = X12Parse.parse(bytes(F835), false, Clock.systemUTC());
         X12Parse.Transaction tx = p.transactions().get(0);
         String raw = tx.rawX12();
         assertTrue(raw.startsWith("ISA*00*"), "ISA context line first");
         assertTrue(raw.contains("\nGS*HP*"), "GS context line, file's line break kept");
         assertTrue(raw.contains("CLP*CLM0001*1*300.00*220.00*40.00*12*EHP2026000001*11*1~"), "segments verbatim");
         assertTrue(raw.endsWith("IEA*1*000000101~\n"));
-        X12Parse.ParsedFile again = X12Parse.parse(raw.getBytes(StandardCharsets.UTF_8), false);
+        X12Parse.ParsedFile again = X12Parse.parse(raw.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
         assertEquals(1, again.transactionCount());
         assertEquals(tx.segments(), again.transactions().get(0).segments());
     }
@@ -88,7 +88,7 @@ class X12ParseTest {
 
     private static void assertGuide(String fixture, String gs08, String st01, int segs, X12Reader.FileType type,
                                     List<String> expectedErrors) throws Exception {
-        X12Parse.ParsedFile p = X12Parse.parse(bytes(fixture), false);
+        X12Parse.ParsedFile p = X12Parse.parse(bytes(fixture), false, Clock.systemUTC());
         assertEquals(gs08, p.gs08(), fixture);
         assertEquals(type, p.fileType(), fixture);
         assertEquals(1, p.transactionCount(), fixture);
@@ -128,7 +128,7 @@ class X12ParseTest {
     void repetitionSeparatorOtherThanCaretIsAcceptedDespiteImswebsControlMap() throws Exception {
         // imsweb's 00501 control map codes ISA11 as U|^ only; the x12.org 999 example uses '>'.
         String t = text(F835).replace("*^*00501*", "*>*00501*");
-        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false);
+        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
         assertEquals('>', p.separators().repetition());
         assertTrue(p.separators().hasRepetition());
         assertEquals(1, p.transactionCount());
@@ -139,7 +139,7 @@ class X12ParseTest {
     @Test
     void componentSeparatorGreaterThanWorks() throws Exception {
         String t = text(F835).replace(':', '>');
-        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false);
+        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
         assertEquals('>', p.separators().component());
         assertEquals('^', p.separators().repetition());
         assertEquals("\n", p.separators().lineBreak());
@@ -152,7 +152,7 @@ class X12ParseTest {
     @Test
     void se01AndSe02MismatchesAreNonFatal() throws Exception {
         String t = text(F835).replace("SE*42*0001~", "SE*41*0002~");
-        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false);
+        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
         assertEquals(1, p.transactionCount());
         assertEquals(2, p.errors().size(), p.errors().toString());
         assertTrue(p.errors().get(0).contains("SE01=41 but ST..SE holds 42 segments"), p.errors().toString());
@@ -160,11 +160,39 @@ class X12ParseTest {
     }
 
     @Test
+    void aMissingSeIsReportedWhereverTheTransactionEndsAndNoEnvelopeSegmentJoinsIt() throws Exception {
+        String base = text(F835);
+        String st = base.substring(base.indexOf("ST*835"), base.indexOf("GE*"));
+        String noSe = st.replace("SE*42*0001~\n", "");
+
+        // ... before the next ST: that ST opens the next transaction only, it is not also the first's last segment
+        String beforeSt = base.replace(st + "GE*1*101~", noSe + st.replace("*0001~", "*0002~") + "GE*2*101~");
+        X12Parse.ParsedFile p = X12Parse.parse(beforeSt.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals(List.of("missing-se: transaction 0001 has no SE before ST"), p.errors());
+        assertEquals(2, p.transactionCount(), "both still ingested");
+        List<String> first = p.transactions().get(0).segments();
+        assertEquals(41, first.size(), "ST..CLP.., the SE-less body only");
+        assertEquals(1, first.stream().filter(seg -> seg.startsWith("ST*")).count(), first.toString());
+        assertEquals(42, p.transactions().get(1).segments().size());
+
+        // ... before GE and before IEA: the trailer stays out of the transaction
+        X12Parse.ParsedFile beforeGe = X12Parse.parse(base.replace("SE*42*0001~\n", "").getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals(List.of("missing-se: transaction 0001 has no SE before GE"), beforeGe.errors());
+        assertFalse(beforeGe.transactions().get(0).segments().get(40).startsWith("GE"), "GE is not a transaction segment");
+        assertEquals(41, beforeGe.transactions().get(0).segments().size());
+
+        String noSeNoGe = base.replace("SE*42*0001~\n", "").replace("GE*1*101~\n", "");
+        X12Parse.ParsedFile beforeIea = X12Parse.parse(noSeNoGe.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals(List.of("missing-se: transaction 0001 has no SE before IEA", "GS 101 has no GE"), beforeIea.errors());
+        assertEquals(41, beforeIea.transactions().get(0).segments().size());
+    }
+
+    @Test
     void multipleTransactionsAndGroupsAreAllReturnedInDocumentOrder() throws Exception {
         String base = text(F835);
         String st = base.substring(base.indexOf("ST*835"), base.indexOf("GE*"));
         String twoInOneGroup = base.replace(st + "GE*1*101~", st + st.replace("*0001~", "*0002~") + "GE*2*101~");
-        X12Parse.ParsedFile p = X12Parse.parse(twoInOneGroup.getBytes(StandardCharsets.UTF_8), false);
+        X12Parse.ParsedFile p = X12Parse.parse(twoInOneGroup.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
         assertEquals(2, p.transactionCount());
         assertEquals("0001", p.transactions().get(0).st02());
         assertEquals("0002", p.transactions().get(1).st02());
@@ -172,7 +200,7 @@ class X12ParseTest {
 
         // Two ISA interchanges concatenated in one file (DESIGN §4.3).
         String twoIsa = base + base.replace("000000101", "000000102").replace("*101*X*", "*102*X*").replace("GE*1*101", "GE*1*102");
-        X12Parse.ParsedFile q = X12Parse.parse(twoIsa.getBytes(StandardCharsets.UTF_8), false);
+        X12Parse.ParsedFile q = X12Parse.parse(twoIsa.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
         assertEquals(2, q.interchanges().size());
         assertEquals("000000102", q.interchanges().get(1).controlNumber());
         assertEquals("102", q.transactions().get(1).group().controlNumber());
@@ -211,21 +239,20 @@ class X12ParseTest {
     @Test
     void malformedFixturesFailWithStableKinds() {
         X12ParseException truncated = assertThrows(X12ParseException.class,
-            () -> X12Parse.parse(malformed("truncated-no-iea.x12"), false));
+            () -> X12Parse.parse(malformed("truncated-no-iea.x12"), false, Clock.systemUTC()));
         assertTrue(truncated.getMessage().startsWith("fatal:"), truncated.getMessage());
         assertEquals(List.of("Unable to find end of transaction"), truncated.fatalErrors(), "imsweb fatal verbatim");
 
         X12ParseException badSeps = assertThrows(X12ParseException.class,
-            () -> X12Parse.parse(malformed("bad-separators.x12"), false));
-        assertTrue(badSeps.getMessage().startsWith("bad-isa") || badSeps.getMessage().startsWith("bad-separators"),
-            badSeps.getMessage());
+            () -> X12Parse.parse(malformed("bad-separators.x12"), false, Clock.systemUTC()));
+        assertTrue(badSeps.getMessage().startsWith("bad-isa: ISA delimiters are not distinct"), badSeps.getMessage());
 
         X12ParseException unknown = assertThrows(X12ParseException.class,
-            () -> X12Parse.parse(malformed("unknown-guide-gs08.x12"), false));
+            () -> X12Parse.parse(malformed("unknown-guide-gs08.x12"), false, Clock.systemUTC()));
         assertEquals("unsupported-guide: GS08 '005010X999' is not a supported implementation guide", unknown.getMessage());
 
         X12ParseException empty = assertThrows(X12ParseException.class,
-            () -> X12Parse.parse(malformed("empty.x12"), false));
+            () -> X12Parse.parse(malformed("empty.x12"), false, Clock.systemUTC()));
         assertTrue(empty.getMessage().startsWith("empty-file"), empty.getMessage());
     }
 
@@ -234,17 +261,18 @@ class X12ParseTest {
         // imsweb validates a loop before appending its closing segment, so a present AK9/IK5 is
         // still reported "required but not found". A genuinely missing IK5 must survive the filter.
         String t = text(F999).replace("IK5*R*5~\n", "").replace("SE*10*0001", "SE*9*0001");
-        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false);
+        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
         assertEquals(List.of("IK5 in loop 2000 is required but not found"), p.errors());
         assertEquals(1, p.transactionCount());
     }
 
     @Test
-    void knownGuideWithoutImswebMapIsUnsupported() {
+    void guideWithoutAnImswebMapIsUnsupported() {
+        // 820 X218: imsweb has no 005010 FileType for it, so it is not in the guide table at all.
         String t = text(F835).replace("*005010X221A1~", "*005010X218~");
         X12ParseException e = assertThrows(X12ParseException.class,
-            () -> X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false));
-        assertTrue(e.getMessage().startsWith("unsupported-guide: no imsweb 005010 map for 005010X218"), e.getMessage());
+            () -> X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC()));
+        assertEquals("unsupported-guide: GS08 '005010X218' is not a supported implementation guide", e.getMessage());
     }
 
     @Test
@@ -252,14 +280,150 @@ class X12ParseTest {
         // A 276 under 005010X212: imsweb only maps the 277 side of X212.
         String t = text(F277CA).replace("ST*277*0001*005010X214~", "ST*276*0001*005010X212~").replace("*005010X214~", "*005010X212~");
         X12ParseException e = assertThrows(X12ParseException.class,
-            () -> X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false));
+            () -> X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC()));
         assertTrue(e.getMessage().startsWith("unsupported-transaction: ST01 276 under guide 005010X212"), e.getMessage());
     }
 
     @Test
     void bomAndLeadingWhitespaceAreTolerated() throws Exception {
         String t = "﻿\r\n" + text(F835);
-        assertEquals(1, X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false).transactionCount());
+        assertEquals(1, X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC()).transactionCount());
+    }
+
+    @Test
+    void envelopeCountsAndControlNumbersAreCheckedAsNonFatalErrors() throws Exception {
+        String t = text(F835).replace("GE*1*101~", "GE*2*109~").replace("IEA*1*000000101~", "IEA*3*000000199~");
+        X12Parse.ParsedFile p = X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals(1, p.transactionCount(), "still ingested");
+        assertEquals(List.of(
+            "GE01=2 but group 101 holds 1 transaction sets",
+            "GE02=109 != GS06=101",
+            "IEA01=3 but interchange 000000101 holds 1 functional groups",
+            "IEA02=000000199 != ISA13=000000101"), p.errors());
+
+        String notNumbers = text(F835).replace("GE*1*101~", "GE*X*101~").replace("IEA*1*000000101~", "IEA**000000101~");
+        assertEquals(List.of("GE01 'X' is not a number (group 101)", "IEA01 '' is not a number (interchange 000000101)"),
+            X12Parse.parse(notNumbers.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC()).errors());
+    }
+
+    @Test
+    void groupWithoutGeIsNonFatalButInterchangeWithoutIeaIsFatal() throws Exception {
+        // imsweb itself accepts a missing GE silently.
+        String noGe = text(F835).replace("GE*1*101~\n", "");
+        X12Parse.ParsedFile p = X12Parse.parse(noGe.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals(1, p.transactionCount());
+        assertEquals(List.of("GS 101 has no GE"), p.errors());
+
+        // Two groups where the first is never closed: reported when the next GS opens.
+        String base = text(F835);
+        String group = base.substring(base.indexOf("GS*"), base.indexOf("IEA*"));
+        String twoGroups = base.replace(group, group.replace("GE*1*101~\n", "")
+            + group.replace("*101*X*", "*102*X*").replace("GE*1*101", "GE*1*102")).replace("IEA*1*", "IEA*2*");
+        X12Parse.ParsedFile q = X12Parse.parse(twoGroups.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals(2, q.transactionCount());
+        assertEquals(List.of("GS 101 has no GE"), q.errors());
+
+        X12ParseException truncated = assertThrows(X12ParseException.class,
+            () -> X12Parse.parse(malformed("truncated-no-iea.x12"), false, Clock.systemUTC()));
+        assertTrue(truncated.getMessage().contains("GS 101 has no GE, ISA 000000101 has no IEA"), truncated.getMessage());
+    }
+
+    @Test
+    void functionalGroupsOfDifferentGuidesInOneInterchangeParseEachWithItsOwnMap() throws Exception {
+        // One ISA carrying a 999 group and a 277CA group: each group gets its own imsweb FileType.
+        String ack = text(F999);
+        String status = text(F277CA);
+        String statusGroup = status.substring(status.indexOf("GS*"), status.indexOf("IEA*"));
+        String mixed = ack.replace("IEA*1*000000105~", statusGroup + "IEA*2*000000105~");
+        X12Parse.ParsedFile p = X12Parse.parse(mixed.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals(1, p.interchanges().size());
+        assertEquals(2, p.interchanges().get(0).groups().size());
+        assertEquals(2, p.transactionCount());
+
+        X12Parse.Transaction ack999 = p.transactions().get(0);
+        X12Parse.Transaction claim277 = p.transactions().get(1);
+        assertEquals("005010X231A1", ack999.gs08());
+        assertEquals(X12Reader.FileType.ANSI837_5010_X231, ack999.group().fileType());
+        assertEquals("999", ack999.st01());
+        assertEquals("005010X214", claim277.gs08());
+        assertEquals(X12Reader.FileType.ANSI277_5010_X214, claim277.group().fileType());
+        assertEquals("277", claim277.st01());
+        assertEquals(1, claim277.loop().findAllLoops("2000D").size(), "277CA tree built by the 277 map");
+        assertEquals("005010X231A1", p.gs08(), "file-level guide is the first group's");
+        assertEquals(List.of("2200C is required but not found in 2000C iteration #1"), p.errors(),
+            "only the 277CA fixture's own known gap");
+    }
+
+    @Test
+    void rawX12TrailersCountTheSliceNotTheOriginalGroup() throws Exception {
+        String base = text(F835);
+        String st = base.substring(base.indexOf("ST*835"), base.indexOf("GE*"));
+        String twoInOneGroup = base.replace(st + "GE*1*101~", st + st.replace("*0001~", "*0002~") + "GE*2*101~");
+        X12Parse.Transaction second = X12Parse.parse(twoInOneGroup.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC())
+            .transactions().get(1);
+        String raw = second.rawX12();
+        assertTrue(raw.endsWith("SE*42*0002~\nGE*1*101~\nIEA*1*000000101~\n"), raw);
+        X12Parse.ParsedFile again = X12Parse.parse(raw.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals(List.of(), again.errors(), "the slice's own envelope is consistent");
+        assertEquals("0002", again.transactions().get(0).st02());
+    }
+
+    @Test
+    void everyInterchangeMustDeclareTheSameDelimiters() {
+        String base = text(F835);
+        String other = base.replace("*^*00501*", "*|*00501*").replace("000000101", "000000102");
+        X12ParseException e = assertThrows(X12ParseException.class,
+            () -> X12Parse.parse((base + other).getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC()));
+        assertTrue(e.getMessage().startsWith("bad-isa: interchange 2 declares delimiters element='*', repetition='|'"),
+            e.getMessage());
+
+        String otherElement = base.replace('*', '!');
+        X12ParseException f = assertThrows(X12ParseException.class,
+            () -> X12Parse.parse((base + otherElement).getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC()));
+        assertTrue(f.getMessage().startsWith("bad-isa: interchange 2 declares delimiters element='!'"), f.getMessage());
+    }
+
+    @Test
+    void misAlignedIsaIsBadIsaNotAnUnsupportedGuide() {
+        // ISA06 one character short: the declared terminator becomes the line break.
+        String t = text(F835).replace("*EXAMPLEPAYER   *", "*EXAMPLEPAYER  *");
+        X12ParseException e = assertThrows(X12ParseException.class,
+            () -> X12Parse.parse(t.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC()));
+        assertTrue(e.getMessage().startsWith("bad-isa: element separator '*' expected at ISA character 51"), e.getMessage());
+    }
+
+    @Test
+    void crlfLineBreaksAndTrailingNulOrSubAreTolerated() throws Exception {
+        String crlf = text(F835).replace("\n", "\r\n");
+        X12Parse.ParsedFile p = X12Parse.parse(crlf.getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+        assertEquals("\r\n", p.separators().lineBreak());
+        assertEquals(List.of(), p.errors());
+        for (String tail : List.of("\u001a", "\u0000\u0000", "\r\n\u001a")) {
+            X12Parse.ParsedFile q = X12Parse.parse((text(F835) + tail).getBytes(StandardCharsets.UTF_8), false, Clock.systemUTC());
+            assertEquals(1, q.transactionCount(), tail);
+            assertEquals(List.of(), q.errors(), tail);
+        }
+    }
+
+    @Test
+    void bareFileWithAnotherComponentSeparatorSplitsItsComposites() throws Exception {
+        StringBuilder bare = new StringBuilder();
+        boolean in = false;
+        for (String line : text(F837P).split("\n")) {
+            in |= line.startsWith("ST*");
+            if (line.startsWith("GE*")) {
+                break;
+            }
+            if (in) {
+                bare.append(line.replace(':', '>')).append('\n');
+            }
+        }
+        X12Parse.ParsedFile p = X12Parse.parse(bare.toString().getBytes(StandardCharsets.UTF_8), true, CLOCK);
+        assertTrue(p.synthetic());
+        assertEquals('>', p.separators().component());
+        Loop line = p.transactions().get(0).loop().findAllLoops("2400").get(0);
+        assertEquals(List.of("HC", "99213"), line.getSegment("SV1").getElements().get(0).getSubValues());
+        assertEquals(List.of(), p.errors());
     }
 
     @Test

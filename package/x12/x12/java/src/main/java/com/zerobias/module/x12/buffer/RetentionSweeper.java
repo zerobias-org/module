@@ -3,6 +3,7 @@ package com.zerobias.module.x12.buffer;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -16,9 +17,10 @@ import org.slf4j.LoggerFactory;
  * {@code files} rows are <b>never</b> touched (they are the audit trail).
  *
  * <p>{@link #sweep()} is the unit of work (directly callable + testable);
- * {@link #start(java.time.Duration)} runs it on a schedule (10-min cadence).
- * Byte-bounded eviction relies on incremental auto-vacuum (enabled by
- * {@link BufferStore} at init) so deletes actually reclaim file pages.
+ * {@link #start(java.time.Duration)} runs it immediately and then on a schedule.
+ * The byte bound is measured as live data ({@link BufferStore#usedBytes()}), so pages a
+ * delete freed count as room at once; every sweep ends with an incremental vacuum
+ * (auto-vacuum is enabled by {@link BufferStore} at init) so the file shrinks too.
  */
 public final class RetentionSweeper {
 
@@ -31,40 +33,46 @@ public final class RetentionSweeper {
     private ScheduledExecutorService scheduler;
 
     public RetentionSweeper(BufferStore store, RetentionConfig config, Clock clock) {
-        this.store = store;
-        this.config = config;
-        this.clock = clock;
+        this.store = Objects.requireNonNull(store, "store");
+        this.config = Objects.requireNonNull(config, "config");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    /** Run one retention pass; returns the number of transaction rows evicted. */
-    public int sweep() throws SQLException {
+    /**
+     * Run one retention pass; returns the number of transaction rows evicted. Synchronized
+     * because the pollers also sweep (before declaring backpressure) alongside the schedule.
+     */
+    public synchronized int sweep() throws SQLException {
         int removed = 0;
         if (config.maxAge() != null) {
             final long cutoff = Instant.now(clock).toEpochMilli() - config.maxAge().toMillis();
             removed += store.deleteAckedOlderThanMillis(cutoff);
         }
         if (config.maxBytes() != null) {
-            while (store.dbSizeBytes() > config.maxBytes()) {
+            while (store.usedBytes() > config.maxBytes()) {
                 final int n = store.deleteOldestAcked(EVICT_BATCH);
                 if (n == 0) {
                     break; // nothing more we are allowed to evict
                 }
-                store.incrementalVacuum();
                 removed += n;
             }
         }
+        store.incrementalVacuum();
         return removed;
     }
 
     /**
-     * Whether the buffer is over its byte ceiling with nothing left to evict — the
-     * poller's backpressure signal (DESIGN §4.2 step 4): it then leaves files untouched.
+     * Whether live data exceeds the byte ceiling — the poller's backpressure signal
+     * (DESIGN §4.2 step 4): it sweeps first and, if still over, leaves files untouched.
      */
     public boolean overCapacity() throws SQLException {
-        return config.maxBytes() != null && store.dbSizeBytes() > config.maxBytes();
+        return config.maxBytes() != null && store.usedBytes() > config.maxBytes();
     }
 
-    /** Start the periodic sweep (e.g. every 10 minutes). Exceptions are logged, not propagated. */
+    /**
+     * Sweep now and then every {@code interval}; a restart after an outage must not wait an
+     * interval before making room. Exceptions are logged, not propagated.
+     */
     public synchronized void start(java.time.Duration interval) {
         if (scheduler != null) {
             return;
@@ -83,7 +91,7 @@ public final class RetentionSweeper {
             } catch (Exception e) {
                 LOG.warn("retention sweep failed", e);
             }
-        }, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
+        }, 0, interval.toMillis(), TimeUnit.MILLISECONDS);
     }
 
     public synchronized void stop() {

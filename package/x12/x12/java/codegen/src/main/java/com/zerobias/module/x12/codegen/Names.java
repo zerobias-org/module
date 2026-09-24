@@ -12,7 +12,7 @@ import java.util.Locale;
  *   <li>loop {@code 2100} → {@code loop2100}; {@code 1000A} → {@code loop1000A};
  *       {@code HEADER} → {@code header}; {@code ISA_LOOP} → {@code isaLoop}</li>
  *   <li>segment {@code CLP} → {@code clp}; {@code NM1} → {@code nm1}</li>
- *   <li>element {@code CLP02} → {@code clp02}</li>
+ *   <li>element {@code CLP02} → {@code clp02} (segment property + two-digit position)</li>
  *   <li>composite sub-element: composite {@code C003} seq 1 → {@code c00301}
  *       (composites are shared across segments, so the position-bound xid
  *       {@code SVC01-01} cannot be the key)</li>
@@ -35,10 +35,6 @@ public final class Names {
 
     public static String segmentProperty(String segmentXid) {
         return segmentXid.toLowerCase(Locale.ROOT);
-    }
-
-    public static String elementProperty(String elementXid) {
-        return elementXid.toLowerCase(Locale.ROOT);
     }
 
     public static String compositeElementProperty(String compositeDataEle, int seq) {

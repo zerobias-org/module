@@ -12,11 +12,10 @@ info:
 # directly from the interface module; the implementation is Java (see java/).
 # Adds /objects/{objectId}/download (binary) over hl7/v2: each X12 file node is
 # also a binary object whose raw EDI bytes are downloadable.
-# Adds /objects/{objectId}/upload for file management over the mounted volume
-# (DESIGN §2.9). createChildObject (mkdir) and deleteObject need no extra entry —
-# they are the POST/DELETE of the /objects/{objectId}[/children] path items above.
-# All three are refused unless the deployment sets config.allowFileManagement=true,
-# and isSupported reports that per deployment.
+# /objects/{objectId}/search (objectSearch) is deliberately NOT referenced: keyword
+# or filter search across a subtree would enumerate the never-evicted /files audit
+# trail in memory. Sorting, pageToken cursors and property projection are rejected
+# (400) where the interface declares them; paging is by pageNumber/pageSize.
 paths:
   # ---- DataProducer interface paths ----
   /objects:
@@ -25,8 +24,6 @@ paths:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}'
   /objects/{objectId}/children:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1children'
-  /objects/{objectId}/search:
-    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1search'
   /objects/{objectId}/searchChildren:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1searchChildren'
   /objects/{objectId}/collection/elements:
@@ -53,9 +50,10 @@ paths:
       tags: [connection]
       summary: Establish a receiver session
       description: >-
-        Validates the connection profile and binds the producer session. The
-        inbox poller and buffer are daemon-owned and already running; connect
-        is the DataProducer handshake the pipeline uses before browse/drain.
+        Binds a producer session for the given connection. The profile is
+        informational and is not validated: the inbox poller and buffer are
+        daemon-owned, configured by runtimeConfig, and already running; connect is
+        the DataProducer handshake the pipeline uses before browse/drain.
       operationId: connect
       requestBody:
         required: true
@@ -74,18 +72,18 @@ paths:
                   status:
                     type: string
                     example: connected
-        '401':
-          description: Invalid credentials
+        '400':
+          description: Malformed request (no connection id, body not a JSON object)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ErrorModel'
         '500':
-          description: Connection failed
+          description: Unexpected failure; the cause is logged by the module, not returned
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ErrorModel'
   /disconnect:
     post:
       tags: [connection]
@@ -117,13 +115,16 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [status, bufferDepth]
                 properties:
                   status:
                     type: string
-                    enum: [On, Off, Error]
-                  connected:
-                    type: string
-                    format: date-time
+                    enum: [On, Error]
+                    description: On while /healthz is healthy, Error while it is degraded
+                  bufferDepth:
+                    type: integer
+                    format: int64
+                    description: Un-acked transactions (new + in_flight)
   /healthz:
     get:
       tags: [health]
@@ -131,7 +132,8 @@ paths:
       description: >-
         Liveness/health for the always-on daemon. Hub Node polls this every 30s
         for daemon-mode deployments (DESIGN §9). Returns poller state per source,
-        buffer depth, and WAL stats.
+        buffer depth, and database file sizes. 503 when the poller is down, under
+        backpressure, or any source is unwritable, stalled, or failing every scan.
       operationId: getHealth
       responses:
         '200':
@@ -150,43 +152,87 @@ components:
   schemas:
     ConnectionProfile:
       $ref: './connectionProfile.yml'
-    ErrorResponse:
+    ErrorModel:
+      description: >-
+        The platform error body (types-core errorModelBase) with the msg of
+        illegalArgumentError / unexpectedError.
       type: object
-      required: [error, message]
+      required: [key, template, timestamp, statusCode]
       properties:
-        error:
+        key:
           type: string
-          description: Error type
-        message:
+          description: Message key, e.g. err.illegal.argument, err.unexpected
+        template:
           type: string
-          description: Error message
-        details:
-          type: object
-          additionalProperties: true
-          description: Additional error details
+          description: Human-readable message
+        timestamp:
+          type: string
+          format: date-time
+        statusCode:
+          type: integer
+          format: int32
+        msg:
+          type: string
+          description: The error message (a generic one for 500)
     HealthStatus:
       type: object
+      required: [poller, db]
       properties:
         poller:
           type: object
+          required: [up, bufferDepth, backpressure, sources]
           properties:
-            up: { type: boolean }
+            up:
+              type: boolean
+              description: Every poller thread alive
             lastScan: { type: string, format: date-time }
             lastConsumed: { type: string, format: date-time }
-            bufferDepth: { type: integer }
-            oldestUnackedSec: { type: integer }
+            bufferDepth:
+              type: integer
+              format: int64
+              description: Un-acked transactions (new + in_flight)
+            oldestUnackedSec:
+              type: integer
+              format: int64
+              description: Age of the oldest un-acked transaction; absent when there is none
+            backpressure:
+              type: boolean
+              description: Buffer over its byte ceiling; new files are left untouched
             sources:
               type: array
               items:
                 type: object
+                required: [name, path, writable, pending, errored, stalled, consecutiveFailures]
                 properties:
                   name: { type: string }
                   path: { type: string }
                   writable: { type: boolean }
-                  pending: { type: integer }
-                  errored: { type: integer }
+                  pending:
+                    type: integer
+                    description: Candidate files not yet consumed
+                  errored:
+                    type: integer
+                    description: The source's files rows with status error — files sent to .error and files recorded after repeated failed reads
+                  stalled:
+                    type: boolean
+                    description: No scan completed and no file finished for 3 poll intervals + 60s
+                  consecutiveFailures:
+                    type: integer
+                    description: Scans in a row that ended in an unexpected failure (3 = degraded)
+                  lastScanStarted: { type: string, format: date-time }
+                  lastScanCompleted: { type: string, format: date-time }
+                  lastError:
+                    type: string
+                    description: The last unexpected scan failure
         db:
           type: object
+          required: [walBytes, sizeBytes]
           properties:
-            walBytes: { type: integer }
-            lastCheckpoint: { type: string, format: date-time }
+            walBytes:
+              type: integer
+              format: int64
+              description: Size of the WAL file
+            sizeBytes:
+              type: integer
+              format: int64
+              description: Size of the database file, free pages included

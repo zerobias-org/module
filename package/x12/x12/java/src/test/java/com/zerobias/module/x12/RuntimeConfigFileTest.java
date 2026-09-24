@@ -1,6 +1,10 @@
 package com.zerobias.module.x12;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -41,12 +45,30 @@ class RuntimeConfigFileTest {
     }
 
     @Test
-    void toleratesMissingConfigAndJunk() {
+    void aMissingConfigBlockIsEmptyButABrokenOneFails(@TempDir Path dir) throws Exception {
         assertEquals(0, RuntimeConfigFile.parse("{}").config().size());
-        assertEquals(0, RuntimeConfigFile.parse("{\"config\":\"nope\"}").config().size());
         assertEquals(0, RuntimeConfigFile.parse("daemonMode: true\n").config().size());
         assertEquals(0, RuntimeConfigFile.parse("").config().size());
+        assertThrows(ModuleRuntimeConfig.InvalidConfigException.class,
+            () -> RuntimeConfigFile.parse("{\"config\":\"nope\"}"));
+        assertThrows(ModuleRuntimeConfig.InvalidConfigException.class, () -> RuntimeConfigFile.parse("- a\n- b\n"));
         assertThrows(RuntimeException.class, () -> RuntimeConfigFile.parse("{\"config\":"));
-        assertTrue(RuntimeConfigFile.loadPath(java.nio.file.Path.of("/definitely/missing.yml")).isEmpty());
+
+        assertTrue(RuntimeConfigFile.loadPath(Path.of("/definitely/missing.yml")).isEmpty(), "absent, not broken");
+        Path garbage = Files.writeString(dir.resolve("runtimeConfig.yml"), "config: [unclosed\n");
+        ModuleRuntimeConfig.InvalidConfigException e = assertThrows(ModuleRuntimeConfig.InvalidConfigException.class,
+            () -> RuntimeConfigFile.loadPath(garbage));
+        assertTrue(e.getMessage().contains(garbage.toString()), e.getMessage());
+    }
+
+    @Test
+    void theShippedRuntimeConfigYmlPassesStrictParsing() {
+        // The image falls back to this file when MODULE_CONFIG is absent; a key the parser
+        // rejects would stop every bare `docker run`.
+        ModuleRuntimeConfig c = ModuleRuntimeConfig.fromConfigObject(
+            RuntimeConfigFile.loadPath(Path.of("../runtimeConfig.yml")).orElseThrow().config());
+        assertTrue(c.fullDurability());
+        assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES, c.maxFileBytes());
+        assertEquals("/var/lib/x12/inbox", c.sources().get(0).path());
     }
 }

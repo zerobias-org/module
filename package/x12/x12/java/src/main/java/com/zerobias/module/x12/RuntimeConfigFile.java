@@ -9,6 +9,7 @@ import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -26,8 +27,11 @@ import java.util.Optional;
  *       {@code MODULE_CONFIG}.</li>
  * </ol>
  * Either file may be JSON or YAML (sniffed on the first non-blank character). Only the
- * {@code config} member is read; there are no listener ports in this module. An
- * absent/unreadable/garbage file yields {@link Optional#empty()} — never a boot crash.
+ * {@code config} member is read; there are no listener ports in this module. A file that
+ * does not exist is absent ({@link Optional#empty()}); a file that exists but cannot be
+ * read or parsed, or whose {@code config} is not an object, throws
+ * {@link ModuleRuntimeConfig.InvalidConfigException} — falling back to defaults would
+ * hide the operator's config instead of reporting it.
  */
 public final class RuntimeConfigFile {
 
@@ -64,24 +68,33 @@ public final class RuntimeConfigFile {
     }
 
     static Optional<RuntimeConfigFile> loadPath(Path path) {
-        if (!Files.isReadable(path)) {
-            LOG.info("runtime config file {} not present/readable", path);
+        if (!Files.exists(path)) {
+            LOG.info("runtime config file {} not present", path);
             return Optional.empty();
         }
+        final String text;
         try {
-            RuntimeConfigFile parsed = parse(Files.readString(path));
-            LOG.info("Loaded runtime config file {} ({} config key(s))", path, parsed.config.size());
-            return Optional.of(parsed);
-        } catch (Exception e) {
-            LOG.warn("runtime config file {} unreadable/unparseable ({}); ignoring", path, e.toString());
-            return Optional.empty();
+            text = Files.readString(path);
+        } catch (IOException | RuntimeException e) {
+            throw new ModuleRuntimeConfig.InvalidConfigException("runtime config file " + path + " is unreadable (" + e + ")");
         }
+        final RuntimeConfigFile parsed;
+        try {
+            parsed = parse(text);
+        } catch (ModuleRuntimeConfig.InvalidConfigException e) {
+            throw new ModuleRuntimeConfig.InvalidConfigException("runtime config file " + path + ": " + e.getMessage());
+        } catch (RuntimeException e) {
+            throw new ModuleRuntimeConfig.InvalidConfigException("runtime config file " + path + " is not valid JSON/YAML ("
+                + e.getClass().getSimpleName() + ")");
+        }
+        LOG.info("Loaded runtime config file {} ({} config key(s))", path, parsed.config.size());
+        return Optional.of(parsed);
     }
 
     /**
      * Parse a JSON or YAML document and extract its {@code config} member. Testable seam;
-     * a document without a {@code config} object yields an empty config, and junk throws
-     * (callers map that to empty).
+     * a document without a {@code config} member yields an empty config (every key then
+     * takes its default), a non-object {@code config} or junk throws.
      */
     static RuntimeConfigFile parse(String text) {
         final String t = text == null ? "" : text.strip();
@@ -93,10 +106,19 @@ public final class RuntimeConfigFile {
             Object loaded = yaml.load(t);
             root = GSON.toJsonTree(loaded);
         }
-        if (root == null || !root.isJsonObject()) {
+        if (root == null || root.isJsonNull()) {
             return new RuntimeConfigFile(new JsonObject());
         }
+        if (!root.isJsonObject()) {
+            throw new ModuleRuntimeConfig.InvalidConfigException("the document must be an object");
+        }
         JsonElement cfg = root.getAsJsonObject().get("config");
-        return new RuntimeConfigFile(cfg != null && cfg.isJsonObject() ? cfg.getAsJsonObject() : new JsonObject());
+        if (cfg == null || cfg.isJsonNull()) {
+            return new RuntimeConfigFile(new JsonObject());
+        }
+        if (!cfg.isJsonObject()) {
+            throw new ModuleRuntimeConfig.InvalidConfigException("config must be an object, got " + cfg);
+        }
+        return new RuntimeConfigFile(cfg.getAsJsonObject());
     }
 }

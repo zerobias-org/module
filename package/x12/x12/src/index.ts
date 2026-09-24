@@ -17,7 +17,7 @@
  * Runtime: Docker container with Java 17 + Javalin (operations) + imsweb x12-parser.
  * Entry Point: java/target/x12-receiver-1.0.0.jar  (mainClass X12ApiServer)
  *
- * See DESIGN.md for the full design. Structural correlary: package/hl7/v2.
+ * See DESIGN.md for the full design. Structural twin: package/hl7/v2.
  */
 
 // Export generated TypeScript API and model types

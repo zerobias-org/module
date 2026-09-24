@@ -292,8 +292,15 @@ public class X12SqlAdapter implements Adapter {
         return lit(value.toString());
     }
 
+    /**
+     * A {@code :between:} bound, emitted unquoted — so only a plain decimal passes.
+     * {@code Double.parseDouble} also accepts {@code NaN}, {@code Infinity}, {@code 1d} and
+     * hex floats, which SQLite reads as identifiers or syntax errors (a 500, not a 400).
+     */
     private String numeric(String s) {
-        Double.parseDouble(s); // validate; emit unquoted
+        if (!looksNumeric(s)) {
+            throw new IllegalArgumentException(":between: bounds must be plain decimal numbers, got: " + s);
+        }
         return s;
     }
 

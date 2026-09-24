@@ -22,31 +22,39 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * The imsweb {@link X12Reader} wrapper (DESIGN §4.2b): decodes the bytes, detects the
- * delimiters from the ISA, reads GS08 from the first GS <em>before</em> choosing the
- * {@link X12Reader.FileType} via {@link TransactionTypes#fileTypeFor}, parses, and hands
- * back one {@link Interchange} per ISA with the imsweb {@link Loop} tree of every
- * transaction set plus its verbatim ST..SE segments.
+ * The imsweb {@link X12Reader} wrapper (DESIGN §4.2 step 3b): decodes the bytes, detects the
+ * delimiters from the ISA, scans the envelope, and parses every functional group with the
+ * {@link X12Reader.FileType} its own GS08 selects ({@link TransactionTypes#guide}), handing
+ * back one {@link Interchange} per ISA with the imsweb {@link Loop} of every transaction set
+ * plus its verbatim ST..SE segments.
  *
  * <p>Things imsweb does not do that this wrapper does:
  * <ul>
- *   <li><b>GS08 aliases.</b> imsweb compares the first GS08 <em>exactly</em> against the
- *       FileType's canonical id ({@code 005010X222A1}); the wire often carries
- *       {@code 005010X222} or {@code 005010X223A1}. The text fed to imsweb has every GS08
- *       rewritten to {@link TransactionTypes#canonical}; the raw segments kept per
- *       transaction are untouched.</li>
+ *   <li><b>One guide per functional group.</b> An imsweb reader parses with one FileType and
+ *       checks only the first GS08 against it, so an interchange carrying, say, a 999 group and
+ *       a 277CA group would fail as a whole. Each group is fed to its own reader as
+ *       ISA + GS..GE + IEA; the results are stitched back in document order.</li>
+ *   <li><b>GS08 aliases.</b> imsweb compares GS08 <em>exactly</em> against the FileType's
+ *       canonical id ({@code 005010X222A1}); the wire often carries {@code 005010X222} or
+ *       {@code 005010X223A1}. The text fed to imsweb has GS08 rewritten to
+ *       {@link TransactionTypes#canonical}; the raw segments kept per transaction are
+ *       untouched.</li>
  *   <li><b>Bare ST..SE files</b> are wrapped by {@link EnvelopeSynthesizer} when allowed
  *       (DESIGN §4.3); {@link ParsedFile#synthetic()} reports it.</li>
- *   <li><b>SE01 / SE02 checks.</b> imsweb never verifies the segment count or the
- *       trailing control number; both are checked here and reported as non-fatal
- *       {@link ParsedFile#errors()} (they count toward {@code parserErrorCount}).</li>
+ *   <li><b>Envelope integrity.</b> imsweb verifies none of SE01/SE02, GE01/GE02, IEA01/IEA02
+ *       and accepts an ST without SE ({@code missing-se}) or a GS without GE; all are checked
+ *       here and reported as non-fatal
+ *       {@link ParsedFile#errors()} (they count toward {@code parserErrorCount}). An ISA without
+ *       IEA is reported too, though imsweb then fails the file.</li>
+ *   <li><b>One set of delimiters.</b> Every ISA in the file must declare the first one's
+ *       delimiters; the segments are split once, with those.</li>
  *   <li><b>ST01 vs guide.</b> A 276 under {@code 005010X212} (whose only imsweb map is the
  *       277) is refused as {@code unsupported-transaction} instead of being fed to the
  *       wrong map.</li>
  * </ul>
  *
- * <p>Non-fatal imsweb errors are file-level (imsweb does not attribute them to a
- * transaction set); the caller stamps the file's count on every row.
+ * <p>Non-fatal errors are file-level (imsweb does not attribute them to a transaction set);
+ * the caller stamps the file's count on every row.
  */
 public final class X12Parse {
 
@@ -59,7 +67,11 @@ public final class X12Parse {
 
     // ---- result model ----------------------------------------------------------------
 
-    /** Everything parsed from one file. */
+    /**
+     * Everything parsed from one file. {@code gs08}, {@code rawGs08} and {@code fileType} are
+     * the first functional group's; a file may carry groups of several guides, so anything
+     * per transaction reads {@link Transaction#gs08()}.
+     */
     public record ParsedFile(
             List<Interchange> interchanges,
             Separators separators,
@@ -86,7 +98,7 @@ public final class X12Parse {
     }
 
     /** One ISA..IEA. {@code isaTokens} are the 16 raw elements (index 1..16, untrimmed). */
-    public record Interchange(String[] isaTokens, String isaRaw, String ieaRaw, List<FunctionalGroup> groups, Loop loop) {
+    public record Interchange(String[] isaTokens, String isaRaw, String ieaRaw, List<FunctionalGroup> groups) {
 
         public String isa(int n) {
             return n < isaTokens.length ? isaTokens[n].trim() : "";
@@ -116,8 +128,12 @@ public final class X12Parse {
         }
     }
 
-    /** One GS..GE. */
-    public record FunctionalGroup(String[] gsTokens, String gsRaw, String geRaw, List<Transaction> transactions, Loop loop) {
+    /**
+     * One GS..GE, parsed with its own guide: {@code gs08} is the canonical id
+     * ({@link TransactionTypes#canonical}), {@link #rawGs08()} the spelling on the wire.
+     */
+    public record FunctionalGroup(String[] gsTokens, String gsRaw, String geRaw, String gs08,
+                                  X12Reader.FileType fileType, List<Transaction> transactions, Loop loop) {
 
         public String gs(int n) {
             return n < gsTokens.length ? gsTokens[n].trim() : "";
@@ -127,7 +143,7 @@ public final class X12Parse {
             return gs(6);
         }
 
-        public String gs08() {
+        public String rawGs08() {
             return gs(8);
         }
     }
@@ -135,8 +151,8 @@ public final class X12Parse {
     /**
      * One ST..SE: the imsweb {@link Loop} (id {@code ST_LOOP}) and the verbatim segments
      * from the file. {@link #rawX12} rebuilds a complete, re-parseable single-transaction
-     * interchange: the ISA and GS context lines, the ST..SE segments, then the file's own
-     * GE and IEA (verbatim — their counts describe the original group, not this slice).
+     * interchange: the ISA and GS context lines, the ST..SE segments, then GE and IEA trailers
+     * counting exactly this one transaction and group.
      */
     public record Transaction(Loop loop, String st01, String st02, String st03, List<String> segments,
                               Interchange interchange, FunctionalGroup group, Separators separators) {
@@ -145,33 +161,27 @@ public final class X12Parse {
             return st02;
         }
 
+        /** The canonical guide of this transaction's functional group. */
+        public String gs08() {
+            return group.gs08();
+        }
+
         public String rawX12() {
             StringBuilder sb = new StringBuilder();
             String term = separators.segment() + separators.lineBreak();
+            char e = separators.element();
             sb.append(interchange.isaRaw()).append(term);
             sb.append(group.gsRaw()).append(term);
             for (String s : segments) {
                 sb.append(s).append(term);
             }
-            if (group.geRaw() != null) {
-                sb.append(group.geRaw()).append(term);
-            }
-            if (interchange.ieaRaw() != null) {
-                sb.append(interchange.ieaRaw()).append(term);
-            }
+            sb.append("GE").append(e).append('1').append(e).append(group.controlNumber()).append(term);
+            sb.append("IEA").append(e).append('1').append(e).append(interchange.controlNumber()).append(term);
             return sb.toString();
-        }
-
-        public byte[] rawX12Bytes() {
-            return rawX12().getBytes(StandardCharsets.UTF_8);
         }
     }
 
     // ---- entry points ----------------------------------------------------------------
-
-    public static ParsedFile parse(byte[] bytes, boolean allowBareTransactionSets) throws X12ParseException {
-        return parse(bytes, allowBareTransactionSets, Clock.systemUTC());
-    }
 
     public static ParsedFile parse(byte[] bytes, boolean allowBareTransactionSets, Clock clock) throws X12ParseException {
         if (bytes == null || bytes.length == 0) {
@@ -204,82 +214,43 @@ public final class X12Parse {
             throw new X12ParseException("no-isa: no interchange found");
         }
 
-        // Guide selection BEFORE imsweb sees the text (DESIGN §4.2b).
-        String rawGs08 = null;
-        String canonical = null;
+        // Guide selection per group BEFORE imsweb sees any text (DESIGN §4.2 step 3b).
+        ScanGroup first = null;
         for (ScanInterchange si : scan.interchanges) {
             for (ScanGroup sg : si.groups) {
                 String g = sg.gs08();
                 if (g.isEmpty()) {
                     throw new X12ParseException("bad-gs: GS segment has no GS08 (" + abbreviate(sg.gsRaw) + ")");
                 }
-                Optional<String> c = TransactionTypes.canonical(g);
-                if (c.isEmpty()) {
-                    throw new X12ParseException("unsupported-guide: GS08 '" + g + "' is not a supported implementation guide");
-                }
-                if (canonical == null) {
-                    canonical = c.get();
-                    rawGs08 = g;
-                } else if (!canonical.equals(c.get())) {
-                    throw new X12ParseException("mixed-guides: file carries functional groups for both " + canonical
-                        + " and " + c.get() + "; one guide per file is supported");
-                }
-            }
-        }
-        if (canonical == null) {
-            throw new X12ParseException("bad-gs: no functional group (GS) after the ISA");
-        }
-        Optional<X12Reader.FileType> fileType = TransactionTypes.fileTypeFor(canonical);
-        if (fileType.isEmpty()) {
-            throw new X12ParseException("unsupported-guide: no imsweb 005010 map for " + canonical
-                + " (GS08 '" + rawGs08 + "')");
-        }
-        String expectedSt01 = expectedSt01(TransactionTypes.transactionType(canonical, null));
-        for (ScanInterchange si : scan.interchanges) {
-            for (ScanGroup sg : si.groups) {
+                sg.guide = TransactionTypes.guide(g).orElseThrow(() -> new X12ParseException(
+                    "unsupported-guide: GS08 '" + g + "' is not a supported implementation guide"));
+                String expectedSt01 = expectedSt01(sg.guide.transactionType());
                 for (ScanTransaction st : sg.transactions) {
                     if (!st.st01.equals(expectedSt01)) {
                         throw new X12ParseException("unsupported-transaction: ST01 " + st.st01 + " under guide "
-                            + canonical + " (its map is the " + expectedSt01 + ")");
+                            + sg.guide.canonicalGs08() + " (its map is the " + expectedSt01 + ")");
                     }
+                }
+                if (first == null) {
+                    first = sg;
                 }
             }
         }
-
-        String fed = scan.needsRewrite(canonical) ? scan.rewriteForImsweb(canonical) : text;
-        X12Reader reader;
-        try {
-            reader = new X12Reader(fileType.get(), new StringReader(fed));
-        } catch (IOException | RuntimeException e) {
-            throw new X12ParseException("parser-failure: imsweb threw " + e, List.of());
+        if (first == null) {
+            throw new X12ParseException("bad-gs: no functional group (GS) after the ISA");
         }
+
         List<String> errors = new ArrayList<>(scan.errors);
-        errors.addAll(dropClosingSegmentFalsePositives(reader.getErrors(), reader.getLoops()));
-        if (!reader.getFatalErrors().isEmpty()) {
-            throw new X12ParseException("fatal: imsweb could not parse the file as " + canonical
-                + (errors.isEmpty() ? "" : "; errors: " + errors), reader.getFatalErrors());
-        }
-
-        // Pair the imsweb loop tree with the scanned spans (both in document order).
-        List<Loop> isaLoops = reader.getLoops();
-        if (isaLoops.size() != scan.interchanges.size()) {
-            throw new X12ParseException("structure-mismatch: imsweb produced " + isaLoops.size()
-                + " interchange loop(s) but the file holds " + scan.interchanges.size() + " ISA segment(s)");
-        }
         List<Interchange> interchanges = new ArrayList<>();
-        for (int i = 0; i < isaLoops.size(); i++) {
-            ScanInterchange si = scan.interchanges.get(i);
-            Loop isaLoop = isaLoops.get(i);
-            List<Loop> gsLoops = childLoops(isaLoop, "GS_LOOP");
-            if (gsLoops.size() != si.groups.size()) {
-                throw new X12ParseException("structure-mismatch: imsweb produced " + gsLoops.size()
-                    + " functional group loop(s) but interchange " + (i + 1) + " holds " + si.groups.size() + " GS segment(s)");
-            }
+        for (ScanInterchange si : scan.interchanges) {
             List<FunctionalGroup> groups = new ArrayList<>();
-            Interchange interchange = new Interchange(si.isaTokens, si.isaRaw, si.ieaRaw, groups, isaLoop);
-            for (int g = 0; g < gsLoops.size(); g++) {
-                ScanGroup sg = si.groups.get(g);
-                Loop gsLoop = gsLoops.get(g);
+            Interchange interchange = new Interchange(si.isaTokens, si.isaRaw, si.ieaRaw, groups);
+            for (ScanGroup sg : si.groups) {
+                if (si.isaRaw.isEmpty()) {
+                    throw new X12ParseException("structure-mismatch: functional group " + sg.controlNumber()
+                        + " is not inside an ISA..IEA interchange");
+                }
+                Loop gsLoop = parseGroup(scan, si, sg, errors);
                 List<Loop> stLoops = childLoops(gsLoop, "ST_LOOP");
                 if (stLoops.size() != sg.transactions.size()) {
                     throw new X12ParseException("structure-mismatch: imsweb produced " + stLoops.size()
@@ -287,7 +258,8 @@ public final class X12Parse {
                         + " ST..SE span(s)");
                 }
                 List<Transaction> txs = new ArrayList<>();
-                FunctionalGroup group = new FunctionalGroup(sg.gsTokens, sg.gsRaw, sg.geRaw, txs, gsLoop);
+                FunctionalGroup group = new FunctionalGroup(sg.gsTokens, sg.gsRaw, sg.geRaw, sg.guide.canonicalGs08(),
+                    sg.guide.fileType(), txs, gsLoop);
                 for (int t = 0; t < stLoops.size(); t++) {
                     ScanTransaction st = sg.transactions.get(t);
                     txs.add(new Transaction(stLoops.get(t), st.st01, st.st02, st.st03, List.copyOf(st.segments),
@@ -297,8 +269,35 @@ public final class X12Parse {
             }
             interchanges.add(interchange);
         }
-        return new ParsedFile(List.copyOf(interchanges), seps, canonical, rawGs08, fileType.get(),
-            List.copyOf(errors), synthetic);
+        return new ParsedFile(List.copyOf(interchanges), seps, first.guide.canonicalGs08(), first.gs08(),
+            first.guide.fileType(), List.copyOf(errors), synthetic);
+    }
+
+    /**
+     * One functional group through imsweb as its own interchange; its non-fatal errors are
+     * appended to {@code errors}. Returns the group's {@code GS_LOOP}.
+     */
+    private static Loop parseGroup(Scan scan, ScanInterchange si, ScanGroup sg, List<String> errors)
+            throws X12ParseException {
+        String canonical = sg.guide.canonicalGs08();
+        X12Reader reader;
+        try {
+            reader = new X12Reader(sg.guide.fileType(), new StringReader(scan.imswebText(si, sg, canonical)));
+        } catch (IOException | RuntimeException e) {
+            throw new X12ParseException("parser-failure: imsweb threw " + e, List.of());
+        }
+        errors.addAll(dropClosingSegmentFalsePositives(reader.getErrors(), reader.getLoops()));
+        if (!reader.getFatalErrors().isEmpty()) {
+            throw new X12ParseException("fatal: imsweb could not parse group " + sg.controlNumber() + " as " + canonical
+                + (errors.isEmpty() ? "" : "; errors: " + errors), reader.getFatalErrors());
+        }
+        List<Loop> isaLoops = reader.getLoops();
+        List<Loop> gsLoops = isaLoops.size() == 1 ? childLoops(isaLoops.get(0), "GS_LOOP") : List.of();
+        if (gsLoops.size() != 1) {
+            throw new X12ParseException("structure-mismatch: imsweb produced " + isaLoops.size() + " interchange loop(s) and "
+                + gsLoops.size() + " functional group loop(s) for group " + sg.controlNumber() + ", expected one of each");
+        }
+        return gsLoops.get(0);
     }
 
     private static final Pattern REQUIRED_NOT_FOUND = Pattern.compile("^(\\S+) in loop (\\S+) is required but not found$");
@@ -424,7 +423,7 @@ public final class X12Parse {
         String[] gsTokens;
         String gsRaw;
         String geRaw;
-        int gsIndex;
+        TransactionTypes.Guide guide;
         final List<ScanTransaction> transactions = new ArrayList<>();
 
         String gs08() {
@@ -441,35 +440,43 @@ public final class X12Parse {
         String isaRaw;
         String ieaRaw;
         final List<ScanGroup> groups = new ArrayList<>();
+
+        String controlNumber() {
+            return isaTokens.length > 13 ? isaTokens[13].trim() : "";
+        }
     }
 
     private static final class Scan {
-        final List<String> segments = new ArrayList<>();
         final List<ScanInterchange> interchanges = new ArrayList<>();
         final List<String> errors = new ArrayList<>();
         Separators seps;
 
         /**
-         * True when any GS08, or any ST03 spelling the same guide, is not the canonical id, or
-         * when an ISA11 is a repetition separator imsweb's control map does not list.
+         * One group as the interchange imsweb parses: ISA, GS, the group's ST..SE spans, and the
+         * group's GE and the interchange's IEA when the file has them (imsweb fails a missing IEA,
+         * which is what a truncated file must do). GS08 — and every ST03 that spells the same guide
+         * (imsweb's X223 map lists {@code 005010X223A2} as ST03's only valid code, so a bare
+         * {@code 005010X223} never starts ST_LOOP) — becomes the canonical id, and ISA11 becomes
+         * {@code ^} where imsweb would reject it. The raw segments kept per transaction are never
+         * touched.
          */
-        boolean needsRewrite(String canonical) {
-            for (ScanInterchange i : interchanges) {
-                if (needsIsa11Rewrite(i)) {
-                    return true;
-                }
-                for (ScanGroup g : i.groups) {
-                    if (!canonical.equals(g.gs08())) {
-                        return true;
-                    }
-                    for (ScanTransaction t : g.transactions) {
-                        if (isAliasOf(t.st03, canonical)) {
-                            return true;
-                        }
-                    }
+        String imswebText(ScanInterchange si, ScanGroup sg, String canonical) {
+            StringBuilder sb = new StringBuilder();
+            String term = seps.segment() + seps.lineBreak();
+            sb.append(forImsweb(si.isaRaw, canonical)).append(term);
+            sb.append(forImsweb(sg.gsRaw, canonical)).append(term);
+            for (ScanTransaction t : sg.transactions) {
+                for (String seg : t.segments) {
+                    sb.append(forImsweb(seg, canonical)).append(term);
                 }
             }
-            return false;
+            if (sg.geRaw != null) {
+                sb.append(sg.geRaw).append(term);
+            }
+            if (si.ieaRaw != null) {
+                sb.append(si.ieaRaw).append(term);
+            }
+            return sb.toString();
         }
 
         /**
@@ -478,39 +485,19 @@ public final class X12Parse {
          * starts ISA_LOOP. imsweb never splits repetitions itself, so the character is
          * irrelevant to it; the materializer splits with the file's real {@link Separators}.
          */
-        private boolean needsIsa11Rewrite(ScanInterchange i) {
-            return i.isaTokens.length > 11 && i.isaTokens[11].length() == 1
-                && !"^".equals(i.isaTokens[11]) && !"U".equals(i.isaTokens[11]);
-        }
-
-        /**
-         * The same segments re-joined with every GS08 — and every ST03 that spells the same
-         * guide (imsweb's X223 map lists {@code 005010X223A2} as ST03's only valid code, so a
-         * bare {@code 005010X223} never starts ST_LOOP) — replaced by the canonical id, and
-         * ISA11 replaced by {@code ^} where imsweb would reject it. The raw segments kept per
-         * transaction are never touched.
-         */
-        String rewriteForImsweb(String canonical) {
-            StringBuilder sb = new StringBuilder();
-            String term = seps.segment() + seps.lineBreak();
-            for (String s : segments) {
-                String[] tokens = seps.splitElements(s);
-                if ("ISA".equals(tokens[0]) && tokens.length > 11 && tokens[11].length() == 1
-                        && !"^".equals(tokens[11]) && !"U".equals(tokens[11])) {
-                    tokens[11] = "^";
-                    sb.append(String.join(String.valueOf(seps.element()), tokens));
-                } else if ("GS".equals(tokens[0]) && tokens.length > 8) {
-                    tokens[8] = canonical;
-                    sb.append(String.join(String.valueOf(seps.element()), tokens));
-                } else if ("ST".equals(tokens[0]) && tokens.length > 3 && isAliasOf(tokens[3].trim(), canonical)) {
-                    tokens[3] = canonical;
-                    sb.append(String.join(String.valueOf(seps.element()), tokens));
-                } else {
-                    sb.append(s);
-                }
-                sb.append(term);
+        private String forImsweb(String seg, String canonical) {
+            String[] tokens = seps.splitElements(seg);
+            if ("ISA".equals(tokens[0]) && tokens.length > 11 && tokens[11].length() == 1
+                    && !"^".equals(tokens[11]) && !"U".equals(tokens[11])) {
+                tokens[11] = "^";
+            } else if ("GS".equals(tokens[0]) && tokens.length > 8) {
+                tokens[8] = canonical;
+            } else if ("ST".equals(tokens[0]) && tokens.length > 3 && isAliasOf(tokens[3].trim(), canonical)) {
+                tokens[3] = canonical;
+            } else {
+                return seg;
             }
-            return sb.toString();
+            return String.join(String.valueOf(seps.element()), tokens);
         }
 
         private static boolean isAliasOf(String id, String canonical) {
@@ -519,26 +506,32 @@ public final class X12Parse {
         }
     }
 
-    private static Scan scan(String text, Separators seps) {
+    private static Scan scan(String text, Separators seps) throws X12ParseException {
         Scan scan = new Scan();
         scan.seps = seps;
+        List<String> segments = new ArrayList<>();
         for (String s : text.split(Pattern.quote(String.valueOf(seps.segment())))) {
             String t = s.strip();
             if (!t.isEmpty()) {
-                scan.segments.add(t);
+                segments.add(t);
             }
         }
         ScanInterchange isa = null;
         ScanGroup gs = null;
         ScanTransaction st = null;
-        for (String seg : scan.segments) {
+        for (String seg : segments) {
+            if (isIsa(seg)) {
+                requireSameDelimiters(seg, seps, scan.interchanges.size() + 1);
+            }
             String[] tokens = seps.splitElements(seg);
             String id = tokens[0].toUpperCase(Locale.ROOT);
-            if (st != null) {
-                st.segments.add(seg);
-            }
+            // A transaction set holds ST..SE only: an envelope segment never joins it, or a
+            // transaction missing its SE would carry the next ST/GE/IEA and imsweb would get
+            // that segment twice.
             switch (id) {
                 case "ISA" -> {
+                    closeGroup(scan, gs, st, "ISA");
+                    closeInterchange(scan, isa);
                     isa = new ScanInterchange();
                     isa.isaTokens = tokens;
                     isa.isaRaw = seg;
@@ -547,6 +540,7 @@ public final class X12Parse {
                     st = null;
                 }
                 case "GS" -> {
+                    closeGroup(scan, gs, st, "GS");
                     if (isa == null) {
                         scan.errors.add("GS before ISA");
                         isa = new ScanInterchange();
@@ -561,6 +555,9 @@ public final class X12Parse {
                     st = null;
                 }
                 case "ST" -> {
+                    if (st != null) {
+                        missingSe(scan, st, "ST");
+                    }
                     if (gs == null) {
                         scan.errors.add("ST before GS");
                         gs = new ScanGroup();
@@ -585,51 +582,130 @@ public final class X12Parse {
                     if (st == null) {
                         scan.errors.add("SE without ST");
                     } else {
-                        String se01 = tokens.length > 1 ? tokens[1].trim() : "";
-                        String se02 = tokens.length > 2 ? tokens[2].trim() : "";
-                        try {
-                            int declared = Integer.parseInt(se01);
-                            if (declared != st.segments.size()) {
-                                scan.errors.add("SE01=" + declared + " but ST..SE holds " + st.segments.size()
-                                    + " segments (transaction " + st.st02 + ")");
-                            }
-                        } catch (NumberFormatException e) {
-                            scan.errors.add("SE01 '" + se01 + "' is not a number (transaction " + st.st02 + ")");
+                        st.segments.add(seg);
+                        Integer se01 = count(scan, "SE01", element(tokens, 1), "transaction " + st.st02);
+                        if (se01 != null && se01 != st.segments.size()) {
+                            scan.errors.add("SE01=" + se01 + " but ST..SE holds " + st.segments.size()
+                                + " segments (transaction " + st.st02 + ")");
                         }
-                        if (!se02.equals(st.st02)) {
-                            scan.errors.add("SE02=" + se02 + " != ST02=" + st.st02);
+                        if (!element(tokens, 2).equals(st.st02)) {
+                            scan.errors.add("SE02=" + element(tokens, 2) + " != ST02=" + st.st02);
                         }
                         st = null;
                     }
                 }
                 case "GE" -> {
-                    if (gs != null) {
-                        gs.geRaw = seg;
-                    }
                     if (st != null) {
-                        scan.errors.add("GE inside transaction " + st.st02);
+                        missingSe(scan, st, "GE");
                         st = null;
+                    }
+                    if (gs == null) {
+                        scan.errors.add("GE without GS");
+                    } else {
+                        gs.geRaw = seg;
+                        Integer ge01 = count(scan, "GE01", element(tokens, 1), "group " + gs.controlNumber());
+                        if (ge01 != null && ge01 != gs.transactions.size()) {
+                            scan.errors.add("GE01=" + ge01 + " but group " + gs.controlNumber() + " holds "
+                                + gs.transactions.size() + " transaction sets");
+                        }
+                        if (!element(tokens, 2).equals(gs.controlNumber())) {
+                            scan.errors.add("GE02=" + element(tokens, 2) + " != GS06=" + gs.controlNumber());
+                        }
                     }
                     gs = null;
                 }
                 case "IEA" -> {
-                    if (isa != null) {
+                    closeGroup(scan, gs, st, "IEA");
+                    if (isa == null) {
+                        scan.errors.add("IEA without ISA");
+                    } else {
                         isa.ieaRaw = seg;
+                        Integer iea01 = count(scan, "IEA01", element(tokens, 1), "interchange " + isa.controlNumber());
+                        if (iea01 != null && iea01 != isa.groups.size()) {
+                            scan.errors.add("IEA01=" + iea01 + " but interchange " + isa.controlNumber() + " holds "
+                                + isa.groups.size() + " functional groups");
+                        }
+                        if (!element(tokens, 2).equals(isa.controlNumber())) {
+                            scan.errors.add("IEA02=" + element(tokens, 2) + " != ISA13=" + isa.controlNumber());
+                        }
                     }
                     gs = null;
                     st = null;
                     isa = null;
                 }
                 default -> {
-                    if (st == null && isa != null) {
+                    if (st != null) {
+                        st.segments.add(seg);
+                    } else if (isa != null) {
                         scan.errors.add("segment " + id + " outside any transaction set");
                     }
                 }
             }
         }
-        if (st != null) {
-            scan.errors.add("transaction " + st.st02 + " has no SE");
-        }
+        closeGroup(scan, gs, st, "the end of the file");
+        closeInterchange(scan, isa);
         return scan;
+    }
+
+    /** A segment that opens an interchange, whatever element separator it was written with. */
+    private static boolean isIsa(String seg) {
+        return seg.length() > 3 && seg.regionMatches(true, 0, "ISA", 0, 3) && !Character.isLetterOrDigit(seg.charAt(3));
+    }
+
+    /** Every ISA in a file must declare the first one's delimiters: the segments are split once. */
+    private static void requireSameDelimiters(String seg, Separators seps, int number) throws X12ParseException {
+        Separators declared;
+        try {
+            declared = Separators.fromIsa(seg + seps.segment());
+        } catch (X12ParseException e) {
+            throw new X12ParseException(e.getMessage() + " (interchange " + number + ")");
+        }
+        if (!declared.sameDelimiters(seps)) {
+            throw new X12ParseException("bad-isa: interchange " + number + " declares delimiters element='"
+                + declared.element() + "', repetition='" + declared.repetition() + "', component='"
+                + declared.component() + "' but the file's first ISA declares element='" + seps.element()
+                + "', repetition='" + seps.repetition() + "', component='" + seps.component() + "'");
+        }
+    }
+
+    /**
+     * A transaction set or group still open when {@code next} (the next GS, the IEA, the next
+     * ISA or the end of the file) arrives lacks its SE or GE.
+     */
+    private static void closeGroup(Scan scan, ScanGroup gs, ScanTransaction st, String next) {
+        if (st != null) {
+            missingSe(scan, st, next);
+        }
+        if (gs != null) {
+            scan.errors.add("GS " + gs.controlNumber() + " has no GE");
+        }
+    }
+
+    /**
+     * Non-fatal, like the SE01/SE02 checks: the transaction set still holds every segment it
+     * was sent with, and imsweb does not need SE to close ST_LOOP.
+     */
+    private static void missingSe(Scan scan, ScanTransaction st, String next) {
+        scan.errors.add("missing-se: transaction " + st.st02 + " has no SE before " + next);
+    }
+
+    private static void closeInterchange(Scan scan, ScanInterchange isa) {
+        if (isa != null && isa.ieaRaw == null && !isa.isaRaw.isEmpty()) {
+            scan.errors.add("ISA " + isa.controlNumber() + " has no IEA");
+        }
+    }
+
+    /** A trailer count element (SE01, GE01, IEA01), or null — with an error recorded — when it is not a number. */
+    private static Integer count(Scan scan, String name, String declared, String subject) {
+        try {
+            return Integer.valueOf(declared);
+        } catch (NumberFormatException e) {
+            scan.errors.add(name + " '" + declared + "' is not a number (" + subject + ")");
+            return null;
+        }
+    }
+
+    private static String element(String[] tokens, int n) {
+        return tokens.length > n ? tokens[n].trim() : "";
     }
 }

@@ -1,12 +1,16 @@
 package com.zerobias.module.x12.producer;
 
+import com.zerobias.module.x12.ModuleRuntimeConfig;
 import com.zerobias.module.x12.PollerHandle;
+import com.zerobias.module.x12.SourceConfig;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.FileRow;
 import com.zerobias.module.x12.buffer.FileStatus;
+import com.zerobias.module.x12.buffer.RetentionConfig;
 import com.zerobias.module.x12.buffer.TestRows;
 import com.zerobias.module.x12.buffer.TransactionRow;
 import com.zerobias.module.x12.health.PollerStatus;
+import com.zerobias.module.x12.health.SourceStatuses;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -31,6 +35,9 @@ import static com.zerobias.module.x12.buffer.TestRows.FILE_B;
  * FILE_B  source=sftp   837P  gs08=005010X222A1  sender=CLINIC  gs 2 / st 0001
  *                       837P  gs08=005010X222    sender=CLINIC  gs 3 / st 0001    (bytes GONE from disk)
  * </pre>
+ *
+ * Source {@code inbox} watches {@code dir} (where FILE_A's {@code .done} lies), {@code sftp}
+ * watches {@code dir/sftp}.
  */
 final class ProducerFixture {
 
@@ -39,16 +46,33 @@ final class ProducerFixture {
     static final String GS08_837P_ALT = "005010X222";
     static final String SCHEMA_837P_ALT = "schema:table:x12." + GS08_837P_ALT + ".837P";
 
-    static final String KEY_A1 = FILE_A + ":1:0001";
-    static final String KEY_A2 = FILE_A + ":1:0002";
-    static final String KEY_A3 = FILE_A + ":1:0003";
-    static final String KEY_B1 = FILE_B + ":2:0001";
-    static final String KEY_B2 = FILE_B + ":3:0001";
+    static final String KEY_A1 = TestRows.key(FILE_A, "1", "0001");
+    static final String KEY_A2 = TestRows.key(FILE_A, "1", "0002");
+    static final String KEY_A3 = TestRows.key(FILE_A, "1", "0003");
+    static final String KEY_B1 = TestRows.key(FILE_B, "2", "0001");
+    static final String KEY_B2 = TestRows.key(FILE_B, "3", "0001");
+
+    /** Recasts nothing: every row reproduces what it stores. */
+    static final RecastHook REPRODUCES = row -> Optional.empty();
 
     private ProducerFixture() {
     }
 
-    /** Seed {@code buffer}; FILE_A's bytes are written under {@code dir}, FILE_B's point at a missing path. */
+    /** The two watched sources of the seeded buffer. */
+    static ModuleRuntimeConfig config(Path dir) {
+        return new ModuleRuntimeConfig(List.of(
+                new SourceConfig("inbox", dir.toString(), "*", 1, 0),
+                new SourceConfig("sftp", dir.resolve("sftp").toString(), "*", 1, 0)),
+            ".done", ".error", false, RetentionConfig.none(), false, ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES);
+    }
+
+    static X12ProducerFacade facade(BufferStore buffer, SchemaRegistry schemas, StubPoller poller, Path dir,
+                                    RecastHook recaster) {
+        return new X12ProducerFacade(buffer, new ObjectTree(buffer, schemas, poller, config(dir)), schemas,
+            new X12Operations(buffer, poller, schemas, recaster));
+    }
+
+    /** Seed {@code buffer}; FILE_A's bytes are written under {@code dir}, FILE_B's point at a missing file in {@code dir/sftp}. */
     static void seed(BufferStore buffer, Path dir) throws SQLException, IOException {
         Path aDone = dir.resolve("remit-a.835.done");
         Files.write(aDone, FILE_A_BYTES);
@@ -62,7 +86,7 @@ final class ProducerFixture {
         List<TransactionRow> b = new ArrayList<>();
         b.add(TestRows.tx(FILE_B, "sftp", "2", "0001", 30, "005010X222A1", "837P", TestRows.SCHEMA_837P, "CLINIC"));
         b.add(TestRows.tx(FILE_B, "sftp", "3", "0001", 40, GS08_837P_ALT, "837P", SCHEMA_837P_ALT, "CLINIC"));
-        buffer.consumeFile(file(FILE_B, "sftp", dir.resolve("claims-b.837.done").toString(), "sha-b",
+        buffer.consumeFile(file(FILE_B, "sftp", dir.resolve("sftp").resolve("claims-b.837.done").toString(), "sha-b",
             FileStatus.CONSUMED, 2, BASE.plusSeconds(30)), b);
     }
 
@@ -117,7 +141,7 @@ final class ProducerFixture {
 
         @Override
         public List<PollerStatus.SourceStatus> sources() {
-            return List.of(new PollerStatus.SourceStatus("inbox", inboxDir.toString(), true, 0, 0));
+            return List.of(SourceStatuses.idle("inbox", inboxDir.toString(), true, 0, 0));
         }
     }
 }

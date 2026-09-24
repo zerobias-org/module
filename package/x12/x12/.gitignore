@@ -14,10 +14,6 @@ java/src/main/resources/schemas/
 java/src/main/resources/structure-index/
 java/src/main/resources/packs.json
 
-# x12.org example transmissions — fetched locally by java/scripts/fetch-x12org-examples.py,
-# NEVER committed (X12 IP: reproduction requires ASC X12 consent; linking is permitted).
-java/src/test/resources/x12org/
-
 # Ephemeral build artifacts
 eslint.config.js
 eslint.config.mjs

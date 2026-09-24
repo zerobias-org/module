@@ -25,9 +25,10 @@ class PackCatalogTest {
         PackCatalog catalog = PackCatalog.fromClasspath();
         assertFalse(catalog.packs().isEmpty(), "packs.json ships in the jar");
 
-        // One pack per guide label (canonical ids and aliases alike), plus codes and core.
+        // One pack per canonical guide, plus codes and core. A GS08 alias resolves to its
+        // canonical guide via guides.txt before any lookup, so it gets no pack of its own.
         assertTrue(catalog.guides().contains("005010X221A1"), "the 835 guide");
-        assertTrue(catalog.guides().contains("005010X231"), "an alias label gets its own pack");
+        assertFalse(catalog.guides().contains("005010X231"), "an alias label has no pack of its own");
         assertNotNull(find(catalog, "x12-codes"), "code sets are their own pack (quarterly cadence)");
         assertNotNull(find(catalog, PackCatalog.CORE_PACK), "the receiver's own schemas");
 
@@ -58,12 +59,14 @@ class PackCatalogTest {
     }
 
     @Test
-    void aliasPacksPointBackAtTheirCanonicalGuide() {
-        PackCatalog.Pack alias = find(PackCatalog.fromClasspath(), "x12-guide-005010X231");
-        assertNotNull(alias);
-        assertEquals("005010X231", alias.gs08());
-        assertEquals("005010X231A1", alias.aliasOf());
-        assertEquals("999", alias.transactionType());
+    void aliasLabelsResolveToTheirCanonicalGuidePack() {
+        PackCatalog catalog = PackCatalog.fromClasspath();
+        assertNull(find(catalog, "x12-guide-005010X231"), "the alias label X231 gets no pack of its own");
+        PackCatalog.Pack canonical = find(catalog, "x12-guide-005010X231A1");
+        assertNotNull(canonical, "it resolves to X231A1 via guides.txt");
+        assertEquals("005010X231A1", canonical.gs08());
+        assertNull(canonical.aliasOf(), "the canonical label");
+        assertEquals("999", canonical.transactionType());
     }
 
     @Test

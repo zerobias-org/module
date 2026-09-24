@@ -165,6 +165,66 @@ class X12ApiServerTest {
     }
 
     @Test
+    void fileManagementIsRefusedByDefaultAndServedOnceTheConfigFlagIsSet() throws Exception {
+        String inboxSource = ObjectTree.RECEIVER + "/inbox/inbox";
+        String upload = "/connections/c1/BinaryApi.uploadBinaryContent?objectId="
+            + java.net.URLEncoder.encode(inboxSource, StandardCharsets.UTF_8) + "&fileName=up.835";
+
+        // default config: receive-only — refused as an unsupported operation, nothing written
+        HttpResponse<String> refused = post(upload, "ISA*raw~");
+        assertEquals(400, refused.statusCode(), refused.body());
+        assertEquals("err.unsupported.operation", json(refused).get("key").getAsString());
+        assertFalse(Files.exists(dir.resolve("inbox").resolve("up.835")));
+        for (String op : List.of("uploadBinaryContent", "BinaryApi.uploadBinaryContent", "createChildObject",
+                "ObjectsApi.deleteObject", "BinaryApi.uploadBinary")) {
+            assertFalse(json(get("/connections/c1/isSupported/" + op)).get("supported").getAsBoolean(), op);
+        }
+
+        // config.allowFileManagement=true: raw and base64-envelope uploads land, isSupported says so
+        app.stop();
+        ModuleRuntimeConfig open = new ModuleRuntimeConfig(
+            List.of(new SourceConfig("inbox", dir.resolve("inbox").toString(), "*", 1, 0)),
+            ".done", ".error", false, RetentionConfig.none(), false, ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES, true);
+        server = new X12ApiServer(buffer, null, pollers, new HealthCheck(buffer, pollers),
+            X12ApiServer.buildFacade(buffer, open, pollers));
+        app = server.app().start(0);
+        assertEquals(200, post("/connections", "{\"connectionId\":\"c1\"}").statusCode());
+        for (String op : List.of("uploadBinaryContent", "BinaryApi.uploadBinaryContent", "ObjectsApi.createChildObject",
+                "deleteObject")) {
+            assertTrue(json(get("/connections/c1/isSupported/" + op)).get("supported").getAsBoolean(), op);
+        }
+        assertFalse(json(get("/connections/c1/isSupported/BinaryApi.uploadBinary")).get("supported").getAsBoolean(),
+            "no aliases");
+
+        HttpResponse<String> created = post(upload, "ISA*raw~");
+        assertEquals(201, created.statusCode(), created.body());
+        assertEquals(inboxSource + "/up.835", json(created).get("id").getAsString());
+        assertEquals("ISA*raw~", Files.readString(dir.resolve("inbox").resolve("up.835")));
+
+        HttpResponse<String> enveloped = post("/connections/c1/BinaryApi.uploadBinaryContent", argMap(Map.of(
+            "objectId", inboxSource, "fileName", "b64.835",
+            "contentBase64", java.util.Base64.getEncoder().encodeToString("ISA*b64~".getBytes(StandardCharsets.UTF_8)))));
+        assertEquals(201, enveloped.statusCode(), enveloped.body());
+        assertEquals("ISA*b64~", Files.readString(dir.resolve("inbox").resolve("b64.835")));
+
+        HttpResponse<byte[]> live = HTTP.send(HttpRequest.newBuilder(uri("/connections/c1/BinaryApi.downloadBinary"))
+                .POST(HttpRequest.BodyPublishers.ofString(argMap(Map.of("objectId", inboxSource + "/up.835")))).build(),
+            HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200, live.statusCode());
+        assertEquals("ISA*raw~", new String(live.body(), StandardCharsets.UTF_8), "live /inbox bytes are streamed");
+        assertEquals("8", live.headers().firstValue("Content-Length").orElse(null));
+
+        HttpResponse<String> deleted = post("/connections/c1/ObjectsApi.deleteObject",
+            argMap(Map.of("objectId", inboxSource + "/b64.835", "recursive", false)));
+        assertEquals(200, deleted.statusCode(), deleted.body());
+        assertFalse(Files.exists(dir.resolve("inbox").resolve("b64.835")));
+        HttpResponse<String> recursive = post("/connections/c1/ObjectsApi.deleteObject",
+            argMap(Map.of("objectId", inboxSource + "/up.835", "recursive", true)));
+        assertEquals(400, recursive.statusCode());
+        assertEquals("err.unsupported.operation", json(recursive).get("key").getAsString());
+    }
+
+    @Test
     void shutdownStopsServingBeforeClosingPollersAndBuffer() {
         server.shutdown(app);
         assertEquals(List.of("server stopped", "buffer open"), pollers.atClose,

@@ -64,7 +64,8 @@ public record ModuleRuntimeConfig(
         boolean fullDurability,
         RetentionConfig retention,
         boolean allowBareTransactionSets,
-        long maxFileBytes) {
+        long maxFileBytes,
+        boolean allowFileManagement) {
 
     private static final Logger LOG = LoggerFactory.getLogger(ModuleRuntimeConfig.class);
     private static final Gson GSON = new Gson();
@@ -87,7 +88,7 @@ public record ModuleRuntimeConfig(
     public static final long MAX_MAX_FILE_BYTES = 128L * 1024 * 1024;
 
     private static final Set<String> KEYS = Set.of("sources", "consumedSuffix", "errorSuffix", "ackDurability",
-        "maxFileBytes", "retention", "allowBareTransactionSets");
+        "maxFileBytes", "retention", "allowBareTransactionSets", "allowFileManagement");
     private static final Set<String> SOURCE_KEYS = Set.of("name", "path", "pattern", "pollIntervalSec", "stableForSec");
     private static final Set<String> RETENTION_KEYS = Set.of("maxBytes", "maxAge");
 
@@ -106,13 +107,20 @@ public record ModuleRuntimeConfig(
         }
     }
 
+    /** A receive-only config: {@code allowFileManagement} off, as every deployment starts. */
+    public ModuleRuntimeConfig(List<SourceConfig> sources, String consumedSuffix, String errorSuffix,
+            boolean fullDurability, RetentionConfig retention, boolean allowBareTransactionSets, long maxFileBytes) {
+        this(sources, consumedSuffix, errorSuffix, fullDurability, retention, allowBareTransactionSets, maxFileBytes,
+            false);
+    }
+
     /** The image defaults (mirror {@code runtimeConfig.yml} minus retention, which is unbounded). */
     public static ModuleRuntimeConfig defaults() {
         return new ModuleRuntimeConfig(
             List.of(new SourceConfig(DEFAULT_SOURCE_NAME, DEFAULT_SOURCE_PATH, DEFAULT_SOURCE_PATTERN,
                 SourceConfig.DEFAULT_POLL_INTERVAL_SEC, SourceConfig.DEFAULT_STABLE_FOR_SEC)),
             DEFAULT_CONSUMED_SUFFIX, DEFAULT_ERROR_SUFFIX, true, RetentionConfig.none(), false,
-            DEFAULT_MAX_FILE_BYTES);
+            DEFAULT_MAX_FILE_BYTES, false);
     }
 
     /** Resolve from the process env and the image's runtimeConfig.yml location. */
@@ -169,7 +177,9 @@ public record ModuleRuntimeConfig(
         RetentionConfig retention = obj.has("retention") ? parseRetention(obj.get("retention")) : RetentionConfig.none();
         boolean bare = obj.has("allowBareTransactionSets")
             && bool(obj.get("allowBareTransactionSets"), "allowBareTransactionSets");
-        return new ModuleRuntimeConfig(sources, consumed, error, full, retention, bare, maxFileBytes);
+        boolean fileManagement = obj.has("allowFileManagement")
+            && bool(obj.get("allowFileManagement"), "allowFileManagement");
+        return new ModuleRuntimeConfig(sources, consumed, error, full, retention, bare, maxFileBytes, fileManagement);
     }
 
     /**

@@ -77,9 +77,14 @@ class ModuleRuntimeConfigTest {
     void fileManagementIsOnlyEnabledByALiteralTrue() {
         // A typo, a string, or a missing key must all leave the write surface shut: this is
         // the flag that decides whether an API caller can put files on the volume.
-        for (String s : new String[] {"{}", "{\"allowFileManagement\":false}", "{\"allowFileManagement\":\"true\"}",
-                "{\"allowFileManagement\":1}", "{\"allowFileManagment\":true}", "{\"allowFileManagement\":null}"}) {
+        for (String s : new String[] {"{}", "{\"allowFileManagement\":false}"}) {
             assertFalse(ModuleRuntimeConfig.parse(s).allowFileManagement(), s);
+        }
+        // Config is fail-fast here: a wrong-typed value or a misspelt key stops the boot, so
+        // the write surface never opens on one (it never opens at all).
+        for (String s : new String[] {"{\"allowFileManagement\":\"true\"}", "{\"allowFileManagement\":1}",
+                "{\"allowFileManagment\":true}", "{\"allowFileManagement\":null}"}) {
+            assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse(s), s);
         }
         assertTrue(ModuleRuntimeConfig.parse("{\"allowFileManagement\":true}").allowFileManagement());
     }

@@ -1,20 +1,25 @@
 package com.zerobias.module.x12.producer;
 
 import com.zerobias.module.x12.SourceConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -50,7 +55,9 @@ import java.util.UUID;
  */
 final class InboxFiles {
 
-    static final String INBOX = ObjectTreeApi.RECEIVER + "/inbox";
+    private static final Logger LOG = LoggerFactory.getLogger(InboxFiles.class);
+
+    static final String INBOX = ObjectTree.RECEIVER + "/inbox";
     private static final String PREFIX = INBOX + "/";
 
     /** What the poller will do with a file at this path, derived from config (never cached). */
@@ -64,9 +71,9 @@ final class InboxFiles {
     private final String errorSuffix;
 
     InboxFiles(List<SourceConfig> sources, String consumedSuffix, String errorSuffix) {
-        this.sources = sources == null ? List.of() : List.copyOf(sources);
-        this.consumedSuffix = consumedSuffix;
-        this.errorSuffix = errorSuffix;
+        this.sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
+        this.consumedSuffix = Objects.requireNonNull(consumedSuffix, "consumedSuffix");
+        this.errorSuffix = Objects.requireNonNull(errorSuffix, "errorSuffix");
     }
 
     /** Whether {@code id} addresses the inbox branch (its root or anything under it). */
@@ -113,7 +120,7 @@ final class InboxFiles {
                 }
             }
         } catch (IOException e) {
-            throw ProducerException.illegalArgument("Cannot list " + id + ": " + e);
+            throw ioFailure("list", id, e);
         }
         // Directories first, then files, each alphabetical — a stable order for a live readdir.
         entries.sort(Comparator.comparing((Path p) -> Files.isDirectory(p) ? 0 : 1)
@@ -124,20 +131,28 @@ final class InboxFiles {
         return out;
     }
 
+    /**
+     * Where a live file's bytes are, for the HTTP layer to stream (DESIGN §2.8/§2.9) — never
+     * the bytes themselves. The final component is stat'ed without following links and
+     * {@link BinaryContent#open} opens it the same way, so a symlink planted (or swapped in)
+     * at the name is never followed out of the source directory.
+     */
     BinaryContent downloadBinary(String id) {
         Node n = resolve(id);
-        if (!Files.isRegularFile(n.path())) {
-            if (Files.isDirectory(n.path())) {
-                throw ProducerException.unsupported("Object is not a binary: " + id);
-            }
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(n.path(), BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException e) {
             throw ProducerException.noSuchObject(id);
         }
-        try {
-            return new BinaryContent(Files.readAllBytes(n.path()), BinaryContent.MIME_X12,
-                n.path().getFileName().toString());
-        } catch (IOException e) {
-            throw ProducerException.illegalArgument("Cannot read " + id + ": " + e);
+        if (attrs.isDirectory()) {
+            throw ProducerException.unsupported("Object is not a binary: " + id);
         }
+        if (!attrs.isRegularFile()) {
+            throw ProducerException.noSuchObject(id);
+        }
+        return new BinaryContent(id, n.path(), attrs.size(), BinaryContent.MIME_X12,
+            n.path().getFileName().toString());
     }
 
     // --- write surface (gated by config.allowFileManagement) ----------------
@@ -171,7 +186,7 @@ final class InboxFiles {
             } catch (IOException ignore) {
                 // best effort; a leftover dotfile is invisible to the poller and to browse
             }
-            throw ProducerException.illegalArgument("Cannot write " + name + " to " + parentId + ": " + e);
+            throw ioFailure("write " + name + " into", parentId, e);
         }
         String id = parentId + "/" + ObjectTree.encodeSegment(name);
         return fileNode(id, new Node(parent.source(), target, false));
@@ -187,7 +202,7 @@ final class InboxFiles {
         } catch (FileAlreadyExistsException e) {
             throw ProducerException.illegalArgument("Already exists: " + dir);
         } catch (IOException e) {
-            throw ProducerException.illegalArgument("Cannot create " + dir + " under " + parentId + ": " + e);
+            throw ioFailure("create " + dir + " under", parentId, e);
         }
         String id = parentId + "/" + ObjectTree.encodeSegment(dir);
         return dirNode(id, new Node(parent.source(), target, false));
@@ -218,8 +233,14 @@ final class InboxFiles {
             throw ProducerException.illegalArgument(
                 "Directory is not empty: " + id + " (delete its children first)");
         } catch (IOException e) {
-            throw ProducerException.illegalArgument("Cannot delete " + id + ": " + e);
+            throw ioFailure("delete", id, e);
         }
+    }
+
+    /** A filesystem failure the caller cannot act on: logged here, answered as a generic 500. */
+    private static ProducerException ioFailure(String action, String id, IOException e) {
+        LOG.error("inbox: cannot {} {}", action, id, e);
+        return ProducerException.unexpected();
     }
 
     // --- resolution ---------------------------------------------------------

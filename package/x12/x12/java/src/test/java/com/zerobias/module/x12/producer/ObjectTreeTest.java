@@ -77,9 +77,10 @@ class ObjectTreeTest {
         assertEquals(R, item(rootKids, 0).get("id").getAsString());
 
         JsonObject kids = page(facade.getChildren(R, 1, 100));
-        assertEquals(8, kids.get("count").getAsInt());
-        assertEquals(List.of("files", "transactions", "by-type", "by-version", "by-sender", "by-source", "stats", "ops"),
-            names(kids));
+        assertEquals(9, kids.get("count").getAsInt());
+        assertEquals(List.of("files", "inbox", "transactions", "by-type", "by-version", "by-sender", "by-source",
+                "stats", "ops"),
+            names(kids), "/inbox (live volume) sits next to /files (the consumed projection)");
         assertEquals(1, kids.get("pageNumber").getAsInt(), "1-based on the wire");
 
         JsonObject all = item(kids, 2);
@@ -92,8 +93,8 @@ class ObjectTreeTest {
         assertEquals("schema:shared:x12.receiver-stats", stats.get("documentSchema").getAsString());
 
         JsonObject second = page(facade.getChildren(R, 2, 3));
-        assertEquals(List.of("by-version", "by-sender", "by-source"), names(second), "in-memory page 2 of size 3");
-        assertEquals(8, second.get("count").getAsInt());
+        assertEquals(List.of("by-type", "by-version", "by-sender"), names(second), "in-memory page 2 of size 3");
+        assertEquals(9, second.get("count").getAsInt());
 
         assertEquals(404, assertThrows(ProducerException.class, () -> facade.getObject(R + "/nope")).httpStatus());
         assertEquals(404, assertThrows(ProducerException.class, () -> facade.getChildren(R + "/nope", 1, 10)).httpStatus());
@@ -102,7 +103,8 @@ class ObjectTreeTest {
     @Test
     void opsFunctionsDeclareOnlyTheErrorsTheyRaise() throws Exception {
         JsonObject ops = page(facade.getChildren(R + "/ops", 1, 100));
-        assertEquals(List.of("take", "ack", "release", "replay", "recast", "purge", "raw", "validate", "rescan"), names(ops));
+        assertEquals(List.of("take", "ack", "release", "replay", "recast", "purge", "raw", "validate", "rescan",
+            "packs"), names(ops));
         JsonObject take = item(ops, 0);
         assertEquals(List.of("function"), classes(take));
         assertEquals("schema:function:x12.ops.take:input", take.get("inputSchema").getAsString());
@@ -444,15 +446,14 @@ class ObjectTreeTest {
             new String[] {"CollectionsApi.updateCollectionElement", coll},
             new String[] {"CollectionsApi.deleteCollectionElement", coll},
             new String[] {"CollectionsApi.executeBulkOperations", coll},
-            new String[] {"DocumentsApi.updateDocumentData", R + "/stats"},
-            new String[] {"BinaryApi.uploadBinaryContent", R + "/files/" + ObjectTree.encodeSegment(FILE_A)});
+            new String[] {"DocumentsApi.updateDocumentData", R + "/stats"});
         for (String[] w : writes) {
             Map<String, Object> args = Map.of("objectId", w[1], "elementKey", "k", "element", Map.of());
             ProducerException e = assertThrows(ProducerException.class,
                 () -> OperationRouter.executeOperation(facade, w[0], args), w[0]);
             assertEquals(400, e.httpStatus(), w[0]);
             assertEquals("err.unsupported.operation", e.key(), w[0]);
-            assertFalse(OperationRouter.isSupported(w[0]), w[0]);
+            assertFalse(OperationRouter.isSupported(w[0], false), w[0]);
         }
 
         // Upload is not a JSON op at all: its body is bytes, so the router refuses it as a

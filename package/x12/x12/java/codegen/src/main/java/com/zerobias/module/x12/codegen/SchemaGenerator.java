@@ -127,8 +127,10 @@ public final class SchemaGenerator {
             final StructureWalker.Generated gen = w.emit();
             gen.table.properties.addAll(SharedSchemas.envelopeProperties());
 
+            // Wire-level GS08 aliases resolve to the canonical guide before any lookup
+            // (guides.txt), so every guide pack is canonical and none is an alias.
             currentPack = newPack("x12-guide-" + w.gs08(), SchemaIds.CATALOG + "." + w.gs08() + ".*")
-                .guide(w.gs08(), gen.index.aliasOf, w.transactionType(),
+                .guide(w.gs08(), null, w.transactionType(),
                     "structure-index/" + w.gs08() + ".json");
 
             final Path guideRoot = outputDir.resolve("schemas").resolve(w.gs08());

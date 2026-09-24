@@ -88,14 +88,14 @@ describeModule<X12>('X12 Receiver Module', (client) => {
       expect(children.count).to.equal(1);
     });
 
-    it('getChildren(/x12-receiver) lists the folders, the /transactions collection and /stats', async () => {
+    it('getChildren(/x12-receiver) lists the folders, the live /inbox, the /transactions collection and /stats', async () => {
       const receiver = await client.getObjectsApi().getObject(RECEIVER);
       expect(names(receiver.objectClass)).to.deep.equal(['container']);
 
       const children = await client.getObjectsApi().getChildren(RECEIVER);
       const byId = new Map(children.items.map((o) => [o.id, o]));
       expect([...byId.keys()]).to.have.members(
-        ['files', 'transactions', 'by-type', 'by-version', 'by-sender', 'by-source', 'stats', 'ops']
+        ['files', 'inbox', 'transactions', 'by-type', 'by-version', 'by-sender', 'by-source', 'stats', 'ops']
           .map((n) => `${RECEIVER}/${n}`));
       expect(children.count).to.equal(children.items.length);
       expect(names(byId.get(ALL_TX)?.objectClass)).to.deep.equal(['collection']);
@@ -116,7 +116,7 @@ describeModule<X12>('X12 Receiver Module', (client) => {
     it('/ops lists the drain and maintenance functions with their schemas', async () => {
       const fns = await allChildren(client, OPS);
       expect(fns.map((f) => f.name)).to.deep.equal(
-        ['take', 'ack', 'release', 'replay', 'recast', 'purge', 'raw', 'validate', 'rescan']);
+        ['take', 'ack', 'release', 'replay', 'recast', 'purge', 'raw', 'validate', 'rescan', 'packs']);
       for (const f of fns) {
         expect(names(f.objectClass)).to.deep.equal(['function']);
         expect(f.inputSchema).to.equal(`schema:function:x12.ops.${f.name}:input`);

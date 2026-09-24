@@ -34,6 +34,7 @@ import java.util.stream.Stream;
  * └─ /x12-receiver               container
  *    ├─ /files                   container → /files/&lt;fileId&gt; ["container","document","binary"]
  *    │                                       → /files/&lt;fileId&gt;/transactions  collection (envelope)
+ *    ├─ /inbox                   container → the live volume, never cached ({@link InboxFiles}, DESIGN §2.9)
  *    ├─ /transactions            collection (all rows, envelope schema)
  *    ├─ /by-type                 container → /by-type/&lt;TS&gt; container → /by-type/&lt;TS&gt;/&lt;GS08&gt; collection
  *    ├─ /by-version              container → /by-version/&lt;GS08&gt;     collection (envelope)
@@ -97,13 +98,16 @@ public final class ObjectTree {
     private final PollerStatus poller;
     private final List<SourceConfig> sources;
     private final String consumedSuffix;
+    private final InboxFiles inbox;
 
     /**
      * @param schemas used to pick a guide-bound {@code schema:table} for a {@code /by-type}
      *                collection (falls back to the envelope when that guide is not bundled)
      * @param poller  the live poller state behind {@code /stats}
      * @param config  the watched sources — {@code downloadBinary} serves only files inside
-     *                them — and the consumed suffix counted in {@code /stats}
+     *                them, and they become the live {@code /inbox/<source>} branch
+     *                ({@link InboxFiles}) — and the consumed/error suffixes ({@code /stats}
+     *                counts, the {@code ingest} field on live file nodes)
      */
     public ObjectTree(BufferStore buffer, SchemaRegistry schemas, PollerStatus poller, ModuleRuntimeConfig config) {
         this.buffer = Objects.requireNonNull(buffer, "buffer");
@@ -112,6 +116,7 @@ public final class ObjectTree {
         Objects.requireNonNull(config, "config");
         this.sources = config.sources();
         this.consumedSuffix = config.consumedSuffix();
+        this.inbox = new InboxFiles(config.sources(), config.consumedSuffix(), config.errorSuffix());
     }
 
     // --- id encoding ---------------------------------------------------------
@@ -384,7 +389,8 @@ public final class ObjectTree {
                 out.add(object(RECEIVER));
                 return out;
             case RECEIVER:
-                for (String child : List.of(FILES, TRANSACTIONS, BY_TYPE, BY_VERSION, BY_SENDER, BY_SOURCE, STATS, OPS)) {
+                for (String child : List.of(FILES, InboxFiles.INBOX, TRANSACTIONS, BY_TYPE, BY_VERSION, BY_SENDER,
+                        BY_SOURCE, STATS, OPS)) {
                     out.add(object(child));
                 }
                 return out;
@@ -642,7 +648,6 @@ public final class ObjectTree {
      * emergent branches reject it — {@code /files} is a projection of the buffer, so
      * "uploading" into it would mean inventing a consumed file that never arrived.
      */
-    @Override
     public Map<String, Object> uploadBinary(String id, String fileName, byte[] bytes) throws SQLException {
         if (InboxFiles.owns(id)) {
             return inbox.upload(id, fileName, bytes);
@@ -653,7 +658,6 @@ public final class ObjectTree {
     }
 
     /** {@code createChildObject}: mkdir under a live {@code /inbox} container. */
-    @Override
     public Map<String, Object> createChildContainer(String id, String name) throws SQLException {
         if (InboxFiles.owns(id)) {
             return inbox.mkdir(id, name);
@@ -664,7 +668,6 @@ public final class ObjectTree {
     }
 
     /** {@code deleteObject}: unlink a live file or remove an empty live directory. */
-    @Override
     public void deleteObject(String id) throws SQLException {
         if (InboxFiles.owns(id)) {
             inbox.delete(id);

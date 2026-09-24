@@ -49,7 +49,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@code GET  /connections/{id}/metadata} — connection metadata</li>
  *   <li>{@code GET  /connections/{id}/isSupported/{operationId}}</li>
  *   <li>{@code POST /connections/{id}/{method}} — dispatch via {@link OperationRouter};
- *       {@code BinaryApi.downloadBinary} streams the file bytes (DESIGN §2.8)</li>
+ *       {@code BinaryApi.downloadBinary} streams the file bytes (DESIGN §2.8) and
+ *       {@code BinaryApi.uploadBinaryContent} takes them as the request body (DESIGN §2.9)</li>
  *   <li>{@code GET  /healthz} — daemon health probe (DESIGN §9)</li>
  * </ul>
  *
@@ -64,15 +65,6 @@ public final class X12ApiServer {
 
     /** Profile fields safe to log/display (the profile is informational; the daemon never reads it). */
     private static final Set<String> NONSENSITIVE_PROFILE_FIELDS = Set.of("ackDurability");
-
-    /** Data-write operations this receiver never supports: transactions arrive as inbox files. */
-    private static final Set<String> NEVER_SUPPORTED = Set.of(
-        "updateObject", "addCollectionElement", "updateCollectionElement",
-        "deleteCollectionElement", "executeBulkOperations", "updateDocumentData", "updateDocument");
-
-    /** File-management operations, supported only when {@code config.allowFileManagement} is set. */
-    private static final Set<String> FILE_MANAGEMENT = Set.of(
-        "uploadBinaryContent", "uploadBinary", "createChildObject", "deleteObject");
 
     private final Map<String, String> connections = new ConcurrentHashMap<>();
     private final BufferStore buffer;
@@ -187,8 +179,9 @@ public final class X12ApiServer {
         ObjectTree tree = new ObjectTree(buffer, schemas, pollers, mc);
         X12Operations ops = new X12Operations(buffer, pollers, schemas,
             new MaterializerRecastHook(new StructureResolver(), Clock.systemUTC()));
-        LOG.info("Producer: {} schema(s)", schemas.size());
-        return new X12ProducerFacade(buffer, tree, schemas, ops);
+        LOG.info("Producer: {} schema(s), fileManagement={}", schemas.size(), mc.allowFileManagement()
+            ? "ENABLED (uploads/mkdir/delete accepted under /inbox)" : "disabled (receive-only)");
+        return new X12ProducerFacade(buffer, tree, schemas, ops, mc.allowFileManagement());
     }
 
     private void registerRoutes(Javalin app) {
@@ -225,13 +218,20 @@ public final class X12ApiServer {
         app.get("/connections/{connectionId}/isSupported/{operationId}", ctx -> {
             requireConnection(ctx.pathParam("connectionId"));
             JsonObject body = new JsonObject();
-            body.addProperty("supported", OperationRouter.isSupported(ctx.pathParam("operationId")));
+            body.addProperty("supported",
+                OperationRouter.isSupported(ctx.pathParam("operationId"), facade.fileManagementEnabled()));
             ctx.result(body.toString());
         });
 
         app.post("/connections/{connectionId}/{method}", ctx -> {
             requireConnection(ctx.pathParam("connectionId"));
             String method = ctx.pathParam("method");
+            if (OperationRouter.isBinaryUpload(method)) {
+                // DESIGN §2.9: the request body can be the file's bytes, so this one op cannot
+                // read its arguments from the JSON argMap envelope up front.
+                ctx.status(201).contentType("application/json").result(upload(ctx));
+                return;
+            }
             Object args = parseBody(ctx).get("argMap");
             if (args != null && !(args instanceof Map)) {
                 throw ProducerException.illegalArgument("argMap must be a JSON object");
@@ -252,6 +252,53 @@ public final class X12ApiServer {
                .contentType("application/json")
                .result(GSON.toJson(health.status()));
         });
+    }
+
+    /**
+     * {@code BinaryApi.uploadBinaryContent} (DESIGN §2.9). Two intakes, because the RPC
+     * envelope has nowhere to put raw bytes:
+     * <ul>
+     *   <li><b>raw</b> — the body is the file, {@code ?objectId=&fileName=} carry the
+     *       arguments. Symmetric with download (JSON in, bytes out) and the only form that
+     *       does not inflate a large interchange by a third.</li>
+     *   <li><b>JSON envelope</b> — {@code {"argMap":{"objectId":…,"fileName":…,
+     *       "contentBase64":…}}}, for an invoker that can only speak the uniform envelope.</li>
+     * </ul>
+     * Returns the new file's object metadata as the interface's {@code 201} body.
+     */
+    private String upload(Context ctx) throws Exception {
+        String objectId = ctx.queryParam("objectId");
+        String fileName = ctx.queryParam("fileName");
+        byte[] bytes;
+        if (objectId != null && !objectId.isBlank()) {
+            bytes = ctx.bodyAsBytes();
+        } else {
+            Object args = parseBody(ctx).get("argMap");
+            if (!(args instanceof Map)) {
+                throw ProducerException.illegalArgument(
+                    "uploadBinaryContent needs either raw bytes with ?objectId=&fileName=, "
+                    + "or an argMap carrying objectId, fileName and contentBase64");
+            }
+            Map<String, Object> argMap = castMap(args);
+            objectId = asString(argMap.get("objectId"));
+            fileName = fileName != null ? fileName : asString(argMap.get("fileName"));
+            Object encoded = argMap.get("contentBase64");
+            if (encoded == null) {
+                throw ProducerException.illegalArgument(
+                    "uploadBinaryContent needs either raw bytes with ?objectId=&fileName=, "
+                    + "or an argMap carrying objectId, fileName and contentBase64");
+            }
+            try {
+                bytes = Base64.getDecoder().decode(encoded.toString());
+            } catch (IllegalArgumentException malformed) {
+                throw ProducerException.illegalArgument("contentBase64 is not valid base64");
+            }
+        }
+        return facade.uploadBinary(objectId, fileName, bytes);
+    }
+
+    private static String asString(Object o) {
+        return o == null ? null : o.toString();
     }
 
     /**

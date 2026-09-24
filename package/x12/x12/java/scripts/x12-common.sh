@@ -33,9 +33,12 @@ dk() {
 }
 
 # MODULE_CONFIG for one inbox source. ackDurability is left out on purpose: the
-# default (full) is what production runs.
+# default (full) is what production runs. allowFileManagement is ON here so the scripted
+# run can load data through the DataProducer API (upload/mkdir/delete under
+# /x12-receiver/inbox) instead of reaching around the module to write the bind mount.
+# It ships false in runtimeConfig.yml.
 x12_module_config() {   # $1 = pollIntervalSec, $2 = stableForSec
-  printf '{"sources":[{"name":"inbox","path":"/var/lib/x12/inbox","pattern":"*.{x12,edi,txt,835,837,277,999,dat}","pollIntervalSec":%s,"stableForSec":%s}],"consumedSuffix":".done","errorSuffix":".error"}' \
+  printf '{"sources":[{"name":"inbox","path":"/var/lib/x12/inbox","pattern":"*.{x12,edi,txt,835,837,277,999,dat}","pollIntervalSec":%s,"stableForSec":%s}],"consumedSuffix":".done","errorSuffix":".error","allowFileManagement":true}' \
     "${1:-2}" "${2:-1}"
 }
 
@@ -131,7 +134,7 @@ x12_upload() {
 # mkdir PARENT_OBJECT_ID NAME  -> the new container's object JSON
 x12_mkdir() {
   x12_rpc ObjectsApi.createChildObject \
-    "{\"objectId\":$(jstr "$1"),\"object\":{\"name\":$(jstr "$2"),\"objectClass\":[\"container\"]}}"
+    "{\"objectId\":$(jstr "$1"),\"createObjectRequest\":{\"name\":$(jstr "$2"),\"objectClass\":[\"container\"]}}"
 }
 
 # delete OBJECT_ID

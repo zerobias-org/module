@@ -239,7 +239,10 @@ public final class SchemaRegistry {
             "ISO-8601 duration, not negative; omitted = every acked row")),
         "raw", List.of(new Param("elementKey", "string", true, false, ELEMENT_KEY_DESC)),
         "validate", List.of(new Param("elementKey", "string", true, false, ELEMENT_KEY_DESC)),
-        "rescan", List.of(new Param("source", "string", false, false, "config.sources[].name; omitted = every source")));
+        "rescan", List.of(new Param("source", "string", false, false, "config.sources[].name; omitted = every source")),
+        "packs", List.of(
+            new Param("name", "string", false, false, "Report only this pack; omitted = all"),
+            new Param("gs08", "string", false, false, "Report only the pack covering this guide")));
 
     private static List<Param> leaseInput(String elementKeysDescription) {
         return List.of(
@@ -327,9 +330,6 @@ public final class SchemaRegistry {
             prop("consumed", "integer", true, null),
             prop("errored", "integer", true, null))));
         // packs (DESIGN §7): what content this deployment has, and where it came from
-        put(out, schema(functionInputId("packs"), List.of(
-            prop("name", "string", false, "Report only this pack; omitted = all"),
-            prop("gs08", "string", false, "Report only the pack covering this guide"))));
         put(out, schema(functionOutputId("packs"), List.of(
             prop("packCount", "integer", true, "Packs loaded"),
             prop("schemaCount", "integer", true, "Schemas declared across those packs"),

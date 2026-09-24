@@ -128,8 +128,8 @@ class SchemaGeneratorTest {
         assertTrue(guide.getAsJsonArray("schemaIds").contains(
             GSON.toJsonTree("schema:table:x12.005010X223A2.837I")), "the table id is the guide pack's");
 
-        assertEquals("005010X223A2", byName.get("x12-guide-005010X223A1").get("aliasOf").getAsString(),
-            "the alias label X223A1 gets its own pack, pointing back at canonical X223A2");
+        assertFalse(byName.containsKey("x12-guide-005010X223A1"),
+            "the alias label X223A1 resolves to X223A2 via guides.txt and gets no pack of its own");
         assertFalse(byName.get("x12-guide-005010X223A2").has("aliasOf"), "the canonical label has no aliasOf");
         assertFalse(byName.get("x12-codes").has("gs08"), "code sets span guides");
         assertFalse(byName.get("x12-core").has("structureIndex"), "the core pack has no guide structure");

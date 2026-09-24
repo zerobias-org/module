@@ -53,8 +53,8 @@ class OperationRouterTest {
         JsonObject kids = json(route("ObjectsApi.getChildren", Map.of("objectId", R, "pageSize", "5", "pageNumber", 2)));
         assertEquals(5, kids.get("pageSize").getAsInt());
         assertEquals(2, kids.get("pageNumber").getAsInt());
-        assertEquals(3, kids.getAsJsonArray("items").size());
-        assertEquals(8, kids.get("count").getAsInt());
+        assertEquals(4, kids.getAsJsonArray("items").size());
+        assertEquals(9, kids.get("count").getAsInt());
 
         JsonObject search = json(route("CollectionsApi.searchCollectionElements",
             Map.of("objectId", R + "/transactions", "filter", "(transactionType=837P)")));
@@ -85,7 +85,7 @@ class OperationRouterTest {
                 () -> route(alias, Map.of("objectId", R + "/stats")), alias);
             assertEquals(400, e.httpStatus(), alias);
             assertEquals("err.unsupported.operation", e.key(), alias);
-            assertFalse(OperationRouter.isSupported(alias), alias);
+            assertFalse(OperationRouter.isSupported(alias, true), alias);
         }
         assertTrue(OperationRouter.isBinaryDownload("BinaryApi.downloadBinary"));
         for (String notIt : List.of("BinaryApi.downloadBinaryContent", "ObjectsApi.downloadBinary", "X.downloadBinary",
@@ -134,10 +134,10 @@ class OperationRouterTest {
         quiet.put("sortBy", List.of());
         quiet.put("pageToken", "");
         quiet.put("type", null);
-        assertEquals(8, json(route("ObjectsApi.getChildren", quiet)).get("count").getAsInt());
+        assertEquals(9, json(route("ObjectsApi.getChildren", quiet)).get("count").getAsInt());
         JsonObject searched = json(route("ObjectsApi.searchChildObjects",
             Map.of("objectId", R, "scope", "one_level", "includeCount", true, "pageSize", 2)));
-        assertEquals(8, searched.get("count").getAsInt(), "count is always in the body");
+        assertEquals(9, searched.get("count").getAsInt(), "count is always in the body");
         assertEquals(2, searched.getAsJsonArray("items").size());
         assertEquals(400, assertThrows(ProducerException.class,
             () -> route("ObjectsApi.searchChildObjects", Map.of("objectId", R, "scope", "everywhere"))).httpStatus());
@@ -186,14 +186,27 @@ class OperationRouterTest {
                 "searchCollectionElements", "getCollectionElement", "getSchema", "getDocumentData", "invokeFunction",
                 "validateFunctionInput", "downloadBinary", "ObjectsApi.getChildren", "BinaryApi.downloadBinary",
                 "FunctionsApi.validateFunctionInput")) {
-            assertTrue(OperationRouter.isSupported(op), op);
+            assertTrue(OperationRouter.isSupported(op, false), op);
         }
         for (String op : List.of("objectSearch", "createChildObject", "updateObject", "deleteObject", "addCollectionElement",
                 "updateCollectionElement", "deleteCollectionElement", "executeBulkOperations", "updateDocumentData",
                 "uploadBinaryContent", "downloadBinaryContent", "ObjectsApi.downloadBinary", "nope", "")) {
-            assertFalse(OperationRouter.isSupported(op), op);
+            assertFalse(OperationRouter.isSupported(op, false), op);
         }
-        assertFalse(OperationRouter.isSupported(null));
+        assertFalse(OperationRouter.isSupported(null, false));
+        // config.allowFileManagement opens exactly the three file-management ops, by exact name
+        for (String op : List.of("createChildObject", "deleteObject", "uploadBinaryContent",
+                "ObjectsApi.createChildObject", "ObjectsApi.deleteObject", "BinaryApi.uploadBinaryContent")) {
+            assertTrue(OperationRouter.isSupported(op, true), op);
+        }
+        for (String op : List.of("uploadBinary", "BinaryApi.uploadBinary", "updateObject", "addCollectionElement",
+                "updateDocumentData", "ObjectsApi.uploadBinaryContent")) {
+            assertFalse(OperationRouter.isSupported(op, true), op);
+        }
+        assertTrue(OperationRouter.isBinaryUpload("BinaryApi.uploadBinaryContent"));
+        for (String notIt : List.of("BinaryApi.uploadBinary", "uploadBinaryContent", "X.uploadBinaryContent")) {
+            assertFalse(OperationRouter.isBinaryUpload(notIt), notIt);
+        }
         assertDoesNotThrow(() -> route("ObjectsApi.getObject", Map.of("objectId", R)));
     }
 

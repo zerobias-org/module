@@ -44,6 +44,14 @@ import java.util.Map;
  * ({@code ^loop2000B.loop2010BA.nm1.nm109}) — exactly, per instance, instead of through a
  * transaction-level dimension that would have to pick one of several.
  *
+ * <p><b>Dimension grain.</b> An entity may instead declare {@code "grain": "dimension"}: one
+ * row per distinct party named by a pair of dimensions ({@code identity.name} /
+ * {@code identity.id}), e.g. a Payer. There is no anchor instance; its rows are derived from
+ * {@code transaction_dims} (see {@code BusinessEntities}) and its columns name derived fields
+ * ({@code key}, {@code name}, {@code id}, {@code transactionCount}, {@code firstSeen},
+ * {@code lastSeen}, {@code transactionTypes}) rather than graph paths. Several guides may
+ * declare the same dimension-grain collection; they are merged into one entity spanning them.
+ *
  * <p>Mappings are content, not code: they ship in the pack format, so a trading-partner
  * variant or a new business entity does not need a module release.
  */
@@ -66,6 +74,18 @@ public final class EntityMapping {
         }
     }
 
+    /** Anchor grain: one row per instance of the anchor schema. The default. */
+    public static final String GRAIN_ANCHOR = "anchor";
+    /** Dimension grain: one row per distinct party named by a (name, id) dimension pair. */
+    public static final String GRAIN_DIMENSION = "dimension";
+
+    /** The derived fields a dimension-grain column may name in its {@code path}. */
+    public static final List<String> DIMENSION_FIELDS = List.of("key", "name", "id", "transactionCount",
+        "firstSeen", "lastSeen", "transactionTypes");
+
+    /** The (name, id) dimension pair that identifies a dimension-grain row. */
+    public record Identity(String nameDimension, String idDimension) {
+    }
 
     /** A transaction-level value carried onto every row anchored under it. */
     public record Dimension(String name, String path, String dataType, String description) {
@@ -79,9 +99,19 @@ public final class EntityMapping {
     private final String description;
     private final List<Column> columns;
     private final List<Dimension> dimensions;
+    private final String grain;
+    private final Identity identity;
+    private final List<String> guides;
 
     EntityMapping(String name, String collection, String gs08, String anchorSchemaId, String schemaId,
             String description, List<Column> columns, List<Dimension> dimensions) {
+        this(name, collection, gs08, anchorSchemaId, schemaId, description, columns, dimensions,
+            GRAIN_ANCHOR, null, gs08 == null ? List.of() : List.of(gs08));
+    }
+
+    private EntityMapping(String name, String collection, String gs08, String anchorSchemaId, String schemaId,
+            String description, List<Column> columns, List<Dimension> dimensions, String grain,
+            Identity identity, List<String> guides) {
         this.name = name;
         this.collection = collection;
         this.gs08 = gs08;
@@ -90,6 +120,57 @@ public final class EntityMapping {
         this.description = description;
         this.columns = List.copyOf(columns);
         this.dimensions = List.copyOf(dimensions);
+        this.grain = grain;
+        this.identity = identity;
+        this.guides = List.copyOf(guides);
+    }
+
+    /** {@link #GRAIN_ANCHOR} or {@link #GRAIN_DIMENSION}. */
+    public String grain() {
+        return grain;
+    }
+
+    public boolean isDimensionGrain() {
+        return GRAIN_DIMENSION.equals(grain);
+    }
+
+    /** The identifying dimension pair of a dimension-grain entity; null for anchor grain. */
+    public Identity identity() {
+        return identity;
+    }
+
+    /** The guides (canonical GS08) this entity draws rows from. */
+    public List<String> guides() {
+        return guides;
+    }
+
+    /**
+     * Fold the declarations of one dimension-grain collection from several guides into one
+     * entity spanning all of them. They must agree on schema, identity and columns — one
+     * collection, one schema — otherwise the later declaration is dropped with a warning and
+     * the first one stands. Anchor-grain mappings are never merged: their grain is one
+     * guide's loop.
+     */
+    public static EntityMapping merge(EntityMapping first, EntityMapping other) {
+        if (!first.isDimensionGrain() || !other.isDimensionGrain()) {
+            return null;
+        }
+        if (!java.util.Objects.equals(first.schemaId, other.schemaId)
+                || !java.util.Objects.equals(first.identity, other.identity)
+                || !first.columns.equals(other.columns)) {
+            LOG.warn("mapping {} for {} disagrees with the {} declaration of collection '{}'; ignoring it",
+                other.name, other.gs08, first.guides, first.collection);
+            return first;
+        }
+        final List<String> guides = new ArrayList<>(first.guides);
+        for (String g : other.guides) {
+            if (!guides.contains(g)) {
+                guides.add(g);
+            }
+        }
+        return new EntityMapping(first.name, first.collection, first.gs08, first.anchorSchemaId,
+            first.schemaId, first.description, first.columns, first.dimensions, first.grain,
+            first.identity, guides);
     }
 
     public String name() {
@@ -145,6 +226,9 @@ public final class EntityMapping {
         final Map<String, String> out = new LinkedHashMap<>();
         for (Column c : columns) {
             out.put(c.name(), c.dataType());
+        }
+        if (isDimensionGrain()) {
+            return out;   // a party is not projected from one transaction: no provenance fields
         }
         for (Dimension d : dimensions) {
             out.put(d.name(), d.dataType());
@@ -286,6 +370,23 @@ public final class EntityMapping {
             final String name = str(e, "name");
             final String collection = name == null ? null
                 : orDefault(str(e, "collection"), name.toLowerCase(Locale.ROOT));
+            if (GRAIN_DIMENSION.equals(str(e, "grain"))) {
+                final JsonObject id = e.has("identity") && e.get("identity").isJsonObject()
+                    ? e.getAsJsonObject("identity") : new JsonObject();
+                final Identity identity = new Identity(str(id, "name"), str(id, "id"));
+                final boolean fieldsKnown = columns.stream()
+                    .allMatch(c -> DIMENSION_FIELDS.contains(c.path()));
+                if (name == null || columns.isEmpty() || identity.nameDimension() == null
+                        || identity.idDimension() == null || !fieldsKnown) {
+                    LOG.warn("skipping dimension-grain entry without name/identity/columns, or naming a "
+                        + "field outside {}: {}", DIMENSION_FIELDS, e);
+                    continue;
+                }
+                out.add(new EntityMapping(name, collection, gs08, null, str(e, "schemaId"),
+                    str(e, "description"), columns, List.of(), GRAIN_DIMENSION, identity,
+                    gs08 == null ? List.of() : List.of(gs08)));
+                continue;
+            }
             if (name == null || str(e, "anchorSchemaId") == null || columns.isEmpty()) {
                 LOG.warn("skipping mapping entry without name/anchorSchemaId/columns: {}", e);
                 continue;

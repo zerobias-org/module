@@ -67,9 +67,9 @@ class ObjectTreeTest {
         assertEquals(R, item(rootKids, 0).get("id").getAsString());
 
         JsonObject kids = page(facade.getChildren(R, 100, 1));
-        assertEquals(16, kids.get("count").getAsInt());
+        assertEquals(18, kids.get("count").getAsInt());
         assertEquals(List.of("files", "inbox", "transactions", "by-type", "by-version", "by-sender", "by-source",
-                "remittances", "claims", "service-lines",
+                "remittances", "claims", "service-lines", "payers", "payees",
                 "professional-claims", "professional-service-lines",
                 "institutional-claims", "institutional-service-lines", "stats", "ops"),
             names(kids), "/inbox is the live volume, /files the consumed projection, then the "
@@ -81,7 +81,7 @@ class ObjectTreeTest {
         assertEquals(ObjectTree.ENVELOPE_SCHEMA, all.get("collectionSchema").getAsString());
         assertEquals(5, all.get("collectionSize").getAsLong(), "collectionSize = countWhere(all)");
 
-        JsonObject stats = item(kids, 14);
+        JsonObject stats = item(kids, 16);
         assertEquals(List.of("document"), classes(stats));
         assertEquals("schema:shared:x12.receiver-stats", stats.get("documentSchema").getAsString());
 

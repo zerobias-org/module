@@ -32,7 +32,7 @@ class EntityMappingTest {
     @Test
     void theBundledMappingDeclaresTheGrainForEachEntity() {
         List<EntityMapping> mappings = EntityMapping.forGuide(GUIDE);
-        assertEquals(List.of("Remittance", "Claim", "ServiceLine"),
+        assertEquals(List.of("Remittance", "Claim", "ServiceLine", "Payer", "Payee"),
             mappings.stream().map(EntityMapping::name).toList());
 
         EntityMapping claim = byName(mappings, "Claim");

@@ -127,6 +127,49 @@
         { "name": "allowedAmount", "path": "amt[amt01=B6].amt02", "dataType": "decimal",
           "description": "AMT*B6 — allowed actual" }
       ]
+    },
+    {
+      "name": "Payer",
+      "collection": "payers",
+      "grain": "dimension",
+      "description": "One row per distinct payer, whichever guide named it (835 N1*PR, 837 NM1*PR). Identity: payerId when stated; a name-only occurrence joins the one identified payer of the same name, else stands alone (DESIGN §8.5).",
+      "schemaId": "schema:business:x12.Payer",
+      "identity": { "name": "payerName", "id": "payerId" },
+      "columns": [
+        { "name": "payerKey", "path": "key", "dataType": "string", "primaryKey": true,
+          "description": "id:<payerId>, or name:<NORMALIZED NAME> for a payer never seen with an identifier" },
+        { "name": "payerName", "path": "name", "dataType": "string",
+          "description": "The name most of this payer's transactions carry" },
+        { "name": "payerId", "path": "id", "dataType": "string",
+          "description": "835 N104 / 837 NM109 (2010BB); null when the payer was only ever named" },
+        { "name": "transactionCount", "path": "transactionCount", "dataType": "integer",
+          "description": "Transaction sets in the buffer that name this payer" },
+        { "name": "firstSeen", "path": "firstSeen", "dataType": "date-time",
+          "description": "Receipt time of the earliest of them" },
+        { "name": "lastSeen", "path": "lastSeen", "dataType": "date-time",
+          "description": "Receipt time of the latest of them" },
+        { "name": "transactionTypes", "path": "transactionTypes", "dataType": "string",
+          "description": "Comma-separated transaction types it appears in, e.g. 835,837I,837P" }
+      ]
+    },
+    {
+      "name": "Payee",
+      "collection": "payees",
+      "grain": "dimension",
+      "description": "One row per distinct payee (835 N1*PE — the provider being paid). Same identity rule as Payer, keyed by the NPI.",
+      "schemaId": "schema:business:x12.Payee",
+      "identity": { "name": "payeeName", "id": "payeeNpi" },
+      "columns": [
+        { "name": "payeeKey", "path": "key", "dataType": "string", "primaryKey": true,
+          "description": "id:<payeeNpi>, or name:<NORMALIZED NAME> for a payee never seen with an identifier" },
+        { "name": "payeeName", "path": "name", "dataType": "string" },
+        { "name": "payeeNpi", "path": "id", "dataType": "string",
+          "description": "N104 — an NPI when N103=XX" },
+        { "name": "transactionCount", "path": "transactionCount", "dataType": "integer" },
+        { "name": "firstSeen", "path": "firstSeen", "dataType": "date-time" },
+        { "name": "lastSeen", "path": "lastSeen", "dataType": "date-time" },
+        { "name": "transactionTypes", "path": "transactionTypes", "dataType": "string" }
+      ]
     }
   ]
 }

@@ -17,6 +17,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -199,6 +200,22 @@ class Entity837MappingTest {
         assertEquals("EXAMPLE HEALTH PLAN", claims.get(0).get("claimPayerName"));
         assertEquals("OTHER PLAN", claims.get(1).get("claimPayerName"), "the per-claim column is exact");
         assertEquals("ROE", claims.get(1).get("subscriberLastName"));
+    }
+
+    @Test
+    void thePayerEntityIsDeclaredIdenticallyByEveryGuideSoItMerges() {
+        EntityMapping a = byName(EntityMapping.forGuide("005010X221A1"), "Payer");
+        EntityMapping b = byName(EntityMapping.forGuide(P), "Payer");
+        EntityMapping c = byName(EntityMapping.forGuide(I), "Payer");
+        assertTrue(a.isDimensionGrain());
+        EntityMapping merged = EntityMapping.merge(EntityMapping.merge(a, b), c);
+        assertEquals(List.of("005010X221A1", P, I), merged.guides());
+        assertEquals("payerKey", merged.primaryKey().name());
+        assertFalse(merged.attributes().containsKey("elementKey"), "a party spans transactions");
+
+        // a disagreeing declaration does not widen the collection: one collection, one schema
+        EntityMapping payee = byName(EntityMapping.forGuide("005010X221A1"), "Payee");
+        assertSame(payee, EntityMapping.merge(payee, a));
     }
 
     // --- helpers ------------------------------------------------------------

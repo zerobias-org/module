@@ -1142,6 +1142,44 @@ public final class BufferStore implements AutoCloseable {
         return out;
     }
 
+    /**
+     * One (name, id) pair of a party dimension as it occurs in one guide: how many transaction
+     * sets carry it and when the first and last of them were received. The raw material of a
+     * dimension-grain business entity (a Payer); identity folding happens in the caller.
+     */
+    public record PartyOccurrence(String gs08, String transactionType, String name, String id,
+            long transactionCount, long firstReceivedAt, long lastReceivedAt) {
+    }
+
+    /**
+     * Every distinct (name, id) pair the two dimensions take, per guide, with exact counts
+     * and first/last receipt — one grouped query over the buffer (DESIGN §8.5). A transaction
+     * carrying neither dimension is not a party occurrence.
+     */
+    public synchronized List<PartyOccurrence> partyOccurrences(String nameDim, String idDim)
+            throws SQLException {
+        final List<PartyOccurrence> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT t.gs08, t.transaction_type, n.value_text AS name, i.value_text AS id, "
+                + "COUNT(*) AS c, MIN(t.received_at) AS first_at, MAX(t.received_at) AS last_at "
+                + "FROM transactions t "
+                + "LEFT JOIN transaction_dims n ON n.element_key = t.element_key AND n.dim = ? "
+                + "LEFT JOIN transaction_dims i ON i.element_key = t.element_key AND i.dim = ? "
+                + "WHERE n.value_text IS NOT NULL OR i.value_text IS NOT NULL "
+                + "GROUP BY t.gs08, t.transaction_type, n.value_text, i.value_text")) {
+            ps.setString(1, nameDim);
+            ps.setString(2, idDim);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new PartyOccurrence(rs.getString("gs08"), rs.getString("transaction_type"),
+                        rs.getString("name"), rs.getString("id"), rs.getLong("c"), rs.getLong("first_at"),
+                        rs.getLong("last_at")));
+                }
+            }
+        }
+        return out;
+    }
+
     /** Micro-units for the comparison column; null when unscalable or out of long range. */
     static Long microUnits(java.math.BigDecimal value) {
         if (value == null) {

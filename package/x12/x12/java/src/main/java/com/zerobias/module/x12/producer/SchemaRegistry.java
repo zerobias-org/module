@@ -464,6 +464,13 @@ public final class SchemaRegistry implements SchemaRegistryApi {
                 }
                 props.add(p);
             }
+            if (m.isDimensionGrain()) {
+                // A party spans transactions: no single elementKey/fileId, and no dimensions of
+                // its own beyond the identity its columns already carry.
+                final String json = PRETTY.toJson(schema(m.schemaId(), props));
+                loaders.put(m.schemaId(), () -> json);
+                continue;
+            }
             // Provenance: every business row can be traced back to the interchange it came from.
             props.add(prop("elementKey", "string", true, "The transaction set this row was projected from"));
             props.add(prop("fileId", "string", true, "The interchange file that delivered it"));

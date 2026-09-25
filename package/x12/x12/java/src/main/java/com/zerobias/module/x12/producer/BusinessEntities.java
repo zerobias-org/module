@@ -47,32 +47,48 @@ public final class BusinessEntities {
 
     public BusinessEntities(BufferStore buffer, List<EntityMapping> mappings) {
         this.buffer = buffer;
-        for (EntityMapping m : mappings == null ? List.<EntityMapping>of() : mappings) {
-            byCollection.putIfAbsent(m.collection(), m);
+        for (EntityMapping m : consolidate(mappings)) {
+            byCollection.put(m.collection(), m);
         }
     }
 
     /**
-     * Every bundled guide's mappings, one per collection, in guide order. A collection belongs
-     * to the first guide that declares it: its grain is that guide's loop.
+     * Every bundled guide's mappings, one per collection, in guide order. An anchor-grain
+     * collection belongs to the first guide that declares it (its grain is that guide's loop);
+     * a dimension-grain collection declared by several guides is merged into one entity
+     * spanning them, so {@code /payers} is every payer whichever transaction named it.
      */
     public static List<EntityMapping> mappingsFor(List<String> guides) {
-        final List<EntityMapping> out = new ArrayList<>();
-        final Set<String> seen = new LinkedHashSet<>();
+        final List<EntityMapping> all = new ArrayList<>();
         final Set<String> seenGuides = new LinkedHashSet<>();
         for (String gs08 : guides == null ? List.<String>of() : guides) {
             final List<EntityMapping> ms = EntityMapping.forGuide(gs08);
             // aliases (005010X223A1 → 005010X223A2) resolve to the same mapping: read it once
-            if (ms.isEmpty() || !seenGuides.add(ms.get(0).gs08())) {
-                continue;
-            }
-            for (EntityMapping m : ms) {
-                if (seen.add(m.collection())) {
-                    out.add(m);
-                }
+            if (!ms.isEmpty() && seenGuides.add(ms.get(0).gs08())) {
+                all.addAll(ms);
             }
         }
-        return out;
+        return consolidate(all);
+    }
+
+    private static List<EntityMapping> consolidate(List<EntityMapping> mappings) {
+        final Map<String, EntityMapping> out = new LinkedHashMap<>();
+        for (EntityMapping m : mappings == null ? List.<EntityMapping>of() : mappings) {
+            final EntityMapping existing = out.get(m.collection());
+            if (existing == null) {
+                out.put(m.collection(), m);
+                continue;
+            }
+            final EntityMapping merged = EntityMapping.merge(existing, m);
+            if (merged != null) {
+                out.put(m.collection(), merged);
+            } else if (existing != m) {
+                org.slf4j.LoggerFactory.getLogger(BusinessEntities.class).warn(
+                    "collection '{}' is declared by {} and {}; the first declaration stands",
+                    m.collection(), existing.guides(), m.guides());
+            }
+        }
+        return List.copyOf(out.values());
     }
 
     public boolean isEmpty() {
@@ -94,6 +110,9 @@ public final class BusinessEntities {
         if (m == null) {
             return List.of();
         }
+        if (m.isDimensionGrain()) {
+            return List.of();   // a party is already the segment; there is nothing to scope it by
+        }
         final List<String> out = new ArrayList<>();
         out.add(FILE_SEGMENT);
         for (EntityMapping.Dimension d : m.dimensions()) {
@@ -106,6 +125,9 @@ public final class BusinessEntities {
     public List<String> segmentValues(String collection, String segment) throws SQLException {
         final EntityMapping m = byCollection.get(collection);
         if (m == null) {
+            return List.of();
+        }
+        if (m.isDimensionGrain()) {
             return List.of();
         }
         if (FILE_SEGMENT.equals(segment)) {
@@ -158,6 +180,10 @@ public final class BusinessEntities {
         final int offset = Math.max(0, pageNumber - 1) * pageSize;
         final java.util.Comparator<Map<String, Object>> order = comparator(m, sortBy, sortDir);
 
+        if (m.isDimensionGrain()) {
+            return slice(parties(m), filter, order, pageSize, offset);
+        }
+
         if (filter == null && order == null) {
             // Unfiltered: the scope IS the page, so grain + segment + paging all happen in SQL.
             final List<Map<String, Object>> rows = project(m,
@@ -190,6 +216,144 @@ public final class BusinessEntities {
             ? List.of()
             : matched.subList(offset, Math.min(matched.size(), offset + pageSize));
         return new Page(List.copyOf(page), matched.size());
+    }
+
+    // --- dimension grain -------------------------------------------------------
+
+    /**
+     * The rows of a dimension-grain entity: one per distinct party the entity's guides name.
+     *
+     * <p><b>Identity rule.</b> A party is keyed by its identifier when it has one
+     * ({@code id:<payerId>}), because an identifier is stable where a name is not ("EXAMPLE
+     * HEALTH PLAN" vs "Example Health Plan Inc"). An occurrence that carries only a name joins
+     * the identified party with that same name (trimmed, case-insensitive) when exactly one
+     * such party exists — an 835 {@code N1*PR} often omits {@code N104} while the 837
+     * {@code NM1*PR} for the same payer carries it. With no identified match, or with several
+     * (the name alone cannot say which), it is its own party keyed {@code name:<NAME>}. So an
+     * occurrence is never guessed onto a party whose identifier it did not state, and the
+     * same payer seen under several guides is one row.
+     *
+     * <p>A party's name is the one most of its transactions carry (ties to the
+     * lexicographically first); counts, first/last receipt and transaction types are exact
+     * over the transaction sets currently in the buffer.
+     */
+    private List<Map<String, Object>> parties(EntityMapping m) throws SQLException {
+        final EntityMapping.Identity identity = m.identity();
+        final List<BufferStore.PartyOccurrence> occurrences = new ArrayList<>();
+        for (BufferStore.PartyOccurrence o : buffer.partyOccurrences(identity.nameDimension(),
+                identity.idDimension())) {
+            final String canonical = com.zerobias.module.x12.parser.TransactionTypes.canonical(o.gs08())
+                .orElse(o.gs08());
+            if (m.guides().contains(canonical)) {
+                occurrences.add(o);
+            }
+        }
+
+        // identified parties first, so name-only occurrences have something to join
+        final Map<String, Party> byKey = new LinkedHashMap<>();
+        final Map<String, List<String>> idKeysByName = new LinkedHashMap<>();
+        for (BufferStore.PartyOccurrence o : occurrences) {
+            final String id = blankToNull(o.id());
+            if (id == null) {
+                continue;
+            }
+            final String key = "id:" + id;
+            byKey.computeIfAbsent(key, k -> new Party(k, id)).add(o);
+        }
+        for (Party p : byKey.values()) {
+            for (String n : p.names.keySet()) {
+                idKeysByName.computeIfAbsent(normalName(n), k -> new ArrayList<>()).add(p.key);
+            }
+        }
+        for (BufferStore.PartyOccurrence o : occurrences) {
+            if (blankToNull(o.id()) != null) {
+                continue;
+            }
+            final String normal = normalName(o.name());
+            final List<String> candidates = idKeysByName.getOrDefault(normal, List.of());
+            final String key = candidates.size() == 1 ? candidates.get(0) : "name:" + normal;
+            byKey.computeIfAbsent(key, k -> new Party(k, null)).add(o);
+        }
+
+        final List<Map<String, Object>> rows = new ArrayList<>();
+        for (Party p : byKey.values()) {
+            final Map<String, Object> row = new LinkedHashMap<>();
+            for (EntityMapping.Column c : m.columns()) {
+                row.put(c.name(), p.field(c.path()));
+            }
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
+    private static String normalName(String name) {
+        return name == null ? "" : name.trim().replaceAll("\\s+", " ").toUpperCase(java.util.Locale.ROOT);
+    }
+
+    /** One party being folded together from its occurrences. */
+    private static final class Party {
+        final String key;
+        final String id;
+        final Map<String, Long> names = new LinkedHashMap<>();
+        final java.util.TreeSet<String> types = new java.util.TreeSet<>();
+        long count;
+        long first = Long.MAX_VALUE;
+        long last = Long.MIN_VALUE;
+
+        Party(String key, String id) {
+            this.key = key;
+            this.id = id;
+        }
+
+        void add(BufferStore.PartyOccurrence o) {
+            final String name = blankToNull(o.name());
+            if (name != null) {
+                names.merge(name, o.transactionCount(), Long::sum);
+            }
+            if (o.transactionType() != null) {
+                types.add(o.transactionType());
+            }
+            count += o.transactionCount();
+            first = Math.min(first, o.firstReceivedAt());
+            last = Math.max(last, o.lastReceivedAt());
+        }
+
+        String name() {
+            String best = null;
+            long bestCount = -1;
+            for (Map.Entry<String, Long> e : names.entrySet()) {
+                if (e.getValue() > bestCount || (e.getValue() == bestCount && e.getKey().compareTo(best) < 0)) {
+                    best = e.getKey();
+                    bestCount = e.getValue();
+                }
+            }
+            return best;
+        }
+
+        Object field(String field) {
+            switch (field) {
+                case "key":
+                    return key;
+                case "name":
+                    return name();
+                case "id":
+                    return id;
+                case "transactionCount":
+                    return count;
+                case "firstSeen":
+                    return count == 0 ? null : java.time.Instant.ofEpochMilli(first).toString();
+                case "lastSeen":
+                    return count == 0 ? null : java.time.Instant.ofEpochMilli(last).toString();
+                case "transactionTypes":
+                    return String.join(",", types);
+                default:
+                    return null;
+            }
+        }
     }
 
     /**

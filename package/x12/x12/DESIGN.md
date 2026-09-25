@@ -636,22 +636,55 @@ that *is* — a Claim whose `paidAmount` is `clp.clp04` — and at what **grain*
 instance of the declared `anchor` schema. Choosing the anchor chooses the grain, which is why
 it is declared, never inferred.
 
-| Entity | Anchor = grain | Rows per 835 |
-|---|---|---|
-| `Remittance` | the transaction root | 1 per transaction set |
-| `Claim` | `loop2100` | n claims |
-| `ServiceLine` | `loop2110` | n lines per claim |
+| Guide | Entity → collection | Anchor = grain | Rows |
+|---|---|---|---|
+| 835 X221A1 | `Remittance` → `/remittances` | the transaction root | 1 per transaction set |
+| 835 X221A1 | `Claim` → `/claims` | `loop2100` (CLP) | n claims |
+| 835 X221A1 | `ServiceLine` → `/service-lines` | `loop2110` (SVC) | n lines per claim |
+| 837P X222A1 | `Claim` → `/professional-claims` | `loop2300` (CLM) | n claims |
+| 837P X222A1 | `ServiceLine` → `/professional-service-lines` | `loop2400` (LX/SV1) | n lines per claim |
+| 837I X223A2 | `Claim` → `/institutional-claims` | `loop2300` (CLM) | n claims |
+| 837I X223A2 | `ServiceLine` → `/institutional-service-lines` | `loop2400` (LX/SV2) | n lines per claim |
+| 835 + 837P + 837I | `Payer` → `/payers` | *dimension grain* (§8.5.2) | 1 per distinct payer |
+| 835 | `Payee` → `/payees` | *dimension grain* (§8.5.2) | 1 per distinct payee |
+
+**Why 837 claims are not in `/claims`.** An 835 CLP is an *adjudicated* claim (paid amount,
+status, patient responsibility); an 837 CLM is a *submitted* one (charge, place of service,
+diagnosis). One `/claims` spanning both would need a union schema in which most columns are
+null for half the rows, and a collection has exactly one `collectionSchema` (§2.1) that must
+describe every row honestly. So each guide's grain gets its own collection and schema
+(`schema:business:x12.837P.Claim`), and `claimId` — CLM01, which the 835 echoes in CLP01 — is the
+join between them. An anchor-grain collection belongs to exactly one guide; an aliased GS08
+(`005010X223A1`, `005010X223`, `005010X222`) resolves to its canonical guide's mapping, because
+it is materialized with that guide's structure and carries its schema ids.
 
 Column paths are relative to the anchor and may carry a **qualifier predicate**, which is how
 the semantics X12 hides in code positions become names: `nm1[nm101=QC].nm103` is the patient's
 last name, `amt[amt01=AU].amt02` the allowed amount, `svc.svc01.c00302` the procedure inside
-composite C003. A column the transaction lacks is present and null, so every row of a
-collection has one shape.
+composite C003. A step `^property` climbs to the nearest **ancestor** under that property, so a
+row can read what its grain inherits, exactly and per instance: an 837 claim's subscriber is
+`^loop2000B.loop2010BA.nm1.nm109` (whether the claim sits under 2000B or 2000C), a service
+line's claim id `^loop2300.clm.clm01`. A column the transaction lacks is present and null, so
+every row of a collection has one shape.
+
+Values are projected from `value_text`, never from the comparison key (§8.4): a decimal is a
+`BigDecimal` parsed from the lexical form, so `300.00` reaches the wire as `300.00`. A `date`
+column is ISO `YYYY-MM-DD`; an `AN` date element (`DTP03`, `DMG02`) carrying `CCYYMMDD` is
+rewritten, and a column may take one end of an `RD8` range with `"part": "from" | "to"`
+(a lone `D8` date is both ends). The generated schemas declare `decimal` as a JSON number and
+`date` as an ISO string, matching the guide schemas' core types.
 
 **Dimensions** are transaction-level values (payer, payee, check number, effective date)
 resolved once per transaction set into `transaction_dims` and merged onto every row anchored
 under it. The payer lives in `N1*PR` up in the header, so without that "claims for this payer"
-would walk up the graph per claim instead of hitting an index.
+would walk up the graph per claim instead of hitting an index. A dimension path is followed
+along **every** matching branch, and the dimension exists only when all of them agree: an 835
+has one `N1*PR`, but an 837 batch can hold several billing providers (2000A) and payers (2010BB
+under each 2000B). Such a transaction has no `payerName` dimension — it is in no payer segment
+and not counted in `/payers` — rather than being attributed to whichever payer came first. The
+per-claim value is always available as a column (`claimPayerName`, `claimPayerId`), which is
+exact. 837 dimensions: `submitterName/Id` (1000A), `receiverName/Id` (1000B),
+`billingProviderName/Npi` (2010AA), `payerName/Id` (2010BB).
 
 Business element schemas are **generated from the mappings** (`schema:business:x12.835.Claim`)
 and registered at boot: a collection may not advertise a `collectionSchema` the registry
@@ -671,12 +704,18 @@ with no mapping simply has no business entities.
 │   ├─ /claims/by-file/<fileId>       "claims from this file"
 │   └─ /claims/by-payerName/<value>   "claims for this payer"  (also by-payeeNpi, by-check…)
 ├─ /service-lines  …
-└─ /remittances    …
+├─ /remittances    …
+├─ /professional-claims · /professional-service-lines    (837P; by-billingProviderNpi, by-payerId…)
+├─ /institutional-claims · /institutional-service-lines  (837I)
+└─ /payers · /payees                  dimension grain, no segments
 ```
 
 Segment children are **emergent**, exactly like `/by-type`: `SELECT DISTINCT` over the
 dimensions actually present, so a payer node appears the first time that payer sends something.
-An unknown segment value is a 404, not an empty page.
+Dimensions are named alike across guides (both an 835 and an 837 have `payerName`), so the
+values offered under a collection are narrowed to those that scope at least one of **its own**
+rows — a payer that only ever sent 837s is not a segment of the 835's `/claims`. An unknown
+segment value is a 404, not an empty page.
 
 A **structural** filter (`/transactions`, `/by-type/<TS>`, `ops/take`) still compiles to SQL
 through `X12SqlAdapter`, but a body path now resolves into the graph rather than
@@ -714,6 +753,38 @@ the segment rather than the buffer — pushing the compilable subset down is a f
 value indexes are already in place for it. Filters compare by the column's declared type, so
 `(paidAmount>=1000)` is an exact decimal comparison and cannot match `999.99` lexically, and an
 unknown column name is a 400 rather than a silently empty result.
+
+#### 8.5.2 Dimension-grain entities: payers and payees
+
+A payer is not an instance of any loop: it is a value the transactions *name*. A mapping entity
+may therefore declare `"grain": "dimension"` with an `identity` — the pair of dimensions that
+name a party (`{"name": "payerName", "id": "payerId"}`) — and columns whose `path` is one of the
+derived fields `key`, `name`, `id`, `transactionCount`, `firstSeen`, `lastSeen`,
+`transactionTypes`. Its schema is generated from those columns like any other
+(`schema:business:x12.Payer`; no `elementKey`/`fileId`, since a party spans transactions), and
+filter, sort and paging go through the same `BusinessFilter` / typed comparator. Every guide
+that names payers declares the same entity; declarations of one collection are **merged** into
+one entity spanning those guides (they must agree on schema, identity and columns, or the later
+one is dropped with a warning — one collection, one schema).
+
+Rows come from one grouped query over `transactions ⋈ transaction_dims` (distinct name/id pairs
+per guide with count and first/last `received_at`), folded into parties by the **identity rule**:
+
+1. An occurrence with an identifier is keyed by it: `id:<payerId>`. An identifier is stable
+   where a name is not.
+2. An occurrence with only a name joins the identified party carrying that same name (trimmed,
+   whitespace-collapsed, case-insensitive) **when exactly one exists** — an 835 `N1*PR` often
+   omits `N104` while the 837 `NM1*PR` for the same payer states `NM109`, and they are one payer.
+3. Otherwise (no identified match, or several — the name alone cannot say which) it is its own
+   party keyed `name:<NORMALIZED NAME>`. A name-only occurrence is never guessed onto a party
+   whose identifier it did not state.
+
+A party's `payerName` is the name most of its transactions carry (ties to the lexicographically
+first). `transactionCount`, `firstSeen`/`lastSeen` (receipt time, ISO) and `transactionTypes`
+(`835,837I,837P`) are exact over the transaction sets currently in the buffer, so they shrink
+when retention sweeps acked rows. The same machinery serves `/payees` (835 `N1*PE`, keyed by
+`payeeNpi`). The list is computed per request — one grouped scan in SQL — and filtered, sorted and
+paged in memory, which is bounded by the number of distinct parties, not transactions.
 
 ## 9. Health
 

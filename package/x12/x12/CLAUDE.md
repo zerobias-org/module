@@ -115,7 +115,8 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
 - **`value_text` is the value; `value_num` is a comparison key.** Amounts live in
   `entity_values` as exact integer micro-units for filtering and in `value_text` for
   reassembly. Never read an amount back from `value_num` — that is how `450.00` becomes
-  `450.0`, and money must not round-trip through a float. Same rule for `transaction_dims`.
+  `450.0`, and money must not round-trip through a float. Same rule for `transaction_dims`,
+  and for business projection: `EntityMapping.typed` parses `value_text`, never `Value.num()`.
 - **Wire order is persisted, not implied.** `entities.property_order` and `entity_values.seq`
   exist because a composite is a child row and would otherwise reassemble after every scalar.
   The round-trip test (`EntityGraphTest`, `GraphPersistenceTest`) is what licenses storing rows
@@ -126,7 +127,18 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
 - **Grain is declared by the anchor.** A mapping's `anchorSchemaId` IS its grain (Claim =
   loop2100). Don't add a business entity without deciding its grain, and remember CAS carries up
   to six (reason, amount, quantity) triplets — anchoring an Adjustment at the segment would hide
-  five of them.
+  five of them. An anchor-grain collection belongs to ONE guide: 835 claims (`/claims`,
+  adjudicated) and 837 claims (`/professional-claims`, `/institutional-claims`, submitted) are
+  different collections with different schemas — do not fold them into a union schema. Read
+  inherited data with an ancestor step (`^loop2000B.loop2010BA.nm1.nm109`), not a dimension.
+  A party that spans guides (`/payers`) is `"grain": "dimension"` (DESIGN §8.5.2); keep its
+  identity rule (id first, name-only joins a unique same-name id) and keep every guide's
+  declaration of it identical, or the merge drops the odd one out.
+- **A dimension is unambiguous or absent.** `EntityMapping.dimensions` follows every branch and
+  keeps a value only when they all agree; an 837 batch with two payers has no `payerName`.
+  Never "fix" that by taking the first match — it files claims under the wrong payer. Segment
+  values are narrowed to those that scope a row of the collection itself, because dimension
+  names are shared across guides.
 - **Business schemas are generated from the mappings**, never hand-written: a collection may not
   advertise a `collectionSchema` the registry cannot serve, and generating it keeps the schema
   and the projection from disagreeing.

@@ -290,6 +290,34 @@ public final class X12ProducerFacade {
     // --- Functions: ops/* (DESIGN §2.5) ------------------------------------
 
     public String invokeFunction(String objectId, String inputJson) throws SQLException {
+        String fn = requireFunction(objectId);
+        return GSON_NULLS.toJson(ops.invoke(fn, parseObject(inputJson, "Function input")));
+    }
+
+    /**
+     * {@code validateFunctionInput}: check {@code requestJson} (the interface's
+     * {@code ValidateFunctionInputRequest}, {@code {input, strict}}) against the function's
+     * declared input without running it. The verdict is the 200 body; only a malformed
+     * request (not an object, unknown fields, wrong types) or an unknown function is an error.
+     */
+    public String validateFunctionInput(String objectId, String requestJson) throws SQLException {
+        String fn = requireFunction(objectId);
+        Map<String, Object> request = parseObject(requestJson, "validateFunctionInputRequest");
+        for (String key : request.keySet()) {
+            if (!"input".equals(key) && !"strict".equals(key)) {
+                throw ProducerException.illegalArgument(
+                    "validateFunctionInputRequest: unknown property " + key + " (expected input, strict)");
+            }
+        }
+        Object strict = request.get("strict");
+        if (strict != null && !(strict instanceof Boolean)) {
+            throw ProducerException.illegalArgument("validateFunctionInputRequest.strict must be a boolean");
+        }
+        return GSON_NULLS.toJson(ops.validateInput(fn, request.get("input"), Boolean.TRUE.equals(strict)));
+    }
+
+    /** The function name of a {@code /ops/<fn>} function object; 404 unknown, 400 not a function. */
+    private String requireFunction(String objectId) throws SQLException {
         requireId(objectId);
         Map<String, Object> obj = tree.object(objectId); // 404 if unknown
         @SuppressWarnings("unchecked")
@@ -297,13 +325,28 @@ public final class X12ProducerFacade {
         if (classes == null || !classes.contains("function")) {
             throw ProducerException.unsupported("Object is not a function: " + objectId);
         }
-        String fn = objectId.substring(objectId.lastIndexOf('/') + 1);
+        return objectId.substring(objectId.lastIndexOf('/') + 1);
+    }
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> input = (inputJson == null || inputJson.isBlank())
-            ? Map.of()
-            : GSON.fromJson(inputJson, Map.class);
-        return GSON_NULLS.toJson(ops.invoke(fn, input == null ? Map.of() : input));
+    /** A JSON object body; null/blank = empty; anything that is not an object is a 400. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> parseObject(String json, String what) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        Object parsed;
+        try {
+            parsed = GSON.fromJson(json, Object.class);
+        } catch (com.google.gson.JsonParseException e) {
+            throw ProducerException.illegalArgument(what + " is not valid JSON");
+        }
+        if (parsed == null) {
+            return Map.of();
+        }
+        if (!(parsed instanceof Map)) {
+            throw ProducerException.illegalArgument(what + " must be a JSON object");
+        }
+        return (Map<String, Object>) parsed;
     }
 
     // --- element mapping (DESIGN §5 envelope overlay) ----------------------

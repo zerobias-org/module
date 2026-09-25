@@ -147,13 +147,15 @@ public final class OperationRouter {
 
     private static String functions(X12ProducerFacade facade, String methodName,
             Map<String, Object> argMap) throws Exception {
-        if ("invokeFunction".equals(methodName)) {
-            Object input = argMap.get("requestBody");
-            String inputJson = input == null ? "{}"
-                : (input instanceof String ? (String) input : GSON.toJson(input));
-            return facade.invokeFunction(str(argMap, "objectId"), inputJson);
+        switch (methodName) {
+            case "invokeFunction":
+                return facade.invokeFunction(str(argMap, "objectId"), body(argMap.get("requestBody")));
+            case "validateFunctionInput":
+                return facade.validateFunctionInput(str(argMap, "objectId"),
+                    body(argMap.get("validateFunctionInputRequest")));
+            default:
+                throw ProducerException.unsupported("Unsupported FunctionsApi method: " + methodName);
         }
-        throw ProducerException.unsupported("Unsupported FunctionsApi method: " + methodName);
     }
 
     private static String documents(X12ProducerFacade facade, String methodName,
@@ -221,6 +223,14 @@ public final class OperationRouter {
     }
 
     // --- arg coercion ------------------------------------------------------
+
+    /** A request body as JSON text: a JSON string is taken as already-serialized JSON. */
+    private static String body(Object v) {
+        if (v == null) {
+            return null;
+        }
+        return v instanceof String ? (String) v : GSON.toJson(v);
+    }
 
     private static String str(Map<String, Object> map, String key) {
         Object v = map.get(key);

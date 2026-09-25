@@ -143,6 +143,16 @@ Inherited from hl7/v2 with the same I/O and constants (`DEFAULT_MAX=100`, `MAX_C
 | `validate` | `{elementKey}` | `{elementKey, schemaId, stored:{valid,errors[]}, rematerialized:{valid,errors[],schemaId}, repsAgree, parserErrors[], parserErrorCount}` — `rematerialized` re-parses the stored raw under the current definitions (`MaterializerRecastHook`); `parserErrors` are imsweb's non-fatal `getErrors()` from that re-parse |
 | **`rescan`** (new) | `{source?}` | `{scanned, discovered, consumed, errored}` — trigger an immediate poll; the only way to force a pickup between intervals |
 
+Every function input is checked against its declared `schema:function:x12.ops.<fn>:input`
+(one in-code table in `SchemaRegistry` drives both the served schema and the check) before
+anything runs: an unknown key, a wrong JSON type, a missing required property, an unparseable
+filter/duration, `max < 1` or an empty `elementKeys` is a 400 `illegalArgumentError` — never a
+silently dropped argument (`purge {"olderthan":"P30D"}` must not purge every acked row).
+`FunctionsApi.validateFunctionInput` (body `validateFunctionInputRequest: {input, strict}`)
+runs the same check without executing and returns the interface `ValidationResult`
+(`{valid, errors[{path,message,code}], warnings[{path,message}]}`); a `max` above the cap is a
+warning, an error under `strict`.
+
 ### 2.6 Filter semantics
 
 RFC4515 over **schema property names**, translated to SQLite by an `X12SqlAdapter` cloned from

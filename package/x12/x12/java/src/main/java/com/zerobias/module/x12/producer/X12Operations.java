@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.StringJoiner;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -77,9 +78,23 @@ public final class X12Operations implements OperationsApi {
         this.recaster = recaster == null ? RecastHook.NONE : recaster;
     }
 
+    /**
+     * Dispatch {@code /x12-receiver/ops/<fn>}. The input is first checked against the
+     * function's declared input schema ({@link SchemaRegistry#functionInputs}): an unknown
+     * key, a wrong type, a missing required property or an unparseable filter/duration is a
+     * 400 and nothing runs — {@code purge {"olderthan":"P30D"}} must never fall through to
+     * "no olderThan" and purge every acked row.
+     */
     @Override
     public Map<String, Object> invoke(String fn, Map<String, Object> input) throws SQLException {
+        requireFunction(fn);
         Map<String, Object> in = input == null ? Map.of() : input;
+        List<Issue> errors = check(fn, in).errors();
+        if (!errors.isEmpty()) {
+            StringJoiner msg = new StringJoiner("; ", "Invalid input for " + fn + ": ", "");
+            errors.forEach(e -> msg.add(e.path().isEmpty() ? e.message() : e.path() + ": " + e.message()));
+            throw ProducerException.illegalArgument(msg.toString());
+        }
         switch (fn) {
             case "take":
                 return take(in);
@@ -104,6 +119,178 @@ public final class X12Operations implements OperationsApi {
             default:
                 throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/ops/" + fn);
         }
+    }
+
+    /**
+     * {@code validateFunctionInput}: the interface {@code ValidationResult} for {@code input}
+     * — the same check {@link #invoke} applies, so {@code valid} means invoke will accept it.
+     * Warnings flag input that runs but is adjusted (a {@code max} above its cap); in
+     * {@code strict} mode they count as errors.
+     */
+    @Override
+    public Map<String, Object> validateInput(String fn, Object input, boolean strict) {
+        requireFunction(fn);
+        List<Issue> errors = new ArrayList<>();
+        List<Issue> warnings = new ArrayList<>();
+        if (input != null && !(input instanceof Map)) {
+            errors.add(new Issue("", "input must be a JSON object", "type"));
+        } else {
+            @SuppressWarnings("unchecked")
+            Check c = check(fn, input == null ? Map.of() : (Map<String, Object>) input);
+            errors.addAll(c.errors());
+            warnings.addAll(c.warnings());
+        }
+        if (strict) {
+            errors.addAll(warnings);
+            warnings.clear();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("valid", errors.isEmpty());
+        out.put("errors", issues(errors, true));
+        out.put("warnings", issues(warnings, false));
+        return out;
+    }
+
+    private static void requireFunction(String fn) {
+        if (fn == null || !SchemaRegistry.OPS_FUNCTIONS.contains(fn)) {
+            throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/ops/" + fn);
+        }
+    }
+
+    // --- input checking ------------------------------------------------------
+
+    /** One problem in a function input: the property ({@code ""} = the input itself), what, and a code. */
+    record Issue(String path, String message, String code) {
+    }
+
+    private record Check(List<Issue> errors, List<Issue> warnings) {
+    }
+
+    /** Schema check (keys, types, required) then the per-property value rules. */
+    private static Check check(String fn, Map<String, Object> input) {
+        List<Issue> errors = new ArrayList<>();
+        List<Issue> warnings = new ArrayList<>();
+        List<SchemaRegistry.Param> params = SchemaRegistry.functionInputs(fn);
+        List<String> names = new ArrayList<>();
+        params.forEach(p -> names.add(p.name()));
+        for (String key : input.keySet()) {
+            if (!names.contains(key)) {
+                errors.add(new Issue(key, "unknown property (expected "
+                    + (names.isEmpty() ? "none" : String.join(", ", names)) + ")", "unknown_property"));
+            }
+        }
+        for (SchemaRegistry.Param p : params) {
+            Object v = input.get(p.name());
+            if (v == null) {
+                if (p.required()) {
+                    errors.add(new Issue(p.name(), "is required", "required"));
+                }
+                continue;
+            }
+            if (p.multi()) {
+                if (!(v instanceof List)) {
+                    errors.add(new Issue(p.name(), "must be an array of " + p.dataType(), "type"));
+                    continue;
+                }
+                List<?> items = (List<?>) v;
+                for (int i = 0; i < items.size(); i++) {
+                    if (!hasType(items.get(i), p.dataType())) {
+                        errors.add(new Issue(p.name() + "[" + i + "]", "must be a " + p.dataType(), "type"));
+                    }
+                }
+                if (items.isEmpty()) {
+                    // An empty subset means "the whole lease" to the buffer — never what a
+                    // caller listing keys meant.
+                    errors.add(new Issue(p.name(), "must not be empty; omit it to cover the whole lease",
+                        "out_of_range"));
+                }
+            } else if (!hasType(v, p.dataType())) {
+                errors.add(new Issue(p.name(), "must be a" + ("integer".equals(p.dataType()) ? "n " : " ")
+                    + p.dataType(), "type"));
+            } else {
+                checkValue(p.name(), v, errors, warnings);
+            }
+        }
+        return new Check(errors, warnings);
+    }
+
+    private static boolean hasType(Object v, String dataType) {
+        switch (dataType) {
+            case "integer":
+                if (v instanceof Integer || v instanceof Long || v instanceof Short) {
+                    return ((Number) v).longValue() == ((Number) v).intValue();
+                }
+                if (v instanceof Double || v instanceof Float) {
+                    // Gson reads every JSON number as a double: 5 and 5.0 are an integer, 5.5 is not.
+                    double d = ((Number) v).doubleValue();
+                    return d == Math.rint(d) && d >= Integer.MIN_VALUE && d <= Integer.MAX_VALUE;
+                }
+                return false;
+            case "boolean":
+                return v instanceof Boolean;
+            default:
+                return v instanceof String;
+        }
+    }
+
+    /** Value rules beyond the type, for properties whose type already checked out. */
+    private static void checkValue(String name, Object v, List<Issue> errors, List<Issue> warnings) {
+        switch (name) {
+            case "filter":
+                try {
+                    renderFilter((String) v);
+                } catch (ProducerException e) {
+                    errors.add(new Issue(name, e.getMessage(), "malformed_filter"));
+                }
+                break;
+            case "max":
+                int max = ((Number) v).intValue();
+                if (max < 1) {
+                    errors.add(new Issue(name, "must be at least 1", "out_of_range"));
+                } else if (max > MAX_CAP) {
+                    warnings.add(new Issue(name, "is capped at " + MAX_CAP, "capped"));
+                }
+                break;
+            case "leaseTtl":
+                checkDuration(name, (String) v, false, errors);
+                break;
+            case "olderThan":
+                checkDuration(name, (String) v, true, errors);
+                break;
+            case "leaseId":
+            case "elementKey":
+                if (((String) v).isBlank()) {
+                    errors.add(new Issue(name, "must not be blank", "required"));
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    private static void checkDuration(String name, String raw, boolean zeroAllowed, List<Issue> errors) {
+        try {
+            Duration d = Duration.parse(raw);
+            if (d.isNegative() || (!zeroAllowed && d.isZero())) {
+                errors.add(new Issue(name, zeroAllowed ? "must not be negative" : "must be positive", "out_of_range"));
+            }
+        } catch (DateTimeParseException e) {
+            errors.add(new Issue(name, "must be an ISO-8601 duration (e.g. PT5M): " + raw, "invalid_duration"));
+        }
+    }
+
+    private static List<Map<String, Object>> issues(List<Issue> list, boolean withCode) {
+        List<Map<String, Object>> out = new ArrayList<>(list.size());
+        for (Issue i : list) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("path", i.path());
+            m.put("message", i.message());
+            if (withCode) {
+                m.put("code", i.code());
+            }
+            out.add(m);
+        }
+        return out;
     }
 
     // --- content packs (DESIGN §7) -------------------------------------------

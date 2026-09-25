@@ -315,6 +315,49 @@ public final class SchemaRegistry implements SchemaRegistryApi {
         return "schema:function:" + CATALOG + ".ops." + fn + ":output";
     }
 
+    /**
+     * One declared input property of an {@code /ops/<fn>} function. This table is the single
+     * source for both the served {@code schema:function:x12.ops.<fn>:input} schema and the
+     * check {@code X12Operations} applies before running the function, so what a caller reads
+     * from {@code getSchema} is exactly what {@code invokeFunction} accepts.
+     */
+    public record Param(String name, String dataType, boolean required, boolean multi, String description) {
+    }
+
+    private static final String FILTER_DESC = "RFC4515 filter over envelope + schema property names (DESIGN §2.6)";
+    private static final String ELEMENT_KEY_DESC = "<fileId>:<GS06>:<ST02>";
+
+    private static final Map<String, List<Param>> INPUTS = Map.of(
+        "take", List.of(
+            new Param("filter", "string", false, false, FILTER_DESC),
+            new Param("max", "integer", false, false, "Batch size, at least 1; default 100, capped at 1000"),
+            new Param("leaseTtl", "string", false, false, "ISO-8601 duration, positive; default PT5M")),
+        "ack", leaseInput(),
+        "release", leaseInput(),
+        "replay", List.of(new Param("filter", "string", false, false, "RFC4515; omitted = every in_flight row")),
+        "recast", List.of(
+            new Param("filter", "string", false, false, "RFC4515"),
+            new Param("max", "integer", false, false, "Rows examined per call, at least 1; default and cap 1000")),
+        "purge", List.of(new Param("olderThan", "string", false, false,
+            "ISO-8601 duration, not negative; omitted = every acked row")),
+        "raw", List.of(new Param("elementKey", "string", true, false, ELEMENT_KEY_DESC)),
+        "validate", List.of(new Param("elementKey", "string", true, false, ELEMENT_KEY_DESC)),
+        "rescan", List.of(new Param("source", "string", false, false, "config.sources[].name; omitted = every source")),
+        "packs", List.of(
+            new Param("name", "string", false, false, "Report only this pack; omitted = all"),
+            new Param("gs08", "string", false, false, "Report only the pack covering this guide")));
+
+    private static List<Param> leaseInput() {
+        return List.of(
+            new Param("leaseId", "string", true, false, null),
+            new Param("elementKeys", "string", false, true, "Subset of the lease, non-empty; omitted = whole lease"));
+    }
+
+    /** The declared input properties of {@code /ops/<fn>}; empty for an unknown function. */
+    public static List<Param> functionInputs(String fn) {
+        return INPUTS.getOrDefault(fn, List.of());
+    }
+
     /** Register the in-code schemas; a codegen-emitted file with the same id wins (never overwritten). */
     private void addBuiltins() {
         for (Map.Entry<String, String> e : builtinSchemas().entrySet()) {
@@ -333,30 +376,24 @@ public final class SchemaRegistry implements SchemaRegistryApi {
             multi(prop("errors", "string", true, "Validation errors; empty when valid")))));
 
         // take
-        put(out, schema(functionInputId("take"), List.of(
-            prop("filter", "string", false, "RFC4515 filter over envelope + schema property names (DESIGN §2.6)"),
-            prop("max", "integer", false, "Batch size; default 100, capped at 1000"),
-            prop("leaseTtl", "string", false, "ISO-8601 duration; default PT5M"))));
+        for (String fn : OPS_FUNCTIONS) {
+            List<JsonObject> props = new ArrayList<>();
+            for (Param p : functionInputs(fn)) {
+                JsonObject jp = prop(p.name(), p.dataType(), p.required(), p.description());
+                props.add(p.multi() ? multi(jp) : jp);
+            }
+            put(out, schema(functionInputId(fn), props));
+        }
         put(out, schema(functionOutputId("take"), List.of(
             prop("leaseId", "string", true, "null when nothing was drainable"),
             ref(multi(prop("transactions", "string", true, "Leased transaction sets (envelope + typed body)")), ENVELOPE_SCHEMA),
             prop("remaining", "integer", true, "Approximate drainable backlog after this lease"))));
         // ack / release
-        for (String fn : List.of("ack", "release")) {
-            put(out, schema(functionInputId(fn), List.of(
-                prop("leaseId", "string", true, null),
-                multi(prop("elementKeys", "string", false, "Subset of the lease; omitted = whole lease")))));
-        }
         put(out, schema(functionOutputId("ack"), List.of(prop("acked", "integer", true, "Rows finalized"))));
         put(out, schema(functionOutputId("release"), List.of(prop("released", "integer", true, "Rows returned to new"))));
         // replay
-        put(out, schema(functionInputId("replay"), List.of(
-            prop("filter", "string", false, "RFC4515; omitted = every in_flight row"))));
         put(out, schema(functionOutputId("replay"), List.of(prop("replayed", "integer", true, null))));
         // recast
-        put(out, schema(functionInputId("recast"), List.of(
-            prop("filter", "string", false, "RFC4515"),
-            prop("max", "integer", false, "Rows examined per call; default 1000"))));
         put(out, schema(functionOutputId("recast"), List.of(
             prop("examined", "integer", true, null),
             prop("recast", "integer", true, null),
@@ -364,11 +401,8 @@ public final class SchemaRegistry implements SchemaRegistryApi {
             prop("failed", "integer", true, null),
             prop("note", "string", false, "Present when no materializer is configured"))));
         // purge
-        put(out, schema(functionInputId("purge"), List.of(
-            prop("olderThan", "string", false, "ISO-8601 duration; omitted = every acked row"))));
         put(out, schema(functionOutputId("purge"), List.of(prop("purged", "integer", true, "Acked rows deleted"))));
         // raw
-        put(out, schema(functionInputId("raw"), List.of(prop("elementKey", "string", true, "<fileId>:<GS06>:<ST02>"))));
         put(out, schema(functionOutputId("raw"), List.of(
             prop("elementKey", "string", true, null),
             prop("fileId", "string", true, null),
@@ -376,7 +410,6 @@ public final class SchemaRegistry implements SchemaRegistryApi {
             prop("transactionType", "string", true, null),
             prop("raw", "string", true, "ST..SE segments verbatim plus the ISA/GS context lines"))));
         // validate
-        put(out, schema(functionInputId("validate"), List.of(prop("elementKey", "string", true, "<fileId>:<GS06>:<ST02>"))));
         put(out, schema(functionOutputId("validate"), List.of(
             prop("elementKey", "string", true, null),
             prop("schemaId", "string", true, null),
@@ -386,17 +419,12 @@ public final class SchemaRegistry implements SchemaRegistryApi {
             multi(prop("parserErrors", "string", true, "imsweb getErrors()")),
             prop("parserErrorCount", "integer", false, null))));
         // rescan
-        put(out, schema(functionInputId("rescan"), List.of(
-            prop("source", "string", false, "config.sources[].name; omitted = every source"))));
         put(out, schema(functionOutputId("rescan"), List.of(
             prop("scanned", "integer", true, null),
             prop("discovered", "integer", true, null),
             prop("consumed", "integer", true, null),
             prop("errored", "integer", true, null))));
         // packs (DESIGN §7): what content this deployment has, and where it came from
-        put(out, schema(functionInputId("packs"), List.of(
-            prop("name", "string", false, "Report only this pack; omitted = all"),
-            prop("gs08", "string", false, "Report only the pack covering this guide"))));
         put(out, schema(functionOutputId("packs"), List.of(
             prop("packCount", "integer", true, "Packs loaded"),
             prop("schemaCount", "integer", true, "Schemas declared across those packs"),

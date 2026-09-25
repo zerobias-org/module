@@ -1,6 +1,8 @@
 package com.zerobias.module.x12.buffer;
 
 import com.zerobias.module.x12.materializer.EntityGraph;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -44,6 +46,8 @@ import java.util.Set;
  */
 public final class BufferStore implements AutoCloseable {
 
+    private static final Logger LOG = LoggerFactory.getLogger(BufferStore.class);
+
     static final String TX_COLS = "id, element_key, file_id, source_name, received_at, isa_control, "
         + "gs_control, st_control, gs08, transaction_type, sender_id, receiver_id, interchange_at, "
         + "schema_id, raw_x12, parser_error_count, envelope, status, lease_id, "
@@ -63,6 +67,9 @@ public final class BufferStore implements AutoCloseable {
         "schema_id", "envelope");
 
     private static final String SCHEMA_RESOURCE = "/buffer/schema.sql";
+
+    /** {@code PRAGMA user_version} of the shape {@code schema.sql} creates; see {@link #migrate}. */
+    static final int SCHEMA_VERSION = 1;
 
     private final Connection conn;
     private final Clock clock;
@@ -91,9 +98,55 @@ public final class BufferStore implements AutoCloseable {
                 st.execute(stmt);
             }
         }
+        migrate();
         // ackDurability=full -> fsync per commit (DESIGN §8); overrides the schema's NORMAL.
         try (Statement st = conn.createStatement()) {
             st.execute("PRAGMA synchronous=" + (fullDurability ? "FULL" : "NORMAL"));
+        }
+    }
+
+    /**
+     * Bring an existing buffer up to {@link #SCHEMA_VERSION}. The buffer volume outlives every
+     * redeploy by design, and {@code CREATE TABLE IF NOT EXISTS} never alters a table that is
+     * already there — so every column change to {@code schema.sql} needs a step here, or an
+     * upgraded container opens a table its INSERTs no longer match.
+     *
+     * <p>Steps probe the actual shape rather than trusting {@code user_version} alone: buffers
+     * written before versioning carry 0 whatever their shape.
+     */
+    private void migrate() throws SQLException {
+        final boolean prev = conn.getAutoCommit();
+        conn.setAutoCommit(false);
+        try (Statement st = conn.createStatement()) {
+            // v1: the typed document moved into the object graph (DESIGN §8.4). The legacy
+            // column is NOT NULL, so while it exists every ingest INSERT fails. Its content is
+            // not carried over: raw_x12 is the source, and the startup backfill rebuilds the
+            // graph from it (BufferStore#graphless).
+            if (hasColumn("transactions", "mapped_json")) {
+                st.execute("ALTER TABLE transactions DROP COLUMN mapped_json");
+                LOG.info("buffer migration: dropped transactions.mapped_json (graph replaces it)");
+            }
+            if (queryLong("PRAGMA user_version") < SCHEMA_VERSION) {
+                st.execute("PRAGMA user_version = " + SCHEMA_VERSION);
+            }
+            conn.commit();
+        } catch (SQLException | RuntimeException e) {
+            conn.rollback();
+            throw e;
+        } finally {
+            conn.setAutoCommit(prev);
+        }
+    }
+
+    private boolean hasColumn(String table, String column) throws SQLException {
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (rs.next()) {
+                if (column.equalsIgnoreCase(rs.getString("name"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -134,12 +187,9 @@ public final class BufferStore implements AutoCloseable {
 
     /**
      * Persist one interchange file and all of its transaction sets in ONE SQL
-     * transaction (DESIGN §4.2 step 3c): every row is inserted with
-     * {@code ON CONFLICT(element_key) DO NOTHING}, then the {@code files} row. On any
-     * failure the whole unit rolls back and the exception propagates (the caller then
-     * renames {@code .error}). Returns the number of transaction rows actually
-     * inserted (duplicates by element key are silently dropped). The caller renames
-     * {@code .done} only after this returns — rename is the ack.
+     * transaction (DESIGN §4.2 step 3c): the transaction rows, then the {@code files} row.
+     * Every row must land — see {@link #consumeFile(FileRow, List, Map, Map)}. The caller
+     * renames {@code .done} only after this returns — rename is the ack.
      */
     public synchronized int consumeFile(FileRow file, List<TransactionRow> rows) throws SQLException {
         return consumeFile(file, rows, Map.of());
@@ -159,37 +209,36 @@ public final class BufferStore implements AutoCloseable {
     }
 
     /**
+     * The whole consume unit. Every transaction row must land: the file's id is new (the
+     * consumer resolves redelivery/duplicates by checksum before calling this), so an element
+     * key that is already taken means two transaction sets of THIS file collide, and the unit
+     * is rolled back with a {@link DuplicateElementKeyException} rather than committed with a
+     * set missing — or, worse, with the surviving row carrying the other set's graph, since
+     * both would be filed under the same key in {@code graphs}. On any failure, {@link Error}s
+     * included, nothing is written and the exception propagates. Returns {@code rows.size()}.
+     *
      * @param dims element key → resolved business dimensions (DESIGN §8.5)
      */
     public synchronized int consumeFile(FileRow file, List<TransactionRow> rows,
             Map<String, List<EntityGraph.Entity>> graphs,
             Map<String, Map<String, EntityGraph.Value>> dims) throws SQLException {
-        final boolean prev = conn.getAutoCommit();
-        conn.setAutoCommit(false);
-        try {
-            int inserted = 0;
+        return SqlTransaction.run(conn, () -> {
             for (TransactionRow r : rows) {
-                if (insertTransactionUnsynchronized(r)) {
-                    inserted++;
-                    List<EntityGraph.Entity> graph = graphs == null ? null : graphs.get(r.elementKey());
-                    if (graph != null && !graph.isEmpty()) {
-                        insertGraphUnsynchronized(r, graph);
-                    }
-                    Map<String, EntityGraph.Value> d = dims == null ? null : dims.get(r.elementKey());
-                    if (d != null && !d.isEmpty()) {
-                        insertDimsUnsynchronized(r.elementKey(), d);
-                    }
+                if (!insertTransactionUnsynchronized(r)) {
+                    throw new DuplicateElementKeyException(r.elementKey());
+                }
+                List<EntityGraph.Entity> graph = graphs == null ? null : graphs.get(r.elementKey());
+                if (graph != null && !graph.isEmpty()) {
+                    insertGraphUnsynchronized(r, graph);
+                }
+                Map<String, EntityGraph.Value> d = dims == null ? null : dims.get(r.elementKey());
+                if (d != null && !d.isEmpty()) {
+                    insertDimsUnsynchronized(r.elementKey(), d);
                 }
             }
             insertFileUnsynchronized(file);
-            conn.commit();
-            return inserted;
-        } catch (SQLException | RuntimeException e) {
-            conn.rollback();
-            throw e;
-        } finally {
-            conn.setAutoCommit(prev);
-        }
+            return rows.size();
+        });
     }
 
     /**
@@ -204,7 +253,9 @@ public final class BufferStore implements AutoCloseable {
 
     /**
      * Persist one transaction set. Returns true if inserted, false if a row with the
-     * same {@code elementKey} already exists (silently dropped).
+     * same {@code elementKey} already exists. The insert keeps {@code ON CONFLICT DO NOTHING}
+     * so a taken key reads as {@code false} rather than as a constraint error that would look
+     * like a store failure; {@link #consumeFile} turns that {@code false} into a rollback.
      */
     public synchronized boolean insertTransaction(TransactionRow row) throws SQLException {
         return insertTransactionUnsynchronized(row);
@@ -604,67 +655,153 @@ public final class BufferStore implements AutoCloseable {
         }
     }
 
-    /** Delete acked rows acked longer ago than {@code olderThan} ({@code ops/purge}). */
-    public synchronized int purge(Duration olderThan) throws SQLException {
+    /**
+     * Delete acked rows acked longer ago than {@code olderThan} ({@code ops/purge}) and hand
+     * the freed pages back to the filesystem. Not synchronized as a whole: each batch takes
+     * the monitor on its own (see {@link #DELETE_BATCH}).
+     */
+    public int purge(Duration olderThan) throws SQLException {
         final long cutoff = nowMillis() - olderThan.toMillis();
-        return deleteAckedOlderThanMillis(cutoff);
+        final int n = deleteAckedOlderThanMillis(cutoff);
+        incrementalVacuum();
+        return n;
     }
 
     // --- primitives used by RetentionSweeper ---
 
-    synchronized int deleteAckedOlderThanMillis(long cutoffMillis) throws SQLException {
-        // Inclusive boundary (age >= olderThan): purge(PT0S) means "all acked",
-        // which must include rows acked at the current instant (acked_at == cutoff).
-        final List<String> keys = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT element_key FROM transactions WHERE status='acked' AND acked_at IS NOT NULL "
-                + "AND acked_at <= ?")) {
-            ps.setLong(1, cutoffMillis);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    keys.add(rs.getString(1));
-                }
-            }
-        }
-        try (PreparedStatement ps = conn.prepareStatement(
-                "DELETE FROM transactions WHERE status='acked' AND acked_at IS NOT NULL AND acked_at <= ?")) {
-            ps.setLong(1, cutoffMillis);
-            final int purged = ps.executeUpdate();
-            deleteGraphs(keys);   // the graph goes with its transaction, never outlives it
-            return purged;
-        }
+    /**
+     * Rows per delete batch for {@code purge} and retention. Each batch binds its keys as
+     * parameters, so it must stay far below SQLite's host-parameter limit (32766 by default,
+     * 999 on old builds) however many rows are due; and each batch is one SQL transaction
+     * that deletes the transaction rows <em>and</em> their entities, values and dimensions
+     * together, so a failure part-way can never leave an orphaned graph (or a graph whose
+     * transaction is gone). The monitor is released between batches, so evicting millions of
+     * acked rows never stalls ingestion or a {@code take} for the whole sweep.
+     */
+    static final int DELETE_BATCH = 500;
+
+    /** Free pages handed back per {@code incremental_vacuum} step, for the same reason. */
+    static final int VACUUM_BATCH_PAGES = 1024;
+
+    /*
+     * Both deletes reach their rows through transactions_acked (status, acked_at) — see
+     * schema.sql — so eviction goes by ack age, like maxAge. Inclusive boundary on the age
+     * cut: purge(PT0S) means "all acked", which must include rows acked at the current instant.
+     */
+    private static final String SELECT_ACKED_OLDER_THAN_SQL =
+        "SELECT id, element_key FROM transactions WHERE status = 'acked' AND acked_at <= ? "
+        + "ORDER BY acked_at ASC, id ASC LIMIT ?";
+    private static final String SELECT_OLDEST_ACKED_SQL =
+        "SELECT id, element_key FROM transactions WHERE status = 'acked' "
+        + "ORDER BY acked_at ASC, id ASC LIMIT ?";
+
+    /** Every acked row acked at or before {@code cutoffMillis}, in batches; returns the total. */
+    int deleteAckedOlderThanMillis(long cutoffMillis) throws SQLException {
+        int total = 0;
+        int n;
+        do {
+            n = deleteAckedBatch(SELECT_ACKED_OLDER_THAN_SQL, cutoffMillis, DELETE_BATCH);
+            total += n;
+        } while (n == DELETE_BATCH);
+        return total;
     }
 
-    synchronized int deleteOldestAcked(int limit) throws SQLException {
-        final List<String> keys = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT element_key FROM transactions WHERE status='acked' ORDER BY received_at ASC LIMIT ?")) {
-            ps.setInt(1, limit);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    keys.add(rs.getString(1));
-                }
+    /** Up to {@code limit} of the longest-acked rows, in batches; returns how many went. */
+    int deleteOldestAcked(int limit) throws SQLException {
+        int total = 0;
+        while (total < limit) {
+            final int want = Math.min(DELETE_BATCH, limit - total);
+            final int n = deleteAckedBatch(SELECT_OLDEST_ACKED_SQL, null, want);
+            total += n;
+            if (n < want) {
+                break;
             }
         }
-        try (PreparedStatement ps = conn.prepareStatement(
-                "DELETE FROM transactions WHERE id IN (SELECT id FROM transactions WHERE status='acked' "
-                + "ORDER BY received_at ASC LIMIT ?)")) {
-            ps.setInt(1, limit);
-            final int purged = ps.executeUpdate();
-            deleteGraphs(keys);
-            return purged;
-        }
+        return total;
     }
 
-    /** Current database size in bytes (page_count × page_size); {@code /stats} + backpressure. */
+    /**
+     * One batch: pick up to {@code limit} acked rows, then delete their graph, dimensions and
+     * the rows themselves in ONE SQL transaction. {@code cutoffMillis} binds the first
+     * parameter when non-null.
+     */
+    private synchronized int deleteAckedBatch(String selectSql, Long cutoffMillis, int limit) throws SQLException {
+        return SqlTransaction.run(conn, () -> {
+            final List<Long> ids = new ArrayList<>();
+            final List<String> keys = new ArrayList<>();
+            try (PreparedStatement ps = conn.prepareStatement(selectSql)) {
+                int i = 1;
+                if (cutoffMillis != null) {
+                    ps.setLong(i++, cutoffMillis);
+                }
+                ps.setInt(i, limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        ids.add(rs.getLong(1));
+                        keys.add(rs.getString(2));
+                    }
+                }
+            }
+            if (ids.isEmpty()) {
+                return 0;
+            }
+            deleteGraphRows(keys, true);   // the graph goes with its transaction, never outlives it
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM transactions WHERE id IN (" + placeholders(ids.size()) + ")")) {
+                for (int i = 0; i < ids.size(); i++) {
+                    ps.setLong(i + 1, ids.get(i));
+                }
+                return ps.executeUpdate();
+            }
+        });
+    }
+
+    /** Size of the database file in bytes (page_count × page_size), free pages included; {@code /stats}. */
     public synchronized long dbSizeBytes() throws SQLException {
         return queryLong("PRAGMA page_count") * queryLong("PRAGMA page_size");
     }
 
-    synchronized void incrementalVacuum() throws SQLException {
-        try (Statement st = conn.createStatement()) {
-            st.execute("PRAGMA incremental_vacuum");
+    /**
+     * Bytes held by live data ((page_count − freelist_count) × page_size) — the retention
+     * ceiling and backpressure measure. Pages a delete freed sit on the freelist until they
+     * are vacuumed; counting them would keep the buffer "over capacity" after the very
+     * eviction that made room.
+     */
+    public synchronized long usedBytes() throws SQLException {
+        return (queryLong("PRAGMA page_count") - queryLong("PRAGMA freelist_count")) * queryLong("PRAGMA page_size");
+    }
+
+    /**
+     * Hand free pages back to the filesystem, {@link #VACUUM_BATCH_PAGES} per step, the
+     * monitor released between steps. Called after every delete path (purge, maxAge, maxBytes).
+     */
+    void incrementalVacuum() throws SQLException {
+        long free = freePages();
+        while (free > 0) {
+            vacuumPages(VACUUM_BATCH_PAGES);
+            final long left = freePages();
+            if (left >= free) {
+                return;   // auto_vacuum is off (a buffer created before it was enabled): nothing to hand back
+            }
+            free = left;
         }
+    }
+
+    synchronized long freePages() throws SQLException {
+        return queryLong("PRAGMA freelist_count");
+    }
+
+    private synchronized void vacuumPages(int pages) throws SQLException {
+        // The pragma frees one page per VM step. With this driver Statement.execute() steps
+        // once — a bare `PRAGMA incremental_vacuum` via execute() freed a single page — while
+        // executeUpdate() runs the statement to completion (up to `pages`).
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("PRAGMA incremental_vacuum(" + pages + ")");
+        }
+    }
+
+    private static String placeholders(int n) {
+        return String.join(",", java.util.Collections.nCopies(n, "?"));
     }
 
     // --- health / stats metrics (DESIGN §9) ---------------------------------
@@ -692,7 +829,7 @@ public final class BufferStore implements AutoCloseable {
     /** Age in seconds of the oldest not-yet-acked transaction, or empty if none are pending. */
     public synchronized OptionalLong oldestUnackedSeconds() throws SQLException {
         OptionalLong oldest =
-            queryNullableLong("SELECT min(received_at) FROM transactions WHERE status != 'acked'");
+            queryNullableLong("SELECT min(received_at) FROM transactions WHERE status <> 'acked'");
         if (oldest.isEmpty()) {
             return OptionalLong.empty();
         }
@@ -1005,6 +1142,44 @@ public final class BufferStore implements AutoCloseable {
         return out;
     }
 
+    /**
+     * One (name, id) pair of a party dimension as it occurs in one guide: how many transaction
+     * sets carry it and when the first and last of them were received. The raw material of a
+     * dimension-grain business entity (a Payer); identity folding happens in the caller.
+     */
+    public record PartyOccurrence(String gs08, String transactionType, String name, String id,
+            long transactionCount, long firstReceivedAt, long lastReceivedAt) {
+    }
+
+    /**
+     * Every distinct (name, id) pair the two dimensions take, per guide, with exact counts
+     * and first/last receipt — one grouped query over the buffer (DESIGN §8.5). A transaction
+     * carrying neither dimension is not a party occurrence.
+     */
+    public synchronized List<PartyOccurrence> partyOccurrences(String nameDim, String idDim)
+            throws SQLException {
+        final List<PartyOccurrence> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT t.gs08, t.transaction_type, n.value_text AS name, i.value_text AS id, "
+                + "COUNT(*) AS c, MIN(t.received_at) AS first_at, MAX(t.received_at) AS last_at "
+                + "FROM transactions t "
+                + "LEFT JOIN transaction_dims n ON n.element_key = t.element_key AND n.dim = ? "
+                + "LEFT JOIN transaction_dims i ON i.element_key = t.element_key AND i.dim = ? "
+                + "WHERE n.value_text IS NOT NULL OR i.value_text IS NOT NULL "
+                + "GROUP BY t.gs08, t.transaction_type, n.value_text, i.value_text")) {
+            ps.setString(1, nameDim);
+            ps.setString(2, idDim);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new PartyOccurrence(rs.getString("gs08"), rs.getString("transaction_type"),
+                        rs.getString("name"), rs.getString("id"), rs.getLong("c"), rs.getLong("first_at"),
+                        rs.getLong("last_at")));
+                }
+            }
+        }
+        return out;
+    }
+
     /** Micro-units for the comparison column; null when unscalable or out of long range. */
     static Long microUnits(java.math.BigDecimal value) {
         if (value == null) {
@@ -1192,6 +1367,16 @@ public final class BufferStore implements AutoCloseable {
      */
     public synchronized boolean replaceGraph(TransactionRow row, String schemaId,
             List<EntityGraph.Entity> graph) throws SQLException {
+        return replaceGraph(row, schemaId, graph, null);
+    }
+
+    /**
+     * {@link #replaceGraph(TransactionRow, String, List)} that also rewrites the dimensions
+     * when {@code dims} is non-null — the startup backfill, where a row with no graph has no
+     * dimensions either and would otherwise stay invisible to business-collection filters.
+     */
+    public synchronized boolean replaceGraph(TransactionRow row, String schemaId,
+            List<EntityGraph.Entity> graph, Map<String, EntityGraph.Value> dims) throws SQLException {
         final boolean prev = conn.getAutoCommit();
         conn.setAutoCommit(false);
         try {
@@ -1204,9 +1389,12 @@ public final class BufferStore implements AutoCloseable {
                     return false;   // leased rows are never rewritten under the consumer
                 }
             }
-            deleteGraphRows(List.of(row.elementKey()));
+            deleteGraphRows(List.of(row.elementKey()), dims != null);
             if (graph != null && !graph.isEmpty()) {
                 insertGraphUnsynchronized(row.withSchemaId(schemaId), graph);
+            }
+            if (dims != null && !dims.isEmpty()) {
+                insertDimsUnsynchronized(row.elementKey(), dims);
             }
             conn.commit();
             return true;
@@ -1216,6 +1404,30 @@ public final class BufferStore implements AutoCloseable {
         } finally {
             conn.setAutoCommit(prev);
         }
+    }
+
+    /**
+     * Transaction rows with no object graph, oldest first, skipping leased rows and any
+     * {@code excluded} keys. A row lands here when it was written before the graph existed
+     * (see {@link #migrate}) or when its guide has no materializer — the latter legitimately
+     * stays graphless, which is why the caller passes back the keys it already tried.
+     */
+    public synchronized List<TransactionRow> graphless(int limit, Set<String> excluded) throws SQLException {
+        final List<TransactionRow> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT " + TX_COLS + " FROM transactions t WHERE status <> 'in_flight' "
+                + "AND NOT EXISTS (SELECT 1 FROM entities e WHERE e.element_key = t.element_key) "
+                + "ORDER BY id ASC")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next() && out.size() < limit) {
+                    final TransactionRow row = mapTransaction(rs);
+                    if (excluded == null || !excluded.contains(row.elementKey())) {
+                        out.add(row);
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     /** How many instances a transaction set has (a cheap "is the graph there?" probe). */
@@ -1230,15 +1442,24 @@ public final class BufferStore implements AutoCloseable {
     }
 
     /**
-     * Drop the graph for element keys whose transaction rows are going away. Called by every
-     * delete path: SQLite enforces no foreign key unless the pragma is on, so orphaned
-     * entities would otherwise accumulate invisibly and inflate every query that scans them.
+     * Drop the graph (entities, values, dimensions) for element keys whose transaction rows
+     * are going away, {@link #DELETE_BATCH} keys per SQL transaction. SQLite enforces no
+     * foreign key unless the pragma is on, so orphaned entities would otherwise accumulate
+     * invisibly and inflate every query that scans them. The retention/purge paths do not
+     * call this — they delete the graph inside the same transaction as its rows.
      */
-    synchronized int deleteGraphs(List<String> elementKeys) throws SQLException {
+    int deleteGraphs(List<String> elementKeys) throws SQLException {
         if (elementKeys == null || elementKeys.isEmpty()) {
             return 0;
         }
-        return deleteGraphRows(elementKeys, true);
+        int total = 0;
+        for (int from = 0; from < elementKeys.size(); from += DELETE_BATCH) {
+            final List<String> chunk = elementKeys.subList(from, Math.min(elementKeys.size(), from + DELETE_BATCH));
+            synchronized (this) {
+                total += SqlTransaction.run(conn, () -> deleteGraphRows(chunk, true));
+            }
+        }
+        return total;
     }
 
     /** Entities + values for these keys; {@code withDims} also drops their dimensions. */
@@ -1246,11 +1467,12 @@ public final class BufferStore implements AutoCloseable {
         return deleteGraphRows(elementKeys, false);
     }
 
+    /** Callers bound {@code elementKeys} to {@link #DELETE_BATCH}: one parameter per key per statement. */
     private int deleteGraphRows(List<String> elementKeys, boolean withDims) throws SQLException {
         if (elementKeys == null || elementKeys.isEmpty()) {
             return 0;
         }
-        final String in = elementKeys.stream().map(k -> "?").collect(java.util.stream.Collectors.joining(","));
+        final String in = placeholders(elementKeys.size());
         try (PreparedStatement vals = conn.prepareStatement(
                 "DELETE FROM entity_values WHERE entity_id IN "
                 + "(SELECT id FROM entities WHERE element_key IN (" + in + "))");

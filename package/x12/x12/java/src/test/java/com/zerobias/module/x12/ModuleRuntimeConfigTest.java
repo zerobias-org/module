@@ -42,7 +42,7 @@ class ModuleRuntimeConfigTest {
             assertEquals(60, c.sources().get(0).stableForSec());
             assertEquals(".done", c.consumedSuffix());
             assertEquals(".error", c.errorSuffix());
-            assertFalse(c.fullDurability());
+            assertTrue(c.fullDurability(), "ackDurability defaults to full (fsync per commit)");
             assertFalse(c.retention().isBounded());
             assertFalse(c.allowBareTransactionSets());
             assertFalse(c.allowFileManagement(), "file management is opt-in, never a default");
@@ -76,10 +76,20 @@ class ModuleRuntimeConfigTest {
     }
 
     @Test
-    void ackDurabilityIsCaseInsensitiveAndUnknownIsNormal() {
+    void ackDurabilityIsCaseInsensitiveAndOnlyAnExplicitNormalWeakensIt() {
         assertTrue(ModuleRuntimeConfig.parse("{\"ackDurability\":\"FULL\"}").fullDurability());
         assertFalse(ModuleRuntimeConfig.parse("{\"ackDurability\":\"normal\"}").fullDurability());
-        assertFalse(ModuleRuntimeConfig.parse("{\"ackDurability\":\"bogus\"}").fullDurability());
+        assertFalse(ModuleRuntimeConfig.parse("{\"ackDurability\":\"NORMAL\"}").fullDurability());
+        assertTrue(ModuleRuntimeConfig.parse("{\"ackDurability\":\"bogus\"}").fullDurability(), "unknown keeps full");
+        assertTrue(ModuleRuntimeConfig.parse("{\"sources\":[]}").fullDurability(), "absent means full");
+    }
+
+    @Test
+    void theImageDefaultsAreFullDurability() {
+        // The shipped runtimeConfig.yml is what a deployment without MODULE_CONFIG runs with.
+        ModuleRuntimeConfig c = ModuleRuntimeConfig.resolve(Map.of(), Path.of("../runtimeConfig.yml").toString());
+        assertTrue(c.fullDurability(), "runtimeConfig.yml ackDurability");
+        assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES, c.maxFileBytes());
     }
 
     @Test
@@ -161,5 +171,24 @@ class ModuleRuntimeConfigTest {
         try (var s = Files.list(good)) {
             assertEquals(0, s.count(), "writability probe cleaned up");
         }
+    }
+
+    @Test
+    void twoSourcesOnTheSameRealDirectoryAreRejected(@TempDir Path dir) throws Exception {
+        Path in = Files.createDirectory(dir.resolve("in"));
+        Path link = Files.createSymbolicLink(dir.resolve("alias"), in);
+        Path nested = Files.createDirectory(in.resolve("nested"));
+        for (String other : new String[] {link.toString(), in + "/", in + "/nested/.."}) {
+            ModuleRuntimeConfig c = new ModuleRuntimeConfig(
+                List.of(new SourceConfig("a", in.toString(), "*", 1, 0), new SourceConfig("b", other, "*", 1, 0)),
+                ".done", ".error", false, com.zerobias.module.x12.buffer.RetentionConfig.none(), false, false);
+            List<String> problems = c.validateSources();
+            assertTrue(problems.stream().anyMatch(p -> p.contains("'a' and 'b' point at the same directory")),
+                other + " -> " + problems);
+        }
+        ModuleRuntimeConfig nestedOk = new ModuleRuntimeConfig(
+            List.of(new SourceConfig("a", in.toString(), "*", 1, 0), new SourceConfig("b", nested.toString(), "*", 1, 0)),
+            ".done", ".error", false, com.zerobias.module.x12.buffer.RetentionConfig.none(), false, false);
+        assertEquals(List.of(), nestedOk.validateSources(), "nested is fine: each poller scans flat");
     }
 }

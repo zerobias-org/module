@@ -17,8 +17,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>{@link #sweep()} is the unit of work (directly callable + testable);
  * {@link #start(java.time.Duration)} runs it on a schedule (10-min cadence).
- * Byte-bounded eviction relies on incremental auto-vacuum (enabled by
- * {@link BufferStore} at init) so deletes actually reclaim file pages.
+ * The byte bound is measured as live data ({@link BufferStore#usedBytes()}), so pages a
+ * delete freed count as room at once, and every delete path ends with an incremental
+ * vacuum (auto-vacuum is enabled by {@link BufferStore} at init) so the file shrinks too.
  */
 public final class RetentionSweeper {
 
@@ -28,6 +29,8 @@ public final class RetentionSweeper {
     private final BufferStore store;
     private final RetentionConfig config;
     private final Clock clock;
+    /** Guards {@link #scheduler}; never the sweep's monitor, so stop does not queue behind a sweep. */
+    private final Object lifecycle = new Object();
     private ScheduledExecutorService scheduler;
 
     public RetentionSweeper(BufferStore store, RetentionConfig config, Clock clock) {
@@ -36,36 +39,48 @@ public final class RetentionSweeper {
         this.clock = clock;
     }
 
-    /** Run one retention pass; returns the number of transaction rows evicted. */
-    public int sweep() throws SQLException {
+    /**
+     * Run one retention pass; returns the number of transaction rows evicted. Synchronized so
+     * the schedule and any other caller never sweep at once.
+     */
+    public synchronized int sweep() throws SQLException {
         int removed = 0;
         if (config.maxAge() != null) {
             final long cutoff = Instant.now(clock).toEpochMilli() - config.maxAge().toMillis();
             removed += store.deleteAckedOlderThanMillis(cutoff);
         }
         if (config.maxBytes() != null) {
-            while (store.dbSizeBytes() > config.maxBytes()) {
+            while (store.usedBytes() > config.maxBytes() && !Thread.currentThread().isInterrupted()) {
                 final int n = store.deleteOldestAcked(EVICT_BATCH);
                 if (n == 0) {
                     break; // nothing more we are allowed to evict
                 }
-                store.incrementalVacuum();
                 removed += n;
             }
         }
+        // After whichever axis deleted anything — and harmlessly when neither did, since a
+        // purge or an earlier failed sweep may have left free pages behind.
+        store.incrementalVacuum();
         return removed;
     }
 
     /**
-     * Whether the buffer is over its byte ceiling with nothing left to evict — the
-     * poller's backpressure signal (DESIGN §4.2 step 4): it then leaves files untouched.
+     * Whether live data exceeds the byte ceiling — the poller's backpressure signal
+     * (DESIGN §4.2 step 4): it then leaves files untouched. Free pages do not count: they
+     * are room, whether or not the file has been shrunk yet.
      */
     public boolean overCapacity() throws SQLException {
-        return config.maxBytes() != null && store.dbSizeBytes() > config.maxBytes();
+        return config.maxBytes() != null && store.usedBytes() > config.maxBytes();
     }
 
     /** Start the periodic sweep (e.g. every 10 minutes). Exceptions are logged, not propagated. */
-    public synchronized void start(java.time.Duration interval) {
+    public void start(java.time.Duration interval) {
+        synchronized (lifecycle) {
+            startLocked(interval);
+        }
+    }
+
+    private void startLocked(java.time.Duration interval) {
         if (scheduler != null) {
             return;
         }
@@ -86,10 +101,23 @@ public final class RetentionSweeper {
         }, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
     }
 
-    public synchronized void stop() {
-        if (scheduler != null) {
-            scheduler.shutdownNow();
+    /** Stop the schedule and wait briefly for a sweep in progress, so the buffer can close after. */
+    public void stop() {
+        ScheduledExecutorService s;
+        synchronized (lifecycle) {
+            s = scheduler;
             scheduler = null;
+        }
+        if (s == null) {
+            return;
+        }
+        s.shutdownNow();
+        try {
+            if (!s.awaitTermination(5, TimeUnit.SECONDS)) {
+                LOG.warn("retention sweep still running at stop; abandoning it");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 }

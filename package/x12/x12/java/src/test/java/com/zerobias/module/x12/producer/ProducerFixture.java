@@ -39,11 +39,11 @@ final class ProducerFixture {
     static final String GS08_837P_ALT = "005010X222";
     static final String SCHEMA_837P_ALT = "schema:table:x12." + GS08_837P_ALT + ".837P";
 
-    static final String KEY_A1 = FILE_A + ":1:0001";
-    static final String KEY_A2 = FILE_A + ":1:0002";
-    static final String KEY_A3 = FILE_A + ":1:0003";
-    static final String KEY_B1 = FILE_B + ":2:0001";
-    static final String KEY_B2 = FILE_B + ":3:0001";
+    static final String KEY_A1 = FILE_A + ":000000001:1:0001";
+    static final String KEY_A2 = FILE_A + ":000000001:1:0002";
+    static final String KEY_A3 = FILE_A + ":000000001:1:0003";
+    static final String KEY_B1 = FILE_B + ":000000001:2:0001";
+    static final String KEY_B2 = FILE_B + ":000000001:3:0001";
 
     private ProducerFixture() {
     }

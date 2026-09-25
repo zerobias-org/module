@@ -13,4 +13,4 @@ project.extra["sourceFiles"] = listOf(
     "java/pom.xml", "java/codegen/pom.xml"
 )
 project.extra["sourceDirs"] = listOf("src", "java/src/main", "java/codegen/src/main")
-project.extra["testDirs"]   = listOf("java/src/test", "java/codegen/src/test", "java/scripts")
+project.extra["testDirs"]   = listOf("test", "java/src/test", "java/codegen/src/test", "java/scripts")   // test/ = e2e suite (testDocker)

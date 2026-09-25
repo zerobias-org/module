@@ -41,6 +41,16 @@ public interface OperationsApi {
     /** Dispatch a {@code /x12-receiver/ops/<fn>} invocation; the map is serialized as the function output. */
     Map<String, Object> invoke(String fn, Map<String, Object> input) throws SQLException;
 
+    /**
+     * {@code validateFunctionInput}: the interface {@code ValidationResult}
+     * ({@code {valid, errors[{path,message,code}], warnings[{path,message}]}}) for
+     * {@code input} against {@code fn}'s declared input — the same check {@link #invoke}
+     * applies before it runs anything. Unknown {@code fn} → {@code noSuchObjectError}.
+     */
+    default Map<String, Object> validateInput(String fn, Object input, boolean strict) {
+        throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/ops/" + fn);
+    }
+
     /** No functions available: every invocation is {@code noSuchObjectError}. */
     OperationsApi NONE = (fn, input) -> {
         throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/ops/" + fn);

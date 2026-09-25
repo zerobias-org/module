@@ -14,8 +14,8 @@ java/src/main/resources/schemas/
 java/src/main/resources/structure-index/
 java/src/main/resources/packs.json
 
-# x12.org example transmissions — fetched locally by java/scripts/fetch-x12org-examples.py,
-# NEVER committed (X12 IP: reproduction requires ASC X12 consent; linking is permitted).
+# x12.org example transmissions are ASC X12 IP (reproduction requires their consent; linking is
+# permitted). We no longer fetch them; this stays ignored so a stray local copy is never committed.
 java/src/test/resources/x12org/
 
 # Ephemeral build artifacts

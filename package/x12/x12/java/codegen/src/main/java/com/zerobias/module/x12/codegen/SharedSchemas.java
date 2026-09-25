@@ -37,12 +37,12 @@ public final class SharedSchemas {
     /**
      * The envelope overlay every transaction row carries at top level (DESIGN §5),
      * appended to each {@code schema:table:} and the whole of the shared envelope
-     * schema. {@code elementKey} is the primary key ({@code <fileId>:<GS06>:<ST02>}).
+     * schema. {@code elementKey} is the primary key ({@code <fileId>:<ISA13>:<GS06>:<ST02>}).
      */
     public static List<Property> envelopeProperties() {
         final List<Property> p = new ArrayList<>();
         p.add(new Property("elementKey", CoreTypes.STRING).required(true).primaryKey(true)
-            .description("Atom key: <fileId>:<GS06>:<ST02>"));
+            .description("Atom key: <fileId>:<ISA13>:<GS06>:<ST02>"));
         p.add(new Property("fileId", CoreTypes.STRING).required(true)
             .description("Interchange file id: <absolute path at discovery>@<first 12 hex of sha256>")
             .references(new Reference(FILE_ID, "fileId")));

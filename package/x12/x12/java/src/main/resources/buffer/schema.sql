@@ -2,9 +2,9 @@
 -- WAL mode handles concurrent reader/writer; the single Java process owns one
 -- writer thread. Timestamps are epoch-millis INTEGERs (see BufferStore).
 --
--- synchronous defaults to NORMAL (fsync at WAL checkpoints). Operators set
--- config.ackDurability=full -> synchronous=FULL (fsync per commit) for a zero-loss
--- consume path; BufferStore applies that PRAGMA at open, so it is NOT pinned here.
+-- The synchronous PRAGMA at the end is only a placeholder: BufferStore applies
+-- config.ackDurability at open, overriding it — full (the default) -> synchronous=FULL (fsync
+-- per commit) for a zero-loss consume path; normal -> NORMAL (fsync at WAL checkpoints).
 
 -- One row per interchange FILE discovered in an inbox. Rows are never evicted by
 -- retention — they are the audit trail, and the checksum index is what keeps a
@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS files_source ON files(source_name, status);
 -- One row per TRANSACTION SET (ST..SE) — the collection element / drain atom.
 CREATE TABLE IF NOT EXISTS transactions (
   id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-  element_key        TEXT NOT NULL UNIQUE,    -- <fileId>:<GS06>:<ST02>
+  element_key        TEXT NOT NULL UNIQUE,    -- <fileId>:<ISA13>:<GS06>:<ST02>
   file_id            TEXT NOT NULL,
   source_name        TEXT NOT NULL,
   received_at        INTEGER NOT NULL,
@@ -63,6 +63,21 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS transactions_drain ON transactions(schema_id, status, received_at);
 CREATE INDEX IF NOT EXISTS transactions_lease ON transactions(lease_id) WHERE lease_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS transactions_file ON transactions(file_id);
+-- Acked rows are most of the table (retention keeps them for maxAge), so every hot path must
+-- reach its rows without walking them. Additive only: CREATE INDEX IF NOT EXISTS builds these
+-- on an existing buffer at the next open, so they need no BufferStore.migrate step.
+-- oldestUnacked (health, /stats): the un-acked rows, oldest first. A partial index is only used
+-- when the query carries its WHERE term verbatim (BufferStore.oldestUnackedSeconds does).
+CREATE INDEX IF NOT EXISTS transactions_unacked ON transactions(received_at) WHERE status <> 'acked';
+-- purge + retention (maxAge range, maxBytes oldest-acked-first); also take's status probes.
+CREATE INDEX IF NOT EXISTS transactions_acked ON transactions(status, acked_at);
+-- The emergent object tree (/by-type, /by-version, /by-sender, /by-source): its children are the
+-- DISTINCT values of these columns, read from a narrow index in order instead of a table scan
+-- plus a temp sort. (type, gs08) also serves the per-type guide list /by-type/<TS>.
+CREATE INDEX IF NOT EXISTS transactions_type ON transactions(transaction_type, gs08);
+CREATE INDEX IF NOT EXISTS transactions_gs08 ON transactions(gs08);
+CREATE INDEX IF NOT EXISTS transactions_sender ON transactions(sender_id);
+CREATE INDEX IF NOT EXISTS transactions_source ON transactions(source_name);
 
 -- ---------------------------------------------------------------------------
 -- The object graph (DESIGN §8.4). One row per materialized LOOP / SEGMENT /
@@ -77,7 +92,7 @@ CREATE INDEX IF NOT EXISTS transactions_file ON transactions(file_id);
 -- collection element in its own right.
 CREATE TABLE IF NOT EXISTS entities (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  element_key  TEXT NOT NULL,            -- owning transaction set (<fileId>:<GS06>:<ST02>)
+  element_key  TEXT NOT NULL,            -- owning transaction set (<fileId>:<ISA13>:<GS06>:<ST02>)
   file_id      TEXT NOT NULL,            -- denormalized for file-scoped queries
   gs08         TEXT NOT NULL,            -- guide, so /by-type collections scope without a join
   schema_id    TEXT NOT NULL,            -- schema:type:x12.<GS08>.<xid> | schema:table:... at the root

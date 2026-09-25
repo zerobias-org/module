@@ -25,11 +25,18 @@ import java.util.Set;
  *                  "pattern": "*.{x12,edi,txt,835,837,277,999,dat}",
  *                  "pollIntervalSec": 30, "stableForSec": 60 } ],
  *   "consumedSuffix": ".done", "errorSuffix": ".error",
- *   "ackDurability": "normal",
+ *   "ackDurability": "full",
  *   "retention": { "maxBytes": 10737418240, "maxAge": "P90D" },
  *   "allowBareTransactionSets": false,
- *   "allowFileManagement": false }
+ *   "allowFileManagement": false,
+ *   "maxFileBytes": 67108864 }
  * </pre>
+ *
+ * <p>{@code maxFileBytes} is the largest inbox file read into memory for parsing (default
+ * {@value #DEFAULT_MAX_FILE_BYTES}, at most {@value #MAX_MAX_FILE_BYTES}). It is checked from
+ * {@code stat} before a byte is read; a bigger file is hashed as a stream (for its identity)
+ * and sent to {@code .error} as {@code too-large}, so one oversized drop cannot exhaust the heap
+ * and stall every file behind it. A value out of range is clamped with a warning.
  *
  * <p>{@code allowFileManagement} opens the DataProducer write surface over the mounted
  * volume — {@code uploadBinaryContent}, {@code createChildObject} (mkdir) and
@@ -53,7 +60,8 @@ public record ModuleRuntimeConfig(
         boolean fullDurability,
         RetentionConfig retention,
         boolean allowBareTransactionSets,
-        boolean allowFileManagement) {
+        boolean allowFileManagement,
+        long maxFileBytes) {
 
     private static final Logger LOG = LoggerFactory.getLogger(ModuleRuntimeConfig.class);
     private static final Gson GSON = new Gson();
@@ -64,8 +72,32 @@ public record ModuleRuntimeConfig(
     public static final String DEFAULT_SOURCE_PATH = "/var/lib/x12/inbox";
     public static final String DEFAULT_SOURCE_PATTERN = "*.{x12,edi,txt,835,837,277,999,dat}";
 
+    /** 64 MiB: well above real-world 835/837 drops, well below what the parser can hold in the default heap. */
+    public static final long DEFAULT_MAX_FILE_BYTES = 64L * 1024 * 1024;
+
+    /**
+     * 128 MiB. A file can be a single transaction set, stored whole as one {@code raw_x12}
+     * value while the parser holds its tree and the materializer its graph: several copies of
+     * the file in the heap at once, so this is kept well under what the heap can hold.
+     */
+    public static final long MAX_MAX_FILE_BYTES = 128L * 1024 * 1024;
+
     public ModuleRuntimeConfig {
         sources = List.copyOf(sources);
+        if (maxFileBytes <= 0) {
+            maxFileBytes = DEFAULT_MAX_FILE_BYTES;
+        } else if (maxFileBytes > MAX_MAX_FILE_BYTES) {
+            LOG.warn("maxFileBytes {} is over the {} cap; using the cap", maxFileBytes, MAX_MAX_FILE_BYTES);
+            maxFileBytes = MAX_MAX_FILE_BYTES;
+        }
+    }
+
+    /** Without {@code maxFileBytes}: the default. */
+    public ModuleRuntimeConfig(List<SourceConfig> sources, String consumedSuffix, String errorSuffix,
+                               boolean fullDurability, RetentionConfig retention,
+                               boolean allowBareTransactionSets, boolean allowFileManagement) {
+        this(sources, consumedSuffix, errorSuffix, fullDurability, retention, allowBareTransactionSets,
+            allowFileManagement, DEFAULT_MAX_FILE_BYTES);
     }
 
     /** The image defaults (mirror {@code runtimeConfig.yml} minus retention, which is unbounded). */
@@ -73,7 +105,7 @@ public record ModuleRuntimeConfig(
         return new ModuleRuntimeConfig(
             List.of(new SourceConfig(DEFAULT_SOURCE_NAME, DEFAULT_SOURCE_PATH, DEFAULT_SOURCE_PATTERN,
                 SourceConfig.DEFAULT_POLL_INTERVAL_SEC, SourceConfig.DEFAULT_STABLE_FOR_SEC)),
-            DEFAULT_CONSUMED_SUFFIX, DEFAULT_ERROR_SUFFIX, false, RetentionConfig.none(), false, false);
+            DEFAULT_CONSUMED_SUFFIX, DEFAULT_ERROR_SUFFIX, true, RetentionConfig.none(), false, false);
     }
 
     /** Resolve from the process env and the image's runtimeConfig.yml location. */
@@ -129,10 +161,22 @@ public record ModuleRuntimeConfig(
             }
             String consumed = str(obj, "consumedSuffix", d.consumedSuffix());
             String error = str(obj, "errorSuffix", d.errorSuffix());
-            boolean full = "full".equalsIgnoreCase(str(obj, "ackDurability", "normal"));
+            // full unless explicitly "normal": the rename is the ack, so a commit that a power
+            // loss can roll back after the .done rename loses the file for good. An unknown
+            // value keeps the safe setting rather than silently weakening it.
+            String durability = str(obj, "ackDurability", "full");
+            boolean full = !"normal".equalsIgnoreCase(durability);
+            if (full && !"full".equalsIgnoreCase(durability)) {
+                LOG.warn("ackDurability '{}' is neither full nor normal; using full", durability);
+            }
             boolean bare = bool(obj, "allowBareTransactionSets");
             boolean fileMgmt = bool(obj, "allowFileManagement");
-            return new ModuleRuntimeConfig(sources, consumed, error, full, parseRetention(obj), bare, fileMgmt);
+            long maxFileBytes = longValue(obj, "maxFileBytes", DEFAULT_MAX_FILE_BYTES);
+            if (maxFileBytes <= 0) {
+                LOG.warn("maxFileBytes {} is not positive; using the default {}", maxFileBytes, DEFAULT_MAX_FILE_BYTES);
+            }
+            return new ModuleRuntimeConfig(sources, consumed, error, full, parseRetention(obj), bare, fileMgmt,
+                maxFileBytes);
         } catch (RuntimeException malformed) {
             LOG.warn("module config has wrong-typed fields ({}); using defaults", malformed.toString());
             return d;
@@ -141,7 +185,8 @@ public record ModuleRuntimeConfig(
 
     /**
      * Boot validation (DESIGN §3): every source path must exist, be a directory and be
-     * renameable; names must be distinct; suffixes must be non-blank and distinct.
+     * renameable; names must be distinct, and so must the real directories they point at;
+     * suffixes must be non-blank and distinct.
      * Returns the list of problems (empty = OK). The caller logs and exits 1 on any.
      */
     public List<String> validateSources() {
@@ -150,6 +195,7 @@ public record ModuleRuntimeConfig(
             problems.add("no sources configured");
         }
         Set<String> names = new HashSet<>();
+        Map<java.nio.file.Path, String> dirs = new java.util.HashMap<>();
         for (SourceConfig s : sources) {
             if (!names.add(s.name())) {
                 problems.add("duplicate source name: " + s.name());
@@ -157,6 +203,20 @@ public record ModuleRuntimeConfig(
             String p = s.validate();
             if (p != null) {
                 problems.add(p);
+                continue;
+            }
+            // Two pollers on one directory would race for every file (both hash it, one renames
+            // it from under the other) and stamp it with whichever source won. Compare real
+            // paths so a symlink, `..` or a trailing slash cannot hide the overlap. A nested
+            // directory is fine: each poller scans its own directory flat.
+            try {
+                java.nio.file.Path real = s.dir().toRealPath();
+                String other = dirs.putIfAbsent(real, s.name());
+                if (other != null) {
+                    problems.add("sources '" + other + "' and '" + s.name() + "' point at the same directory: " + real);
+                }
+            } catch (java.io.IOException e) {
+                problems.add("source '" + s.name() + "': cannot resolve " + s.path() + " (" + e + ")");
             }
         }
         if (consumedSuffix == null || consumedSuffix.isBlank() || errorSuffix == null || errorSuffix.isBlank()) {
@@ -229,6 +289,13 @@ public record ModuleRuntimeConfig(
             && o.get(key).isJsonPrimitive()
             && o.getAsJsonPrimitive(key).isBoolean()
             && o.get(key).getAsBoolean();
+    }
+
+    private static long longValue(JsonObject o, String key, long dflt) {
+        if (o.has(key) && o.get(key).isJsonPrimitive() && o.getAsJsonPrimitive(key).isNumber()) {
+            return o.get(key).getAsLong();
+        }
+        return dflt;
     }
 
     private static int integer(JsonObject o, String key, int dflt) {

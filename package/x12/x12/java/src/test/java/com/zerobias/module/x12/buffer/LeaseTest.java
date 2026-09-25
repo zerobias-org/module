@@ -76,11 +76,11 @@ class LeaseTest {
             s.insertTransaction(tx("1", "0002", 1));
             Lease lease = s.take(null, 2, Duration.ofMinutes(5));
 
-            assertEquals(1, s.ack(lease.leaseId(), List.of(FILE_A + ":1:0001")));
-            assertEquals(Status.ACKED, s.byElementKey(FILE_A + ":1:0001").orElseThrow().status());
-            assertEquals(Status.IN_FLIGHT, s.byElementKey(FILE_A + ":1:0002").orElseThrow().status(),
+            assertEquals(1, s.ack(lease.leaseId(), List.of(FILE_A + ":000000001:1:0001")));
+            assertEquals(Status.ACKED, s.byElementKey(FILE_A + ":000000001:1:0001").orElseThrow().status());
+            assertEquals(Status.IN_FLIGHT, s.byElementKey(FILE_A + ":000000001:1:0002").orElseThrow().status(),
                 "0002 must remain in_flight");
-            assertEquals(0, s.ack("some-other-lease", List.of(FILE_A + ":1:0002")), "wrong lease acks nothing");
+            assertEquals(0, s.ack("some-other-lease", List.of(FILE_A + ":000000001:1:0002")), "wrong lease acks nothing");
         }
     }
 
@@ -91,11 +91,11 @@ class LeaseTest {
             s.insertTransaction(tx("1", "0002", 1));
             Lease lease = s.take(null, 2, Duration.ofMinutes(5));
 
-            assertEquals(1, s.release(lease.leaseId(), List.of(FILE_A + ":1:0002")));
+            assertEquals(1, s.release(lease.leaseId(), List.of(FILE_A + ":000000001:1:0002")));
             assertEquals(1, s.count(Status.NEW));
             assertEquals(1, s.release(lease.leaseId(), null));
             assertEquals(2, s.count(Status.NEW));
-            assertNull(s.byElementKey(FILE_A + ":1:0001").orElseThrow().leaseId());
+            assertNull(s.byElementKey(FILE_A + ":000000001:1:0001").orElseThrow().leaseId());
         }
     }
 

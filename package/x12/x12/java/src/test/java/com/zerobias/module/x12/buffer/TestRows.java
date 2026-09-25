@@ -24,7 +24,7 @@ public final class TestRows {
     private TestRows() {
     }
 
-    /** An 835 transaction row from FILE_A; element key {@code <fileId>:<gs>:<st>}. */
+    /** An 835 transaction row from FILE_A; element key {@code <fileId>:000000001:<gs>:<st>}. */
     public static TransactionRow tx(String gsControl, String stControl, long offsetSec) {
         return tx(FILE_A, "inbox", gsControl, stControl, offsetSec, "005010X221A1", "835", SCHEMA_835, "PAYERA");
     }
@@ -32,10 +32,10 @@ public final class TestRows {
     public static TransactionRow tx(String fileId, String source, String gsControl, String stControl,
             long offsetSec, String gs08, String type, String schemaId, String sender) {
         return TransactionRow.builder()
-            .fileId(fileId).sourceName(source).gsControl(gsControl).stControl(stControl)
+            .fileId(fileId).sourceName(source).isaControl("000000001").gsControl(gsControl).stControl(stControl)
             .deriveElementKey()
             .receivedAt(BASE.plusSeconds(offsetSec))
-            .isaControl("000000001").gs08(gs08).transactionType(type)
+            .gs08(gs08).transactionType(type)
             .senderId(sender).receiverId("PROVIDER1")
             .interchangeAt(BASE.minusSeconds(3600))
             .schemaId(schemaId)

@@ -2,11 +2,13 @@ package com.zerobias.module.x12;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.RetentionSweeper;
 import com.zerobias.module.x12.health.HealthCheck;
 import com.zerobias.module.x12.materializer.StructureResolver;
 import com.zerobias.module.x12.producer.BinaryContent;
+import com.zerobias.module.x12.producer.GraphBackfill;
 import com.zerobias.module.x12.producer.MaterializerRecastHook;
 import com.zerobias.module.x12.producer.ObjectTree;
 import com.zerobias.module.x12.producer.ObjectTreeApi;
@@ -18,9 +20,13 @@ import com.zerobias.module.x12.producer.SchemaRegistry;
 import com.zerobias.module.x12.producer.X12Operations;
 import com.zerobias.module.x12.producer.X12ProducerFacade;
 import io.javalin.Javalin;
+import io.javalin.http.HttpResponseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Base64;
@@ -45,7 +51,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@code GET  /connections/{id}/metadata} — connection metadata</li>
  *   <li>{@code GET  /connections/{id}/isSupported/{operationId}}</li>
  *   <li>{@code POST /connections/{id}/{method}} — dispatch via {@link OperationRouter};
- *       {@code BinaryApi.downloadBinaryContent} streams the file bytes (DESIGN §2.8) and
+ *       {@code BinaryApi.downloadBinary} streams the file bytes (DESIGN §2.8) and
  *       {@code BinaryApi.uploadBinaryContent} takes them as the request body (DESIGN §2.9)</li>
  *   <li>{@code GET  /healthz} — daemon health probe (DESIGN §9)</li>
  * </ul>
@@ -59,17 +65,16 @@ public final class X12ApiServer {
     private static final Logger LOG = LoggerFactory.getLogger(X12ApiServer.class);
     private static final Gson GSON = new Gson();
 
+    /**
+     * Largest accepted request body: 64 MiB, the receiver's {@code maxFileBytes} default, so a
+     * real 835 batch can be uploaded raw (Javalin's own default is 1 MiB). Must match
+     * {@code client_max_body_size 64m} in both committed nginx confs, which default to 1 MiB
+     * too; a base64 JSON upload inflates by a third, so that intake tops out near 48 MiB.
+     */
+    static final long MAX_REQUEST_BYTES = 64L * 1024 * 1024;
+
     /** Profile fields safe to log/display (the profile is informational; the daemon never reads it). */
     private static final Set<String> NONSENSITIVE_PROFILE_FIELDS = Set.of("ackDurability");
-
-    /** Data-write operations this receiver never supports: transactions arrive as inbox files. */
-    private static final Set<String> NEVER_SUPPORTED = Set.of(
-        "updateObject", "addCollectionElement", "updateCollectionElement",
-        "deleteCollectionElement", "executeBulkOperations", "updateDocumentData", "updateDocument");
-
-    /** File-management operations, supported only when {@code config.allowFileManagement} is set. */
-    private static final Set<String> FILE_MANAGEMENT = Set.of(
-        "uploadBinaryContent", "uploadBinary", "createChildObject", "deleteObject");
 
     private final Map<String, String> connections = new ConcurrentHashMap<>();
     private X12ProducerFacade facade;
@@ -78,7 +83,7 @@ public final class X12ApiServer {
     private PollerHandle pollers;
     private HealthCheck health;
 
-    private X12ApiServer() {
+    X12ApiServer() {
     }
 
     public static void main(String[] args) {
@@ -111,6 +116,9 @@ public final class X12ApiServer {
         this.buffer = new BufferStore(config.bufferDbPath(), mc.fullDurability());
         LOG.info("Buffer open at {} (ackDurability={})", config.bufferDbPath(),
             mc.fullDurability() ? "full" : "normal");
+        // Rows buffered before the object graph existed have no body: rebuild it from raw_x12
+        // before anything can drain or browse them (and before the pollers add new rows).
+        GraphBackfill.run(buffer, new MaterializerRecastHook(new StructureResolver(), Clock.systemUTC()));
 
         if (mc.retention().isBounded()) {
             this.retentionSweeper = new RetentionSweeper(buffer, mc.retention(), Clock.systemUTC());
@@ -140,28 +148,42 @@ public final class X12ApiServer {
         Javalin app = Javalin.create(cfg -> {
             cfg.http.defaultContentType = "application/json";
             cfg.showJavalinBanner = false;
+            cfg.http.maxRequestSize = MAX_REQUEST_BYTES;
         });
         registerExceptionHandlers(app);
         registerRoutes(app);
         app.start(config.internalPort());
         LOG.info("Operations server listening on {}", config.internalPort());
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                pollers.close();
-            } catch (Exception e) {
-                LOG.warn("poller shutdown", e);
-            }
-            if (retentionSweeper != null) {
-                retentionSweeper.stop();
-            }
-            try {
-                buffer.close();
-            } catch (Exception e) {
-                LOG.warn("buffer shutdown", e);
-            }
-            app.stop();
-        }));
+        Runtime.getRuntime().addShutdownHook(new Thread(
+            () -> shutdown(app::stop, pollers, retentionSweeper, buffer), "x12-shutdown"));
+    }
+
+    /**
+     * Stop everything that uses the buffer, then the buffer. Routes first (no new take/ack or
+     * file upload lands mid-close), then the pollers (each finishes the file in hand), then
+     * the sweeper, and only then the buffer — closing it earlier failed whatever was still
+     * running against it. Each step is attempted even if an earlier one threw.
+     */
+    static void shutdown(Runnable stopRoutes, PollerHandle pollers, RetentionSweeper sweeper, AutoCloseable buffer) {
+        try {
+            stopRoutes.run();
+        } catch (RuntimeException e) {
+            LOG.warn("http shutdown", e);
+        }
+        try {
+            pollers.close();
+        } catch (RuntimeException e) {
+            LOG.warn("poller shutdown", e);
+        }
+        if (sweeper != null) {
+            sweeper.stop();
+        }
+        try {
+            buffer.close();
+        } catch (Exception e) {
+            LOG.warn("buffer shutdown", e);
+        }
     }
 
     /**
@@ -206,7 +228,7 @@ public final class X12ApiServer {
         return new X12ProducerFacade(buffer, tree, schemas, ops, fileManagement);
     }
 
-    private void registerRoutes(Javalin app) {
+    void registerRoutes(Javalin app) {
         app.get("/", ctx -> {
             JsonObject body = new JsonObject();
             body.add("nonsensitiveProfileFields", GSON.toJsonTree(NONSENSITIVE_PROFILE_FIELDS));
@@ -214,8 +236,8 @@ public final class X12ApiServer {
         });
 
         app.post("/connections", ctx -> {
-            Map<?, ?> requestBody = GSON.fromJson(ctx.body(), Map.class);
-            Object connectionId = requestBody == null ? null : requestBody.get("connectionId");
+            Map<String, Object> requestBody = parseBody(ctx);
+            Object connectionId = requestBody.get("connectionId");
             if (connectionId == null || connectionId.toString().isBlank()) {
                 throw ProducerException.illegalArgument("connectionId is required");
             }
@@ -254,17 +276,14 @@ public final class X12ApiServer {
                 ctx.status(201).contentType("application/json").result(upload(ctx));
                 return;
             }
-            Map<String, Object> requestBody = castMap(GSON.fromJson(ctx.body(), Map.class));
-            Map<String, Object> argMap = castMap(requestBody.get("argMap"));
+            Object args = parseBody(ctx).get("argMap");
+            if (args != null && !(args instanceof Map)) {
+                throw ProducerException.illegalArgument("argMap must be a JSON object");
+            }
+            Map<String, Object> argMap = castMap(args);
             if (OperationRouter.isBinaryDownload(method)) {
-                // DESIGN §2.8: full-content 200 with the raw EDI bytes.
                 Object id = argMap.get("objectId");
-                BinaryContent bin = facade.downloadBinary(id == null ? null : id.toString());
-                ctx.contentType(bin.mimeType() == null ? BinaryContent.MIME_X12 : bin.mimeType());
-                if (bin.fileName() != null) {
-                    ctx.header("Content-Disposition", "attachment; filename=\"" + bin.fileName() + "\"");
-                }
-                ctx.result(bin.bytes());
+                streamBinary(ctx, facade.downloadBinary(id == null ? null : id.toString()));
                 return;
             }
             String result = OperationRouter.executeOperation(facade, method, argMap);
@@ -279,20 +298,103 @@ public final class X12ApiServer {
         });
     }
 
-    private void registerExceptionHandlers(Javalin app) {
-        app.exception(ProducerException.class, (e, ctx) ->
-            ctx.status(e.httpStatus()).contentType("application/json").result(GSON.toJson(e.toBody())));
-        app.exception(IllegalArgumentException.class, (e, ctx) -> {
-            ProducerException pe = ProducerException.illegalArgument(e.getMessage());
-            ctx.status(pe.httpStatus()).contentType("application/json").result(GSON.toJson(pe.toBody()));
+    /**
+     * DESIGN §2.8: full-content 200 with the raw EDI bytes, streamed from disk with a
+     * {@code Content-Length} rather than read onto the heap. Compression stays off — Javalin
+     * would gzip the stream after the length was set — and Javalin closes the stream once it
+     * is written.
+     */
+    static void streamBinary(io.javalin.http.Context ctx, BinaryContent bin) {
+        InputStream in;
+        try {
+            in = bin.open();
+        } catch (IOException e) {
+            // Removed (or swapped for a symlink) since it was resolved.
+            LOG.warn("download: {} vanished between resolve and open: {}", bin.objectId(), e.toString());
+            throw ProducerException.fileGone(bin.objectId());
+        }
+        ctx.minSizeForCompression(Integer.MAX_VALUE);
+        ctx.contentType(bin.mimeType() == null ? BinaryContent.MIME_X12 : bin.mimeType());
+        ctx.res().setCharacterEncoding(null);   // bytes, not text: no charset on the Content-Type
+        ctx.header("Content-Length", Long.toString(bin.size()));
+        ctx.header("Content-Disposition", contentDisposition(bin.fileName()));
+        ctx.result(in);
+    }
+
+    /**
+     * RFC 6266 {@code attachment} with an ASCII {@code filename} fallback (quotes,
+     * backslashes, control and non-ASCII characters replaced by {@code _}) and the exact name
+     * as RFC 5987 {@code filename*}. A file name is sender-controlled (it arrived on the
+     * feed), so nothing in it may end the header or the quoted string.
+     */
+    static String contentDisposition(String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            return "attachment";
+        }
+        StringBuilder ascii = new StringBuilder(fileName.length());
+        for (int i = 0; i < fileName.length(); i++) {
+            char c = fileName.charAt(i);
+            ascii.append(c < 0x20 || c > 0x7e || c == '"' || c == '\\' ? '_' : c);
+        }
+        StringBuilder pct = new StringBuilder();
+        for (byte b : fileName.getBytes(StandardCharsets.UTF_8)) {
+            int u = b & 0xff;
+            if ((u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z') || (u >= '0' && u <= '9')
+                    || "!#$&+-.^_`|~".indexOf(u) >= 0) {
+                pct.append((char) u);
+            } else {
+                pct.append('%').append(Character.toUpperCase(Character.forDigit(u >> 4, 16)))
+                   .append(Character.toUpperCase(Character.forDigit(u & 0xf, 16)));
+            }
+        }
+        return "attachment; filename=\"" + ascii + "\"; filename*=UTF-8''" + pct;
+    }
+
+    /**
+     * Every error body is the interface's {@code errorModelBase}. A {@link ProducerException}
+     * carries its own status; an {@link IllegalArgumentException} is a caller mistake the
+     * lite-filter / sort code raises with a caller-facing message (400); anything else is a
+     * 500 with a generic message — the cause is logged here, never returned, because an SQLite
+     * or IO message can name buffer and inbox paths inside the container.
+     */
+    static void registerExceptionHandlers(Javalin app) {
+        app.exception(ProducerException.class, (e, ctx) -> respond(ctx, e));
+        app.exception(IllegalArgumentException.class, (e, ctx) ->
+            respond(ctx, ProducerException.illegalArgument(e.getMessage())));
+        // Javalin's own HTTP errors (a body over maxRequestSize is a 413) keep their status and
+        // get the platform envelope, rather than being swallowed by the 500 below.
+        app.exception(HttpResponseException.class, (e, ctx) -> {
+            if (e.getStatus() == 413) {
+                respond(ctx, ProducerException.payloadTooLarge(MAX_REQUEST_BYTES));
+            } else if (e.getStatus() >= 500) {
+                LOG.error("HTTP {} serving {} {}", e.getStatus(), ctx.method(), ctx.path(), e);
+                respond(ctx, ProducerException.unexpected());
+            } else {
+                respond(ctx, ProducerException.illegalArgument(e.getMessage()));
+            }
         });
         app.exception(Exception.class, (e, ctx) -> {
-            LOG.error("Unexpected error", e);
-            JsonObject body = new JsonObject();
-            body.addProperty("code", "internalError");
-            body.addProperty("message", String.valueOf(e.getMessage()));
-            ctx.status(500).contentType("application/json").result(body.toString());
+            LOG.error("Unexpected error serving {} {}", ctx.method(), ctx.path(), e);
+            respond(ctx, ProducerException.unexpected());
         });
+    }
+
+    private static void respond(io.javalin.http.Context ctx, ProducerException e) {
+        ctx.status(e.httpStatus()).contentType("application/json").result(GSON.toJson(e.toBody()));
+    }
+
+    /** The request body as a JSON object; empty body = empty object; malformed or not an object = 400. */
+    private static Map<String, Object> parseBody(io.javalin.http.Context ctx) {
+        Object parsed;
+        try {
+            parsed = GSON.fromJson(ctx.body(), Object.class);
+        } catch (JsonParseException e) {
+            throw ProducerException.illegalArgument("Request body is not valid JSON");
+        }
+        if (parsed != null && !(parsed instanceof Map)) {
+            throw ProducerException.illegalArgument("Request body must be a JSON object");
+        }
+        return castMap(parsed);
     }
 
     /**
@@ -308,11 +410,17 @@ public final class X12ApiServer {
      * Returns the new file's object metadata as the interface's {@code 201} body.
      */
     private String upload(io.javalin.http.Context ctx) throws Exception {
+        // The gate answers first: a receive-only deployment says "unsupported", not "your
+        // arguments are wrong" — the caller cannot fix a disabled operation by fixing its body.
+        if (facade == null || !facade.fileManagementEnabled()) {
+            throw ProducerException.unsupported("uploadBinaryContent is disabled: the receiver is receive-only "
+                + "unless the deployment sets config.allowFileManagement=true");
+        }
         String objectId = ctx.queryParam("objectId");
         String fileName = ctx.queryParam("fileName");
         byte[] bytes = ctx.bodyAsBytes();
         if (objectId == null || objectId.isBlank()) {
-            Map<String, Object> argMap = castMap(castMap(GSON.fromJson(ctx.body(), Map.class)).get("argMap"));
+            Map<String, Object> argMap = castMap(parseBody(ctx).get("argMap"));
             objectId = asString(argMap.get("objectId"));
             fileName = fileName != null ? fileName : asString(argMap.get("fileName"));
             Object encoded = argMap.get("contentBase64");
@@ -331,24 +439,13 @@ public final class X12ApiServer {
     }
 
     /**
-     * {@code isSupported}: the receiver's real capability set, not a blanket yes. Data
-     * writes are never supported (transactions arrive as files); the file-management ops
-     * follow {@code config.allowFileManagement}, so an operator can see from the outside
-     * whether this deployment accepts uploads.
+     * {@code isSupported}: the receiver's real capability set, not a blanket yes — an
+     * explicit whitelist of the routed, implemented operations ({@link OperationRouter#isSupported}).
+     * The file-management ops follow {@code config.allowFileManagement}, so an operator can see
+     * from the outside whether this deployment accepts uploads.
      */
     boolean supported(String operationId) {
-        String op = operationId == null ? "" : operationId.trim();
-        int dot = op.lastIndexOf('.');   // accept "deleteObject" and "ObjectsApi.deleteObject" alike
-        if (dot >= 0) {
-            op = op.substring(dot + 1);
-        }
-        if (NEVER_SUPPORTED.contains(op)) {
-            return false;
-        }
-        if (FILE_MANAGEMENT.contains(op)) {
-            return facade != null && facade.fileManagementEnabled();
-        }
-        return true;
+        return OperationRouter.isSupported(operationId, facade != null && facade.fileManagementEnabled());
     }
 
     private static String asString(Object o) {

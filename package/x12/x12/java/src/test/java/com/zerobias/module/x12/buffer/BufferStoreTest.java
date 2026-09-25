@@ -53,7 +53,7 @@ class BufferStoreTest {
     void insertTransactionDedupsOnElementKeyAndRoundTrips(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
             TransactionRow row = tx("1", "0001", 0);
-            assertEquals(FILE_A + ":1:0001", row.elementKey(), "element key = <fileId>:<GS06>:<ST02>");
+            assertEquals(FILE_A + ":000000001:1:0001", row.elementKey(), "element key = <fileId>:<ISA13>:<GS06>:<ST02>");
             assertTrue(s.insertTransaction(row), "first insert");
             assertFalse(s.insertTransaction(row), "duplicate element key dropped (ON CONFLICT DO NOTHING)");
             assertEquals(1, s.count());
@@ -80,9 +80,9 @@ class BufferStoreTest {
     @Test
     void consumeFileIsOneUnitAndInsertsFileRowWithTransactions(@TempDir Path dir) throws Exception {
         try (BufferStore s = open(dir, new MutableClock(BASE))) {
-            List<TransactionRow> rows = List.of(tx("1", "0001", 0), tx("1", "0002", 0), tx("1", "0002", 0));
+            List<TransactionRow> rows = List.of(tx("1", "0001", 0), tx("1", "0002", 0));
             int inserted = s.consumeFile(file(FILE_A, "inbox", "abc123", FileStatus.CONSUMED, 2), rows);
-            assertEquals(2, inserted, "duplicate element key within a file is dropped, not fatal");
+            assertEquals(2, inserted);
             assertEquals(2, s.count());
             assertEquals(1, s.fileCount());
             assertEquals(1, s.fileCount(FileStatus.CONSUMED));
@@ -98,6 +98,23 @@ class BufferStoreTest {
             assertEquals(1, f.isaCount());
             assertFalse(f.renameFailed());
             assertEquals(BASE, f.consumedAt());
+        }
+    }
+
+    @Test
+    void elementKeyCollisionInsideAFileRollsTheWholeFileBack(@TempDir Path dir) throws Exception {
+        try (BufferStore s = open(dir, new MutableClock(BASE))) {
+            TransactionRow first = tx("1", "0002", 0);
+            TransactionRow clash = tx("1", "0002", 0);
+            java.util.Map<String, List<com.zerobias.module.x12.materializer.EntityGraph.Entity>> graphs =
+                java.util.Map.of(first.elementKey(), TestRows.graph(SCHEMA_835, "0002"));
+            DuplicateElementKeyException e = assertThrows(DuplicateElementKeyException.class, () ->
+                s.consumeFile(file(FILE_A, "inbox", "abc123", FileStatus.CONSUMED, 3),
+                    List.of(tx("1", "0001", 0), first, clash), graphs, java.util.Map.of()));
+            assertTrue(e.getMessage().contains(first.elementKey()), e.getMessage());
+            assertEquals(0, s.count(), "no transaction row survives");
+            assertEquals(0, s.entityCount(first.elementKey()), "no graph survives");
+            assertEquals(0, s.fileCount(), "no files row");
         }
     }
 
@@ -291,10 +308,14 @@ class BufferStoreTest {
     @Test
     void builderRequiresKeyPartsForDerivation() {
         assertThrows(IllegalStateException.class, () -> TransactionRow.builder().fileId("/f").deriveElementKey());
-        TransactionRow r = TransactionRow.builder().fileId("/f").gsControl("1").stControl("2").deriveElementKey()
+        assertThrows(IllegalStateException.class,
+            () -> TransactionRow.builder().fileId("/f").gsControl("1").stControl("2").deriveElementKey(),
+            "ISA13 is part of the key");
+        TransactionRow r = TransactionRow.builder().fileId("/f").isaControl("9").gsControl("1").stControl("2")
+            .deriveElementKey()
             .receivedAt(BASE).gs08("x").transactionType("835").schemaId("s").rawX12(new byte[0])
             .build();
-        assertEquals("/f:1:2", r.elementKey());
+        assertEquals("/f:9:1:2", r.elementKey());
         assertEquals(Status.NEW, r.status());
         assertEquals(TransactionRow.ENVELOPE_FILE, r.envelope());
     }

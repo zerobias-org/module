@@ -23,10 +23,12 @@ api.yml                DataProducer paths ($ref'd from the interface, incl. /dow
 connectionProfile.yml  informational — the daemon never reads it (publish pipeline requires it)
 runtimeConfig.yml      daemonMode + durability[x12-buffer, x12-inbox] + resources + opaque config (sources, suffixes, retention)
 Dockerfile  nginx.conf  nginx-insecure.conf  startup.sh    container (nginx → java on 8889)
+build.gradle.kts       zb.java-module + gate-stamp source/test dirs (test/ is hashed: the e2e suite)
+.mocharc.json  test/e2e/   testDocker suite: describeModule<X12> + hub-sdk client against the real container, fed by docker cp
 java/
 ├── pom.xml            uber jar (maven-shade); codegen runs at generate-resources (NOT a profile)
 ├── codegen/           BUILD-TIME ONLY — reads imsweb mapping XML → schemas/ + structure-index/ + packs.json
-├── scripts/           fetch-x12org-examples.py (local, never committed output), e2e-local.sh, x12-live.sh
+├── scripts/           e2e-local.sh, x12-live.sh
 └── src/main/java/com/zerobias/module/x12/
     ├── X12ApiServer.java          entry point: boots buffer + pollers + Javalin RPC routes
     ├── ModuleConfig.java / ModuleRuntimeConfig.java / RuntimeConfigFile.java   env (MODULE_CONFIG)
@@ -45,10 +47,37 @@ java/
 ```bash
 (cd java && mvn test)          # unit; `mvn verify` adds integration (failsafe). Needs GitHub Packages auth for lite-filter.
 cd <repo-root> && ./gradlew :x12:x12:test   # via the gate task
-java/scripts/fetch-x12org-examples.py       # once, locally: populates the git-ignored x12org conformance set
+zbb --slot <slot> testDocker                # test/e2e through the hub-sdk client (~1 min: the inbox wait is stableForSec)
 java/scripts/e2e-local.sh                   # real container, data loaded THROUGH the DP API → take/ack/purge + file mgmt
 cd <repo-root>/package/x12/x12 && zbb --slot <slot> gate   # the truth
 ```
+
+### The e2e suite (`test/e2e`, run by `testDocker`)
+
+- **No slot secret.** The receiver has no credentials and an empty connection profile (the
+  daemon reads `MODULE_CONFIG`, never the profile), so the suite does not use module-test-client's
+  `describeModule` — that runs once per `zbb secret` for the module and, with none, records a
+  single *skipped* test (a green `testDocker` that ran nothing). `describeReceiver`
+  (`test/e2e/helpers.ts`) connects to gradle's container with `connectionProfile: {}` and fails,
+  never skips, without one. Do not add a required profile field to make `describeModule` work:
+  a secret for this module could only be invented.
+- **Fed by `docker cp`, not the API.** Gradle's `startModuleExec` starts the image with the
+  committed `runtimeConfig.yml` `config` as `MODULE_CONFIG`, so `allowFileManagement` is false and
+  there is no upload path (and the hub-sdk `uploadBinaryContent(objectId, body)` cannot carry the
+  `fileName` the receiver needs anyway). The suite copies the 835 / 837P / 837I fixtures plus
+  `test/e2e/fixtures/835-two-interchanges.x12` into the source directory and waits, bounded by the
+  container's own `stableForSec + pollIntervalSec`, nudging with `ops/rescan`. The file-management
+  tests read the flag from the container's `MODULE_CONFIG` and assert whichever way it is set.
+- **It needs a fresh container.** The receiver de-duplicates by content, so re-dropping the same
+  bytes records `status:duplicate`; the wait fails fast saying so. Gradle starts a new container
+  (new anonymous volumes) per run. Outside gradle: `X12_CONTAINER=<name> CONTAINER_URL=https://localhost:<port>
+  TEST_MODE=docker MODULE_DIR=$PWD npx mocha --config .mocharc.json 'test/e2e/**/*.test.ts'`
+  against a container you started with `MODULE_CONFIG` and connected as `e2e`.
+- **Decimals through the client lose their scale.** The wire carries `"chargedAmount":300.00`;
+  the hub-sdk docker client (axios `JSON.parse`) hands back the number `300`. The suite asserts
+  both — the value through the client, the scale on the raw wire. Do not "fix" the assertion to
+  `300.00`: that is a transport property, not a receiver bug.
+- The drain cycle (take → ack → purge) runs last on purpose: purge removes the 837P rows.
 
 Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${env.READ_TOKEN}`
 (env-interpolated); `READ_TOKEN` needs `read:packages`. Maven and Docker must be installed.
@@ -68,10 +97,18 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
   sha256>`; a reused name with new bytes is a new file (its `.done` gets the discovery time
   interposed), the same bytes again is a redelivery. Never add a path-keyed skip.
 - **Stability window before reading.** Daily drops arrive as partial writes; never parse a file
-  whose size/mtime changed within `stableForSec`.
+  whose size/mtime changed within `stableForSec` — or changed since the window saw it, or while
+  it was being read (the consumer re-stats before and after).
+- **One file never stops the scan; a broken buffer always does.** Size is checked from `stat`
+  against `maxFileBytes` before reading; anything a single file throws (OOM included) is that
+  file's `.error` or a retry, and the scan moves on. Only a buffer failure (I/O, NOT NULL/CHECK —
+  the schema no longer matches) ends the scan, leaves the file in place and turns `/healthz`
+  red. Do not widen `FileConsumer.rejectsThisFile` to NOT NULL: that sends every file to
+  `.error` on a schema bug. Symlinks are never followed, and renames never overwrite.
 - **Money is `decimal`, never float.** `N2` elements are implied-decimal integers on the wire.
-- **The x12.org examples are not ours to commit.** `java/src/test/resources/x12org/` is
-  git-ignored on purpose; the fetch script is the only way it gets populated.
+- **The x12.org examples are not ours to copy.** They are ASC X12 IP: link to them, never
+  fetch, store, commit or test against them (a scraper was removed for exactly this). Fixtures
+  are authored from scratch.
 - **No listener ports.** Do not add `listenerPorts` to `runtimeConfig.yml` or a
   `LISTENER_PORT_*` precondition to `startup.sh`; the inbox is a volume, not a socket.
 - **`/inbox` must never be cached.** It is the live volume (DESIGN §2.9): every
@@ -97,10 +134,19 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
   `documentsFor`). Do not add a document column back "for speed" — that is two
   representations to keep in sync, which is what this replaced. The envelope is overlaid at
   read time by `toElement`, never stored in the body.
+- **The buffer outlives the image; `schema.sql` is not a migration.** The `x12-buffer` volume
+  survives every redeploy, and `CREATE TABLE IF NOT EXISTS` never alters a table that is already
+  there. Any column change to `schema.sql` needs a step in `BufferStore.migrate` (probe the real
+  shape, bump `SCHEMA_VERSION`) and a frozen copy of the old DDL under
+  `src/test/resources/buffer/` exercised like `LegacyBufferUpgradeTest`. Dropping `mapped_json`
+  without one stopped ingest on every upgraded receiver while health stayed green. Rows that
+  predate the graph are rebuilt from `raw_x12` by `GraphBackfill` at startup, before the pollers
+  and routes open.
 - **`value_text` is the value; `value_num` is a comparison key.** Amounts live in
   `entity_values` as exact integer micro-units for filtering and in `value_text` for
   reassembly. Never read an amount back from `value_num` — that is how `450.00` becomes
-  `450.0`, and money must not round-trip through a float. Same rule for `transaction_dims`.
+  `450.0`, and money must not round-trip through a float. Same rule for `transaction_dims`,
+  and for business projection: `EntityMapping.typed` parses `value_text`, never `Value.num()`.
 - **Wire order is persisted, not implied.** `entities.property_order` and `entity_values.seq`
   exist because a composite is a child row and would otherwise reassemble after every scalar.
   The round-trip test (`EntityGraphTest`, `GraphPersistenceTest`) is what licenses storing rows
@@ -111,7 +157,18 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
 - **Grain is declared by the anchor.** A mapping's `anchorSchemaId` IS its grain (Claim =
   loop2100). Don't add a business entity without deciding its grain, and remember CAS carries up
   to six (reason, amount, quantity) triplets — anchoring an Adjustment at the segment would hide
-  five of them.
+  five of them. An anchor-grain collection belongs to ONE guide: 835 claims (`/claims`,
+  adjudicated) and 837 claims (`/professional-claims`, `/institutional-claims`, submitted) are
+  different collections with different schemas — do not fold them into a union schema. Read
+  inherited data with an ancestor step (`^loop2000B.loop2010BA.nm1.nm109`), not a dimension.
+  A party that spans guides (`/payers`) is `"grain": "dimension"` (DESIGN §8.5.2); keep its
+  identity rule (id first, name-only joins a unique same-name id) and keep every guide's
+  declaration of it identical, or the merge drops the odd one out.
+- **A dimension is unambiguous or absent.** `EntityMapping.dimensions` follows every branch and
+  keeps a value only when they all agree; an 837 batch with two payers has no `payerName`.
+  Never "fix" that by taking the first match — it files claims under the wrong payer. Segment
+  values are narrowed to those that scope a row of the collection itself, because dimension
+  names are shared across guides.
 - **Business schemas are generated from the mappings**, never hand-written: a collection may not
   advertise a `collectionSchema` the registry cannot serve, and generating it keeps the schema
   and the projection from disagreeing.

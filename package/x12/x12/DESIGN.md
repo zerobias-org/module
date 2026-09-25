@@ -58,7 +58,10 @@ build time, JUnit test surface, `zb.java-module` build — is inherited unchange
 
 Rules (from hl7/v2 `ObjectTree` javadoc, restated):
 - **A transaction set is an atom** — a collection *element*, never a node. Element key =
-  `<fileId>:<GS06>:<ST02>` (interchange file, group control number, transaction control number).
+  `<fileId>:<ISA13>:<GS06>:<ST02>` (interchange file, interchange control number, group control
+  number, transaction control number). ISA13 is in it because one file may carry several
+  interchanges and GS06/ST02 are only unique within theirs. The key is opaque: no reader splits
+  it, so its shape can change without a migration (older rows keep the key they were stored under).
 - **Folders are discriminators and their children are emergent**: read live from the buffer's
   `DISTINCT` values, so a node appears the first time matching data lands.
 - **`/files/<fileId>` is the one exception**: a file is both a folder (its transactions) and a
@@ -143,6 +146,16 @@ Inherited from hl7/v2 with the same I/O and constants (`DEFAULT_MAX=100`, `MAX_C
 | `validate` | `{elementKey}` | `{elementKey, schemaId, stored:{valid,errors[]}, rematerialized:{valid,errors[],schemaId}, repsAgree, parserErrors[], parserErrorCount}` — `rematerialized` re-parses the stored raw under the current definitions (`MaterializerRecastHook`); `parserErrors` are imsweb's non-fatal `getErrors()` from that re-parse |
 | **`rescan`** (new) | `{source?}` | `{scanned, discovered, consumed, errored}` — trigger an immediate poll; the only way to force a pickup between intervals |
 
+Every function input is checked against its declared `schema:function:x12.ops.<fn>:input`
+(one in-code table in `SchemaRegistry` drives both the served schema and the check) before
+anything runs: an unknown key, a wrong JSON type, a missing required property, an unparseable
+filter/duration, `max < 1` or an empty `elementKeys` is a 400 `illegalArgumentError` — never a
+silently dropped argument (`purge {"olderthan":"P30D"}` must not purge every acked row).
+`FunctionsApi.validateFunctionInput` (body `validateFunctionInputRequest: {input, strict}`)
+runs the same check without executing and returns the interface `ValidationResult`
+(`{valid, errors[{path,message,code}], warnings[{path,message}]}`); a `max` above the cap is a
+warning, an error under `strict`.
+
 ### 2.6 Filter semantics
 
 RFC4515 over **schema property names**, translated to SQLite by an `X12SqlAdapter` cloned from
@@ -163,16 +176,31 @@ Same lite-filter constraints as hl7/v2 §2.6 (date-only literals; absolute-date 
 ### 2.7 Errors
 
 RPC method names on the wire (`POST /connections/{id}/{ApiClass.method}`) use the interface's
-operationIds: `ObjectsApi.getRootObject|getObject|getChildren|objectSearch|searchChildObjects`,
+operationIds: `ObjectsApi.getRootObject|getObject|getChildren|searchChildObjects`,
 `CollectionsApi.getCollectionElements|getCollectionElement|searchCollectionElements`,
 `DocumentsApi.getDocumentData`, `BinaryApi.downloadBinary`, `FunctionsApi.invokeFunction|
-validateFunctionInput`, `SchemasApi.getSchema`. The router also accepts `BinaryApi.downloadBinaryContent`
-and `DocumentsApi.getDocument` as aliases.
+validateFunctionInput`, `SchemasApi.getSchema`, plus the gated `ObjectsApi.createChildObject|deleteObject`
+and `BinaryApi.uploadBinaryContent` (§2.9). Names are matched exactly — there are no aliases — and
+`argMap` keys are the interface's parameter names (`schemaId`, `createObjectRequest`, `requestBody`,
+`validateFunctionInputRequest`). `objectSearch` is not implemented, so api.yml does not reference its
+path and `isSupported` answers false. `isSupported` is an explicit whitelist of the ops above.
+
+Every parameter an operation declares is honoured or, when set, rejected — never silently dropped.
+`getChildren` rejects `sortBy`/`sortDir`/`type`/`tags`/`pageToken`; `searchChildObjects` rejects
+`sortBy`/`sortDir`/`filter`/`pageToken`/`properties` and `scope=subtree` (`one_level` is the listing);
+the collection ops honour `filter` and `sortBy`/`sortDir` (one key; a bare value or one-element array)
+and reject `pageToken`/`properties`; `deleteObject` rejects `recursive=true`; `createChildObject`
+rejects `CreateObjectRequest` fields other than `id`/`name`/`objectClass` (all 400
+`UnsupportedOperationError`). Paging is `pageNumber >= 1`, `1 <= pageSize <= 1000` (default 100); out
+of range or not an integer is a 400 `illegalArgumentError`, not a silent default.
 
 Identical to hl7/v2 §2.7: wire body is the OpenAPI `errorModelBase` (`{key, template, timestamp,
 statusCode}` + subtype fields). 404 for unknown object/schema/lease/file, 400
 `UnsupportedOperationError` for every write op (`createChildObject`, `addCollectionElement`,
-`uploadBinaryContent`, `updateDocumentData`, …), 400 `illegalArgumentError` for bad filters.
+`uploadBinaryContent`, `updateDocumentData`, …), 400 `illegalArgumentError` for bad filters, bad
+function input and a request body that is not valid JSON (or not an object). Anything unexpected is a
+500 `err.unexpected` with a fixed generic message: the cause (SQLite, IO) can name buffer and inbox
+paths inside the container, so it is logged server-side and never returned.
 
 ### 2.8 Binary download
 
@@ -180,6 +208,10 @@ statusCode}` + subtype fields). 404 for unknown object/schema/lease/file, 400
 path is resolved from the `files` table, so download keeps working after consumption; after the
 file is removed by inbox hygiene → 404 with `reason: gone`, the transactions remain). Range is not
 in the generated signature (interface prose only); v1 serves 200 full-content.
+The bytes are streamed from disk with a `Content-Length` (never read onto the heap; compression off)
+and opened `NOFOLLOW_LINKS`, so a symlink at the path is a 404 `gone`, not followed. The file name is
+sender-controlled, so `Content-Disposition` is RFC 6266 `attachment` with a sanitised ASCII
+`filename` and the exact name as RFC 5987 `filename*`.
 
 ### 2.9 Live inbox browse and file management
 
@@ -223,7 +255,14 @@ The write surface is the interface's own container/binary write ops (Concepts.md
   configured source roots are never deletable — the daemon validated those mounts at boot
   (§3) and removing one takes the receiver down.
 - Path traversal cannot escape: every segment is decoded, `.`/`..`/empty are rejected, and
-  the normalized result must still sit under the source root.
+  the normalized result must still sit under the source root. Symlinks cannot escape either:
+  every existing component below the configured root is lstat'ed and a link at any of them is a
+  404 (links are not listed), and stats/opens use `NOFOLLOW_LINKS` so a link swapped in later is
+  not followed at the leaf.
+- Request bodies are capped at 64 MiB (the `maxFileBytes` default) on both sides — Javalin
+  `maxRequestSize` and `client_max_body_size 64m` in both committed nginx confs — so a real 835
+  batch can be uploaded raw; over the cap is a 413 in the errorModelBase envelope. The base64 JSON
+  intake inflates by a third, so it tops out near 48 MiB.
 
 All three are **off unless the deployment sets `config.allowFileManagement: true`**
 (default `false` in `runtimeConfig.yml`). This is a revenue-cycle feed: an open upload path
@@ -270,12 +309,15 @@ never read by the daemon.
 
 `{name, path, pattern, pollIntervalSec, stableForSec}` per source. `name` is the provenance
 label (`/by-source/<name>`, `sourceName` column). Several sources may share a buffer; names must
-be distinct. `pattern` is a glob against the file name (case-insensitive).
+be distinct, and so must the directories they resolve to (`toRealPath`, so a symlink, `..` or a
+trailing slash cannot hide it): two pollers on one directory would race for every file. A source
+nested inside another is allowed — each poller scans its own directory flat. `pattern` is a glob against the file name (case-insensitive).
 
 ### 4.2 Scan algorithm (per source, every `pollIntervalSec`)
 
-1. List regular files matching `pattern`. **Skip** names ending in `.done`, `.error`, `.tmp`,
-   `.part`, `.partial`, and dotfiles. **Nothing is skipped by path**: every stable candidate is
+1. List regular files matching `pattern` (one no-follow `stat` each: a **symbolic link is
+   skipped**, never followed or renamed, and logged once). **Skip** names ending in `.done`,
+   `.error`, `.tmp`, `.part`, `.partial`, and dotfiles. **Nothing is skipped by path**: every stable candidate is
    hashed (candidates are only un-suffixed files, so this is cheap) and its identity decides
    what happens (step 3a). The one in-memory guard is per process: a file this process already
    consumed that is *still at its path* (its post-commit rename failed) is keyed by
@@ -285,7 +327,14 @@ be distinct. `pattern` is a glob against the file name (case-insensitive).
 2. For each candidate, record `(size, mtime)`; a file is **stable** when the pair has been
    unchanged for ≥ `stableForSec` across polls (first sighting starts the clock). Unstable files
    are logged at debug and retried next poll.
-3. Consume a stable file — one **transaction per file**:
+3. Consume a stable file — one **transaction per file**. The file is `stat`ed (no-follow)
+   before a byte is read: if its `(size, mtime)` is not what the stability window saw, it is
+   left for the next scan; if its size is over `config.maxFileBytes` (default 64 MiB, capped at
+   128 MiB) it is hashed as a stream (constant memory, so it still gets a `fileId`) and goes
+   straight to 3e as `too-large` — one oversized drop must not exhaust the heap and stall every
+   file behind it (a file whose bytes do not fit in the heap goes the same way as
+   `too-large-for-heap`). The hash is computed while reading, and the file is `stat`ed again
+   afterwards: a file that changed while being read is left for the next scan too.
    a. `sha256` the bytes → `checksum`; `fileId = <path>@<checksum[0..12)>`. Look the checksum
       up in `files` (a `consumed` row wins over a `duplicate` one, which wins over an `error`
       one). Known with status `consumed|duplicate` → **duplicate**: when a row with this very
@@ -303,8 +352,14 @@ be distinct. `pattern` is a glob against the file name (case-insensitive).
       `X12Reader.FileType` via `TransactionTypes.fileTypeFor(gs08)`; unknown GS08 → parse fails
       with `unsupported-guide`.
    c. For every `ST_LOOP` in every `GS_LOOP` of every `ISA_LOOP`: materialize (§5), build the
-      envelope, `INSERT … ON CONFLICT(element_key) DO NOTHING` into `transactions`; insert the
-      `files` row (`status='consumed'`, counts).
+      envelope, insert into `transactions` (+ its graph and dimensions); insert the `files` row
+      (`status='consumed'`, counts). Every set must land: the `fileId` is new at this point
+      (3a resolved redelivery and duplicates by checksum), so an element key that is already
+      taken can only be two sets of *this* file sharing ISA13/GS06/ST02. That rolls the whole
+      file back and sends it down 3e as `duplicate-element-key` — acknowledging it `.done` would
+      silently drop one set. (The insert keeps `ON CONFLICT(element_key) DO NOTHING` only so the
+      clash reads as "not inserted" rather than as a constraint error indistinguishable from a
+      store failure; no path relies on it to skip a row.)
    d. `COMMIT`, **then** `rename(path, target)` where `target` is `<path><consumedSuffix>`, or
       `<path>.<discoveredAtEpochMillis><consumedSuffix>` when that name already exists (the same
       name delivered again with different bytes); the actual target is persisted in
@@ -312,12 +367,26 @@ be distinct. `pattern` is a glob against the file name (case-insensitive).
       `files.rename_failed=1` (`current_path` = the discovery path) — the next scan re-hashes the
       file, finds the same `fileId` and treats it as a redelivery (3a), so the rows are never
       duplicated.
-   e. On any parse failure before commit: `ROLLBACK`, `rename(path, target)` with the same
-      collision rule and `errorSuffix`, insert a `files` row with `status='error'`,
-      `error_message`, and imsweb `getFatalErrors()`. Errors are never retried automatically; an
+   e. On any failure that belongs to the file before commit — a parse error, `too-large`,
+      `duplicate-element-key`, the parser exhausting heap or stack on it, SQLite refusing one
+      of its rows (`buffer-rejected`: over-long value, a UNIQUE/PRIMARY KEY clash) — `ROLLBACK`,
+      insert a `files` row with `status='error'`, `error_message` (imsweb `getFatalErrors()`
+      for parse errors), then `rename(path, target)` with the same collision rule and
+      `errorSuffix`. Errors are never retried automatically; an
       operator renames the file back (or fixes it) and the next scan picks it up: unchanged
       bytes replace the error row (3a retry) and, failing again, land back in `.error`; fixed
       bytes are a new file (new `fileId`) and the old error row stays as the audit record.
+   Renames never replace an existing file: a target taken between choosing it and moving onto
+   it gets the next free name (a plain move refuses an existing target; `ATOMIC_MOVE` is a bare
+   `rename(2)` and would overwrite it).
+
+   **Isolation.** A failure in one file never ends the scan: anything else one file throws
+   (an unexpected exception, an `Error` such as OOM) is logged, the file is left in place, and
+   the scan moves on. A failure of the *buffer* — any other `SQLException`: I/O, disk full,
+   corruption, or a NOT NULL/CHECK constraint (the table no longer matches its INSERTs, as when
+   a stale `mapped_json NOT NULL` column stopped every ingest) — is not the file's fault and
+   would recur for every file, so it ends the scan, leaves the file in place (no `.error`), and
+   is reported by `/healthz` (§9).
 4. Backpressure: if the buffer is over `retention.maxBytes` and the sweeper cannot free space,
    the poller **leaves files untouched** (no rename, no insert) and reports `backpressure: true`
    in `/stats` and `/healthz` (503). Files are their own queue — strictly better than `MSA|AE`.
@@ -463,7 +532,7 @@ CREATE INDEX IF NOT EXISTS files_path ON files(file_path);
 CREATE INDEX IF NOT EXISTS files_source ON files(source_name, status);
 CREATE TABLE IF NOT EXISTS transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  element_key TEXT NOT NULL UNIQUE,    -- <fileId>:<GS06>:<ST02>  (fileId = <path>@<hash12>)
+  element_key TEXT NOT NULL UNIQUE,    -- <fileId>:<ISA13>:<GS06>:<ST02>  (fileId = <path>@<hash12>)
   file_id TEXT NOT NULL, source_name TEXT NOT NULL,
   received_at INTEGER NOT NULL,
   isa_control TEXT, gs_control TEXT, st_control TEXT,
@@ -478,11 +547,39 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS transactions_drain ON transactions(schema_id, status, received_at);
 CREATE INDEX IF NOT EXISTS transactions_lease ON transactions(lease_id) WHERE lease_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS transactions_file ON transactions(file_id);
+CREATE INDEX IF NOT EXISTS transactions_unacked ON transactions(received_at) WHERE status <> 'acked';  -- oldestUnacked
+CREATE INDEX IF NOT EXISTS transactions_acked ON transactions(status, acked_at);         -- purge, retention, take's status probes
+CREATE INDEX IF NOT EXISTS transactions_type ON transactions(transaction_type, gs08);    -- /by-type
+CREATE INDEX IF NOT EXISTS transactions_gs08 ON transactions(gs08);                      -- /by-version
+CREATE INDEX IF NOT EXISTS transactions_sender ON transactions(sender_id);               -- /by-sender
+CREATE INDEX IF NOT EXISTS transactions_source ON transactions(source_name);             -- /by-source
 PRAGMA journal_mode = WAL;
 ```
 
+Indexes are additive: `CREATE INDEX IF NOT EXISTS` builds a new one on an existing buffer at the
+next open, so adding an index needs no `BufferStore.migrate` step (a column change still does).
+A partial index is only used when a query repeats its WHERE term, which is why `oldestUnacked`
+says `status <> 'acked'` verbatim.
+
 Durability (`ackDurability`), drain/lease SQL, retention sweeper (acked rows only; `files` rows
-are never evicted — they are the audit trail), and backpressure are as in hl7/v2 §8.
+are never evicted — they are the audit trail), and backpressure are as in hl7/v2 §8, with these
+x12 specifics:
+
+- **`ackDurability` defaults to `full`** (`PRAGMA synchronous=FULL`, fsync per commit). The
+  `.done` rename is the ack, so under `normal` a power loss can roll back a commit whose file was
+  already renamed — that file is lost with nothing left to retry. Only an explicit `normal`
+  weakens it; an unknown value keeps `full`.
+- **Deletes are batched and atomic with the graph.** `purge` and both retention axes delete
+  in batches of 500 acked rows (oldest `acked_at` first); each batch is ONE SQL transaction
+  that removes the rows *and* their `entities`, `entity_values` and `transaction_dims`, so a
+  failure can never orphan a graph, and a batch never binds more parameters than SQLite allows
+  however many rows are due. The store's lock is released between batches.
+- **Capacity is live data.** `retention.maxBytes` and backpressure compare
+  `(page_count − freelist_count) × page_size` (`usedBytes`), not the file size: pages a delete
+  freed are room at once. `/stats` `dbSizeBytes` and `/healthz` `db.sizeBytes` stay the file size.
+- **Every delete path vacuums.** `purge`, the `maxAge` pass and the `maxBytes` loop are each
+  followed by `PRAGMA incremental_vacuum(n)` run to completion (run with `execute()` the pragma
+  steps once and frees a single page), so the file shrinks as well.
 
 ### 8.4 The object graph
 
@@ -539,22 +636,55 @@ that *is* — a Claim whose `paidAmount` is `clp.clp04` — and at what **grain*
 instance of the declared `anchor` schema. Choosing the anchor chooses the grain, which is why
 it is declared, never inferred.
 
-| Entity | Anchor = grain | Rows per 835 |
-|---|---|---|
-| `Remittance` | the transaction root | 1 per transaction set |
-| `Claim` | `loop2100` | n claims |
-| `ServiceLine` | `loop2110` | n lines per claim |
+| Guide | Entity → collection | Anchor = grain | Rows |
+|---|---|---|---|
+| 835 X221A1 | `Remittance` → `/remittances` | the transaction root | 1 per transaction set |
+| 835 X221A1 | `Claim` → `/claims` | `loop2100` (CLP) | n claims |
+| 835 X221A1 | `ServiceLine` → `/service-lines` | `loop2110` (SVC) | n lines per claim |
+| 837P X222A1 | `Claim` → `/professional-claims` | `loop2300` (CLM) | n claims |
+| 837P X222A1 | `ServiceLine` → `/professional-service-lines` | `loop2400` (LX/SV1) | n lines per claim |
+| 837I X223A2 | `Claim` → `/institutional-claims` | `loop2300` (CLM) | n claims |
+| 837I X223A2 | `ServiceLine` → `/institutional-service-lines` | `loop2400` (LX/SV2) | n lines per claim |
+| 835 + 837P + 837I | `Payer` → `/payers` | *dimension grain* (§8.5.2) | 1 per distinct payer |
+| 835 | `Payee` → `/payees` | *dimension grain* (§8.5.2) | 1 per distinct payee |
+
+**Why 837 claims are not in `/claims`.** An 835 CLP is an *adjudicated* claim (paid amount,
+status, patient responsibility); an 837 CLM is a *submitted* one (charge, place of service,
+diagnosis). One `/claims` spanning both would need a union schema in which most columns are
+null for half the rows, and a collection has exactly one `collectionSchema` (§2.1) that must
+describe every row honestly. So each guide's grain gets its own collection and schema
+(`schema:business:x12.837P.Claim`), and `claimId` — CLM01, which the 835 echoes in CLP01 — is the
+join between them. An anchor-grain collection belongs to exactly one guide; an aliased GS08
+(`005010X223A1`, `005010X223`, `005010X222`) resolves to its canonical guide's mapping, because
+it is materialized with that guide's structure and carries its schema ids.
 
 Column paths are relative to the anchor and may carry a **qualifier predicate**, which is how
 the semantics X12 hides in code positions become names: `nm1[nm101=QC].nm103` is the patient's
 last name, `amt[amt01=AU].amt02` the allowed amount, `svc.svc01.c00302` the procedure inside
-composite C003. A column the transaction lacks is present and null, so every row of a
-collection has one shape.
+composite C003. A step `^property` climbs to the nearest **ancestor** under that property, so a
+row can read what its grain inherits, exactly and per instance: an 837 claim's subscriber is
+`^loop2000B.loop2010BA.nm1.nm109` (whether the claim sits under 2000B or 2000C), a service
+line's claim id `^loop2300.clm.clm01`. A column the transaction lacks is present and null, so
+every row of a collection has one shape.
+
+Values are projected from `value_text`, never from the comparison key (§8.4): a decimal is a
+`BigDecimal` parsed from the lexical form, so `300.00` reaches the wire as `300.00`. A `date`
+column is ISO `YYYY-MM-DD`; an `AN` date element (`DTP03`, `DMG02`) carrying `CCYYMMDD` is
+rewritten, and a column may take one end of an `RD8` range with `"part": "from" | "to"`
+(a lone `D8` date is both ends). The generated schemas declare `decimal` as a JSON number and
+`date` as an ISO string, matching the guide schemas' core types.
 
 **Dimensions** are transaction-level values (payer, payee, check number, effective date)
 resolved once per transaction set into `transaction_dims` and merged onto every row anchored
 under it. The payer lives in `N1*PR` up in the header, so without that "claims for this payer"
-would walk up the graph per claim instead of hitting an index.
+would walk up the graph per claim instead of hitting an index. A dimension path is followed
+along **every** matching branch, and the dimension exists only when all of them agree: an 835
+has one `N1*PR`, but an 837 batch can hold several billing providers (2000A) and payers (2010BB
+under each 2000B). Such a transaction has no `payerName` dimension — it is in no payer segment
+and not counted in `/payers` — rather than being attributed to whichever payer came first. The
+per-claim value is always available as a column (`claimPayerName`, `claimPayerId`), which is
+exact. 837 dimensions: `submitterName/Id` (1000A), `receiverName/Id` (1000B),
+`billingProviderName/Npi` (2010AA), `payerName/Id` (2010BB).
 
 Business element schemas are **generated from the mappings** (`schema:business:x12.835.Claim`)
 and registered at boot: a collection may not advertise a `collectionSchema` the registry
@@ -574,12 +704,18 @@ with no mapping simply has no business entities.
 │   ├─ /claims/by-file/<fileId>       "claims from this file"
 │   └─ /claims/by-payerName/<value>   "claims for this payer"  (also by-payeeNpi, by-check…)
 ├─ /service-lines  …
-└─ /remittances    …
+├─ /remittances    …
+├─ /professional-claims · /professional-service-lines    (837P; by-billingProviderNpi, by-payerId…)
+├─ /institutional-claims · /institutional-service-lines  (837I)
+└─ /payers · /payees                  dimension grain, no segments
 ```
 
 Segment children are **emergent**, exactly like `/by-type`: `SELECT DISTINCT` over the
 dimensions actually present, so a payer node appears the first time that payer sends something.
-An unknown segment value is a 404, not an empty page.
+Dimensions are named alike across guides (both an 835 and an 837 have `payerName`), so the
+values offered under a collection are narrowed to those that scope at least one of **its own**
+rows — a payer that only ever sent 837s is not a segment of the 835's `/claims`. An unknown
+segment value is a 404, not an empty page.
 
 A **structural** filter (`/transactions`, `/by-type/<TS>`, `ops/take`) still compiles to SQL
 through `X12SqlAdapter`, but a body path now resolves into the graph rather than
@@ -618,11 +754,57 @@ value indexes are already in place for it. Filters compare by the column's decla
 `(paidAmount>=1000)` is an exact decimal comparison and cannot match `999.99` lexically, and an
 unknown column name is a 400 rather than a silently empty result.
 
+#### 8.5.2 Dimension-grain entities: payers and payees
+
+A payer is not an instance of any loop: it is a value the transactions *name*. A mapping entity
+may therefore declare `"grain": "dimension"` with an `identity` — the pair of dimensions that
+name a party (`{"name": "payerName", "id": "payerId"}`) — and columns whose `path` is one of the
+derived fields `key`, `name`, `id`, `transactionCount`, `firstSeen`, `lastSeen`,
+`transactionTypes`. Its schema is generated from those columns like any other
+(`schema:business:x12.Payer`; no `elementKey`/`fileId`, since a party spans transactions), and
+filter, sort and paging go through the same `BusinessFilter` / typed comparator. Every guide
+that names payers declares the same entity; declarations of one collection are **merged** into
+one entity spanning those guides (they must agree on schema, identity and columns, or the later
+one is dropped with a warning — one collection, one schema).
+
+Rows come from one grouped query over `transactions ⋈ transaction_dims` (distinct name/id pairs
+per guide with count and first/last `received_at`), folded into parties by the **identity rule**:
+
+1. An occurrence with an identifier is keyed by it: `id:<payerId>`. An identifier is stable
+   where a name is not.
+2. An occurrence with only a name joins the identified party carrying that same name (trimmed,
+   whitespace-collapsed, case-insensitive) **when exactly one exists** — an 835 `N1*PR` often
+   omits `N104` while the 837 `NM1*PR` for the same payer states `NM109`, and they are one payer.
+3. Otherwise (no identified match, or several — the name alone cannot say which) it is its own
+   party keyed `name:<NORMALIZED NAME>`. A name-only occurrence is never guessed onto a party
+   whose identifier it did not state.
+
+A party's `payerName` is the name most of its transactions carry (ties to the lexicographically
+first). `transactionCount`, `firstSeen`/`lastSeen` (receipt time, ISO) and `transactionTypes`
+(`835,837I,837P`) are exact over the transaction sets currently in the buffer, so they shrink
+when retention sweeps acked rows. The same machinery serves `/payees` (835 `N1*PE`, keyed by
+`payeeNpi`). The list is computed per request — one grouped scan in SQL — and filtered, sorted and
+paged in memory, which is bounded by the number of distinct parties, not transactions.
+
 ## 9. Health
 
-`/healthz` → `{poller: {up, lastScan, lastConsumed, bufferDepth, oldestUnackedSec, sources[]:
-{name, path, writable, pending, errored}}, db: {walBytes, lastCheckpoint}}`; 503 when any
-source is unwritable, when the poller thread is dead, or under backpressure.
+`/healthz` → `{poller: {up, lastScan, lastConsumed, bufferDepth, oldestUnackedSec, backpressure,
+sources[]: {name, path, writable, pending, errored, failing, stalled, lastScan?, lastScanStarted?,
+lastError?, lastErrorAt?}}, db: {walBytes, sizeBytes}}`; 503 when the poller thread is dead,
+under backpressure, or when any source is:
+
+- **unwritable**;
+- **failing** — its most recent scan failed (the buffer rejected the work, §4.2 "Isolation", or
+  the directory could not be listed) and no scan has completed since. `lastError`/`lastErrorAt`
+  say what and when, and stay visible after recovery;
+- **stalled** — no scan has completed and no file has finished for `3 × pollIntervalSec`
+  (at least 120 s), measured from the later of `lastScan` and the running scan's last finished
+  file (so a long catch-up scan over a backlog is not a stall), or from poller start before the
+  first scan completes.
+
+A live thread is not proof of ingestion: a buffer whose every INSERT failed (the
+`mapped_json NOT NULL` upgrade bug) kept `up=true` and a green probe while nothing moved.
+`lastScan` is the last scan that *completed*, never merely started.
 
 ## 10. Out of scope (v1)
 
@@ -648,21 +830,17 @@ the ops port beyond the self-signed default · HA / multi-instance.
 2. Codegen from imsweb mappings → schemas + structure index; `SchemaRegistry`.
 3. Poller + parser + materializer; `files`/`transactions` write path; `.done`/`.error`.
 4. `ObjectTree`, `X12Operations`, `X12ProducerFacade` (tree, collections, functions, download).
-5. Tests: JUnit unit (`*Test`) + integration (`*IT`) on synthetic fixtures; `fetch-x12org-examples.py`
-   conformance run (local only); `e2e-local.sh` (real container, real file drop, take/ack/purge).
+5. Tests: JUnit unit (`*Test`) + integration (`*IT`) on synthetic fixtures; `e2e-local.sh` (real container, real file drop, take/ack/purge).
 6. `zbb gate` → `gate-stamp.json` → PR to `dev`.
 
 ## 13. Test fixtures and the x12.org examples
 
 x12.org's examples are ASC X12 intellectual property — reproduction requires their consent;
 linking is permitted (`https://x12.org/examples/disclaimers`). Therefore:
-- `java/scripts/fetch-x12org-examples.py` downloads the 44 HIPAA 005010 leaf example pages
-  (835/837P/837I/277CA/999/270-271/276-277), extracts the EDI from `<p class="data">`
-  (strip `<wbr>`, join `<br>`, unescape, split on `~`), wraps envelope-less 837/277 examples in a
-  synthetic ISA/GS…GE/IEA, and writes `java/src/test/resources/x12org/<guide>/<example>.x12` —
-  a **git-ignored** directory. The conformance IT (`X12OrgConformanceIT`) parses every file
-  present and asserts a full tree with zero fatal errors; it **skips** when the directory is
-  absent, so CI stays green without the files.
+- We do not fetch, store or test against them. An earlier local scraper
+  (`fetch-x12org-examples.py`) and its conformance IT were removed: bulk-copying the examples to
+  disk and CI is itself reproduction, and the synthetic fixtures cover the same guides. Cite an
+  example by link when one explains a structure.
 - Committed fixtures under `java/src/test/resources/fixtures/` are **synthetic** (fictional
   payer/provider, `TEST-NET` style identifiers), one per guide, authored by the test agent, plus
   deliberately malformed files for the `.error` path.

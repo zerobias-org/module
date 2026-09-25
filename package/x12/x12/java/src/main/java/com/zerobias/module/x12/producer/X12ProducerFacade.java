@@ -40,7 +40,8 @@ public final class X12ProducerFacade {
     private static final Gson GSON = new Gson();
     /** Function output keeps null-valued required fields (e.g. take's leaseId on an empty lease). */
     private static final Gson GSON_NULLS = new GsonBuilder().serializeNulls().create();
-    private static final int MAX_PAGE_SIZE = 1000;
+    public static final int DEFAULT_PAGE_SIZE = 100;
+    public static final int MAX_PAGE_SIZE = 1000;
 
     private final BufferStore buffer;
     private final ObjectTreeApi tree;
@@ -105,9 +106,13 @@ public final class X12ProducerFacade {
 
     public String getChildren(String objectId, int pageSize, int pageNumber) throws SQLException {
         requireId(objectId);
+        int size = checkPaging(pageSize, pageNumber);
+        int from = (int) Math.min(Integer.MAX_VALUE, (long) (pageNumber - 1) * size);
+        ObjectTreeApi.ChildPage paged = tree.childPage(objectId, size, from);
+        if (paged != null) {
+            return pagedResults(paged.items(), paged.total(), size, pageNumber);
+        }
         List<Map<String, Object>> children = tree.children(objectId);
-        int size = clampPageSize(pageSize);
-        int from = Math.max(0, pageNumber - 1) * size;
         int total = children.size();
         List<Map<String, Object>> page = from >= total
             ? List.of()
@@ -125,7 +130,7 @@ public final class X12ProducerFacade {
         if (tree instanceof ObjectTree) {
             final BusinessEntities.Scope scope = ((ObjectTree) tree).businessScope(objectId);
             if (scope != null) {
-                final int size = clampPageSize(pageSize);
+                final int size = checkPaging(pageSize, pageNumber);
                 final BusinessEntities.Page page;
                 try {
                     page = ((ObjectTree) tree).business()
@@ -140,8 +145,8 @@ public final class X12ProducerFacade {
             }
         }
         ObjectTreeApi.Collection coll = tree.resolveCollection(objectId);
-        int size = clampPageSize(pageSize);
-        int offset = Math.max(0, pageNumber - 1) * size;
+        int size = checkPaging(pageSize, pageNumber);
+        int offset = (pageNumber - 1) * size;
         String where = composeWhere(coll, filter);
 
         List<TransactionRow> rows = buffer.search(where, size, offset, orderBy(sortBy, sortDir));
@@ -264,7 +269,8 @@ public final class X12ProducerFacade {
         return GSON.toJson(body);
     }
 
-    private void requireFileManagement(String operationId) {
+    /** 400 {@code UnsupportedOperationError} unless {@code config.allowFileManagement} is set. */
+    public void requireFileManagement(String operationId) {
         if (!allowFileManagement) {
             throw ProducerException.unsupported(operationId
                 + " is disabled: the receiver is receive-only unless the deployment sets "
@@ -290,6 +296,34 @@ public final class X12ProducerFacade {
     // --- Functions: ops/* (DESIGN §2.5) ------------------------------------
 
     public String invokeFunction(String objectId, String inputJson) throws SQLException {
+        String fn = requireFunction(objectId);
+        return GSON_NULLS.toJson(ops.invoke(fn, parseObject(inputJson, "Function input")));
+    }
+
+    /**
+     * {@code validateFunctionInput}: check {@code requestJson} (the interface's
+     * {@code ValidateFunctionInputRequest}, {@code {input, strict}}) against the function's
+     * declared input without running it. The verdict is the 200 body; only a malformed
+     * request (not an object, unknown fields, wrong types) or an unknown function is an error.
+     */
+    public String validateFunctionInput(String objectId, String requestJson) throws SQLException {
+        String fn = requireFunction(objectId);
+        Map<String, Object> request = parseObject(requestJson, "validateFunctionInputRequest");
+        for (String key : request.keySet()) {
+            if (!"input".equals(key) && !"strict".equals(key)) {
+                throw ProducerException.illegalArgument(
+                    "validateFunctionInputRequest: unknown property " + key + " (expected input, strict)");
+            }
+        }
+        Object strict = request.get("strict");
+        if (strict != null && !(strict instanceof Boolean)) {
+            throw ProducerException.illegalArgument("validateFunctionInputRequest.strict must be a boolean");
+        }
+        return GSON_NULLS.toJson(ops.validateInput(fn, request.get("input"), Boolean.TRUE.equals(strict)));
+    }
+
+    /** The function name of a {@code /ops/<fn>} function object; 404 unknown, 400 not a function. */
+    private String requireFunction(String objectId) throws SQLException {
         requireId(objectId);
         Map<String, Object> obj = tree.object(objectId); // 404 if unknown
         @SuppressWarnings("unchecked")
@@ -297,13 +331,28 @@ public final class X12ProducerFacade {
         if (classes == null || !classes.contains("function")) {
             throw ProducerException.unsupported("Object is not a function: " + objectId);
         }
-        String fn = objectId.substring(objectId.lastIndexOf('/') + 1);
+        return objectId.substring(objectId.lastIndexOf('/') + 1);
+    }
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> input = (inputJson == null || inputJson.isBlank())
-            ? Map.of()
-            : GSON.fromJson(inputJson, Map.class);
-        return GSON_NULLS.toJson(ops.invoke(fn, input == null ? Map.of() : input));
+    /** A JSON object body; null/blank = empty; anything that is not an object is a 400. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> parseObject(String json, String what) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        Object parsed;
+        try {
+            parsed = GSON.fromJson(json, Object.class);
+        } catch (com.google.gson.JsonParseException e) {
+            throw ProducerException.illegalArgument(what + " is not valid JSON");
+        }
+        if (parsed == null) {
+            return Map.of();
+        }
+        if (!(parsed instanceof Map)) {
+            throw ProducerException.illegalArgument(what + " must be a JSON object");
+        }
+        return (Map<String, Object>) parsed;
     }
 
     // --- element mapping (DESIGN §5 envelope overlay) ----------------------
@@ -400,12 +449,17 @@ public final class X12ProducerFacade {
         return envelope;
     }
 
-    private int clampPageSize(int pageSize) {
-        if (pageSize <= 0) {
-            return 100;
+    /**
+     * Paging bounds (both paginated paths): {@code 1 <= pageSize <= 1000}, {@code pageNumber >= 1}.
+     * Out of range is a 400, never a silent default — a caller asking for page 0 or size 0 has
+     * a bug worth hearing about.
+     */
+    private static int checkPaging(int pageSize, int pageNumber) {
+        if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
+            throw ProducerException.illegalArgument("pageSize must be between 1 and " + MAX_PAGE_SIZE + ", got " + pageSize);
         }
-        if (pageSize > MAX_PAGE_SIZE) {
-            throw ProducerException.illegalArgument("pageSize exceeds maximum of " + MAX_PAGE_SIZE);
+        if (pageNumber < 1) {
+            throw ProducerException.illegalArgument("pageNumber must be at least 1, got " + pageNumber);
         }
         return pageSize;
     }

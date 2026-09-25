@@ -43,7 +43,7 @@ import java.util.stream.Stream;
  * </pre>
  *
  * <p>A <em>transaction set is an atom</em> — a collection element keyed
- * {@code <fileId>:<GS06>:<ST02>}, never a node. Folders are discriminators and their
+ * {@code <fileId>:<ISA13>:<GS06>:<ST02>}, never a node. Folders are discriminators and their
  * children are <em>emergent</em>: read live from the buffer's DISTINCT values, so a node
  * appears the first time matching data lands. {@code /files/<fileId>} is the one
  * exception: a file is both a folder (its transactions) and a binary (its bytes).
@@ -399,7 +399,9 @@ public final class ObjectTree implements ObjectTreeApi {
                 out.add(object(OPS));
                 return out;
             case FILES:
-                // Every files row (they are never evicted — the audit trail), newest discovery first.
+                // Every files row (they are never evicted — the audit trail), newest discovery
+                // first. The paged read is childPage(); this unpaged form is kept for callers
+                // that genuinely want the whole branch.
                 for (FileRow f : buffer.fileRows(null, Integer.MAX_VALUE, 0)) {
                     out.add(fileNode(f));
                 }
@@ -432,6 +434,23 @@ public final class ObjectTree implements ObjectTreeApi {
             default:
                 return dynamicChildren(id);
         }
+    }
+
+    /**
+     * {@code /files} paged in SQL ({@code LIMIT/OFFSET} + {@code count(*)}), same order as
+     * {@link #children}: the branch is every files row ever recorded, so it is never read
+     * whole to serve one page. Every other id pages in memory (null).
+     */
+    @Override
+    public ChildPage childPage(String id, int limit, int offset) throws SQLException {
+        if (!FILES.equals(id)) {
+            return null;
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (FileRow f : buffer.fileRows(null, limit, offset)) {
+            items.add(fileNode(f));
+        }
+        return new ChildPage(items, buffer.countFilesWhere(null));
     }
 
     /**
@@ -587,14 +606,22 @@ public final class ObjectTree implements ObjectTreeApi {
         }
         FileRow f = requireFile(file[0], id);
         Path current = f.currentPath() == null ? null : Path.of(f.currentPath());
-        if (current == null || !Files.isRegularFile(current)) {
+        if (current == null) {
             throw ProducerException.fileGone(f.fileId());
         }
+        // Stat'ed without following links, like the open: a symlink left at the consumed path
+        // is not the file the receiver hashed, so it is "gone" rather than followed.
+        final java.nio.file.attribute.BasicFileAttributes attrs;
         try {
-            return new BinaryContent(Files.readAllBytes(current), BinaryContent.MIME_X12, f.fileName());
+            attrs = Files.readAttributes(current, java.nio.file.attribute.BasicFileAttributes.class,
+                java.nio.file.LinkOption.NOFOLLOW_LINKS);
         } catch (IOException e) {
             throw ProducerException.fileGone(f.fileId());
         }
+        if (!attrs.isRegularFile()) {
+            throw ProducerException.fileGone(f.fileId());
+        }
+        return new BinaryContent(id, current, attrs.size(), BinaryContent.MIME_X12, f.fileName());
     }
 
     // --- business entities (DESIGN §8.5) ------------------------------------

@@ -293,4 +293,124 @@ class X12OperationsTest {
         assertEquals(0, ops.invoke("packs", Map.of("name", "x12-guide-nope")).get("packCount"));
         assertEquals(0, ops.invoke("packs", Map.of("gs08", "005010X999")).get("packCount"));
     }
+
+    @Test
+    void misspelledPurgeKeyIsRejectedAndPurgesNothing() throws Exception {
+        String leaseId = (String) ops.invoke("take", Map.of("max", 2)).get("leaseId");
+        ops.invoke("ack", Map.of("leaseId", leaseId));
+        ProducerException e = assertThrows(ProducerException.class,
+            () -> ops.invoke("purge", Map.of("olderthan", "P30D")));
+        assertEquals(400, e.httpStatus());
+        assertEquals("err.illegal.argument", e.key());
+        assertTrue(e.getMessage().contains("olderthan"), e.getMessage());
+        assertEquals(2, buffer.count(Status.ACKED), "an unknown key must never degrade to 'purge everything'");
+    }
+
+    @Test
+    void functionInputIsCheckedAgainstItsDeclaredSchema() {
+        // wrong type
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> ops.invoke("take", Map.of("max", "5"))).httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> ops.invoke("take", Map.of("max", 2.5))).httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> ops.invoke("purge", Map.of("olderThan", 30))).httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> ops.invoke("ack", Map.of("leaseId", "L", "elementKeys", List.of(1)))).httpStatus());
+        // missing required
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> ops.invoke("raw", Map.of())).httpStatus());
+        // values
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> ops.invoke("take", Map.of("max", 0))).httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> ops.invoke("take", Map.of("leaseTtl", "PT0S"))).httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> ops.invoke("purge", Map.of("olderThan", "-PT1H"))).httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> ops.invoke("ack", Map.of("leaseId", "L", "elementKeys", List.of()))).httpStatus(),
+            "an empty subset would mean the whole lease");
+        // unknown key on a function that takes none of it
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> ops.invoke("rescan", Map.of("sources", "inbox"))).httpStatus());
+    }
+
+    @Test
+    void validateFunctionInputSharesTheInvokeCheck() throws Exception {
+        JsonObject ok = GSON.fromJson(facade.validateFunctionInput(OPS + "purge",
+            "{\"input\":{\"olderThan\":\"P30D\"}}"), JsonObject.class);
+        assertTrue(ok.get("valid").getAsBoolean());
+        assertEquals(0, ok.getAsJsonArray("errors").size());
+
+        JsonObject bad = GSON.fromJson(facade.validateFunctionInput(OPS + "purge",
+            "{\"input\":{\"olderthan\":\"P30D\"}}"), JsonObject.class);
+        assertFalse(bad.get("valid").getAsBoolean());
+        JsonObject err = bad.getAsJsonArray("errors").get(0).getAsJsonObject();
+        assertEquals("olderthan", err.get("path").getAsString());
+        assertEquals("unknown_property", err.get("code").getAsString());
+
+        // capped value: a warning, an error only in strict mode
+        JsonObject capped = GSON.fromJson(facade.validateFunctionInput(OPS + "take",
+            "{\"input\":{\"max\":5000}}"), JsonObject.class);
+        assertTrue(capped.get("valid").getAsBoolean());
+        assertEquals(1, capped.getAsJsonArray("warnings").size());
+        JsonObject strict = GSON.fromJson(facade.validateFunctionInput(OPS + "take",
+            "{\"input\":{\"max\":5000},\"strict\":true}"), JsonObject.class);
+        assertFalse(strict.get("valid").getAsBoolean());
+
+        JsonObject notObject = GSON.fromJson(facade.validateFunctionInput(OPS + "take",
+            "{\"input\":[1]}"), JsonObject.class);
+        assertFalse(notObject.get("valid").getAsBoolean());
+
+        // routed under its interface name and body parameter
+        JsonObject routed = GSON.fromJson(OperationRouter.executeOperation(facade,
+            "FunctionsApi.validateFunctionInput", Map.of("objectId", OPS + "ack",
+                "validateFunctionInputRequest", Map.of("input", Map.of()))), JsonObject.class);
+        assertFalse(routed.get("valid").getAsBoolean(), "leaseId is required");
+        assertEquals("required", routed.getAsJsonArray("errors").get(0).getAsJsonObject().get("code").getAsString());
+
+        assertEquals(400, assertThrows(ProducerException.class, () -> facade.validateFunctionInput(OPS + "take",
+            "{\"inputs\":{}}")).httpStatus(), "unknown request field");
+        assertEquals(404, assertThrows(ProducerException.class, () -> facade.validateFunctionInput(OPS + "nope",
+            "{}")).httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class, () -> facade.validateFunctionInput(
+            ObjectTree.TRANSACTIONS, "{}")).httpStatus(), "not a function");
+        // nothing ran
+        assertEquals(0, buffer.count(Status.IN_FLIGHT));
+    }
+
+    @Test
+    void servedInputSchemaListsExactlyTheCheckedProperties() {
+        for (String fn : SchemaRegistry.OPS_FUNCTIONS) {
+            JsonObject schema = GSON.fromJson(SCHEMAS.getSchema(SchemaRegistry.functionInputId(fn)), JsonObject.class);
+            List<String> served = new java.util.ArrayList<>();
+            schema.getAsJsonArray("properties").forEach(p -> served.add(p.getAsJsonObject().get("name").getAsString()));
+            List<String> checked = SchemaRegistry.functionInputs(fn).stream().map(SchemaRegistry.Param::name).toList();
+            assertEquals(checked, served, fn);
+        }
+    }
+
+    @Test
+    void collectionSortIsHonouredThroughTheRouter() throws Exception {
+        for (String op : List.of("CollectionsApi.getCollectionElements", "CollectionsApi.searchCollectionElements")) {
+            JsonObject desc = GSON.fromJson(OperationRouter.executeOperation(facade, op, Map.of(
+                "objectId", ObjectTree.TRANSACTIONS, "sortBy", List.of("elementKey"), "sortDir", List.of("desc"))),
+                JsonObject.class);
+            JsonObject asc = GSON.fromJson(OperationRouter.executeOperation(facade, op, Map.of(
+                "objectId", ObjectTree.TRANSACTIONS, "sortBy", "elementKey", "sortDir", "asc")), JsonObject.class);
+            List<String> d = new java.util.ArrayList<>();
+            desc.getAsJsonArray("items").forEach(i -> d.add(i.getAsJsonObject().get("elementKey").getAsString()));
+            List<String> a = new java.util.ArrayList<>();
+            asc.getAsJsonArray("items").forEach(i -> a.add(i.getAsJsonObject().get("elementKey").getAsString()));
+            assertEquals(5, a.size(), op);
+            List<String> sorted = new java.util.ArrayList<>(a);
+            java.util.Collections.sort(sorted);
+            assertEquals(sorted, a, op + " asc");
+            java.util.Collections.reverse(sorted);
+            assertEquals(sorted, d, op + " desc");
+            assertEquals(400, assertThrows(ProducerException.class, () -> OperationRouter.executeOperation(facade, op,
+                Map.of("objectId", ObjectTree.TRANSACTIONS, "sortBy", List.of("elementKey", "fileId")))).httpStatus(),
+                "one sort key only — never silently the first");
+        }
+    }
 }

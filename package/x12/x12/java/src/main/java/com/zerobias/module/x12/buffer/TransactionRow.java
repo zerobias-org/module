@@ -10,8 +10,8 @@ import java.time.Instant;
  * (audit / {@code ops/raw} / re-materialization). The typed document is NOT a column: it
  * lives as the object graph (DESIGN §8.4) and is reassembled on demand, so there is exactly
  * one representation of a transaction's content and nothing to keep in sync. The typed JSON
- * (DESIGN §5). {@code elementKey} ({@code <fileId>:<GS06>:<ST02>}) is the natural key —
- * duplicate inserts are dropped. {@code leaseId}/{@code inFlightUntil} are set while
+ * (DESIGN §5). {@code elementKey} ({@code <fileId>:<ISA13>:<GS06>:<ST02>}) is the natural key —
+ * two sets of one file sharing it roll that file back ({@link DuplicateElementKeyException}). {@code leaseId}/{@code inFlightUntil} are set while
  * {@code status == IN_FLIGHT}; {@code ackedAt} when {@code ACKED}. {@code envelope} is
  * {@code file} or {@code synthetic} (DESIGN §4.3).
  */
@@ -96,14 +96,15 @@ public record TransactionRow(
         public Builder envelope(String v) { this.envelope = v; return this; }
 
         /**
-         * Derive {@code elementKey} as {@code <fileId>:<GS06>:<ST02>} (DESIGN §2.1) from
-         * the fields already set. Requires fileId, gsControl and stControl.
+         * Derive {@code elementKey} as {@code <fileId>:<ISA13>:<GS06>:<ST02>} (DESIGN §2.1)
+         * from the fields already set. Requires fileId, isaControl, gsControl and stControl.
          */
         public Builder deriveElementKey() {
-            if (fileId == null || gsControl == null || stControl == null) {
-                throw new IllegalStateException("deriveElementKey needs fileId, gsControl, stControl");
+            if (fileId == null || isaControl == null || gsControl == null || stControl == null) {
+                throw new IllegalStateException("deriveElementKey needs fileId, isaControl, gsControl, stControl");
             }
-            this.elementKey = fileId + ":" + gsControl + ":" + stControl;
+            this.elementKey = com.zerobias.module.x12.materializer.TransactionJson.elementKey(
+                fileId, isaControl, gsControl, stControl);
             return this;
         }
 

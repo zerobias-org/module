@@ -18,9 +18,13 @@ import java.util.Map;
  *   <li>{@code illegalArgumentError} (400) — adds {@code {msg}}; backs <em>both</em> the
  *       {@code UnsupportedOperationError} response (every write op) and the
  *       {@code illegalArgumentError} response (malformed filter, page size out of range).</li>
+ *   <li>{@code unexpectedError} (500) — adds {@code {msg}}; always the same generic text
+ *       ({@link #unexpected}), because the cause can name paths inside the container.</li>
  * </ul>
  */
 public final class ProducerException extends RuntimeException {
+
+    private static final String UNEXPECTED_MESSAGE = "Unexpected error";
 
     private final String key;
     private final int httpStatus;
@@ -88,6 +92,25 @@ public final class ProducerException extends RuntimeException {
     /** {@code illegalArgumentError} body via the {@code illegalArgumentError} response. */
     public static ProducerException illegalArgument(String message) {
         return new ProducerException("err.illegal.argument", 400, message, msg(message));
+    }
+
+    /**
+     * 413 for a request body over the server's limit, in the {@code illegalArgumentError}
+     * shape (errorModelBase + {@code msg}) so a caller gets the platform envelope rather than
+     * the HTTP server's own error page.
+     */
+    public static ProducerException payloadTooLarge(long maxBytes) {
+        String message = "Request body exceeds the " + maxBytes + "-byte limit";
+        return new ProducerException("err.illegal.argument", 413, message, msg(message));
+    }
+
+    /**
+     * {@code unexpectedError} (500) for a failure the caller cannot act on. Always the same
+     * generic text: the cause (an SQLite or IO message) can name buffer or inbox paths inside
+     * the container, so it is logged server-side and never echoed.
+     */
+    public static ProducerException unexpected() {
+        return new ProducerException("err.unexpected", 500, UNEXPECTED_MESSAGE, msg(UNEXPECTED_MESSAGE));
     }
 
     private static Map<String, Object> typeId(String type, String id) {

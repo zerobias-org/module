@@ -67,9 +67,11 @@ class ObjectTreeTest {
         assertEquals(R, item(rootKids, 0).get("id").getAsString());
 
         JsonObject kids = page(facade.getChildren(R, 100, 1));
-        assertEquals(12, kids.get("count").getAsInt());
+        assertEquals(18, kids.get("count").getAsInt());
         assertEquals(List.of("files", "inbox", "transactions", "by-type", "by-version", "by-sender", "by-source",
-                "remittances", "claims", "service-lines", "stats", "ops"),
+                "remittances", "claims", "service-lines", "payers", "payees",
+                "professional-claims", "professional-service-lines",
+                "institutional-claims", "institutional-service-lines", "stats", "ops"),
             names(kids), "/inbox is the live volume, /files the consumed projection, then the "
                 + "business collections projected out of the graph (DESIGN §8.5)");
         assertEquals(1, kids.get("pageNumber").getAsInt(), "1-based on the wire");
@@ -79,7 +81,7 @@ class ObjectTreeTest {
         assertEquals(ObjectTree.ENVELOPE_SCHEMA, all.get("collectionSchema").getAsString());
         assertEquals(5, all.get("collectionSize").getAsLong(), "collectionSize = countWhere(all)");
 
-        JsonObject stats = item(kids, 10);
+        JsonObject stats = item(kids, 16);
         assertEquals(List.of("document"), classes(stats));
         assertEquals("schema:shared:x12.receiver-stats", stats.get("documentSchema").getAsString());
 
@@ -160,7 +162,10 @@ class ObjectTreeTest {
     @Test
     void downloadBinaryReadsCurrentPathAnd404sWhenGone() throws Exception {
         BinaryContent a = facade.downloadBinary(R + "/files/" + ObjectTree.encodeSegment(FILE_A));
-        assertArrayEquals(ProducerFixture.FILE_A_BYTES, a.bytes());
+        try (java.io.InputStream in = a.open()) {
+            assertArrayEquals(ProducerFixture.FILE_A_BYTES, in.readAllBytes());
+        }
+        assertEquals(ProducerFixture.FILE_A_BYTES.length, a.size(), "size for Content-Length, known before streaming");
         assertEquals("application/EDI-X12", a.mimeType());
         assertEquals("remit-a.835", a.fileName());
 
@@ -177,6 +182,78 @@ class ObjectTreeTest {
             () -> facade.downloadBinary(R + "/files/" + ObjectTree.encodeSegment(FILE_A) + "/transactions")).httpStatus());
         assertEquals(404, assertThrows(ProducerException.class,
             () -> facade.downloadBinary(R + "/files/" + ObjectTree.encodeSegment("/x/y.835"))).httpStatus());
+    }
+
+    @Test
+    void downloadNeverFollowsASymlinkAtTheConsumedPath() throws Exception {
+        java.nio.file.Path done = dir.resolve("remit-a.835.done");
+        java.nio.file.Path elsewhere = java.nio.file.Files.createDirectories(dir.resolve("outside")).resolve("secret");
+        java.nio.file.Files.move(done, elsewhere);
+        java.nio.file.Files.createSymbolicLink(done, elsewhere);
+        ProducerException gone = assertThrows(ProducerException.class,
+            () -> facade.downloadBinary(R + "/files/" + ObjectTree.encodeSegment(FILE_A)));
+        assertEquals(404, gone.httpStatus());
+        assertEquals("gone", gone.toBody().get("reason"));
+    }
+
+    @Test
+    void filesArePagedInSqlNotReadWhole() throws Exception {
+        // A tree that refuses the unpaged /files read: getChildren must page it in storage.
+        ObjectTreeApi guarded = new ObjectTreeApi() {
+            @Override
+            public Map<String, Object> object(String id) throws java.sql.SQLException {
+                return tree.object(id);
+            }
+
+            @Override
+            public List<Map<String, Object>> children(String id) throws java.sql.SQLException {
+                if ((R + "/files").equals(id)) {
+                    throw new AssertionError("/files read whole to serve one page");
+                }
+                return tree.children(id);
+            }
+
+            @Override
+            public ChildPage childPage(String id, int limit, int offset) throws java.sql.SQLException {
+                return tree.childPage(id, limit, offset);
+            }
+
+            @Override
+            public Collection resolveCollection(String id) throws java.sql.SQLException {
+                return tree.resolveCollection(id);
+            }
+
+            @Override
+            public Map<String, Object> documentData(String id) throws java.sql.SQLException {
+                return tree.documentData(id);
+            }
+
+            @Override
+            public BinaryContent downloadBinary(String id) throws java.sql.SQLException {
+                return tree.downloadBinary(id);
+            }
+        };
+        X12ProducerFacade f = new X12ProducerFacade(buffer, guarded, SCHEMAS, OperationsApi.NONE);
+        long total = buffer.fileCount();
+        assertTrue(total >= 2, "fixture has at least two files");
+
+        List<String> all = new java.util.ArrayList<>();
+        page(f.getChildren(R + "/files", 100, 1)).getAsJsonArray("items")
+            .forEach(i -> all.add(i.getAsJsonObject().get("id").getAsString()));
+        assertEquals(total, all.size());
+        List<String> paged = new java.util.ArrayList<>();
+        for (int p = 1; p <= total; p++) {
+            JsonObject one = page(f.getChildren(R + "/files", 1, p));
+            assertEquals(total, one.get("count").getAsLong(), "count is the total, not the page");
+            assertEquals(1, one.getAsJsonArray("items").size());
+            paged.add(one.getAsJsonArray("items").get(0).getAsJsonObject().get("id").getAsString());
+        }
+        assertEquals(all, paged, "same order page by page as in one page");
+        assertEquals(0, page(f.getChildren(R + "/files", 1, (int) total + 1)).getAsJsonArray("items").size());
+        // the unpaged children() still lists the same nodes, same order
+        List<String> unpaged = new java.util.ArrayList<>();
+        tree.children(R + "/files").forEach(m -> unpaged.add((String) m.get("id")));
+        assertEquals(all, unpaged);
     }
 
     @Test
@@ -392,7 +469,7 @@ class ObjectTreeTest {
             Map.of("objectId", R + "/by-type/835", "pageSize", 10, "pageNumber", 1)));
         assertEquals(3, viaRouter.get("count").getAsLong());
         JsonObject schema = GSON.fromJson(OperationRouter.executeOperation(facade, "SchemasApi.getSchema",
-            Map.of("objectId", "schema:type:x12.005010X221A1.CLP")), JsonObject.class);
+            Map.of("schemaId", "schema:type:x12.005010X221A1.CLP")), JsonObject.class);
         assertEquals("schema:type:x12.005010X221A1.CLP", schema.get("id").getAsString());
         JsonObject empty = GSON.fromJson(OperationRouter.executeOperation(facade, "FunctionsApi.invokeFunction",
             Map.of("objectId", R + "/ops/take", "requestBody", Map.of("filter", "(transactionType=999)"))), JsonObject.class);

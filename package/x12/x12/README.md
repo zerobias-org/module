@@ -48,15 +48,28 @@ getting the file onto the volume is the feed's job.
 ├── /by-sender/<ISA06>
 ├── /by-source/<inbox name>   one node per watched directory
 ├── /inbox                    the LIVE volume: /inbox/<source>/… real dirs and files
+├── /remittances · /claims · /service-lines          835 business entities (named columns)
+├── /professional-claims · /professional-service-lines   837P
+├── /institutional-claims · /institutional-service-lines 837I (X223A2, and X223A1/X223 aliases)
+├── /payers · /payees         one row per distinct party, across guides
 ├── /stats                    document
 └── /ops                      take · ack · release · replay · recast · purge · raw · validate · rescan · packs
 ```
+
+The business collections are projected out of the stored object graph by the mappings in
+`java/src/main/resources/mappings/<GS08>.json` (content, not code): a claim is a row with
+`claimId`, `chargedAmount`, `subscriberMemberId`, … instead of `loop2300.clm.clm02`. Each is also a
+container of segments (`/claims/by-payerName/<value>`, `/claims/by-file/<fileId>`), and takes
+RFC4515 `filter` plus `sortBy`/`sortDir` over its declared columns. Amounts are exact decimals
+that keep their wire scale (`300.00`). 835 claims (adjudicated) and 837 claims (submitted) are
+different things and live in different collections; `/payers` is one row per payer whichever
+guide named it (identity rule: DESIGN §8.5.2).
 
 ## Configuration
 
 Everything daemon-level lives in `runtimeConfig.yml` and reaches the container as `MODULE_CONFIG`:
 `sources[]` (`name`, `path`, `pattern`, `pollIntervalSec`, `stableForSec`), `consumedSuffix`
-(`.done`), `errorSuffix` (`.error`), `ackDurability`, `retention`, `allowFileManagement`. Two
+(`.done`), `errorSuffix` (`.error`), `ackDurability`, `maxFileBytes`, `retention`, `allowFileManagement`. Two
 volumes are declared: `x12-buffer` (the SQLite buffer) and `x12-inbox` (the drop directory). See
 the file for the annotated defaults.
 
@@ -90,7 +103,6 @@ See [`DESIGN.md`](DESIGN.md) §2.9.
 (cd java && mvn test)                        # JUnit unit suite (needs GitHub Packages auth for lite-filter)
 (cd java && mvn verify)                      # + integration tests
 java/scripts/e2e-local.sh                    # real container; loads the 835 through the DP API
-java/scripts/fetch-x12org-examples.py        # local-only conformance set from x12.org (never committed)
 cd <repo-root>/package/x12/x12 && zbb --slot <slot> gate
 ```
 

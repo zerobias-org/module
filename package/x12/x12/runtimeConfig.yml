@@ -33,8 +33,8 @@ durability:
     mountPath: /var/lib/x12/inbox
     access: rw
 
-# Container memory cap. JVM heap is -Xmx512m (Dockerfile); 1024 MB keeps the heap
-# at ~50% of the cap. The node's 512 MB default would OOM-kill this daemon
+# Container memory cap. The JVM heap is sized from it (-XX:MaxRAMPercentage=70,
+# Dockerfile JAVA_OPTS), so raising this raises the heap too; 1024 MB gives ~700 MB. The node's 512 MB default would OOM-kill this daemon
 # immediately, so declaring this is mandatory. (hl7/v2 DESIGN §8, PLAN D15)
 resources:
   memoryMb: 1024
@@ -60,7 +60,11 @@ config:
   consumedSuffix: ".done"
   errorSuffix: ".error"
   # SQLite durability for the consume path, applied at buffer open. (DESIGN §8.1)
-  ackDurability: normal
+  # full = synchronous=FULL, fsync per commit. The .done rename is the ack, so with
+  # `normal` a power loss after the rename can roll back a commit whose file is already
+  # marked consumed — that file is lost. Choose `normal` only for throughput you have
+  # measured a need for.
+  ackDurability: full
   # File management over the mounted volume (DESIGN §2.9): uploadBinaryContent,
   # createChildObject (mkdir) and deleteObject under the live /x12-receiver/inbox
   # branch. DEFAULT false, and deliberately so — this is a revenue-cycle feed, and an
@@ -70,6 +74,11 @@ config:
   # /inbox is always available and always live: every listing is a fresh readdir, never
   # a cache, so an uploaded file is visible before the poller has looked at it.
   allowFileManagement: false
+  # Largest inbox file read into memory for parsing (at most 134217728, 128 MiB). Checked
+  # from the file's size before it is read: a bigger file is hashed as a stream and renamed
+  # .error as too-large, so one oversized drop cannot exhaust the heap. Raise it together with
+  # resources.memoryMb. (DESIGN §4.2)
+  maxFileBytes: 67108864   # 64 MiB
   # Buffer trimming — evicts ACKED transaction rows past these ceilings (un-acked
   # rows are never evicted). Omit either field to disable that axis. (DESIGN §8.3)
   retention:

@@ -2,8 +2,7 @@
 
 Everything in this directory is **authored from scratch** for this module and is
 committed. Nothing here is derived from x12.org (those examples are ASC X12
-intellectual property and live in the git-ignored sibling `../x12org/`,
-populated by `java/scripts/fetch-x12org-examples.py`).
+intellectual property: link to them, never copy them).
 
 All parties are fictional and use the same identifiers everywhere:
 

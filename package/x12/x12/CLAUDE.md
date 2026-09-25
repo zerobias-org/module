@@ -68,7 +68,14 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
   sha256>`; a reused name with new bytes is a new file (its `.done` gets the discovery time
   interposed), the same bytes again is a redelivery. Never add a path-keyed skip.
 - **Stability window before reading.** Daily drops arrive as partial writes; never parse a file
-  whose size/mtime changed within `stableForSec`.
+  whose size/mtime changed within `stableForSec` — or changed since the window saw it, or while
+  it was being read (the consumer re-stats before and after).
+- **One file never stops the scan; a broken buffer always does.** Size is checked from `stat`
+  against `maxFileBytes` before reading; anything a single file throws (OOM included) is that
+  file's `.error` or a retry, and the scan moves on. Only a buffer failure (I/O, NOT NULL/CHECK —
+  the schema no longer matches) ends the scan, leaves the file in place and turns `/healthz`
+  red. Do not widen `FileConsumer.rejectsThisFile` to NOT NULL: that sends every file to
+  `.error` on a schema bug. Symlinks are never followed, and renames never overwrite.
 - **Money is `decimal`, never float.** `N2` elements are implied-decimal integers on the wire.
 - **The x12.org examples are not ours to commit.** `java/src/test/resources/x12org/` is
   git-ignored on purpose; the fetch script is the only way it gets populated.

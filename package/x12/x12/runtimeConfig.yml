@@ -70,6 +70,11 @@ config:
   # /inbox is always available and always live: every listing is a fresh readdir, never
   # a cache, so an uploaded file is visible before the poller has looked at it.
   allowFileManagement: false
+  # Largest inbox file read into memory for parsing (at most 134217728, 128 MiB). Checked
+  # from the file's size before it is read: a bigger file is hashed as a stream and renamed
+  # .error as too-large, so one oversized drop cannot exhaust the heap. Raise it together with
+  # resources.memoryMb. (DESIGN §4.2)
+  maxFileBytes: 67108864   # 64 MiB
   # Buffer trimming — evicts ACKED transaction rows past these ceilings (un-acked
   # rows are never evicted). Omit either field to disable that axis. (DESIGN §8.3)
   retention:

@@ -313,8 +313,9 @@ be distinct. `pattern` is a glob against the file name (case-insensitive).
 
 ### 4.2 Scan algorithm (per source, every `pollIntervalSec`)
 
-1. List regular files matching `pattern`. **Skip** names ending in `.done`, `.error`, `.tmp`,
-   `.part`, `.partial`, and dotfiles. **Nothing is skipped by path**: every stable candidate is
+1. List regular files matching `pattern` (one no-follow `stat` each: a **symbolic link is
+   skipped**, never followed or renamed, and logged once). **Skip** names ending in `.done`,
+   `.error`, `.tmp`, `.part`, `.partial`, and dotfiles. **Nothing is skipped by path**: every stable candidate is
    hashed (candidates are only un-suffixed files, so this is cheap) and its identity decides
    what happens (step 3a). The one in-memory guard is per process: a file this process already
    consumed that is *still at its path* (its post-commit rename failed) is keyed by
@@ -324,7 +325,14 @@ be distinct. `pattern` is a glob against the file name (case-insensitive).
 2. For each candidate, record `(size, mtime)`; a file is **stable** when the pair has been
    unchanged for ≥ `stableForSec` across polls (first sighting starts the clock). Unstable files
    are logged at debug and retried next poll.
-3. Consume a stable file — one **transaction per file**:
+3. Consume a stable file — one **transaction per file**. The file is `stat`ed (no-follow)
+   before a byte is read: if its `(size, mtime)` is not what the stability window saw, it is
+   left for the next scan; if its size is over `config.maxFileBytes` (default 64 MiB, capped at
+   128 MiB) it is hashed as a stream (constant memory, so it still gets a `fileId`) and goes
+   straight to 3e as `too-large` — one oversized drop must not exhaust the heap and stall every
+   file behind it (a file whose bytes do not fit in the heap goes the same way as
+   `too-large-for-heap`). The hash is computed while reading, and the file is `stat`ed again
+   afterwards: a file that changed while being read is left for the next scan too.
    a. `sha256` the bytes → `checksum`; `fileId = <path>@<checksum[0..12)>`. Look the checksum
       up in `files` (a `consumed` row wins over a `duplicate` one, which wins over an `error`
       one). Known with status `consumed|duplicate` → **duplicate**: when a row with this very
@@ -357,12 +365,26 @@ be distinct. `pattern` is a glob against the file name (case-insensitive).
       `files.rename_failed=1` (`current_path` = the discovery path) — the next scan re-hashes the
       file, finds the same `fileId` and treats it as a redelivery (3a), so the rows are never
       duplicated.
-   e. On any parse failure before commit: `ROLLBACK`, `rename(path, target)` with the same
-      collision rule and `errorSuffix`, insert a `files` row with `status='error'`,
-      `error_message`, and imsweb `getFatalErrors()`. Errors are never retried automatically; an
+   e. On any failure that belongs to the file before commit — a parse error, `too-large`,
+      `duplicate-element-key`, the parser exhausting heap or stack on it, SQLite refusing one
+      of its rows (`buffer-rejected`: over-long value, a UNIQUE/PRIMARY KEY clash) — `ROLLBACK`,
+      insert a `files` row with `status='error'`, `error_message` (imsweb `getFatalErrors()`
+      for parse errors), then `rename(path, target)` with the same collision rule and
+      `errorSuffix`. Errors are never retried automatically; an
       operator renames the file back (or fixes it) and the next scan picks it up: unchanged
       bytes replace the error row (3a retry) and, failing again, land back in `.error`; fixed
       bytes are a new file (new `fileId`) and the old error row stays as the audit record.
+   Renames never replace an existing file: a target taken between choosing it and moving onto
+   it gets the next free name (a plain move refuses an existing target; `ATOMIC_MOVE` is a bare
+   `rename(2)` and would overwrite it).
+
+   **Isolation.** A failure in one file never ends the scan: anything else one file throws
+   (an unexpected exception, an `Error` such as OOM) is logged, the file is left in place, and
+   the scan moves on. A failure of the *buffer* — any other `SQLException`: I/O, disk full,
+   corruption, or a NOT NULL/CHECK constraint (the table no longer matches its INSERTs, as when
+   a stale `mapped_json NOT NULL` column stopped every ingest) — is not the file's fault and
+   would recur for every file, so it ends the scan, leaves the file in place (no `.error`), and
+   is reported by `/healthz` (§9).
 4. Backpressure: if the buffer is over `retention.maxBytes` and the sweeper cannot free space,
    the poller **leaves files untouched** (no rename, no insert) and reports `backpressure: true`
    in `/stats` and `/healthz` (503). Files are their own queue — strictly better than `MSA|AE`.

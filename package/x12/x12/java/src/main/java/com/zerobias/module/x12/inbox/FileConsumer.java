@@ -20,10 +20,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.SQLException;
@@ -50,8 +55,22 @@ import java.util.Optional;
  * it is the same path), no transactions, rename {@code .done}. Known checksum with
  * {@code status=error} at the same path → the error row is deleted and the file is
  * consumed again (an operator renamed it back). A rename target that already exists gets
- * {@code .<discoveredAtEpochMillis>} interposed. Backpressure
+ * {@code .<discoveredAtEpochMillis>} interposed, and a rename never replaces an existing
+ * file (a target taken meanwhile gets the next free name). Backpressure
  * ({@link RetentionSweeper#overCapacity()}) → touch nothing.
+ *
+ * <p><b>Per-file isolation.</b> The read never follows a symlink and never holds more than
+ * {@code maxFileBytes}: the size comes from {@code stat} before a byte is read, a bigger file
+ * is hashed by streaming (constant memory, so it still gets an identity) and sent to
+ * {@code .error} as {@code too-large}; a file whose bytes do not fit in the heap is handled the
+ * same way as {@code too-large-for-heap}. A file whose size or mtime differs from what the
+ * stability window saw, or changes while it is being read, is left alone for the next scan
+ * ({@link Outcome#CHANGED}). Everything that belongs to the file — a parse error, two sets
+ * sharing an element key, the parser exhausting heap or stack on it, SQLite refusing one of
+ * its rows ({@link #rejectsThisFile}) — becomes that file's {@code .error}. Only a failure of
+ * the buffer itself (disk full, I/O, corruption, a schema that no longer matches its INSERTs)
+ * propagates as {@link SQLException}, leaving the file in place: that is not the file's fault,
+ * and the poller surfaces it in {@code /healthz} instead of blaming every file in turn.
  *
  * <p>Stateless apart from its collaborators; one instance is shared by every poller.
  */
@@ -59,15 +78,26 @@ public final class FileConsumer {
 
     private static final Logger LOG = LoggerFactory.getLogger(FileConsumer.class);
 
-    public enum Outcome { CONSUMED, DUPLICATE, ERROR, BACKPRESSURE, UNREADABLE }
+    public enum Outcome { CONSUMED, DUPLICATE, ERROR, BACKPRESSURE, UNREADABLE, CHANGED }
 
     /**
      * What happened to one file. {@code fileId} is the {@code <path>@<hash>} identity, or
-     * the bare path for {@link Outcome#BACKPRESSURE}/{@link Outcome#UNREADABLE} (no bytes
-     * were hashed).
+     * the bare path for {@link Outcome#BACKPRESSURE}/{@link Outcome#UNREADABLE}/
+     * {@link Outcome#CHANGED} (no identity was established).
      */
     public record Result(Outcome outcome, String fileId, int transactions, String message) {
     }
+
+    /** A file as read: its bytes (null when hashed as a stream without keeping them), sha256, size, mtime. */
+    private record Content(byte[] bytes, String checksum, long size, Instant mtime) {
+    }
+
+    private static final String INTERNAL = "internal: ";
+
+    // SQLite result codes (sqlite3.h). The xerial driver reports the extended code.
+    private static final int SQLITE_TOOBIG = 18;
+    private static final int SQLITE_CONSTRAINT_PRIMARYKEY = 1555;
+    private static final int SQLITE_CONSTRAINT_UNIQUE = 2067;
 
     private final BufferStore buffer;
     private final RetentionSweeper sweeper;
@@ -75,6 +105,7 @@ public final class FileConsumer {
     private final String consumedSuffix;
     private final String errorSuffix;
     private final boolean allowBareTransactionSets;
+    private final long maxFileBytes;
     private final Clock clock;
 
     public FileConsumer(BufferStore buffer, RetentionSweeper sweeper, ModuleRuntimeConfig config,
@@ -85,6 +116,7 @@ public final class FileConsumer {
         this.consumedSuffix = config.consumedSuffix();
         this.errorSuffix = config.errorSuffix();
         this.allowBareTransactionSets = config.allowBareTransactionSets();
+        this.maxFileBytes = config.maxFileBytes();
         this.clock = clock == null ? Clock.systemUTC() : clock;
     }
 
@@ -102,11 +134,24 @@ public final class FileConsumer {
     }
 
     /**
-     * Consume a file that the poller has found stable. {@code discoveredAt} is the first
-     * sighting. Never throws for a bad file (that is the {@code ERROR} outcome); throws only
-     * when the buffer itself is unusable.
+     * Consume a file with no stability sighting to hold it to (tests, tools): it is still
+     * stat'ed before and after the read. See {@link #consume(SourceConfig, Path, FileStability.Sighting)}.
      */
     public Result consume(SourceConfig source, Path path, Instant discoveredAt) throws SQLException {
+        return consume(source, path, discoveredAt, null);
+    }
+
+    /**
+     * Consume a file the poller found stable; {@code stable} carries the {@code (size, mtime)}
+     * the window saw and the first sighting. Never throws for a bad file (that is the
+     * {@code ERROR} outcome); throws only when the buffer itself is unusable.
+     */
+    public Result consume(SourceConfig source, Path path, FileStability.Sighting stable) throws SQLException {
+        return consume(source, path, stable.firstSeen(), stable);
+    }
+
+    private synchronized Result consume(SourceConfig source, Path path, Instant discoveredAt,
+                                        FileStability.Sighting stable) throws SQLException {
         final Path abs = path.toAbsolutePath().normalize();
         final String filePath = abs.toString();
         final String fileName = abs.getFileName().toString();
@@ -115,18 +160,30 @@ public final class FileConsumer {
             return new Result(Outcome.BACKPRESSURE, filePath, 0, "buffer over retention.maxBytes");
         }
 
-        final byte[] bytes;
-        final Instant mtime;
+        Content content;
+        boolean outOfHeap = false;
         try {
-            bytes = Files.readAllBytes(abs);
-            mtime = Files.getLastModifiedTime(abs).toInstant();
+            try {
+                content = read(abs, stable, true);
+            } catch (OutOfMemoryError e) {
+                // No room for this file's bytes. That recurs on every scan, so give the file an
+                // identity by hashing it as a stream (constant memory) and send it to .error.
+                outOfHeap = true;
+                content = read(abs, stable, false);
+            }
         } catch (IOException e) {
             // Nothing was hashed, so the file has no identity yet: leave it for the next scan.
             LOG.warn("unreadable: {}: {}; retrying next scan", filePath, e.toString());
             return new Result(Outcome.UNREADABLE, filePath, 0, "io: " + e);
         }
-        final long size = bytes.length;
-        final String checksum = sha256(bytes);
+        if (content == null) {
+            LOG.info("{} changed after its stability window (or is not a regular file); left for the next scan",
+                filePath);
+            return new Result(Outcome.CHANGED, filePath, 0, "changed while being read");
+        }
+        final long size = content.size();
+        final String checksum = content.checksum();
+        final Instant mtime = content.mtime();
         final String fileId = FileRow.fileId(filePath, checksum);
         // Millisecond precision: the buffer stores epoch-millis, and the JSON overlay's receivedAt
         // must reproduce from the column (ops/validate repsAgree), so never keep the nanos.
@@ -140,11 +197,7 @@ public final class FileConsumer {
             if (existing.isPresent() && existing.get().status() != FileStatus.ERROR) {
                 // Redelivery: the row keeps its status; count it and re-acknowledge the copy.
                 buffer.bumpRedelivery(fileId, null);
-                if (rename(abs, donePath)) {
-                    buffer.updateFilePath(fileId, donePath.toString());
-                } else {
-                    buffer.markRenameFailed(fileId);
-                }
+                acknowledge(abs, donePath, consumedSuffix, discoveredAt, fileId);
                 int n = existing.get().redeliveryCount() + 1;
                 LOG.info("redelivery #{}: {} ({}) re-landed unchanged; acknowledged", n, fileId, existing.get().status().wire());
                 return new Result(Outcome.DUPLICATE, fileId, 0, "redelivery #" + n + " of " + fileId);
@@ -157,9 +210,7 @@ public final class FileConsumer {
             FileRow dup = new FileRow(0, fileId, filePath, fileName, source.name(), donePath.toString(), size, checksum,
                 mtime, discoveredAt, now, FileStatus.DUPLICATE, null, 0, message, false, 0);
             buffer.insertFile(dup);
-            if (!rename(abs, donePath)) {
-                buffer.markRenameFailed(fileId);
-            }
+            acknowledge(abs, donePath, consumedSuffix, discoveredAt, fileId);
             LOG.info("duplicate: {} matches {} {} (checksum {}); acknowledged", fileId, prior.get().status().wire(),
                 prior.get().fileId(), checksum);
             return new Result(Outcome.DUPLICATE, fileId, 0, message);
@@ -170,10 +221,21 @@ public final class FileConsumer {
             LOG.info("retry: {} previously errored ({}); consuming again", fileId, existing.get().errorMessage());
         }
 
+        if (outOfHeap) {
+            return fail(source, abs, fileId, content, discoveredAt,
+                "too-large-for-heap: " + size + " bytes do not fit in the free heap; raise resources.memoryMb");
+        }
+        if (content.bytes() == null) {
+            return fail(source, abs, fileId, content, discoveredAt,
+                "too-large: " + size + " bytes exceeds maxFileBytes " + maxFileBytes);
+        }
+
         Path donePath = renameTarget(abs, consumedSuffix, discoveredAt);
+        final X12Parse.ParsedFile parsed;
+        final int transactions;
         try {
             // 3b/3c. parse + materialize every ST..SE.
-            X12Parse.ParsedFile parsed = X12Parse.parse(bytes, allowBareTransactionSets, clock);
+            parsed = X12Parse.parse(content.bytes(), allowBareTransactionSets, clock);
             List<TransactionRow> rows = new ArrayList<>();
             Map<String, List<EntityGraph.Entity>> graphs = new LinkedHashMap<>();
             Map<String, Map<String, EntityGraph.Value>> dims = new LinkedHashMap<>();
@@ -190,34 +252,108 @@ public final class FileConsumer {
             }
             FileRow file = new FileRow(0, fileId, filePath, fileName, source.name(), donePath.toString(), size, checksum,
                 mtime, discoveredAt, now, FileStatus.CONSUMED, parsed.interchanges().size(), rows.size(), null, false, 0);
-
-            // 3d. COMMIT, then rename — rename is the ack.
-            // The object graph commits with its transaction rows (DESIGN §8.4).
-            buffer.consumeFile(file, rows, graphs, dims);
-            if (!rename(abs, donePath)) {
-                buffer.markRenameFailed(fileId);
-                LOG.error("rename after commit failed for {} -> {}; row marked rename_failed (the id guards re-consumption)",
-                    fileId, donePath);
+            // 3d. COMMIT (graph + dims with their rows, DESIGN §8.4) — then rename: rename is the ack.
+            transactions = buffer.consumeFile(file, rows, graphs, dims);
+        } catch (X12ParseException | DuplicateElementKeyException | RuntimeException
+                 | OutOfMemoryError | StackOverflowError e) {
+            // 3e. nothing was committed for this file (consumeFile rolls back on any Throwable).
+            // A duplicate element key is two sets of this file sharing ISA13/GS06/ST02:
+            // acknowledging it .done would silently drop one of them. Heap/stack exhaustion here
+            // is this file's size or shape; retrying it every scan would only exhaust it again.
+            return fail(source, abs, fileId, content, discoveredAt, errorMessage(e));
+        } catch (SQLException e) {
+            if (!rejectsThisFile(e)) {
+                throw e;   // the buffer itself is unusable: leave the file, surface the failure
             }
-            if (!parsed.errors().isEmpty()) {
-                LOG.info("{}: consumed with {} non-fatal parser error(s): {}", fileId, parsed.errors().size(), parsed.errors());
-            }
-            LOG.info("consumed {} ({} bytes, {} transaction(s), {}, envelope={})", fileId, size, rows.size(),
-                parsed.gs08(), parsed.synthetic() ? TransactionRow.ENVELOPE_SYNTHETIC : TransactionRow.ENVELOPE_FILE);
-            return new Result(Outcome.CONSUMED, fileId, rows.size(), null);
-        } catch (X12ParseException | DuplicateElementKeyException | RuntimeException e) {
-            // 3e. before commit: nothing was written for this file (consumeFile rolled back);
-            // rename .error + record. A duplicate element key is two sets of this file sharing
-            // ISA13/GS06/ST02: acknowledging it .done would silently drop one of them.
-            String message = errorMessage(e);
-            Path errorPath = renameTarget(abs, errorSuffix, discoveredAt);
-            LOG.warn("error: {} -> {}: {}", fileId, errorPath.getFileName(), message);
-            boolean renamed = rename(abs, errorPath);
-            FileRow err = new FileRow(0, fileId, filePath, fileName, source.name(), renamed ? errorPath.toString() : filePath,
-                size, checksum, mtime, discoveredAt, null, FileStatus.ERROR, null, null, message, !renamed, 0);
-            buffer.insertFile(err);
-            return new Result(Outcome.ERROR, fileId, 0, message);
+            return fail(source, abs, fileId, content, discoveredAt, "buffer-rejected: " + e.getMessage());
         }
+
+        if (!acknowledge(abs, donePath, consumedSuffix, discoveredAt, fileId)) {
+            LOG.error("rename after commit failed for {}; row marked rename_failed (the id guards re-consumption)",
+                fileId);
+        }
+        if (!parsed.errors().isEmpty()) {
+            LOG.info("{}: consumed with {} non-fatal parser error(s): {}", fileId, parsed.errors().size(), parsed.errors());
+        }
+        LOG.info("consumed {} ({} bytes, {} transaction(s), {}, envelope={})", fileId, size, transactions,
+            parsed.gs08(), parsed.synthetic() ? TransactionRow.ENVELOPE_SYNTHETIC : TransactionRow.ENVELOPE_FILE);
+        return new Result(Outcome.CONSUMED, fileId, transactions, null);
+    }
+
+    /**
+     * Read and hash the file without following a symlink, or return null when it is not the
+     * file the stability window saw: not a regular file, {@code (size, mtime)} different from
+     * {@code stable} (when given) or from the stat taken just before the read, or it grew or
+     * shrank while being read. A file over {@code maxFileBytes} (decided from that first stat,
+     * before anything is read), or any file when {@code load} is false, is hashed by streaming
+     * and its bytes are not kept. The allocation for the bytes throws {@link OutOfMemoryError}
+     * when the heap cannot hold them.
+     */
+    private Content read(Path abs, FileStability.Sighting stable, boolean load) throws IOException {
+        BasicFileAttributes before = Files.readAttributes(abs, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        if (!before.isRegularFile()) {
+            return null;   // a symlink (never followed), a directory, a device
+        }
+        if (stable != null && !matches(before, stable.size(), stable.mtime())) {
+            return null;
+        }
+        final long size = before.size();
+        final Instant mtime = before.lastModifiedTime().toInstant();
+        final boolean keep = load && size <= maxFileBytes;
+        MessageDigest md = sha256Digest();
+        byte[] bytes = null;
+        long read;
+        try (InputStream in = new DigestInputStream(Files.newInputStream(abs, LinkOption.NOFOLLOW_LINKS), md)) {
+            if (!keep) {
+                read = in.transferTo(OutputStream.nullOutputStream());
+            } else {
+                // Exactly the stat'ed size, then one probe byte: a file still being appended to
+                // is caught here instead of being parsed truncated.
+                bytes = new byte[(int) size];
+                read = in.readNBytes(bytes, 0, bytes.length);
+                if (in.read() != -1) {
+                    return null;
+                }
+            }
+        }
+        BasicFileAttributes after = Files.readAttributes(abs, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        if (read != size || !matches(after, size, mtime)) {
+            return null;
+        }
+        return new Content(bytes, hex(md.digest()), read, mtime);
+    }
+
+    private static boolean matches(BasicFileAttributes attrs, long size, Instant mtime) {
+        return attrs.isRegularFile() && attrs.size() == size && attrs.lastModifiedTime().toInstant().equals(mtime);
+    }
+
+    /** Error row first, then {@code .error}: the same order as the consume path's row-then-rename. */
+    private Result fail(SourceConfig source, Path abs, String fileId, Content content, Instant discoveredAt,
+                        String message) throws SQLException {
+        Path errorPath = renameTarget(abs, errorSuffix, discoveredAt);
+        buffer.insertFile(new FileRow(0, fileId, abs.toString(), abs.getFileName().toString(), source.name(),
+            errorPath.toString(), content.size(), content.checksum(), content.mtime(), discoveredAt, null,
+            FileStatus.ERROR, null, null, message, false, 0));
+        boolean renamed = acknowledge(abs, errorPath, errorSuffix, discoveredAt, fileId);
+        LOG.warn("error: {} -> {}: {}", fileId, renamed ? errorSuffix : "(rename failed)", message);
+        return new Result(Outcome.ERROR, fileId, 0, message);
+    }
+
+    /**
+     * Rename to {@code planned} (or the next free name if it was taken meanwhile) and record
+     * where the bytes went; false when the rename failed, which is recorded as
+     * {@code rename_failed}. The row already holds {@code planned} (or, for a redelivery, its
+     * old location, which is then updated).
+     */
+    private boolean acknowledge(Path abs, Path planned, String suffix, Instant discoveredAt, String fileId)
+            throws SQLException {
+        Path actual = moveNoClobber(abs, planned, suffix, discoveredAt);
+        if (actual == null) {
+            buffer.markRenameFailed(fileId);
+            return false;
+        }
+        buffer.updateFilePath(fileId, actual.toString());
+        return true;
     }
 
     /** Envelope overlay + materialized body → one {@link TransactionRow}. */
@@ -260,14 +396,32 @@ public final class FileConsumer {
             .build();
     }
 
-    static String errorMessage(Exception e) {
+    static String errorMessage(Throwable e) {
         if (e instanceof X12ParseException || e instanceof DuplicateElementKeyException) {
             return e.getMessage();
         }
         if (e instanceof IOException) {
             return "io: " + e;
         }
-        return "internal: " + e;
+        return INTERNAL + e;
+    }
+
+    /**
+     * Whether SQLite refused this file's rows rather than failed as a store: a value over its
+     * length limit ({@code SQLITE_TOOBIG}), or a UNIQUE / PRIMARY KEY clash on one of this
+     * file's keys. Everything else — disk full, I/O, locking, corruption, and NOT NULL / CHECK
+     * constraints (those mean the table no longer matches its INSERTs, as when a stale
+     * {@code mapped_json NOT NULL} column stopped all ingest) — is a buffer failure.
+     */
+    public static boolean rejectsThisFile(SQLException e) {
+        if (e instanceof DuplicateElementKeyException) {
+            return true;
+        }
+        int code = e.getErrorCode();
+        if (e instanceof org.sqlite.SQLiteException se) {
+            code = se.getResultCode().code;
+        }
+        return code == SQLITE_TOOBIG || code == SQLITE_CONSTRAINT_UNIQUE || code == SQLITE_CONSTRAINT_PRIMARYKEY;
     }
 
     /** The absolute, normalized discovery path of a file (the {@code file_path} column). */
@@ -288,43 +442,58 @@ public final class FileConsumer {
     static Path renameTarget(Path abs, String suffix, Instant discoveredAt) {
         String name = abs.getFileName().toString();
         Path plain = abs.resolveSibling(name + suffix);
-        if (!Files.exists(plain)) {
+        if (!Files.exists(plain, LinkOption.NOFOLLOW_LINKS)) {
             return plain;
         }
         String stamp = "." + (discoveredAt == null ? 0L : discoveredAt.toEpochMilli());
         Path stamped = abs.resolveSibling(name + stamp + suffix);
-        for (int n = 1; Files.exists(stamped) && n < 10_000; n++) {
+        for (int n = 1; Files.exists(stamped, LinkOption.NOFOLLOW_LINKS) && n < 10_000; n++) {
             stamped = abs.resolveSibling(name + stamp + "-" + n + suffix);
         }
         return stamped;
     }
 
-    static boolean rename(Path from, Path to) {
-        try {
-            Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
-            return true;
-        } catch (IOException | UnsupportedOperationException atomicFailed) {
+    /**
+     * Move {@code from} to {@code planned}, or to the next free {@link #renameTarget} name if
+     * {@code planned} was taken meanwhile; returns where the bytes are now, or null when the
+     * move failed. Never replaces an existing file: {@code ATOMIC_MOVE} is a bare rename(2),
+     * which silently overwrites an existing {@code .done}/{@code .error} on Linux, while a plain
+     * move refuses an existing target (and within one directory is still a rename).
+     */
+    static Path moveNoClobber(Path from, Path planned, String suffix, Instant discoveredAt) {
+        Path target = planned;
+        for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                Files.move(from, to);
-                return true;
+                Files.move(from, target);
+                return target;
+            } catch (FileAlreadyExistsException taken) {
+                target = renameTarget(from, suffix, discoveredAt);
             } catch (IOException e) {
-                LOG.error("rename {} -> {} failed: {}", from, to, e.toString());
-                return false;
+                LOG.error("rename {} -> {} failed: {}", from, target, e.toString());
+                return null;
             }
         }
+        LOG.error("rename {} failed: every {} target tried was taken", from, suffix);
+        return null;
     }
 
     public static String sha256(byte[] bytes) {
+        return hex(sha256Digest().digest(bytes));
+    }
+
+    private static MessageDigest sha256Digest() {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] d = md.digest(bytes);
-            StringBuilder sb = new StringBuilder(64);
-            for (byte b : d) {
-                sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
-            }
-            return sb.toString();
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 unavailable", e);
         }
+    }
+
+    private static String hex(byte[] digest) {
+        StringBuilder sb = new StringBuilder(64);
+        for (byte b : digest) {
+            sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+        }
+        return sb.toString();
     }
 }

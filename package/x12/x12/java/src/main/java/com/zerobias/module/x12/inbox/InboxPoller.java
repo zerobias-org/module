@@ -9,14 +9,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.file.DirectoryIteratorException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -40,6 +44,19 @@ import java.util.concurrent.TimeUnit;
  * the path leaves the listing, and nothing survives a restart. Under backpressure the scan
  * stops touching files and reports it. {@link #scan()} is synchronized so an
  * {@code ops/rescan} never overlaps the schedule.
+ *
+ * <p>Symbolic links are skipped, never followed (a link can point anywhere in the container),
+ * and logged once per path.
+ *
+ * <p><b>Failure isolation.</b> Every file is handled on its own: whatever one file throws —
+ * an unexpected exception, an {@link OutOfMemoryError} or {@link StackOverflowError}, a
+ * SQLite refusal of that file's rows ({@link FileConsumer#rejectsThisFile}) — is logged,
+ * the file is left in place for the next scan, and the scan moves on to the next file. A
+ * failure of the <em>buffer</em> (any other {@link SQLException}: the database is unusable,
+ * the disk is full, the schema no longer matches) is not the file's fault and would recur for
+ * every file, so it ends the scan and is recorded as the scan's error, which {@code /healthz}
+ * reports as unhealthy. Errors that leave the JVM itself unreliable (other
+ * {@link VirtualMachineError}s) propagate.
  */
 public final class InboxPoller implements AutoCloseable {
 
@@ -56,9 +73,15 @@ public final class InboxPoller implements AutoCloseable {
     private final List<String> skipSuffixes;
     /** Consumed-in-this-process files still sitting at their path (rename failed): never re-hashed. */
     private final Set<SeenKey> seen = new HashSet<>();
+    /** Symlinks already warned about; pruned when they leave the listing. */
+    private final Set<Path> symlinks = new HashSet<>();
 
     /** The identity of a listing entry as far as re-hashing is concerned. */
     record SeenKey(Path path, long size, Instant mtime) {
+    }
+
+    /** A listing entry: a regular file (never a link) and its {@code (size, mtime)} from one stat. */
+    private record Candidate(Path path, long size, Instant mtime) {
     }
 
     private ScheduledExecutorService scheduler;
@@ -113,7 +136,10 @@ public final class InboxPoller implements AutoCloseable {
         }
     }
 
-    /** One scan pass. Returns the counts the {@code ops/rescan} function reports. */
+    /**
+     * One scan pass. Returns the counts the {@code ops/rescan} function reports. Throws only
+     * when the buffer failed (see the class doc); one file's failure never ends the scan.
+     */
     public synchronized RescanResult scan() throws SQLException {
         Instant now = Instant.now(clock);
         int scanned = 0;
@@ -125,35 +151,25 @@ public final class InboxPoller implements AutoCloseable {
         Path dir = source.dir();
         this.writable = Files.isDirectory(dir) && Files.isWritable(dir);
 
-        List<Path> candidates = new ArrayList<>();
-        try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
-            for (Path p : ds) {
-                if (isCandidate(p)) {
-                    candidates.add(p);
-                }
-            }
-        } catch (IOException e) {
+        List<Candidate> candidates;
+        try {
+            candidates = list(dir);
+        } catch (IOException | DirectoryIteratorException e) {
             LOG.error("poller '{}' cannot list {}: {}", source.name(), dir, e.toString());
             this.writable = false;
             this.lastScan = now;
             return new RescanResult(0, 0, 0, 0);
         }
-        candidates.sort(null);
-        Set<Path> present = new HashSet<>(candidates);
+        Set<Path> present = new HashSet<>();
+        for (Candidate c : candidates) {
+            present.add(c.path());
+        }
         stability.retainOnly(present);
         seen.removeIf(k -> !present.contains(k.path()));
 
-        for (Path p : candidates) {
-            long size;
-            Instant mtime;
-            try {
-                size = Files.size(p);
-                mtime = Files.getLastModifiedTime(p).toInstant();
-            } catch (IOException gone) {
-                stability.forget(p);
-                continue;
-            }
-            SeenKey key = new SeenKey(p, size, mtime);
+        for (Candidate c : candidates) {
+            Path p = c.path();
+            SeenKey key = new SeenKey(p, c.size(), c.mtime());
             if (seen.contains(key)) {
                 LOG.debug("poller '{}': {} already consumed by this process (rename pending); skipped", source.name(), p);
                 continue;
@@ -162,9 +178,9 @@ public final class InboxPoller implements AutoCloseable {
             if (stability.isNew(p)) {
                 discovered++;
             }
-            boolean stable = stability.observe(p, size, mtime, now);
+            boolean stable = stability.observe(p, c.size(), c.mtime(), now);
             if (!stable) {
-                LOG.debug("poller '{}': {} not stable yet ({} bytes, mtime {})", source.name(), p, size, mtime);
+                LOG.debug("poller '{}': {} not stable yet ({} bytes, mtime {})", source.name(), p, c.size(), c.mtime());
                 pendingNow++;
                 continue;
             }
@@ -173,8 +189,27 @@ public final class InboxPoller implements AutoCloseable {
                 pendingNow++;
                 continue;
             }
-            Instant discoveredAt = stability.sighting(p).map(FileStability.Sighting::firstSeen).orElse(now);
-            FileConsumer.Result r = consumer.consume(source, p, discoveredAt);
+            FileConsumer.Result r;
+            try {
+                r = consumer.consume(source, p, stability.sighting(p).orElseThrow());
+            } catch (SQLException e) {
+                if (!FileConsumer.rejectsThisFile(e)) {
+                    // The buffer failed, not this file: every later file would fail the same way.
+                    this.pending = pendingNow + 1;
+                    this.backpressure = pressure;
+                    throw e;
+                }
+                pendingNow++;
+                LOG.error("poller '{}': {} refused by the buffer ({}); left in place, retried next scan",
+                    source.name(), p, e.toString());
+                continue;
+            } catch (Throwable e) {
+                rethrowIfFatal(e);
+                pendingNow++;
+                LOG.error("poller '{}': {} failed ({}); left in place, retried next scan", source.name(), p,
+                    e.toString(), e);
+                continue;
+            }
             switch (r.outcome()) {
                 case CONSUMED, DUPLICATE -> {
                     consumed++;
@@ -189,7 +224,8 @@ public final class InboxPoller implements AutoCloseable {
                     pressure = true;
                     pendingNow++;
                 }
-                case UNREADABLE -> pendingNow++;   // no identity yet; stability keeps tracking it
+                // No identity yet / not the file the window saw: stability keeps tracking it.
+                case UNREADABLE, CHANGED -> pendingNow++;
             }
         }
         this.pending = pendingNow;
@@ -201,7 +237,40 @@ public final class InboxPoller implements AutoCloseable {
         return new RescanResult(scanned, discovered, consumed, errored);
     }
 
-    private boolean isCandidate(Path p) {
+    /** Regular files matching the name rules, one no-follow stat each; symlinks are skipped. */
+    private List<Candidate> list(Path dir) throws IOException {
+        List<Candidate> out = new ArrayList<>();
+        Set<Path> links = new HashSet<>();
+        try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
+            for (Path p : ds) {
+                if (!nameMatches(p)) {
+                    continue;
+                }
+                BasicFileAttributes a;
+                try {
+                    a = Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                } catch (IOException gone) {
+                    continue;
+                }
+                if (a.isSymbolicLink()) {
+                    links.add(p);
+                    if (symlinks.add(p)) {
+                        LOG.warn("poller '{}': {} is a symbolic link; skipped (links are never followed)",
+                            source.name(), p);
+                    }
+                    continue;
+                }
+                if (a.isRegularFile()) {
+                    out.add(new Candidate(p, a.size(), a.lastModifiedTime().toInstant()));
+                }
+            }
+        }
+        symlinks.retainAll(links);
+        out.sort(Comparator.comparing(Candidate::path));
+        return out;
+    }
+
+    private boolean nameMatches(Path p) {
         String name = p.getFileName().toString();
         if (name.startsWith(".")) {
             return false;
@@ -212,10 +281,14 @@ public final class InboxPoller implements AutoCloseable {
                 return false;
             }
         }
-        if (!source.matchesFileName(name)) {
-            return false;
+        return source.matchesFileName(name);
+    }
+
+    /** Errors that leave the JVM itself unreliable end the scan; a file's OOM or stack overflow does not. */
+    private static void rethrowIfFatal(Throwable e) {
+        if (e instanceof VirtualMachineError && !(e instanceof OutOfMemoryError) && !(e instanceof StackOverflowError)) {
+            throw (VirtualMachineError) e;
         }
-        return Files.isRegularFile(p);
     }
 
     /**
@@ -224,7 +297,7 @@ public final class InboxPoller implements AutoCloseable {
      */
     private void settle(Path p, SeenKey key) {
         stability.forget(p);
-        if (Files.exists(p)) {
+        if (Files.exists(p, LinkOption.NOFOLLOW_LINKS)) {
             seen.add(key);
         }
     }

@@ -56,7 +56,7 @@ getting the file onto the volume is the feed's job.
 
 Everything daemon-level lives in `runtimeConfig.yml` and reaches the container as `MODULE_CONFIG`:
 `sources[]` (`name`, `path`, `pattern`, `pollIntervalSec`, `stableForSec`), `consumedSuffix`
-(`.done`), `errorSuffix` (`.error`), `ackDurability`, `retention`, `allowFileManagement`. Two
+(`.done`), `errorSuffix` (`.error`), `ackDurability`, `maxFileBytes`, `retention`, `allowFileManagement`. Two
 volumes are declared: `x12-buffer` (the SQLite buffer) and `x12-inbox` (the drop directory). See
 the file for the annotated defaults.
 

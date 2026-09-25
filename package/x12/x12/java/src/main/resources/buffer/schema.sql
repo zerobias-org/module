@@ -63,6 +63,21 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS transactions_drain ON transactions(schema_id, status, received_at);
 CREATE INDEX IF NOT EXISTS transactions_lease ON transactions(lease_id) WHERE lease_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS transactions_file ON transactions(file_id);
+-- Acked rows are most of the table (retention keeps them for maxAge), so every hot path must
+-- reach its rows without walking them. Additive only: CREATE INDEX IF NOT EXISTS builds these
+-- on an existing buffer at the next open, so they need no BufferStore.migrate step.
+-- oldestUnacked (health, /stats): the un-acked rows, oldest first. A partial index is only used
+-- when the query carries its WHERE term verbatim (BufferStore.oldestUnackedSeconds does).
+CREATE INDEX IF NOT EXISTS transactions_unacked ON transactions(received_at) WHERE status <> 'acked';
+-- purge + retention (maxAge range, maxBytes oldest-acked-first); also take's status probes.
+CREATE INDEX IF NOT EXISTS transactions_acked ON transactions(status, acked_at);
+-- The emergent object tree (/by-type, /by-version, /by-sender, /by-source): its children are the
+-- DISTINCT values of these columns, read from a narrow index in order instead of a table scan
+-- plus a temp sort. (type, gs08) also serves the per-type guide list /by-type/<TS>.
+CREATE INDEX IF NOT EXISTS transactions_type ON transactions(transaction_type, gs08);
+CREATE INDEX IF NOT EXISTS transactions_gs08 ON transactions(gs08);
+CREATE INDEX IF NOT EXISTS transactions_sender ON transactions(sender_id);
+CREATE INDEX IF NOT EXISTS transactions_source ON transactions(source_name);
 
 -- ---------------------------------------------------------------------------
 -- The object graph (DESIGN §8.4). One row per materialized LOOP / SEGMENT /

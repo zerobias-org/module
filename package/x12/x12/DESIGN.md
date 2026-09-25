@@ -523,8 +523,19 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE INDEX IF NOT EXISTS transactions_drain ON transactions(schema_id, status, received_at);
 CREATE INDEX IF NOT EXISTS transactions_lease ON transactions(lease_id) WHERE lease_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS transactions_file ON transactions(file_id);
+CREATE INDEX IF NOT EXISTS transactions_unacked ON transactions(received_at) WHERE status <> 'acked';  -- oldestUnacked
+CREATE INDEX IF NOT EXISTS transactions_acked ON transactions(status, acked_at);         -- purge, retention, take's status probes
+CREATE INDEX IF NOT EXISTS transactions_type ON transactions(transaction_type, gs08);    -- /by-type
+CREATE INDEX IF NOT EXISTS transactions_gs08 ON transactions(gs08);                      -- /by-version
+CREATE INDEX IF NOT EXISTS transactions_sender ON transactions(sender_id);               -- /by-sender
+CREATE INDEX IF NOT EXISTS transactions_source ON transactions(source_name);             -- /by-source
 PRAGMA journal_mode = WAL;
 ```
+
+Indexes are additive: `CREATE INDEX IF NOT EXISTS` builds a new one on an existing buffer at the
+next open, so adding an index needs no `BufferStore.migrate` step (a column change still does).
+A partial index is only used when a query repeats its WHERE term, which is why `oldestUnacked`
+says `status <> 'acked'` verbatim.
 
 Durability (`ackDurability`), drain/lease SQL, retention sweeper (acked rows only; `files` rows
 are never evicted — they are the audit trail), and backpressure are as in hl7/v2 §8, with these

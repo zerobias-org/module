@@ -829,7 +829,7 @@ public final class BufferStore implements AutoCloseable {
     /** Age in seconds of the oldest not-yet-acked transaction, or empty if none are pending. */
     public synchronized OptionalLong oldestUnackedSeconds() throws SQLException {
         OptionalLong oldest =
-            queryNullableLong("SELECT min(received_at) FROM transactions WHERE status != 'acked'");
+            queryNullableLong("SELECT min(received_at) FROM transactions WHERE status <> 'acked'");
         if (oldest.isEmpty()) {
             return OptionalLong.empty();
         }

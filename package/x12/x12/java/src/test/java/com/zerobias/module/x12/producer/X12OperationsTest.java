@@ -389,4 +389,28 @@ class X12OperationsTest {
             assertEquals(checked, served, fn);
         }
     }
+
+    @Test
+    void collectionSortIsHonouredThroughTheRouter() throws Exception {
+        for (String op : List.of("CollectionsApi.getCollectionElements", "CollectionsApi.searchCollectionElements")) {
+            JsonObject desc = GSON.fromJson(OperationRouter.executeOperation(facade, op, Map.of(
+                "objectId", ObjectTree.TRANSACTIONS, "sortBy", List.of("elementKey"), "sortDir", List.of("desc"))),
+                JsonObject.class);
+            JsonObject asc = GSON.fromJson(OperationRouter.executeOperation(facade, op, Map.of(
+                "objectId", ObjectTree.TRANSACTIONS, "sortBy", "elementKey", "sortDir", "asc")), JsonObject.class);
+            List<String> d = new java.util.ArrayList<>();
+            desc.getAsJsonArray("items").forEach(i -> d.add(i.getAsJsonObject().get("elementKey").getAsString()));
+            List<String> a = new java.util.ArrayList<>();
+            asc.getAsJsonArray("items").forEach(i -> a.add(i.getAsJsonObject().get("elementKey").getAsString()));
+            assertEquals(5, a.size(), op);
+            List<String> sorted = new java.util.ArrayList<>(a);
+            java.util.Collections.sort(sorted);
+            assertEquals(sorted, a, op + " asc");
+            java.util.Collections.reverse(sorted);
+            assertEquals(sorted, d, op + " desc");
+            assertEquals(400, assertThrows(ProducerException.class, () -> OperationRouter.executeOperation(facade, op,
+                Map.of("objectId", ObjectTree.TRANSACTIONS, "sortBy", List.of("elementKey", "fileId")))).httpStatus(),
+                "one sort key only — never silently the first");
+        }
+    }
 }

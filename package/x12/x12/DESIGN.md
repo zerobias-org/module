@@ -182,6 +182,15 @@ and `BinaryApi.uploadBinaryContent` (§2.9). Names are matched exactly — there
 `validateFunctionInputRequest`). `objectSearch` is not implemented, so api.yml does not reference its
 path and `isSupported` answers false. `isSupported` is an explicit whitelist of the ops above.
 
+Every parameter an operation declares is honoured or, when set, rejected — never silently dropped.
+`getChildren` rejects `sortBy`/`sortDir`/`type`/`tags`/`pageToken`; `searchChildObjects` rejects
+`sortBy`/`sortDir`/`filter`/`pageToken`/`properties` and `scope=subtree` (`one_level` is the listing);
+the collection ops honour `filter` and `sortBy`/`sortDir` (one key; a bare value or one-element array)
+and reject `pageToken`/`properties`; `deleteObject` rejects `recursive=true`; `createChildObject`
+rejects `CreateObjectRequest` fields other than `id`/`name`/`objectClass` (all 400
+`UnsupportedOperationError`). Paging is `pageNumber >= 1`, `1 <= pageSize <= 1000` (default 100); out
+of range or not an integer is a 400 `illegalArgumentError`, not a silent default.
+
 Identical to hl7/v2 §2.7: wire body is the OpenAPI `errorModelBase` (`{key, template, timestamp,
 statusCode}` + subtype fields). 404 for unknown object/schema/lease/file, 400
 `UnsupportedOperationError` for every write op (`createChildObject`, `addCollectionElement`,

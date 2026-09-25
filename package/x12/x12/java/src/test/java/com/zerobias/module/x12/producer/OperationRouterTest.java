@@ -119,4 +119,71 @@ class OperationRouterTest {
             assertTrue(OperationRouter.isSupported(op, true), op + " with allowFileManagement");
         }
     }
+
+    @Test
+    void unhonouredParametersAreRejectedNeverDropped(@TempDir Path dir) throws Exception {
+        try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
+            X12ProducerFacade f = X12ProducerFacade.skeleton(b);
+            // getChildren: fixed order, no facets, no cursor
+            for (Map.Entry<String, Object> p : List.<Map.Entry<String, Object>>of(
+                    Map.entry("sortBy", List.of("name")), Map.entry("sortDir", List.of("desc")),
+                    Map.entry("type", List.of("container")), Map.entry("tags", List.of("a")),
+                    Map.entry("pageToken", "t"))) {
+                ProducerException e = assertThrows(ProducerException.class, () -> OperationRouter.executeOperation(f,
+                    "ObjectsApi.getChildren", Map.of("objectId", "/", p.getKey(), p.getValue())), p.getKey());
+                assertEquals("err.unsupported.operation", e.key(), p.getKey());
+            }
+            // searchChildObjects: no filter/projection/sort/cursor; subtree scope unsupported
+            for (Map.Entry<String, Object> p : List.<Map.Entry<String, Object>>of(
+                    Map.entry("filter", "(name=x)"), Map.entry("properties", List.of("id")),
+                    Map.entry("sortBy", "name"), Map.entry("pageToken", "t"), Map.entry("scope", "subtree"))) {
+                ProducerException e = assertThrows(ProducerException.class, () -> OperationRouter.executeOperation(f,
+                    "ObjectsApi.searchChildObjects", Map.of("objectId", "/", p.getKey(), p.getValue())), p.getKey());
+                assertEquals("err.unsupported.operation", e.key(), p.getKey());
+            }
+            assertEquals("err.illegal.argument", assertThrows(ProducerException.class, () -> OperationRouter
+                .executeOperation(f, "ObjectsApi.searchChildObjects", Map.of("objectId", "/", "scope", "everywhere")))
+                .key());
+            assertEquals("err.illegal.argument", assertThrows(ProducerException.class, () -> OperationRouter
+                .executeOperation(f, "ObjectsApi.searchChildObjects", Map.of("objectId", "/", "includeCount", "yes")))
+                .key());
+            assertTrue(OperationRouter.executeOperation(f, "ObjectsApi.searchChildObjects",
+                Map.of("objectId", "/", "scope", "one_level", "includeCount", true)).contains("\"items\""));
+            // collections: pageToken and properties are not implemented
+            for (String op : List.of("CollectionsApi.getCollectionElements", "CollectionsApi.searchCollectionElements")) {
+                for (Map.Entry<String, Object> p : List.<Map.Entry<String, Object>>of(
+                        Map.entry("pageToken", "t"), Map.entry("properties", List.of("elementKey")))) {
+                    assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,
+                        () -> OperationRouter.executeOperation(f, op,
+                            Map.of("objectId", "/x12-receiver/transactions", p.getKey(), p.getValue()))).key(),
+                        op + " " + p.getKey());
+                }
+            }
+        }
+    }
+
+    @Test
+    void pagingBoundsAreEnforced(@TempDir Path dir) throws Exception {
+        try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
+            X12ProducerFacade f = X12ProducerFacade.skeleton(b);
+            for (Map<String, Object> bad : List.<Map<String, Object>>of(
+                    Map.of("pageNumber", 0), Map.of("pageNumber", -1), Map.of("pageSize", 0),
+                    Map.of("pageSize", 1001), Map.of("pageSize", "ten"), Map.of("pageNumber", 1.5),
+                    Map.of("pageSize", true))) {
+                Map<String, Object> args = new java.util.HashMap<>(bad);
+                args.put("objectId", "/");
+                ProducerException e = assertThrows(ProducerException.class,
+                    () -> OperationRouter.executeOperation(f, "ObjectsApi.getChildren", args), bad.toString());
+                assertEquals("err.illegal.argument", e.key(), bad.toString());
+            }
+            JsonObject ok = GSON.fromJson(OperationRouter.executeOperation(f, "ObjectsApi.getChildren",
+                Map.of("objectId", "/", "pageSize", 1000.0, "pageNumber", "2")), JsonObject.class);
+            assertEquals(1000, ok.get("pageSize").getAsInt());
+            assertEquals(2, ok.get("pageNumber").getAsInt());
+            JsonObject dflt = GSON.fromJson(OperationRouter.executeOperation(f, "ObjectsApi.getChildren",
+                Map.of("objectId", "/")), JsonObject.class);
+            assertEquals(100, dflt.get("pageSize").getAsInt());
+            assertEquals(1, dflt.get("pageNumber").getAsInt());
+        }
+    }
 }

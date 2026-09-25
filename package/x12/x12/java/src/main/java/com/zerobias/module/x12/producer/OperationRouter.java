@@ -3,6 +3,7 @@ package com.zerobias.module.x12.producer;
 import com.google.gson.Gson;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -141,19 +142,31 @@ public final class OperationRouter {
             case "getObject":
                 return facade.getObject(str(argMap, "objectId"));
             case "getChildren":
+                // A child listing has one fixed order and no type/tag facets or cursors.
+                rejectSet(methodName, argMap, "sortBy", "sortDir", "type", "tags", "pageToken");
+                return facade.getChildren(str(argMap, "objectId"), pageSize(argMap), pageNumber(argMap));
             case "searchChildObjects":
-                return facade.getChildren(
-                    str(argMap, "objectId"),
-                    getInt(argMap, "pageSize", 100),
-                    getInt(argMap, "pageNumber", 1));
+                // No child filter/projection/sort/cursor; the count is always in the body, so
+                // includeCount holds whichever way it is set.
+                rejectSet(methodName, argMap, "sortBy", "sortDir", "filter", "pageToken", "properties");
+                requireOneLevelScope(methodName, argMap);
+                requireBoolean(argMap, "includeCount");
+                return facade.getChildren(str(argMap, "objectId"), pageSize(argMap), pageNumber(argMap));
             case "createChildObject": {
                 facade.requireFileManagement(methodName);   // disabled = unsupported, whatever the args
                 Map<String, Object> request = createObjectRequest(argMap);
+                rejectSet(methodName, request, unhonoured(request.keySet()));
                 String name = str(request, "name");
                 return facade.createChildObject(str(argMap, "objectId"), name != null ? name : str(request, "id"),
                     childClasses(request));
             }
             case "deleteObject":
+                facade.requireFileManagement(methodName);
+                requireBoolean(argMap, "recursive");
+                if (Boolean.TRUE.equals(argMap.get("recursive")) || "true".equals(argMap.get("recursive"))) {
+                    throw ProducerException.unsupported("recursive=true is not supported by " + methodName
+                        + " on this producer: delete a directory's children first");
+                }
                 return facade.deleteObject(str(argMap, "objectId"));
             case "updateObject":
                 throw ProducerException.unsupported(
@@ -168,14 +181,19 @@ public final class OperationRouter {
         switch (methodName) {
             case "getCollectionElements":
             case "searchCollectionElements":
+                // sortBy/sortDir are honoured (SQL ORDER BY / typed comparator); cursors and
+                // property projection are not implemented, so setting them is a 400.
+                // getCollectionElements honours filter like searchCollectionElements does
+                // (the hl7/v2 contract callers already use).
+                rejectSet(methodName, argMap, "pageToken", "properties");
                 return facade.getCollectionElements(
                     str(argMap, "objectId"),
                     str(argMap, "filter"),
-                    str(argMap, "sortBy"),
-                    str(argMap, "sortDir"),
-                    getInt(argMap, "pageSize", 100),
-                    getInt(argMap, "pageNumber", 1),
-                    str(argMap, "pageToken"));
+                    sortArg(argMap, "sortBy"),
+                    sortArg(argMap, "sortDir"),
+                    pageSize(argMap),
+                    pageNumber(argMap),
+                    null);
             case "getCollectionElement":
                 return facade.getCollectionElement(
                     str(argMap, "objectId"), str(argMap, "elementKey"));
@@ -278,23 +296,116 @@ public final class OperationRouter {
         return v instanceof String ? (String) v : GSON.toJson(v);
     }
 
+    /** 400 {@code UnsupportedOperationError} when any of {@code params} is set (empty = unset). */
+    private static void rejectSet(String method, Map<String, Object> argMap, String... params) {
+        for (String p : params) {
+            if (isSet(argMap.get(p))) {
+                throw ProducerException.unsupported(p + " is not supported by " + method + " on this producer");
+            }
+        }
+    }
+
+    private static boolean isSet(Object v) {
+        if (v == null) {
+            return false;
+        }
+        if (v instanceof String) {
+            return !((String) v).isEmpty();
+        }
+        if (v instanceof Collection) {
+            return !((Collection<?>) v).isEmpty();
+        }
+        return true;
+    }
+
+    /** The {@code CreateObjectRequest} fields a mkdir honours; any other one set is a 400. */
+    private static final Set<String> CREATE_CHILD_FIELDS = Set.of("id", "name", "objectClass");
+
+    private static String[] unhonoured(Collection<String> fields) {
+        List<String> out = new ArrayList<>();
+        for (String f : fields) {
+            if (!CREATE_CHILD_FIELDS.contains(f)) {
+                out.add(f);
+            }
+        }
+        return out.toArray(new String[0]);
+    }
+
+    /** {@code scope}: {@code one_level} (the default, and all a child listing can be) or unset. */
+    private static void requireOneLevelScope(String method, Map<String, Object> argMap) {
+        String scope = str(argMap, "scope");
+        if (scope == null || scope.isEmpty() || "one_level".equals(scope)) {
+            return;
+        }
+        if ("subtree".equals(scope)) {
+            throw ProducerException.unsupported("scope=subtree is not supported by " + method + " on this producer");
+        }
+        throw ProducerException.illegalArgument("scope must be one of " + List.of("one_level", "subtree"));
+    }
+
+    /**
+     * {@code sortBy}/{@code sortDir}: the interface declares arrays; one sort key is
+     * implemented, so a single value (bare or a one-element array) is taken and more than one
+     * is a 400 rather than silently sorting by the first.
+     */
+    private static String sortArg(Map<String, Object> argMap, String key) {
+        Object v = argMap.get(key);
+        if (v instanceof Collection) {
+            Collection<?> c = (Collection<?>) v;
+            if (c.isEmpty()) {
+                return null;
+            }
+            if (c.size() > 1) {
+                throw ProducerException.unsupported(
+                    key + " takes one sort key on this producer, got " + c.size());
+            }
+            Object only = c.iterator().next();
+            return only == null ? null : only.toString();
+        }
+        return v == null ? null : v.toString();
+    }
+
+    private static int pageNumber(Map<String, Object> argMap) {
+        Integer n = intArg(argMap, "pageNumber");
+        return n == null ? 1 : n;
+    }
+
+    private static int pageSize(Map<String, Object> argMap) {
+        Integer n = intArg(argMap, "pageSize");
+        return n == null ? X12ProducerFacade.DEFAULT_PAGE_SIZE : n;
+    }
+
     private static String str(Map<String, Object> map, String key) {
         Object v = map.get(key);
         return v == null ? null : v.toString();
     }
 
-    private static int getInt(Map<String, Object> map, String key, int defaultValue) {
+    /** An integer argument: a whole number or its decimal string; unset → null; anything else is a 400. */
+    private static Integer intArg(Map<String, Object> map, String key) {
         Object v = map.get(key);
-        if (v instanceof Number) {
-            return ((Number) v).intValue();
+        if (v == null || (v instanceof String && ((String) v).isBlank())) {
+            return null;
         }
-        if (v instanceof String) {
+        if (v instanceof Number) {
+            double d = ((Number) v).doubleValue();
+            if (d == Math.rint(d) && d >= Integer.MIN_VALUE && d <= Integer.MAX_VALUE) {
+                return (int) d;
+            }
+        } else if (v instanceof String) {
             try {
-                return Integer.parseInt((String) v);
+                return Integer.parseInt(((String) v).trim());
             } catch (NumberFormatException e) {
-                return defaultValue;
+                // fall through to the 400
             }
         }
-        return defaultValue;
+        throw ProducerException.illegalArgument(key + " must be an integer, got " + v);
+    }
+
+    /** 400 unless {@code key} is unset, a boolean, or {@code "true"}/{@code "false"}. */
+    private static void requireBoolean(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        if (v != null && !(v instanceof Boolean) && !"true".equals(v) && !"false".equals(v)) {
+            throw ProducerException.illegalArgument(key + " must be a boolean, got " + v);
+        }
     }
 }

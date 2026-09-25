@@ -26,7 +26,7 @@ Dockerfile  nginx.conf  nginx-insecure.conf  startup.sh    container (nginx → 
 java/
 ├── pom.xml            uber jar (maven-shade); codegen runs at generate-resources (NOT a profile)
 ├── codegen/           BUILD-TIME ONLY — reads imsweb mapping XML → schemas/ + structure-index/ + packs.json
-├── scripts/           fetch-x12org-examples.py (local, never committed output), e2e-local.sh, x12-live.sh
+├── scripts/           e2e-local.sh, x12-live.sh
 └── src/main/java/com/zerobias/module/x12/
     ├── X12ApiServer.java          entry point: boots buffer + pollers + Javalin RPC routes
     ├── ModuleConfig.java / ModuleRuntimeConfig.java / RuntimeConfigFile.java   env (MODULE_CONFIG)
@@ -45,7 +45,6 @@ java/
 ```bash
 (cd java && mvn test)          # unit; `mvn verify` adds integration (failsafe). Needs GitHub Packages auth for lite-filter.
 cd <repo-root> && ./gradlew :x12:x12:test   # via the gate task
-java/scripts/fetch-x12org-examples.py       # once, locally: populates the git-ignored x12org conformance set
 java/scripts/e2e-local.sh                   # real container, data loaded THROUGH the DP API → take/ack/purge + file mgmt
 cd <repo-root>/package/x12/x12 && zbb --slot <slot> gate   # the truth
 ```
@@ -77,8 +76,9 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
   red. Do not widen `FileConsumer.rejectsThisFile` to NOT NULL: that sends every file to
   `.error` on a schema bug. Symlinks are never followed, and renames never overwrite.
 - **Money is `decimal`, never float.** `N2` elements are implied-decimal integers on the wire.
-- **The x12.org examples are not ours to commit.** `java/src/test/resources/x12org/` is
-  git-ignored on purpose; the fetch script is the only way it gets populated.
+- **The x12.org examples are not ours to copy.** They are ASC X12 IP: link to them, never
+  fetch, store, commit or test against them (a scraper was removed for exactly this). Fixtures
+  are authored from scratch.
 - **No listener ports.** Do not add `listenerPorts` to `runtimeConfig.yml` or a
   `LISTENER_PORT_*` precondition to `startup.sh`; the inbox is a volume, not a socket.
 - **`/inbox` must never be cached.** It is the live volume (DESIGN §2.9): every

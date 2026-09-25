@@ -90,7 +90,6 @@ See [`DESIGN.md`](DESIGN.md) §2.9.
 (cd java && mvn test)                        # JUnit unit suite (needs GitHub Packages auth for lite-filter)
 (cd java && mvn verify)                      # + integration tests
 java/scripts/e2e-local.sh                    # real container; loads the 835 through the DP API
-java/scripts/fetch-x12org-examples.py        # local-only conformance set from x12.org (never committed)
 cd <repo-root>/package/x12/x12 && zbb --slot <slot> gate
 ```
 

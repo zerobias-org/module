@@ -759,21 +759,17 @@ the ops port beyond the self-signed default · HA / multi-instance.
 2. Codegen from imsweb mappings → schemas + structure index; `SchemaRegistry`.
 3. Poller + parser + materializer; `files`/`transactions` write path; `.done`/`.error`.
 4. `ObjectTree`, `X12Operations`, `X12ProducerFacade` (tree, collections, functions, download).
-5. Tests: JUnit unit (`*Test`) + integration (`*IT`) on synthetic fixtures; `fetch-x12org-examples.py`
-   conformance run (local only); `e2e-local.sh` (real container, real file drop, take/ack/purge).
+5. Tests: JUnit unit (`*Test`) + integration (`*IT`) on synthetic fixtures; `e2e-local.sh` (real container, real file drop, take/ack/purge).
 6. `zbb gate` → `gate-stamp.json` → PR to `dev`.
 
 ## 13. Test fixtures and the x12.org examples
 
 x12.org's examples are ASC X12 intellectual property — reproduction requires their consent;
 linking is permitted (`https://x12.org/examples/disclaimers`). Therefore:
-- `java/scripts/fetch-x12org-examples.py` downloads the 44 HIPAA 005010 leaf example pages
-  (835/837P/837I/277CA/999/270-271/276-277), extracts the EDI from `<p class="data">`
-  (strip `<wbr>`, join `<br>`, unescape, split on `~`), wraps envelope-less 837/277 examples in a
-  synthetic ISA/GS…GE/IEA, and writes `java/src/test/resources/x12org/<guide>/<example>.x12` —
-  a **git-ignored** directory. The conformance IT (`X12OrgConformanceIT`) parses every file
-  present and asserts a full tree with zero fatal errors; it **skips** when the directory is
-  absent, so CI stays green without the files.
+- We do not fetch, store or test against them. An earlier local scraper
+  (`fetch-x12org-examples.py`) and its conformance IT were removed: bulk-copying the examples to
+  disk and CI is itself reproduction, and the synthetic fixtures cover the same guides. Cite an
+  example by link when one explains a structure.
 - Committed fixtures under `java/src/test/resources/fixtures/` are **synthetic** (fictional
   payer/provider, `TEST-NET` style identifiers), one per guide, authored by the test agent, plus
   deliberately malformed files for the `.error` path.

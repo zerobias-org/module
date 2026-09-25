@@ -118,6 +118,16 @@ x12_is_supported() {
   jget "$(curl -fsS -m5 "$X12_API/connections/$X12_CONN/isSupported/$1")" 'j["supported"]'
 }
 
+# Does a raw response contain this literal substring? Use this instead of interpolating a
+# JSON body into an eval'd `check` condition: the body's own quotes break the quoting, and
+# `jget` cannot help because json.loads normalises 220.00 to a float.
+x12_contains() {   # $1 = haystack, $2 = literal needle -> "yes"/"no"
+  case "$1" in
+    *"$2"*) echo yes ;;
+    *) echo no ;;
+  esac
+}
+
 x12_urlenc() { python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
 
 x12_fn() {   # $1 = function name, $2 = requestBody JSON

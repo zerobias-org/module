@@ -120,6 +120,17 @@ public final class X12ProducerFacade {
     public String getCollectionElements(String objectId, String filter, String sortBy,
             String sortDir, int pageSize, int pageNumber, String pageToken) throws SQLException {
         requireId(objectId);
+        // A business collection projects rows out of the object graph (DESIGN §8.5) rather than
+        // reading transaction rows, so it resolves before the buffer-backed path.
+        if (tree instanceof ObjectTree) {
+            final BusinessEntities.Scope scope = ((ObjectTree) tree).businessScope(objectId);
+            if (scope != null) {
+                final int size = clampPageSize(pageSize);
+                final BusinessEntities.Page page = ((ObjectTree) tree).business()
+                    .page(scope, businessFilter(scope, filter), size, pageNumber);
+                return pagedResults(page.rows(), page.total(), size, pageNumber);
+            }
+        }
         ObjectTreeApi.Collection coll = tree.resolveCollection(objectId);
         int size = clampPageSize(pageSize);
         int offset = Math.max(0, pageNumber - 1) * size;
@@ -168,6 +179,25 @@ public final class X12ProducerFacade {
     public BinaryContent downloadBinary(String objectId) throws SQLException {
         requireId(objectId);
         return tree.downloadBinary(objectId);
+    }
+
+    /**
+     * Compile an RFC4515 filter into a predicate over projected business rows. Business columns
+     * can sit behind a qualifier predicate or inside a composite, which the value table cannot
+     * express as SQL, so the comparison happens on the projected row — bounded by the segment,
+     * never the whole buffer (DESIGN §8.5.1). Unknown column names are a 400, not an empty page:
+     * a typo in a filter should say so.
+     */
+    private java.util.function.Predicate<Map<String, Object>> businessFilter(
+            BusinessEntities.Scope scope, String filter) {
+        if (filter == null || filter.isBlank()) {
+            return null;
+        }
+        try {
+            return BusinessFilter.compile(scope.mapping(), filter);
+        } catch (IllegalArgumentException bad) {
+            throw ProducerException.illegalArgument("Malformed filter: " + bad.getMessage());
+        }
     }
 
     // --- File management: gated by config.allowFileManagement (DESIGN §2.9) --

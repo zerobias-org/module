@@ -63,5 +63,78 @@ CREATE INDEX IF NOT EXISTS transactions_drain ON transactions(schema_id, status,
 CREATE INDEX IF NOT EXISTS transactions_lease ON transactions(lease_id) WHERE lease_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS transactions_file ON transactions(file_id);
 
+-- ---------------------------------------------------------------------------
+-- The object graph (DESIGN §8.4). One row per materialized LOOP / SEGMENT /
+-- COMPOSITE instance, keyed by the schema that describes it — the same
+-- schema:type:x12.<GS08>.<xid> ids the packs emit and getSchema serves. This is
+-- what makes the DataProducer surface queryable: a transaction set is a graph of
+-- addressable objects, not a JSON blob with an id.
+--
+-- parent_id is the edge. The root instance of a transaction set carries
+-- parent_id IS NULL and the table schema id, so a whole transaction reassembles
+-- by walking down from it, and any sub-object (a claim, a service line) is a
+-- collection element in its own right.
+CREATE TABLE IF NOT EXISTS entities (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  element_key  TEXT NOT NULL,            -- owning transaction set (<fileId>:<GS06>:<ST02>)
+  file_id      TEXT NOT NULL,            -- denormalized for file-scoped queries
+  gs08         TEXT NOT NULL,            -- guide, so /by-type collections scope without a join
+  schema_id    TEXT NOT NULL,            -- schema:type:x12.<GS08>.<xid> | schema:table:... at the root
+  xid          TEXT NOT NULL,            -- loop/segment/composite id: 2100, CLP, C022
+  kind         TEXT NOT NULL,            -- loop | segment | composite
+  parent_id    INTEGER,                  -- NULL at the transaction root
+  property     TEXT,                     -- the property name under the parent (loop2100, clp, ...)
+  path         TEXT NOT NULL,            -- dotted instance path, e.g. detail[0].loop2000[1].clp
+  ordinal      INTEGER NOT NULL DEFAULT 0,  -- position within a repeating property
+  -- The instance's own property order as materialized, unit-separator joined. Field order
+  -- is the wire order (DESIGN §5) and a composite is a child row rather than a value, so
+  -- without this a reassembled segment would list every scalar before every composite.
+  property_order TEXT
+);
+
+CREATE INDEX IF NOT EXISTS entities_tx ON entities(element_key);
+CREATE INDEX IF NOT EXISTS entities_schema ON entities(gs08, schema_id);
+CREATE INDEX IF NOT EXISTS entities_parent ON entities(parent_id);
+CREATE INDEX IF NOT EXISTS entities_file ON entities(file_id);
+
+-- One row per scalar field of an instance, typed by the schema's core dataType so
+-- filters compare like with like: money in value_num (never a string compare),
+-- dates in value_date as epoch-millis, everything else in value_text. This is the
+-- table an RFC4515 filter compiles against, which is why (property, value_*) are
+-- indexed rather than the row id.
+CREATE TABLE IF NOT EXISTS entity_values (
+  entity_id    INTEGER NOT NULL,
+  seq          INTEGER NOT NULL,         -- emission order (WITHOUT ROWID has no rowid to order by)
+  property     TEXT NOT NULL,            -- clp04, bpr02, nm103, ...
+  data_type    TEXT NOT NULL,            -- string | integer | decimal | boolean | date | date-time
+  value_text   TEXT,
+  -- COMPARISON KEY ONLY, never the value: the amount scaled to integer micro-units
+  -- (x10^6, half-up). Money must not round-trip through a float (CLAUDE.md), so the exact
+  -- lexical form stays in value_text and reassembly reads THAT; value_num exists so range
+  -- filters and ORDER BY are exact integer comparisons. NULL when the value does not fit.
+  value_num    INTEGER,
+  value_date   INTEGER,                  -- epoch-millis for date / date-time
+  PRIMARY KEY (entity_id, property)
+) WITHOUT ROWID;
+
+-- Transaction-level business dimensions (DESIGN §8.5), resolved once per transaction set from
+-- the guide's mapping. "Claims for this payer" has to be an indexed equality: the payer lives in
+-- N1*PR up in the header, so without this every claim row would walk up the graph to find it.
+CREATE TABLE IF NOT EXISTS transaction_dims (
+  element_key  TEXT NOT NULL,
+  dim          TEXT NOT NULL,            -- payerName, payeeNpi, checkOrEftNumber, ...
+  data_type    TEXT NOT NULL,
+  value_text   TEXT,
+  value_num    INTEGER,                  -- micro-units, comparison key only (see entity_values)
+  value_date   INTEGER,
+  PRIMARY KEY (element_key, dim)
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS transaction_dims_lookup ON transaction_dims(dim, value_text);
+
+CREATE INDEX IF NOT EXISTS entity_values_num ON entity_values(property, value_num) WHERE value_num IS NOT NULL;
+CREATE INDEX IF NOT EXISTS entity_values_text ON entity_values(property, value_text) WHERE value_text IS NOT NULL;
+CREATE INDEX IF NOT EXISTS entity_values_date ON entity_values(property, value_date) WHERE value_date IS NOT NULL;
+
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;

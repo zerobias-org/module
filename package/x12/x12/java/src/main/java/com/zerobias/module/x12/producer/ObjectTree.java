@@ -6,6 +6,7 @@ import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.FileRow;
 import com.zerobias.module.x12.buffer.Status;
 import com.zerobias.module.x12.health.PollerStatus;
+import com.zerobias.module.x12.producer.mapping.EntityMapping;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -77,6 +78,7 @@ public final class ObjectTree implements ObjectTreeApi {
     private final Supplier<PollerStatus> poller;
     private final String consumedSuffix;
     private final InboxFiles inbox;
+    private final BusinessEntities business;
 
     /** {@code poller} feeds {@code /stats}; it may yield null (treated as {@link PollerStatus#DOWN}). */
     public ObjectTree(BufferStore buffer, Supplier<PollerStatus> poller) {
@@ -110,6 +112,13 @@ public final class ObjectTree implements ObjectTreeApi {
         this.poller = poller == null ? () -> PollerStatus.DOWN : poller;
         this.consumedSuffix = consumedSuffix == null || consumedSuffix.isBlank() ? DEFAULT_CONSUMED_SUFFIX : consumedSuffix;
         this.inbox = new InboxFiles(sources, this.consumedSuffix, errorSuffix);
+        final List<EntityMapping> mappings = BusinessEntities.mappingsFor(
+            PackCatalog.fromClasspath().guides());
+        this.business = new BusinessEntities(buffer, mappings);
+        if (this.schemas instanceof SchemaRegistry) {
+            // A collection may not advertise a schema the registry cannot serve.
+            ((SchemaRegistry) this.schemas).addMappingSchemas(mappings);
+        }
     }
 
     // --- id encoding ---------------------------------------------------------
@@ -314,6 +323,10 @@ public final class ObjectTree implements ObjectTreeApi {
         if (InboxFiles.owns(id)) {
             return inbox.object(id);   // a fresh stat; never cached (DESIGN §2.9)
         }
+        final Map<String, Object> businessNode = businessObject(id);
+        if (businessNode != null) {
+            return businessNode;
+        }
         String[] file = parseFileId(id);
         if (file != null) {
             FileRow f = requireFile(file[0], id);
@@ -379,6 +392,9 @@ public final class ObjectTree implements ObjectTreeApi {
                 out.add(object(BY_VERSION));
                 out.add(object(BY_SENDER));
                 out.add(object(BY_SOURCE));
+                for (String collection : business.collections()) {
+                    out.add(object(RECEIVER + "/" + collection));
+                }
                 out.add(object(STATS));
                 out.add(object(OPS));
                 return out;
@@ -425,6 +441,10 @@ public final class ObjectTree implements ObjectTreeApi {
     private List<Map<String, Object>> dynamicChildren(String id) throws SQLException {
         if (InboxFiles.owns(id)) {
             return inbox.children(id);   // a fresh readdir; never cached (DESIGN §2.9)
+        }
+        final List<Map<String, Object>> businessKids = businessChildren(id);
+        if (businessKids != null) {
+            return businessKids;
         }
         List<Map<String, Object>> out = new ArrayList<>();
         String[] file = parseFileId(id);
@@ -575,6 +595,109 @@ public final class ObjectTree implements ObjectTreeApi {
         } catch (IOException e) {
             throw ProducerException.fileGone(f.fileId());
         }
+    }
+
+    // --- business entities (DESIGN §8.5) ------------------------------------
+
+    /**
+     * A parsed business id: the collection, and optionally the segment it is scoped by.
+     * {@code /claims} → all; {@code /claims/by-payerName} → a container of payers;
+     * {@code /claims/by-payerName/EXAMPLE HEALTH PLAN} → that payer's claims.
+     */
+    private record BusinessId(String collection, String segment, String value) {
+    }
+
+    private BusinessId parseBusiness(String id) {
+        if (id == null || !id.startsWith(RECEIVER + "/")) {
+            return null;
+        }
+        final String rem = id.substring((RECEIVER + "/").length());
+        final String[] parts = rem.split("/", 3);
+        if (business.mapping(parts[0]) == null) {
+            return null;
+        }
+        if (parts.length == 1) {
+            return new BusinessId(parts[0], null, null);
+        }
+        if (!parts[1].startsWith(BusinessEntities.BY)) {
+            return null;
+        }
+        final String segment = parts[1].substring(BusinessEntities.BY.length());
+        if (!business.segments(parts[0]).contains(segment)) {
+            return null;
+        }
+        return new BusinessId(parts[0], segment,
+            parts.length == 3 ? decodeSegment(parts[2]) : null);
+    }
+
+    private Map<String, Object> businessObject(String id) throws SQLException {
+        final BusinessId b = parseBusiness(id);
+        if (b == null) {
+            return null;
+        }
+        final EntityMapping m = business.mapping(b.collection());
+        if (b.segment() == null) {
+            return collection(id, b.collection(), m.schemaId(), business.page(
+                new BusinessEntities.Scope(m, null, null, null), null, 1, 1).total());
+        }
+        if (b.value() == null) {
+            return container(id, BusinessEntities.BY + b.segment());
+        }
+        if (!business.segmentValues(b.collection(), b.segment()).contains(b.value())) {
+            throw ProducerException.noSuchObject(id);
+        }
+        return collection(id, b.value(), m.schemaId(), business.page(scopeOf(m, b), null, 1, 1).total());
+    }
+
+    private List<Map<String, Object>> businessChildren(String id) throws SQLException {
+        final BusinessId b = parseBusiness(id);
+        if (b == null) {
+            return null;
+        }
+        final List<Map<String, Object>> out = new ArrayList<>();
+        if (b.segment() == null) {
+            // a business collection is also a container of its segments
+            for (String segment : business.segments(b.collection())) {
+                out.add(object(RECEIVER + "/" + b.collection() + "/" + BusinessEntities.BY + segment));
+            }
+            return out;
+        }
+        if (b.value() == null) {
+            for (String value : business.segmentValues(b.collection(), b.segment())) {
+                out.add(object(RECEIVER + "/" + b.collection() + "/" + BusinessEntities.BY
+                    + b.segment() + "/" + encodeSegment(value)));
+            }
+            return out;
+        }
+        businessObject(id);   // 404 an unknown value
+        return out;           // a scoped collection is a leaf
+    }
+
+    /** The scope a business id resolves to: grain plus file or dimension equality. */
+    private static BusinessEntities.Scope scopeOf(EntityMapping m, BusinessId b) {
+        if (b.segment() == null || b.value() == null) {
+            return new BusinessEntities.Scope(m, null, null, null);
+        }
+        return BusinessEntities.FILE_SEGMENT.equals(b.segment())
+            ? new BusinessEntities.Scope(m, b.value(), null, null)
+            : new BusinessEntities.Scope(m, null, b.segment(), b.value());
+    }
+
+    /** Resolve a business collection id to its scope, or null when the id is not one. */
+    BusinessEntities.Scope businessScope(String id) throws SQLException {
+        final BusinessId b = parseBusiness(id);
+        if (b == null || (b.segment() != null && b.value() == null)) {
+            return null;
+        }
+        final EntityMapping m = business.mapping(b.collection());
+        if (b.value() != null && !business.segmentValues(b.collection(), b.segment()).contains(b.value())) {
+            throw ProducerException.noSuchObject(id);
+        }
+        return scopeOf(m, b);
+    }
+
+    BusinessEntities business() {
+        return business;
     }
 
     // --- write surface: the live /inbox branch only (DESIGN §2.9) -----------

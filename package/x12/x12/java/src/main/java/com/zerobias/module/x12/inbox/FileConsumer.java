@@ -7,6 +7,8 @@ import com.zerobias.module.x12.buffer.FileRow;
 import com.zerobias.module.x12.buffer.FileStatus;
 import com.zerobias.module.x12.buffer.RetentionSweeper;
 import com.zerobias.module.x12.buffer.TransactionRow;
+import com.zerobias.module.x12.materializer.EntityGraph;
+import com.zerobias.module.x12.producer.mapping.EntityMapping;
 import com.zerobias.module.x12.materializer.Materializer;
 import com.zerobias.module.x12.materializer.StructureResolver;
 import com.zerobias.module.x12.materializer.TransactionJson;
@@ -28,6 +30,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -171,14 +174,25 @@ public final class FileConsumer {
             // 3b/3c. parse + materialize every ST..SE.
             X12Parse.ParsedFile parsed = X12Parse.parse(bytes, allowBareTransactionSets, clock);
             List<TransactionRow> rows = new ArrayList<>();
+            Map<String, List<EntityGraph.Entity>> graphs = new LinkedHashMap<>();
+            Map<String, Map<String, EntityGraph.Value>> dims = new LinkedHashMap<>();
             for (X12Parse.Transaction tx : parsed.transactions()) {
-                rows.add(toRow(tx, parsed, fileId, fileName, source.name(), now));
+                rows.add(toRow(tx, parsed, fileId, fileName, source.name(), now, graphs));
+            }
+            // Resolve the guide's business dimensions once per transaction set: the payer lives
+            // in the header, so segmenting claims by payer must not mean walking up per claim.
+            for (Map.Entry<String, List<EntityGraph.Entity>> e : graphs.entrySet()) {
+                final Map<String, EntityGraph.Value> resolved = resolveDimensions(parsed.gs08(), e.getValue());
+                if (!resolved.isEmpty()) {
+                    dims.put(e.getKey(), resolved);
+                }
             }
             FileRow file = new FileRow(0, fileId, filePath, fileName, source.name(), donePath.toString(), size, checksum,
                 mtime, discoveredAt, now, FileStatus.CONSUMED, parsed.interchanges().size(), rows.size(), null, false, 0);
 
             // 3d. COMMIT, then rename — rename is the ack.
-            int inserted = buffer.consumeFile(file, rows);
+            // The object graph commits with its transaction rows (DESIGN §8.4).
+            int inserted = buffer.consumeFile(file, rows, graphs, dims);
             if (!rename(abs, donePath)) {
                 buffer.markRenameFailed(fileId);
                 LOG.error("rename after commit failed for {} -> {}; row marked rename_failed (the id guards re-consumption)",
@@ -209,7 +223,7 @@ public final class FileConsumer {
 
     /** Envelope overlay + materialized body → one {@link TransactionRow}. */
     TransactionRow toRow(X12Parse.Transaction tx, X12Parse.ParsedFile parsed, String fileId, String fileName,
-                         String sourceName, Instant receivedAt) {
+                         String sourceName, Instant receivedAt, Map<String, List<EntityGraph.Entity>> graphs) {
         String gs08 = parsed.gs08();
         String transactionType = TransactionTypes.transactionType(gs08, tx.st01());
         Optional<Materializer> materializer = resolver.materializerFor(gs08, parsed.separators());
@@ -224,6 +238,14 @@ public final class FileConsumer {
             parsed.errors().size());
         Map<String, Object> json = TransactionJson.build(env, materializer, tx.loop());
         String mapped = TransactionJson.toJson(json);
+
+        // Flatten the same materialized tree into the queryable object graph. Built from the
+        // body alone — the envelope columns live on the transaction row, so duplicating them
+        // as entity values would make every filter ambiguous about which copy it hit.
+        if (materializer.isPresent() && tx.loop() != null) {
+            final Materializer m = materializer.get();
+            graphs.put(elementKey, EntityGraph.flatten(m.index(), m.materializeTransaction(tx.loop())));
+        }
 
         return TransactionRow.builder()
             .fileId(fileId).sourceName(sourceName)
@@ -241,6 +263,29 @@ public final class FileConsumer {
             .envelope(envelope)
             .build();
     }
+
+    /** The guide's declared dimensions, read off the transaction root (DESIGN §8.5). */
+    private Map<String, EntityGraph.Value> resolveDimensions(String gs08, List<EntityGraph.Entity> graph) {
+        if (graph == null || graph.isEmpty()) {
+            return Map.of();
+        }
+        final List<EntityMapping> mappings = mappingCache.computeIfAbsent(gs08 == null ? "" : gs08,
+            EntityMapping::forGuide);
+        if (mappings.isEmpty()) {
+            return Map.of();
+        }
+        final EntityGraph.Entity root = graph.get(0);
+        final Map<String, EntityGraph.Value> out = new LinkedHashMap<>();
+        for (EntityMapping.Dimension d : mappings.get(0).dimensions()) {
+            final EntityGraph.Value v = EntityMapping.read(graph, root, d.path());
+            if (v != null) {
+                out.put(d.name(), v);
+            }
+        }
+        return out;
+    }
+
+    private final Map<String, List<EntityMapping>> mappingCache = new LinkedHashMap<>();
 
     static String errorMessage(Exception e) {
         if (e instanceof X12ParseException pe) {

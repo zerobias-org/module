@@ -484,6 +484,101 @@ PRAGMA journal_mode = WAL;
 Durability (`ackDurability`), drain/lease SQL, retention sweeper (acked rows only; `files` rows
 are never evicted — they are the audit trail), and backpressure are as in hl7/v2 §8.
 
+### 8.4 The object graph
+
+`transactions.mapped_json` is a document; a document is not queryable. So every materialized
+**instance** is also a row:
+
+```
+entities       one row per loop / segment / composite instance
+               (element_key, file_id, gs08, schema_id, xid, kind, parent_id, property,
+                path, ordinal, property_order)
+entity_values  one row per scalar field
+               (entity_id, seq, property, data_type, value_text, value_num, value_date)
+```
+
+`schema_id` is the **real** pack schema — `schema:type:x12.005010X221A1.CLP`, the same id
+`getSchema` serves — and `parent_id` is the edge, so a transaction set is a graph of
+addressable objects. `path` (`detail[0].loop2000[0].loop2100[1].clp`) identifies an instance
+uniquely within its transaction set.
+
+Three rules the tests pin down:
+
+- **`value_text` is the value; `value_num` is only a comparison key.** Amounts are stored as
+  exact integer **micro-units** (×10⁶, half-up) so range filters and `ORDER BY` are integer
+  comparisons, and reassembly reads the lexical form — a decimal must not round-trip through a
+  float (`450.00` came back `450.0` when it did). Dates go to `value_date` as epoch-millis.
+- **Wire order is data.** Field order is part of the contract (§5) and a composite is a child
+  row rather than a value, so each instance stores its `property_order` and each value its
+  `seq`. Without them a reassembled segment lists every scalar before every composite.
+- **The graph commits with its transaction.** One SQL transaction covers the transaction rows,
+  the graph and the dimensions; the `.done` rename still happens only after it returns. A
+  committed row whose entities were missing would be queryable-but-empty. Purge and retention
+  delete graph rows with their transaction, since SQLite enforces no foreign key unless the
+  pragma is on.
+
+`EntityGraph.assemble` walks the rows back into the nested form — that is how `take`,
+`download` and `recast` keep working, and the round-trip equality test against the
+materializer is what licenses storing rows instead of the document.
+
+### 8.5 Business entities
+
+The graph is X12-shaped: `loop2100` whose `clp` child has a `clp04`. A **mapping** says what
+that *is* — a Claim whose `paidAmount` is `clp.clp04` — and at what **grain**: one row per
+instance of the declared `anchor` schema. Choosing the anchor chooses the grain, which is why
+it is declared, never inferred.
+
+| Entity | Anchor = grain | Rows per 835 |
+|---|---|---|
+| `Remittance` | the transaction root | 1 per transaction set |
+| `Claim` | `loop2100` | n claims |
+| `ServiceLine` | `loop2110` | n lines per claim |
+
+Column paths are relative to the anchor and may carry a **qualifier predicate**, which is how
+the semantics X12 hides in code positions become names: `nm1[nm101=QC].nm103` is the patient's
+last name, `amt[amt01=AU].amt02` the allowed amount, `svc.svc01.c00302` the procedure inside
+composite C003. A column the transaction lacks is present and null, so every row of a
+collection has one shape.
+
+**Dimensions** are transaction-level values (payer, payee, check number, effective date)
+resolved once per transaction set into `transaction_dims` and merged onto every row anchored
+under it. The payer lives in `N1*PR` up in the header, so without that "claims for this payer"
+would walk up the graph per claim instead of hitting an index.
+
+Business element schemas are **generated from the mappings** (`schema:business:x12.835.Claim`)
+and registered at boot: a collection may not advertise a `collectionSchema` the registry
+cannot serve, and generating it means the schema and the projection can never disagree about
+what a Claim has. Every row also carries `elementKey` and `fileId`, so any business row traces
+back to the interchange that delivered it.
+
+Mappings are **content, not code** — `mappings/<GS08>.json`, shipped in the pack format (§7) —
+so a trading-partner variant or a new entity is a mapping file, not a module release. A guide
+with no mapping simply has no business entities.
+
+#### 8.5.1 Collections, segments and filters
+
+```
+/x12-receiver
+├─ /claims                            collection, Claim schema, one element per CLP loop
+│   ├─ /claims/by-file/<fileId>       "claims from this file"
+│   └─ /claims/by-payerName/<value>   "claims for this payer"  (also by-payeeNpi, by-check…)
+├─ /service-lines  …
+└─ /remittances    …
+```
+
+Segment children are **emergent**, exactly like `/by-type`: `SELECT DISTINCT` over the
+dimensions actually present, so a payer node appears the first time that payer sends something.
+An unknown segment value is a 404, not an empty page.
+
+Scoping is pushed into SQL — grain always, plus a file or dimension equality inside a segment.
+A user filter is applied to the projected rows, because a business column can sit behind a
+qualifier predicate or inside a composite, which SQL over `entity_values` cannot express; a
+filtered page therefore reads the scoped set and pages after filtering. Correct, and bounded by
+the segment rather than the buffer — pushing the compilable subset down is a follow-up, and the
+value indexes are already in place for it. Filters compare by the column's declared type, so
+`(paidAmount>=1000)` is an exact decimal comparison and cannot match `999.99` lexically, and an
+unknown column name is a 400 rather than a silently empty result.
+
 ## 9. Health
 
 `/healthz` → `{poller: {up, lastScan, lastConsumed, bufferDepth, oldestUnackedSec, sources[]:

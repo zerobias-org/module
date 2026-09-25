@@ -129,6 +129,61 @@ V="$(x12_fn validate "{\"elementKey\":$(jstr "$KEY")}")"
 echo "$V" | jpretty | head -20
 check "stored.valid + rematerialized.valid + repsAgree" "[ \"$(jget "$V" 'j["stored"]["valid"] and j["rematerialized"]["valid"] and j["repsAgree"]')\" = True ]"
 
+# Before the drain on purpose: ops/purge deletes acked transactions AND their object graph,
+# so the business collections are legitimately empty once the fixture has been purged.
+step "business entities: /claims with named columns, segments and typed filters"
+CLAIMS="$X12_RECEIVER/claims"
+CL_OBJ="$(x12_rpc ObjectsApi.getObject "{\"objectId\":$(jstr "$CLAIMS")}")"
+echo "  $CL_OBJ"
+CL_SCHEMA="$(jget "$CL_OBJ" 'j["collectionSchema"]')"
+CL_SIZE="$(jget "$CL_OBJ" 'j["collectionSize"]')"
+check "/claims is a collection bound to the Claim business schema" "[ \"$CL_SCHEMA\" = schema:business:x12.835.Claim ]"
+check "/claims holds the two claims from the 835" "[ \"$CL_SIZE\" = 2 ]"
+SCHEMA_OK="$(jget "$(x12_rpc SchemasApi.getSchema "{\"schemaId\":\"schema:business:x12.835.Claim\"}")" 'len([p for p in j["properties"] if p["name"] in ("claimId","paidAmount","patientLastName","payerName","fileId")])')"
+check "the business schema is served and names its columns" "[ \"$SCHEMA_OK\" = 5 ]"
+
+ROWS="$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":$(jstr "$CLAIMS"),\"pageSize\":10,\"pageNumber\":1}")"
+echo "$ROWS" | jpretty | head -26
+CLAIM_ID="$(jget "$ROWS" 'j["items"][0]["claimId"]')"
+PAID_EQ="$(jget "$ROWS" 'j["items"][0]["paidAmount"] == 220.00')"
+PATIENT="$(jget "$ROWS" 'j["items"][0]["patientLastName"]')"
+PAYER="$(jget "$ROWS" 'j["items"][0]["payerName"]')"
+PROV="$(jget "$ROWS" 'j["items"][0]["fileId"]')"
+check "a claim row carries its business identity" "[ \"$CLAIM_ID\" = CLM0001 ]"
+check "paidAmount equals 220.00" "[ \"$PAID_EQ\" = True ]"
+# The wire form must keep the scale; jget cannot assert it (json.loads makes it a float) and the
+# body cannot go into an eval'd condition (its own quotes break the quoting).
+SCALE_OK="$(x12_contains "$ROWS" '"paidAmount":220.00')"
+check "paidAmount keeps two decimal places on the wire" "[ \"$SCALE_OK\" = yes ]"
+check "the patient came from NM1*QC by qualifier" "[ \"$PATIENT\" = DOE ]"
+check "the payer dimension is carried onto the row" "[ \"$PAYER\" = \"EXAMPLE HEALTH PLAN\" ]"
+check "provenance: the row names the interchange it came from" "[ -n \"$PROV\" ]"
+
+SEGMENTS="$(x12_rpc ObjectsApi.getChildren "{\"objectId\":$(jstr "$CLAIMS"),\"pageSize\":50}")"
+SEG_NAMES="$(jget "$SEGMENTS" '",".join(sorted(i["name"] for i in j["items"]))')"
+check "claims are segmentable by file and by payer" "echo \"$SEG_NAMES\" | grep -q 'by-file' && echo \"$SEG_NAMES\" | grep -q 'by-payerName'"
+BY_PAYER="$(x12_rpc ObjectsApi.getChildren "{\"objectId\":$(jstr "$CLAIMS/by-payerName"),\"pageSize\":50}")"
+PAYER_NODE="$(jget "$BY_PAYER" 'j["items"][0]["id"]')"
+PAYER_CLAIMS="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":$(jstr "$PAYER_NODE"),\"pageSize\":10}")" 'j["count"]')"
+check "the payer segment emerged from the data" "[ -n \"$PAYER_NODE\" ]"
+check "'claims for this payer' returns both claims" "[ \"$PAYER_CLAIMS\" = 2 ]"
+BY_FILE="$(x12_rpc ObjectsApi.getChildren "{\"objectId\":$(jstr "$CLAIMS/by-file"),\"pageSize\":50}")"
+CLAIM_FILE_NODE="$(jget "$BY_FILE" 'j["items"][0]["id"]')"   # NOT $FILE_NODE: that is the binary node downloadBinary uses later
+FILE_CLAIMS="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":$(jstr "$CLAIM_FILE_NODE"),\"pageSize\":10}")" 'j["count"]')"
+check "'claims from this file' returns both claims" "[ \"$FILE_CLAIMS\" = 2 ]"
+
+HIGH="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":$(jstr "$CLAIMS"),\"filter\":\"(paidAmount>=230)\",\"pageSize\":10}")" 'j["count"]')"
+NONE="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":$(jstr "$CLAIMS"),\"filter\":\"(paidAmount>=1000)\",\"pageSize\":10}")" 'j["count"]')"
+DENIED="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":$(jstr "$CLAIMS"),\"filter\":\"(claimStatus=1)\",\"pageSize\":10}")" 'j["count"]')"
+check "(paidAmount>=230) matches only the 240.00 claim" "[ \"$HIGH\" = 1 ]"
+check "(paidAmount>=1000) matches nothing" "[ \"$NONE\" = 0 ]"
+check "(claimStatus=1) matches both" "[ \"$DENIED\" = 2 ]"
+LINES="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":\"$X12_RECEIVER/service-lines\",\"pageSize\":10}")" 'j["count"]')"
+check "/service-lines has its own grain: 3 lines" "[ \"$LINES\" = 3 ]"
+REMITS="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":\"$X12_RECEIVER/remittances\",\"pageSize\":10}")" 'j["count"]')"
+check "/remittances has one row per transaction set" "[ \"$REMITS\" = 1 ]"
+check "an unknown filter column is rejected, not silently empty" "! x12_rpc CollectionsApi.getCollectionElements \"{\\\"objectId\\\":\\\"$X12_RECEIVER/claims\\\",\\\"filter\\\":\\\"(nope=1)\\\"}\" >/dev/null 2>&1"
+
 step "FunctionsApi.invokeFunction ops/take"
 TAKE="$(x12_fn take '{"max":10}')"
 echo "$TAKE" | jpretty | head -12

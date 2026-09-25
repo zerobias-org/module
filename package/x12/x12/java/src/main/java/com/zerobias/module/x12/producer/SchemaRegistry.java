@@ -1,6 +1,7 @@
 package com.zerobias.module.x12.producer;
 
 import com.google.gson.Gson;
+import com.zerobias.module.x12.producer.mapping.EntityMapping;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -411,6 +412,41 @@ public final class SchemaRegistry implements SchemaRegistryApi {
     }
 
     /** A schema in the codegen's shape: {@code {id, dataTypes[], properties[]}} with only the data types used. */
+    /**
+     * Register the business element schemas the mappings declare (DESIGN §8.5). A collection
+     * may not advertise a {@code collectionSchema} the registry cannot serve, so every mapping
+     * turns into a real schema here: its columns become properties, typed by the column's core
+     * dataType, with {@code primaryKey} carried through and a code-list {@code references} where
+     * the mapping names one. Generated rather than authored so the schema and the projection can
+     * never disagree about what a Claim has.
+     */
+    public void addMappingSchemas(java.util.Collection<EntityMapping> mappings) {
+        for (EntityMapping m : mappings) {
+            if (m.schemaId() == null) {
+                continue;
+            }
+            final List<JsonObject> props = new ArrayList<>();
+            for (EntityMapping.Column c : m.columns()) {
+                JsonObject p = prop(c.name(), c.dataType(), false, c.description());
+                if (c.primaryKey()) {
+                    p.addProperty("primaryKey", true);
+                }
+                if (c.enumSchemaId() != null) {
+                    p = ref(p, c.enumSchemaId());
+                }
+                props.add(p);
+            }
+            // Provenance: every business row can be traced back to the interchange it came from.
+            props.add(prop("elementKey", "string", true, "The transaction set this row was projected from"));
+            props.add(prop("fileId", "string", true, "The interchange file that delivered it"));
+            for (EntityMapping.Dimension d : m.dimensions()) {
+                props.add(prop(d.name(), d.dataType(), false, d.description()));
+            }
+            final String json = PRETTY.toJson(schema(m.schemaId(), props));
+            loaders.put(m.schemaId(), () -> json);
+        }
+    }
+
     private static JsonObject schema(String id, List<JsonObject> properties) {
         JsonObject s = new JsonObject();
         s.addProperty("id", id);

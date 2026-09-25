@@ -23,6 +23,8 @@ api.yml                DataProducer paths ($ref'd from the interface, incl. /dow
 connectionProfile.yml  informational — the daemon never reads it (publish pipeline requires it)
 runtimeConfig.yml      daemonMode + durability[x12-buffer, x12-inbox] + resources + opaque config (sources, suffixes, retention)
 Dockerfile  nginx.conf  nginx-insecure.conf  startup.sh    container (nginx → java on 8889)
+build.gradle.kts       zb.java-module + gate-stamp source/test dirs (test/ is hashed: the e2e suite)
+.mocharc.json  test/e2e/   testDocker suite: describeModule<X12> + hub-sdk client against the real container, fed by docker cp
 java/
 ├── pom.xml            uber jar (maven-shade); codegen runs at generate-resources (NOT a profile)
 ├── codegen/           BUILD-TIME ONLY — reads imsweb mapping XML → schemas/ + structure-index/ + packs.json
@@ -45,9 +47,37 @@ java/
 ```bash
 (cd java && mvn test)          # unit; `mvn verify` adds integration (failsafe). Needs GitHub Packages auth for lite-filter.
 cd <repo-root> && ./gradlew :x12:x12:test   # via the gate task
+zbb --slot <slot> testDocker                # test/e2e through the hub-sdk client (~1 min: the inbox wait is stableForSec)
 java/scripts/e2e-local.sh                   # real container, data loaded THROUGH the DP API → take/ack/purge + file mgmt
 cd <repo-root>/package/x12/x12 && zbb --slot <slot> gate   # the truth
 ```
+
+### The e2e suite (`test/e2e`, run by `testDocker`)
+
+- **It needs a module secret in the slot, once:**
+  `zbb --slot <slot> secret create x12 --module @zerobias-org/module-x12-x12 x12Version=005010`.
+  `describeModule` (module-test-client) runs once per `zbb secret` whose module is this package,
+  and with none it registers a single *skipped* test — a green `testDocker` that ran nothing. The
+  suite checks for that first and fails with the command above instead. The profile is
+  informational (the daemon never reads it), so any valid one works; `SECRET_NAME=<name>` picks
+  an existing one.
+- **Fed by `docker cp`, not the API.** Gradle's `startModuleExec` starts the image with the
+  committed `runtimeConfig.yml` `config` as `MODULE_CONFIG`, so `allowFileManagement` is false and
+  there is no upload path (and the hub-sdk `uploadBinaryContent(objectId, body)` cannot carry the
+  `fileName` the receiver needs anyway). The suite copies the 835 / 837P / 837I fixtures plus
+  `test/e2e/fixtures/835-two-interchanges.x12` into the source directory and waits, bounded by the
+  container's own `stableForSec + pollIntervalSec`, nudging with `ops/rescan`. The file-management
+  tests read the flag from the container's `MODULE_CONFIG` and assert whichever way it is set.
+- **It needs a fresh container.** The receiver de-duplicates by content, so re-dropping the same
+  bytes records `status:duplicate`; the wait fails fast saying so. Gradle starts a new container
+  (new anonymous volumes) per run. Outside gradle: `X12_CONTAINER=<name> CONTAINER_URL=https://localhost:<port>
+  TEST_MODE=docker MODULE_DIR=$PWD npx mocha --config .mocharc.json 'test/e2e/**/*.test.ts'`
+  against a container you started with `MODULE_CONFIG` and connected as `e2e`.
+- **Decimals through the client lose their scale.** The wire carries `"chargedAmount":300.00`;
+  the hub-sdk docker client (axios `JSON.parse`) hands back the number `300`. The suite asserts
+  both — the value through the client, the scale on the raw wire. Do not "fix" the assertion to
+  `300.00`: that is a transport property, not a receiver bug.
+- The drain cycle (take → ack → purge) runs last on purpose: purge removes the 837P rows.
 
 Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${env.READ_TOKEN}`
 (env-interpolated); `READ_TOKEN` needs `read:packages`. Maven and Docker must be installed.

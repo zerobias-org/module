@@ -219,4 +219,46 @@ class FileIsolationTest {
         assertFalse(FileConsumer.rejectsThisFile(new SQLException("disk I/O error", null, 10)));
         assertTrue(FileConsumer.rejectsThisFile(new SQLException("too big", null, 18)));
     }
+
+    @Test
+    void closeLetsTheFileInHandFinishAndLeavesTheRest(@TempDir Path dir) throws Exception {
+        Path inbox = inbox(dir);
+        java.util.concurrent.CountDownLatch inScan = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        StructureResolver resolver = new StructureResolver(gs08 -> {
+            if (gs08.startsWith("005010X221")) {
+                inScan.countDown();
+                boolean interrupted = false;
+                while (true) {
+                    try {
+                        release.await();
+                        break;
+                    } catch (InterruptedException e) {
+                        interrupted = true;   // close() interrupts the scan thread; finish the file anyway
+                    }
+                }
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return StructureIndex.fromClasspath(gs08);
+        });
+        ModuleRuntimeConfig cfg = config(inbox, ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES);
+        InboxPoller p = poller(dir, cfg, resolver);
+        Files.write(inbox.resolve("a.835"), Fixtures.bytes(Fixtures.F835));
+        Path b = Files.write(inbox.resolve("b.837"), Fixtures.bytes(Fixtures.F837P));
+        p.start();
+        assertTrue(inScan.await(10, java.util.concurrent.TimeUnit.SECONDS), "scan reached the first file");
+
+        Thread closer = new Thread(p::close);
+        closer.start();
+        Thread.sleep(200);
+        release.countDown();
+        closer.join(10_000);
+        assertFalse(closer.isAlive(), "close returned");
+        assertTrue(Files.exists(inbox.resolve("a.835.done")), "the file in hand was finished and acknowledged");
+        assertTrue(Files.exists(b), "the rest waits for the next start");
+        assertEquals(1, buffer.fileCount());
+        assertFalse(p.up());
+    }
 }

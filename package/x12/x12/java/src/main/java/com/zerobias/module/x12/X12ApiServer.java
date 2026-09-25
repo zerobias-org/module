@@ -155,22 +155,35 @@ public final class X12ApiServer {
         app.start(config.internalPort());
         LOG.info("Operations server listening on {}", config.internalPort());
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                pollers.close();
-            } catch (Exception e) {
-                LOG.warn("poller shutdown", e);
-            }
-            if (retentionSweeper != null) {
-                retentionSweeper.stop();
-            }
-            try {
-                buffer.close();
-            } catch (Exception e) {
-                LOG.warn("buffer shutdown", e);
-            }
-            app.stop();
-        }));
+        Runtime.getRuntime().addShutdownHook(new Thread(
+            () -> shutdown(app::stop, pollers, retentionSweeper, buffer), "x12-shutdown"));
+    }
+
+    /**
+     * Stop everything that uses the buffer, then the buffer. Routes first (no new take/ack or
+     * file upload lands mid-close), then the pollers (each finishes the file in hand), then
+     * the sweeper, and only then the buffer — closing it earlier failed whatever was still
+     * running against it. Each step is attempted even if an earlier one threw.
+     */
+    static void shutdown(Runnable stopRoutes, PollerHandle pollers, RetentionSweeper sweeper, AutoCloseable buffer) {
+        try {
+            stopRoutes.run();
+        } catch (RuntimeException e) {
+            LOG.warn("http shutdown", e);
+        }
+        try {
+            pollers.close();
+        } catch (RuntimeException e) {
+            LOG.warn("poller shutdown", e);
+        }
+        if (sweeper != null) {
+            sweeper.stop();
+        }
+        try {
+            buffer.close();
+        } catch (Exception e) {
+            LOG.warn("buffer shutdown", e);
+        }
     }
 
     /**

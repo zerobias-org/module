@@ -86,7 +86,16 @@ public final class InboxPoller implements AutoCloseable {
     private record Candidate(Path path, long size, Instant mtime) {
     }
 
-    private ScheduledExecutorService scheduler;
+    /**
+     * How long {@link #close()} waits for a running scan to finish the file in hand. Docker
+     * SIGKILLs 10 s after SIGTERM and the buffer still has to close in that window; a scan
+     * wedged on a hung mount is abandoned (its thread is a daemon).
+     */
+    static final Duration CLOSE_WAIT = Duration.ofSeconds(5);
+
+    /** Guards {@link #scheduler} for start/close — never the scan's monitor, so close never queues behind a scan. */
+    private final Object lifecycle = new Object();
+    private volatile ScheduledExecutorService scheduler;
     private volatile boolean closed;
     /** When {@link #start()} scheduled the scans; the stall reference before any scan completes. */
     private volatile Instant startedAt;
@@ -123,17 +132,20 @@ public final class InboxPoller implements AutoCloseable {
     }
 
     /** Start the scheduled scans (first one immediately). Idempotent. */
-    public synchronized void start() {
-        if (scheduler != null || closed) {
-            return;
+    public void start() {
+        synchronized (lifecycle) {
+            if (scheduler != null || closed) {
+                return;
+            }
+            ScheduledExecutorService s = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "x12-inbox-" + source.name());
+                t.setDaemon(true);
+                return t;
+            });
+            startedAt = Instant.now(clock);
+            s.scheduleWithFixedDelay(this::safeScan, 0, source.pollIntervalSec(), TimeUnit.SECONDS);
+            scheduler = s;
         }
-        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "x12-inbox-" + source.name());
-            t.setDaemon(true);
-            return t;
-        });
-        startedAt = Instant.now(clock);
-        scheduler.scheduleWithFixedDelay(this::safeScan, 0, source.pollIntervalSec(), TimeUnit.SECONDS);
         LOG.info("poller '{}' watching {} (pattern {}, every {}s, stable for {}s)", source.name(), source.path(),
             source.pattern(), source.pollIntervalSec(), source.stableForSec());
     }
@@ -190,7 +202,15 @@ public final class InboxPoller implements AutoCloseable {
         stability.retainOnly(present);
         seen.removeIf(k -> !present.contains(k.path()));
 
-        for (Candidate c : candidates) {
+        for (int i = 0; i < candidates.size(); i++) {
+            if (closed) {
+                // Shutting down: finish at a file boundary so the buffer can close under no one.
+                pendingNow += candidates.size() - i;
+                LOG.info("poller '{}': closing; {} file(s) left for the next start", source.name(),
+                    candidates.size() - i);
+                break;
+            }
+            Candidate c = candidates.get(i);
             lastProgress = Instant.now(clock);
             Path p = c.path();
             SeenKey key = new SeenKey(p, c.size(), c.mtime());
@@ -335,7 +355,8 @@ public final class InboxPoller implements AutoCloseable {
     // ---- status --------------------------------------------------------------------------
 
     public boolean up() {
-        return !closed && scheduler != null && !scheduler.isShutdown();
+        ScheduledExecutorService s = scheduler;
+        return !closed && s != null && !s.isShutdown();
     }
 
     /** The last scan that completed without failing. */
@@ -367,11 +388,28 @@ public final class InboxPoller implements AutoCloseable {
             startedAt, lastScanStarted, lastScan, lastProgress, lastError, lastErrorAt);
     }
 
+    /**
+     * Stop scanning and wait (at most {@link #CLOSE_WAIT}) for a running scan to finish the
+     * file in hand; the rest of its listing waits for the next start. Returns only once no
+     * scan is using the buffer, unless the wait times out — the caller closes the buffer next.
+     */
     @Override
-    public synchronized void close() {
-        closed = true;
-        if (scheduler != null) {
-            scheduler.shutdownNow();
+    public void close() {
+        ScheduledExecutorService s;
+        synchronized (lifecycle) {
+            closed = true;
+            s = scheduler;
+        }
+        if (s == null) {
+            return;
+        }
+        s.shutdownNow();
+        try {
+            if (!s.awaitTermination(CLOSE_WAIT.toMillis(), TimeUnit.MILLISECONDS)) {
+                LOG.warn("poller '{}': scan still running after {}; abandoning it", source.name(), CLOSE_WAIT);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 }

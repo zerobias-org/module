@@ -29,6 +29,8 @@ public final class RetentionSweeper {
     private final BufferStore store;
     private final RetentionConfig config;
     private final Clock clock;
+    /** Guards {@link #scheduler}; never the sweep's monitor, so stop does not queue behind a sweep. */
+    private final Object lifecycle = new Object();
     private ScheduledExecutorService scheduler;
 
     public RetentionSweeper(BufferStore store, RetentionConfig config, Clock clock) {
@@ -48,7 +50,7 @@ public final class RetentionSweeper {
             removed += store.deleteAckedOlderThanMillis(cutoff);
         }
         if (config.maxBytes() != null) {
-            while (store.usedBytes() > config.maxBytes()) {
+            while (store.usedBytes() > config.maxBytes() && !Thread.currentThread().isInterrupted()) {
                 final int n = store.deleteOldestAcked(EVICT_BATCH);
                 if (n == 0) {
                     break; // nothing more we are allowed to evict
@@ -72,7 +74,13 @@ public final class RetentionSweeper {
     }
 
     /** Start the periodic sweep (e.g. every 10 minutes). Exceptions are logged, not propagated. */
-    public synchronized void start(java.time.Duration interval) {
+    public void start(java.time.Duration interval) {
+        synchronized (lifecycle) {
+            startLocked(interval);
+        }
+    }
+
+    private void startLocked(java.time.Duration interval) {
         if (scheduler != null) {
             return;
         }
@@ -93,10 +101,23 @@ public final class RetentionSweeper {
         }, interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
     }
 
-    public synchronized void stop() {
-        if (scheduler != null) {
-            scheduler.shutdownNow();
+    /** Stop the schedule and wait briefly for a sweep in progress, so the buffer can close after. */
+    public void stop() {
+        ScheduledExecutorService s;
+        synchronized (lifecycle) {
+            s = scheduler;
             scheduler = null;
+        }
+        if (s == null) {
+            return;
+        }
+        s.shutdownNow();
+        try {
+            if (!s.awaitTermination(5, TimeUnit.SECONDS)) {
+                LOG.warn("retention sweep still running at stop; abandoning it");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 }

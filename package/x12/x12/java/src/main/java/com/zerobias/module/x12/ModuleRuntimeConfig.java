@@ -178,7 +178,8 @@ public record ModuleRuntimeConfig(
 
     /**
      * Boot validation (DESIGN §3): every source path must exist, be a directory and be
-     * renameable; names must be distinct; suffixes must be non-blank and distinct.
+     * renameable; names must be distinct, and so must the real directories they point at;
+     * suffixes must be non-blank and distinct.
      * Returns the list of problems (empty = OK). The caller logs and exits 1 on any.
      */
     public List<String> validateSources() {
@@ -187,6 +188,7 @@ public record ModuleRuntimeConfig(
             problems.add("no sources configured");
         }
         Set<String> names = new HashSet<>();
+        Map<java.nio.file.Path, String> dirs = new java.util.HashMap<>();
         for (SourceConfig s : sources) {
             if (!names.add(s.name())) {
                 problems.add("duplicate source name: " + s.name());
@@ -194,6 +196,20 @@ public record ModuleRuntimeConfig(
             String p = s.validate();
             if (p != null) {
                 problems.add(p);
+                continue;
+            }
+            // Two pollers on one directory would race for every file (both hash it, one renames
+            // it from under the other) and stamp it with whichever source won. Compare real
+            // paths so a symlink, `..` or a trailing slash cannot hide the overlap. A nested
+            // directory is fine: each poller scans its own directory flat.
+            try {
+                java.nio.file.Path real = s.dir().toRealPath();
+                String other = dirs.putIfAbsent(real, s.name());
+                if (other != null) {
+                    problems.add("sources '" + other + "' and '" + s.name() + "' point at the same directory: " + real);
+                }
+            } catch (java.io.IOException e) {
+                problems.add("source '" + s.name() + "': cannot resolve " + s.path() + " (" + e + ")");
             }
         }
         if (consumedSuffix == null || consumedSuffix.isBlank() || errorSuffix == null || errorSuffix.isBlank()) {

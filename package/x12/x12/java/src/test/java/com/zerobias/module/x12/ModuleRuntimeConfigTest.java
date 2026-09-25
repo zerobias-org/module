@@ -162,4 +162,23 @@ class ModuleRuntimeConfigTest {
             assertEquals(0, s.count(), "writability probe cleaned up");
         }
     }
+
+    @Test
+    void twoSourcesOnTheSameRealDirectoryAreRejected(@TempDir Path dir) throws Exception {
+        Path in = Files.createDirectory(dir.resolve("in"));
+        Path link = Files.createSymbolicLink(dir.resolve("alias"), in);
+        Path nested = Files.createDirectory(in.resolve("nested"));
+        for (String other : new String[] {link.toString(), in + "/", in + "/nested/.."}) {
+            ModuleRuntimeConfig c = new ModuleRuntimeConfig(
+                List.of(new SourceConfig("a", in.toString(), "*", 1, 0), new SourceConfig("b", other, "*", 1, 0)),
+                ".done", ".error", false, com.zerobias.module.x12.buffer.RetentionConfig.none(), false, false);
+            List<String> problems = c.validateSources();
+            assertTrue(problems.stream().anyMatch(p -> p.contains("'a' and 'b' point at the same directory")),
+                other + " -> " + problems);
+        }
+        ModuleRuntimeConfig nestedOk = new ModuleRuntimeConfig(
+            List.of(new SourceConfig("a", in.toString(), "*", 1, 0), new SourceConfig("b", nested.toString(), "*", 1, 0)),
+            ".done", ".error", false, com.zerobias.module.x12.buffer.RetentionConfig.none(), false, false);
+        assertEquals(List.of(), nestedOk.validateSources(), "nested is fine: each poller scans flat");
+    }
 }

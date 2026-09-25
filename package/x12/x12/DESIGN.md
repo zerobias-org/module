@@ -309,7 +309,9 @@ never read by the daemon.
 
 `{name, path, pattern, pollIntervalSec, stableForSec}` per source. `name` is the provenance
 label (`/by-source/<name>`, `sourceName` column). Several sources may share a buffer; names must
-be distinct. `pattern` is a glob against the file name (case-insensitive).
+be distinct, and so must the directories they resolve to (`toRealPath`, so a symlink, `..` or a
+trailing slash cannot hide it): two pollers on one directory would race for every file. A source
+nested inside another is allowed — each poller scans its own directory flat. `pattern` is a glob against the file name (case-insensitive).
 
 ### 4.2 Scan algorithm (per source, every `pollIntervalSec`)
 

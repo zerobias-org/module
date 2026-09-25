@@ -19,7 +19,7 @@
     "directory": "package/x12/x12"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com/"
+    "registry": "https://pkg.zerobias.org/"
   },
   "files": [
     "dist",
@@ -35,7 +35,7 @@
     "import-artifact": "module"
   },
   "dependencies": {
-    "@zerobias-org/module-interface-dataproducer": "^2.1.5",
+    "@zerobias-org/module-interface-dataproducer": "2.2.6",
     "@zerobias-org/product-auditmation-generic-dataproducer": "latest",
     "@zerobias-org/product-x12-x12": "latest",
     "@zerobias-org/util-connector": "^1.0.31",

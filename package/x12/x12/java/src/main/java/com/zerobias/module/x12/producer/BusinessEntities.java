@@ -119,10 +119,27 @@ public final class BusinessEntities {
 
     public Page page(Scope scope, java.util.function.Predicate<Map<String, Object>> filter,
             int pageSize, int pageNumber) throws SQLException {
+        return page(scope, filter, null, null, pageSize, pageNumber);
+    }
+
+    /**
+     * One page, optionally filtered and sorted.
+     *
+     * <p>Sorting is by the column's DECLARED type — an amount compares as an exact decimal, a
+     * date as an ISO string, text case-insensitively — and NULLs sort last in both directions,
+     * so a page is never led by rows missing the field it was sorted on.
+     *
+     * <p>A sort, like a filter, forces the scoped set to be read and projected before paging: a
+     * business column can sit behind a qualifier predicate or inside a composite, so SQLite
+     * cannot order by it. Bounded by the segment, not the buffer (DESIGN §8.5.1).
+     */
+    public Page page(Scope scope, java.util.function.Predicate<Map<String, Object>> filter,
+            String sortBy, String sortDir, int pageSize, int pageNumber) throws SQLException {
         final EntityMapping m = scope.mapping();
         final int offset = Math.max(0, pageNumber - 1) * pageSize;
+        final java.util.Comparator<Map<String, Object>> order = comparator(m, sortBy, sortDir);
 
-        if (filter == null) {
+        if (filter == null && order == null) {
             // Unfiltered: the scope IS the page, so grain + segment + paging all happen in SQL.
             final List<Map<String, Object>> rows = project(m,
                 buffer.anchorKeys(m.anchorSchemaId(), scope.fileId(), scope.dim(), scope.dimValue(),
@@ -131,20 +148,83 @@ public final class BusinessEntities {
                 scope.dimValue()));
         }
 
-        // Filtered: read the scoped set, project, then filter and page. Bounded by the segment.
+        // Filtered and/or sorted: read the scoped set, project, then apply and page.
         final List<Map<String, Object>> all = project(m,
             buffer.anchorKeys(m.anchorSchemaId(), scope.fileId(), scope.dim(), scope.dimValue(),
                 Integer.MAX_VALUE, 0));
         final List<Map<String, Object>> matched = new ArrayList<>();
         for (Map<String, Object> row : all) {
-            if (filter.test(row)) {
+            if (filter == null || filter.test(row)) {
                 matched.add(row);
             }
+        }
+        if (order != null) {
+            matched.sort(order);
         }
         final List<Map<String, Object>> page = offset >= matched.size()
             ? List.of()
             : matched.subList(offset, Math.min(matched.size(), offset + pageSize));
         return new Page(List.copyOf(page), matched.size());
+    }
+
+    /**
+     * A comparator for {@code sortBy}, or null when no sort was asked for.
+     *
+     * @throws IllegalArgumentException for an unknown attribute or direction — a sort on a
+     *     field that does not exist is a mistake, not an arbitrary order
+     */
+    java.util.Comparator<Map<String, Object>> comparator(EntityMapping mapping, String sortBy,
+            String sortDir) {
+        if (sortBy == null || sortBy.isBlank()) {
+            return null;
+        }
+        final String attribute = sortBy.trim();
+        final String type = mapping.typeOf(attribute);
+        if (type == null) {
+            throw new IllegalArgumentException("unknown sort attribute '" + attribute + "' on "
+                + mapping.name() + "; available: " + mapping.attributes().keySet());
+        }
+        final boolean descending = "DESC".equals(
+            com.zerobias.module.x12.filter.X12Filter.direction(sortDir));
+
+        java.util.Comparator<Map<String, Object>> cmp = (a, b) -> {
+            final Object x = a.get(attribute);
+            final Object y = b.get(attribute);
+            if (x == null || y == null) {
+                return x == null && y == null ? 0 : (x == null ? 1 : -1);   // NULLs last, always
+            }
+            if ("decimal".equals(type) || "integer".equals(type)) {
+                return decimal(x).compareTo(decimal(y));
+            }
+            return String.valueOf(x).compareToIgnoreCase(String.valueOf(y));
+        };
+        if (descending) {
+            // reverse the values but keep NULLs last rather than flipping them to the front
+            final java.util.Comparator<Map<String, Object>> asc = cmp;
+            cmp = (a, b) -> {
+                final boolean an = a.get(attribute) == null;
+                final boolean bn = b.get(attribute) == null;
+                if (an || bn) {
+                    return an && bn ? 0 : (an ? 1 : -1);
+                }
+                return -asc.compare(a, b);
+            };
+        }
+        return cmp;
+    }
+
+    private static java.math.BigDecimal decimal(Object raw) {
+        if (raw instanceof java.math.BigDecimal) {
+            return (java.math.BigDecimal) raw;
+        }
+        if (raw instanceof Number) {
+            return new java.math.BigDecimal(raw.toString());
+        }
+        try {
+            return new java.math.BigDecimal(String.valueOf(raw).trim());
+        } catch (NumberFormatException notANumber) {
+            return java.math.BigDecimal.ZERO;
+        }
     }
 
     /** Project the anchors identified by {@code element_key + path} keys. */

@@ -601,7 +601,18 @@ filterable, rather than an empty page that looks like "no matches".
 The structural path compiles that expression to SQL; the business path evaluates it in memory,
 because a business column can sit behind a qualifier predicate or inside a composite, which SQL
 over `entity_values` cannot express. A filtered page therefore reads the scoped set and pages
-after filtering. Correct, and bounded by
+after filtering.
+
+**Sorting** works on both paths. `sortBy` resolves through the same property mapping the
+filter uses — an envelope column or a graph lookup for a body path on the structural side, a
+declared column or dimension on the business side — so a sort and a filter can never disagree
+about what a property means. The structural path emits `ORDER BY` in SQL (built by the adapter,
+never from the caller's raw string); the business path sorts the projected rows by the column's
+declared type, so an amount orders numerically and a date as an ISO string. **NULLs sort last
+in both directions**, so a page is never led by rows missing the field it was sorted on, and an
+unknown attribute or direction is a 400 rather than an arbitrary order. A business collection
+serializes nulls, because its schema promises a shape: a column the transaction lacks is
+present-and-null, not absent. Correct, and bounded by
 the segment rather than the buffer — pushing the compilable subset down is a follow-up, and the
 value indexes are already in place for it. Filters compare by the column's declared type, so
 `(paidAmount>=1000)` is an exact decimal comparison and cannot match `999.99` lexically, and an

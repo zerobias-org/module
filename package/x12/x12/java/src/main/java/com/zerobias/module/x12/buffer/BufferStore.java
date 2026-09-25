@@ -487,11 +487,26 @@ public final class BufferStore implements AutoCloseable {
     /** As {@link #search(String, int)} but with an OFFSET for page-number paging. */
     public synchronized List<TransactionRow> search(String whereClause, int limit, int offset)
             throws SQLException {
+        return search(whereClause, limit, offset, null);
+    }
+
+    /**
+     * @param orderBy a validated ORDER BY fragment (see {@code X12Filter.orderBy}), or null for
+     *     the default newest-first order. Never accept a caller's raw string here.
+     */
+    public synchronized List<TransactionRow> search(String whereClause, int limit, int offset,
+            String orderBy) throws SQLException {
         StringBuilder sql = new StringBuilder("SELECT ").append(TX_COLS).append(" FROM transactions");
         if (whereClause != null && !whereClause.isBlank()) {
             sql.append(" WHERE ").append(whereClause);
         }
-        sql.append(" ORDER BY received_at DESC, id DESC LIMIT ? OFFSET ?");
+        if (orderBy != null && !orderBy.isBlank()) {
+            // the requested sort first, then the default order as a stable tiebreak
+            sql.append(" ORDER BY ").append(orderBy).append(", received_at DESC, id DESC");
+        } else {
+            sql.append(" ORDER BY received_at DESC, id DESC");
+        }
+        sql.append(" LIMIT ? OFFSET ?");
         try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
             ps.setInt(1, limit);
             ps.setInt(2, Math.max(0, offset));

@@ -121,7 +121,10 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
   with `Expression.matches(row)` over the projected row. Never hand-roll a filter parser here:
   a second grammar is a second set of accepted syntaxes to keep in sync, and the extensions
   come free. `BusinessFilter` adds only attribute validation, since the library cannot know an
-  entity's columns. `sortBy`/`sortDir` are accepted and ignored on both paths.
+  entity's columns. `sortBy`/`sortDir` are honored on both: SQL `ORDER BY` for structural
+  collections, a typed comparator for business rows, NULLs last in both directions, and a 400
+  for an unknown attribute or direction. A sort property is resolved by the adapter, never
+  interpolated into SQL raw.
 - **The poller scans each source flat** (`newDirectoryStream`, DESIGN §4.2). A file
   uploaded into a subdirectory is browsable and downloadable but will never be consumed
   where it sits — that is what the `ingest` field on a live file node reports. If recursive

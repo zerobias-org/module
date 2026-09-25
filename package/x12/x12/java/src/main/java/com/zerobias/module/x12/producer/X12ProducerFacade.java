@@ -126,9 +126,17 @@ public final class X12ProducerFacade {
             final BusinessEntities.Scope scope = ((ObjectTree) tree).businessScope(objectId);
             if (scope != null) {
                 final int size = clampPageSize(pageSize);
-                final BusinessEntities.Page page = ((ObjectTree) tree).business()
-                    .page(scope, businessFilter(scope, filter), size, pageNumber);
-                return pagedResults(page.rows(), page.total(), size, pageNumber);
+                final BusinessEntities.Page page;
+                try {
+                    page = ((ObjectTree) tree).business()
+                        .page(scope, businessFilter(scope, filter), sortBy, sortDir, size, pageNumber);
+                } catch (IllegalArgumentException badSort) {
+                    throw ProducerException.illegalArgument("Malformed sort: " + badSort.getMessage());
+                }
+                // Nulls are kept here: a business collection promises the shape its schema
+                // declares, so a column the transaction lacks is present-and-null rather than
+                // absent. Dropping it would make every row a different shape on the wire.
+                return pagedResultsKeepingNulls(page.rows(), page.total(), size, pageNumber);
             }
         }
         ObjectTreeApi.Collection coll = tree.resolveCollection(objectId);
@@ -136,7 +144,7 @@ public final class X12ProducerFacade {
         int offset = Math.max(0, pageNumber - 1) * size;
         String where = composeWhere(coll, filter);
 
-        List<TransactionRow> rows = buffer.search(where, size, offset);
+        List<TransactionRow> rows = buffer.search(where, size, offset, orderBy(sortBy, sortDir));
         // One batched graph read for the page, not one per row (DESIGN §8.4).
         final Map<String, Map<String, Object>> bodies = buffer.documentsFor(
             rows.stream().map(TransactionRow::elementKey).toList());
@@ -182,6 +190,19 @@ public final class X12ProducerFacade {
     public BinaryContent downloadBinary(String objectId) throws SQLException {
         requireId(objectId);
         return tree.downloadBinary(objectId);
+    }
+
+    /**
+     * A validated {@code ORDER BY} for the buffer-backed collections, or null when none was
+     * asked for. Built by the filter adapter from the same property mapping, so sorting and
+     * filtering agree on what a property means, and never from the caller's raw string.
+     */
+    private static String orderBy(String sortBy, String sortDir) {
+        try {
+            return X12Filter.orderBy(sortBy, sortDir);
+        } catch (IllegalArgumentException bad) {
+            throw ProducerException.illegalArgument("Malformed sort: " + bad.getMessage());
+        }
     }
 
     /**
@@ -358,14 +379,25 @@ public final class X12ProducerFacade {
      * runtime contract) breaks the data-explorer tree. {@code count} is the total
      * matching rows, not the page; {@code pageNumber} is 1-based on the wire.
      */
+    /** {@link #pagedResults} that keeps null-valued fields (DESIGN §8.5: one row shape). */
+    static String pagedResultsKeepingNulls(List<Map<String, Object>> items, long count,
+            int pageSize, int pageNumber) {
+        return GSON_NULLS.toJson(envelope(items, count, pageSize, pageNumber));
+    }
+
     public static String pagedResults(List<Map<String, Object>> items, long count,
+            int pageSize, int pageNumber) {
+        return GSON.toJson(envelope(items, count, pageSize, pageNumber));
+    }
+
+    private static Map<String, Object> envelope(List<Map<String, Object>> items, long count,
             int pageSize, int pageNumber) {
         Map<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("items", items);
         envelope.put("count", count);
         envelope.put("pageSize", pageSize);
         envelope.put("pageNumber", pageNumber);
-        return GSON.toJson(envelope);
+        return envelope;
     }
 
     private int clampPageSize(int pageSize) {

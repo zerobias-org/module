@@ -196,6 +196,18 @@ public class X12SqlAdapter implements Adapter {
 
     // --- helpers ----------------------------------------------------------
 
+    /**
+     * The SQL expression for a property, for callers that need to ORDER BY it rather than
+     * compare it: an envelope column, or the graph lookup a body path resolves to. Shared with
+     * the filter path deliberately — a sort and a filter must agree on what a property means.
+     *
+     * @throws IllegalArgumentException for an illegal path segment (never interpolate a
+     *     caller's string into SQL without this)
+     */
+    public static String orderExpression(String property) {
+        return new X12SqlAdapter().column(property);
+    }
+
     private String column(String property) {
         String col = ENVELOPE_COLUMNS.get(property);
         if (col != null) {

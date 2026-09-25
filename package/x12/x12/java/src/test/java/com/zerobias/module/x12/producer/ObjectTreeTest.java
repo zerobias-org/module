@@ -320,6 +320,38 @@ class ObjectTreeTest {
         assertFalse((Boolean) noPoller.documentData(R + "/stats").get("up"));
     }
 
+    @Test
+    void structuralCollectionsSortByEnvelopeColumnsAndBodyPaths() throws Exception {
+        // an envelope column: newest-first is the default, so ascending must invert it
+        List<String> asc = keys(page(facade.getCollectionElements(R + "/transactions", null,
+            "receivedAt", "asc", 50, 1, null)));
+        List<String> desc = keys(page(facade.getCollectionElements(R + "/transactions", null,
+            "receivedAt", "desc", 50, 1, null)));
+        assertEquals(asc, desc.stream().collect(java.util.stream.Collectors.collectingAndThen(
+            java.util.stream.Collectors.toList(), l -> {
+                java.util.Collections.reverse(l);
+                return l;
+            })), "asc is the reverse of desc");
+        assertEquals(5, asc.size());
+
+        // a body path sorts through the object graph, the same lookup a filter uses
+        JsonObject byControl = page(facade.getCollectionElements(R + "/transactions", null,
+            "st.st02", "asc", 50, 1, null));
+        assertEquals(5, byControl.get("count").getAsLong());
+
+        // sorting composes with a filter
+        JsonObject filtered = page(facade.getCollectionElements(R + "/transactions",
+            "(transactionType=835)", "receivedAt", "asc", 50, 1, null));
+        assertEquals(3, filtered.get("count").getAsLong());
+
+        // a bad direction and an illegal path are both 400s
+        assertEquals(400, assertThrows(ProducerException.class, () -> facade.getCollectionElements(
+            R + "/transactions", null, "receivedAt", "sideways", 10, 1, null)).httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class, () -> facade.getCollectionElements(
+            R + "/transactions", null, "drop table x;--", "asc", 10, 1, null)).httpStatus(),
+            "a sort property is never interpolated into SQL unvalidated");
+    }
+
     // --- write surface -------------------------------------------------------------
 
     @Test
@@ -377,6 +409,14 @@ class ObjectTreeTest {
 
     private static JsonObject item(JsonObject page, int i) {
         return page.getAsJsonArray("items").get(i).getAsJsonObject();
+    }
+
+    private static List<String> keys(JsonObject page) {
+        List<String> out = new ArrayList<>();
+        for (JsonElement e : page.getAsJsonArray("items")) {
+            out.add(e.getAsJsonObject().get("elementKey").getAsString());
+        }
+        return out;
     }
 
     private static List<String> names(JsonObject page) {

@@ -167,6 +167,63 @@ class BusinessCollectionsTest {
     }
 
     @Test
+    void sortByOrdersByTheColumnsDeclaredType() throws Exception {
+        // numeric: 220.00 before 240.00 ascending, and the reverse descending — never lexical
+        assertEquals(List.of("CLM0001", "CLM0002"), claimIds("paidAmount", "asc"));
+        assertEquals(List.of("CLM0002", "CLM0001"), claimIds("paidAmount", "desc"));
+        assertEquals(List.of("CLM0002", "CLM0001"), claimIds("chargedAmount", "asc"),
+            "250.00 sorts below 300.00");
+
+        // text, case-insensitive
+        assertEquals(List.of("CLM0001", "CLM0002"), claimIds("patientLastName", "asc"), "DOE, ROE");
+        assertEquals(List.of("CLM0002", "CLM0001"), claimIds("patientLastName", "desc"));
+
+        // a dimension sorts like any column, and a blank direction means ascending
+        assertEquals(2, page(facade.getCollectionElements(R + "/claims", null, "payerName", null,
+            50, 1, null)).get("count").getAsLong());
+
+        // sorting composes with a filter and with a segment
+        String byPayer = R + "/claims/by-payerName/" + ObjectTree.encodeSegment("EXAMPLE HEALTH PLAN");
+        JsonObject scoped = page(facade.getCollectionElements(byPayer, "(paidAmount>=220)",
+            "paidAmount", "desc", 50, 1, null));
+        assertEquals(2, scoped.get("count").getAsLong());
+        assertEquals("CLM0002", scoped.getAsJsonArray("items").get(0).getAsJsonObject()
+            .get("claimId").getAsString());
+
+        // service lines: three rows, ordered by paid amount
+        JsonObject lines = page(facade.getCollectionElements(R + "/service-lines", null,
+            "paidAmount", "asc", 50, 1, null));
+        assertEquals(3, lines.get("count").getAsLong());
+        assertEquals("36415", lines.getAsJsonArray("items").get(0).getAsJsonObject()
+            .get("procedureCode").getAsString(), "60.00 is the cheapest line");
+    }
+
+    @Test
+    void anAbsentSortValueSortsLastInBothDirections() throws Exception {
+        // revenueCode is null on every professional line, so it must not lead either direction
+        for (String dir : List.of("asc", "desc")) {
+            JsonObject lines = page(facade.getCollectionElements(R + "/service-lines", null,
+                "revenueCode", dir, 50, 1, null));
+            assertEquals(3, lines.get("count").getAsLong());
+            assertTrue(lines.getAsJsonArray("items").get(0).getAsJsonObject().get("revenueCode").isJsonNull(),
+                "all null here, so order is stable rather than arbitrary");
+        }
+    }
+
+    @Test
+    void aBadSortIsRejected() {
+        ProducerException unknown = assertThrows(ProducerException.class, () -> facade.getCollectionElements(
+            R + "/claims", null, "nope", "asc", 10, 1, null));
+        assertEquals(400, unknown.httpStatus());
+        assertTrue(unknown.getMessage().contains("nope"), unknown.getMessage());
+
+        ProducerException dir = assertThrows(ProducerException.class, () -> facade.getCollectionElements(
+            R + "/claims", null, "paidAmount", "sideways", 10, 1, null));
+        assertEquals(400, dir.httpStatus());
+        assertTrue(dir.getMessage().contains("asc"), dir.getMessage());
+    }
+
+    @Test
     void anUnknownColumnIsReportedNotSilentlyEmpty() {
         ProducerException e = assertThrows(ProducerException.class, () -> facade.getCollectionElements(
             R + "/claims", "(nope=1)", null, null, 10, 1, null));
@@ -194,6 +251,16 @@ class BusinessCollectionsTest {
     private long filtered(String collection, String filter) throws Exception {
         return page(facade.getCollectionElements(R + collection, filter, null, null, 50, 1, null))
             .get("count").getAsLong();
+    }
+
+    private List<String> claimIds(String sortBy, String sortDir) throws Exception {
+        JsonObject page = page(facade.getCollectionElements(R + "/claims", null, sortBy, sortDir,
+            50, 1, null));
+        List<String> out = new ArrayList<>();
+        for (var el : page.getAsJsonArray("items")) {
+            out.add(el.getAsJsonObject().get("claimId").getAsString());
+        }
+        return out;
     }
 
     private static JsonObject page(String json) {

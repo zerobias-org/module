@@ -56,16 +56,7 @@ final class BusinessFilter {
      * getters are reflected — the same approach {@code X12SqlAdapter} takes for the SQL side.
      */
     private static void requireKnownAttributes(EntityMapping mapping, Expression expression) {
-        final Map<String, Boolean> known = new LinkedHashMap<>();
-        for (EntityMapping.Column c : mapping.columns()) {
-            known.put(c.name(), true);
-        }
-        for (EntityMapping.Dimension d : mapping.dimensions()) {
-            known.put(d.name(), true);
-        }
-        known.put("elementKey", true);
-        known.put("fileId", true);
-
+        final Map<String, String> known = mapping.attributes();
         final List<String> unknown = new ArrayList<>();
         collectAttributes(expression, unknown, known);
         if (!unknown.isEmpty()) {
@@ -75,7 +66,7 @@ final class BusinessFilter {
     }
 
     private static void collectAttributes(Expression expression, List<String> unknown,
-            Map<String, Boolean> known) {
+            Map<String, String> known) {
         final Object property = invokeOrNull(expression, "getProperty");
         if (property != null) {
             final String name = property.toString();

@@ -120,6 +120,29 @@ public final class EntityMapping {
         return null;
     }
 
+    /**
+     * Everything filterable and sortable on this entity: its columns, the dimensions it
+     * carries, and the provenance fields every row has. One definition, so a filter and a sort
+     * can never disagree about what exists.
+     */
+    public Map<String, String> attributes() {
+        final Map<String, String> out = new LinkedHashMap<>();
+        for (Column c : columns) {
+            out.put(c.name(), c.dataType());
+        }
+        for (Dimension d : dimensions) {
+            out.put(d.name(), d.dataType());
+        }
+        out.put("elementKey", "string");
+        out.put("fileId", "string");
+        return out;
+    }
+
+    /** The declared type of an attribute, or null when the entity has no such attribute. */
+    public String typeOf(String attribute) {
+        return attributes().get(attribute);
+    }
+
     public Column column(String columnName) {
         for (Column c : columns) {
             if (c.name().equals(columnName)) {

@@ -19,12 +19,12 @@ properties:
   ackDurability:
     type: string
     description: >-
-      SQLite durability for the consume path. 'normal' (PRAGMA synchronous=NORMAL)
-      is faster; 'full' (synchronous=FULL, fsync per row) closes the WAL-window
-      gap between "committed" and "renamed .done". Daemon-level; the EFFECTIVE
+      SQLite durability for the consume path. 'full' (the default; synchronous=FULL,
+      fsync per commit) closes the WAL-window gap between "committed" and "renamed
+      .done"; 'normal' (synchronous=NORMAL) is faster but can lose a file on power loss. Daemon-level; the EFFECTIVE
       value comes from runtimeConfig.config.ackDurability. (DESIGN §8.1)
     enum: [normal, full]
-    default: normal
+    default: full
   senderDiscriminator:
     type: string
     description: >-

@@ -2,9 +2,9 @@
 -- WAL mode handles concurrent reader/writer; the single Java process owns one
 -- writer thread. Timestamps are epoch-millis INTEGERs (see BufferStore).
 --
--- synchronous defaults to NORMAL (fsync at WAL checkpoints). Operators set
--- config.ackDurability=full -> synchronous=FULL (fsync per commit) for a zero-loss
--- consume path; BufferStore applies that PRAGMA at open, so it is NOT pinned here.
+-- The synchronous PRAGMA at the end is only a placeholder: BufferStore applies
+-- config.ackDurability at open, overriding it — full (the default) -> synchronous=FULL (fsync
+-- per commit) for a zero-loss consume path; normal -> NORMAL (fsync at WAL checkpoints).
 
 -- One row per interchange FILE discovered in an inbox. Rows are never evicted by
 -- retention — they are the audit trail, and the checksum index is what keeps a

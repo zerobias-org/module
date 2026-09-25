@@ -565,6 +565,10 @@ Durability (`ackDurability`), drain/lease SQL, retention sweeper (acked rows onl
 are never evicted — they are the audit trail), and backpressure are as in hl7/v2 §8, with these
 x12 specifics:
 
+- **`ackDurability` defaults to `full`** (`PRAGMA synchronous=FULL`, fsync per commit). The
+  `.done` rename is the ack, so under `normal` a power loss can roll back a commit whose file was
+  already renamed — that file is lost with nothing left to retry. Only an explicit `normal`
+  weakens it; an unknown value keeps `full`.
 - **Deletes are batched and atomic with the graph.** `purge` and both retention axes delete
   in batches of 500 acked rows (oldest `acked_at` first); each batch is ONE SQL transaction
   that removes the rows *and* their `entities`, `entity_values` and `transaction_dims`, so a

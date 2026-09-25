@@ -60,7 +60,11 @@ config:
   consumedSuffix: ".done"
   errorSuffix: ".error"
   # SQLite durability for the consume path, applied at buffer open. (DESIGN §8.1)
-  ackDurability: normal
+  # full = synchronous=FULL, fsync per commit. The .done rename is the ack, so with
+  # `normal` a power loss after the rename can roll back a commit whose file is already
+  # marked consumed — that file is lost. Choose `normal` only for throughput you have
+  # measured a need for.
+  ackDurability: full
   # File management over the mounted volume (DESIGN §2.9): uploadBinaryContent,
   # createChildObject (mkdir) and deleteObject under the live /x12-receiver/inbox
   # branch. DEFAULT false, and deliberately so — this is a revenue-cycle feed, and an

@@ -25,7 +25,7 @@ import java.util.Set;
  *                  "pattern": "*.{x12,edi,txt,835,837,277,999,dat}",
  *                  "pollIntervalSec": 30, "stableForSec": 60 } ],
  *   "consumedSuffix": ".done", "errorSuffix": ".error",
- *   "ackDurability": "normal",
+ *   "ackDurability": "full",
  *   "retention": { "maxBytes": 10737418240, "maxAge": "P90D" },
  *   "allowBareTransactionSets": false,
  *   "allowFileManagement": false,
@@ -105,7 +105,7 @@ public record ModuleRuntimeConfig(
         return new ModuleRuntimeConfig(
             List.of(new SourceConfig(DEFAULT_SOURCE_NAME, DEFAULT_SOURCE_PATH, DEFAULT_SOURCE_PATTERN,
                 SourceConfig.DEFAULT_POLL_INTERVAL_SEC, SourceConfig.DEFAULT_STABLE_FOR_SEC)),
-            DEFAULT_CONSUMED_SUFFIX, DEFAULT_ERROR_SUFFIX, false, RetentionConfig.none(), false, false);
+            DEFAULT_CONSUMED_SUFFIX, DEFAULT_ERROR_SUFFIX, true, RetentionConfig.none(), false, false);
     }
 
     /** Resolve from the process env and the image's runtimeConfig.yml location. */
@@ -161,7 +161,14 @@ public record ModuleRuntimeConfig(
             }
             String consumed = str(obj, "consumedSuffix", d.consumedSuffix());
             String error = str(obj, "errorSuffix", d.errorSuffix());
-            boolean full = "full".equalsIgnoreCase(str(obj, "ackDurability", "normal"));
+            // full unless explicitly "normal": the rename is the ack, so a commit that a power
+            // loss can roll back after the .done rename loses the file for good. An unknown
+            // value keeps the safe setting rather than silently weakening it.
+            String durability = str(obj, "ackDurability", "full");
+            boolean full = !"normal".equalsIgnoreCase(durability);
+            if (full && !"full".equalsIgnoreCase(durability)) {
+                LOG.warn("ackDurability '{}' is neither full nor normal; using full", durability);
+            }
             boolean bare = bool(obj, "allowBareTransactionSets");
             boolean fileMgmt = bool(obj, "allowFileManagement");
             long maxFileBytes = longValue(obj, "maxFileBytes", DEFAULT_MAX_FILE_BYTES);

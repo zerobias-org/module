@@ -107,8 +107,12 @@ public final class X12ProducerFacade {
     public String getChildren(String objectId, int pageSize, int pageNumber) throws SQLException {
         requireId(objectId);
         int size = checkPaging(pageSize, pageNumber);
+        int from = (int) Math.min(Integer.MAX_VALUE, (long) (pageNumber - 1) * size);
+        ObjectTreeApi.ChildPage paged = tree.childPage(objectId, size, from);
+        if (paged != null) {
+            return pagedResults(paged.items(), paged.total(), size, pageNumber);
+        }
         List<Map<String, Object>> children = tree.children(objectId);
-        int from = (pageNumber - 1) * size;
         int total = children.size();
         List<Map<String, Object>> page = from >= total
             ? List.of()

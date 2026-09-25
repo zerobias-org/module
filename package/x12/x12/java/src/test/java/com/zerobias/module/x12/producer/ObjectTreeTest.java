@@ -195,6 +195,66 @@ class ObjectTreeTest {
     }
 
     @Test
+    void filesArePagedInSqlNotReadWhole() throws Exception {
+        // A tree that refuses the unpaged /files read: getChildren must page it in storage.
+        ObjectTreeApi guarded = new ObjectTreeApi() {
+            @Override
+            public Map<String, Object> object(String id) throws java.sql.SQLException {
+                return tree.object(id);
+            }
+
+            @Override
+            public List<Map<String, Object>> children(String id) throws java.sql.SQLException {
+                if ((R + "/files").equals(id)) {
+                    throw new AssertionError("/files read whole to serve one page");
+                }
+                return tree.children(id);
+            }
+
+            @Override
+            public ChildPage childPage(String id, int limit, int offset) throws java.sql.SQLException {
+                return tree.childPage(id, limit, offset);
+            }
+
+            @Override
+            public Collection resolveCollection(String id) throws java.sql.SQLException {
+                return tree.resolveCollection(id);
+            }
+
+            @Override
+            public Map<String, Object> documentData(String id) throws java.sql.SQLException {
+                return tree.documentData(id);
+            }
+
+            @Override
+            public BinaryContent downloadBinary(String id) throws java.sql.SQLException {
+                return tree.downloadBinary(id);
+            }
+        };
+        X12ProducerFacade f = new X12ProducerFacade(buffer, guarded, SCHEMAS, OperationsApi.NONE);
+        long total = buffer.fileCount();
+        assertTrue(total >= 2, "fixture has at least two files");
+
+        List<String> all = new java.util.ArrayList<>();
+        page(f.getChildren(R + "/files", 100, 1)).getAsJsonArray("items")
+            .forEach(i -> all.add(i.getAsJsonObject().get("id").getAsString()));
+        assertEquals(total, all.size());
+        List<String> paged = new java.util.ArrayList<>();
+        for (int p = 1; p <= total; p++) {
+            JsonObject one = page(f.getChildren(R + "/files", 1, p));
+            assertEquals(total, one.get("count").getAsLong(), "count is the total, not the page");
+            assertEquals(1, one.getAsJsonArray("items").size());
+            paged.add(one.getAsJsonArray("items").get(0).getAsJsonObject().get("id").getAsString());
+        }
+        assertEquals(all, paged, "same order page by page as in one page");
+        assertEquals(0, page(f.getChildren(R + "/files", 1, (int) total + 1)).getAsJsonArray("items").size());
+        // the unpaged children() still lists the same nodes, same order
+        List<String> unpaged = new java.util.ArrayList<>();
+        tree.children(R + "/files").forEach(m -> unpaged.add((String) m.get("id")));
+        assertEquals(all, unpaged);
+    }
+
+    @Test
     void segmentEncodingRoundTrips() {
         for (String v : List.of("/var/lib/x12/inbox/a.835", "plain", "50%/off", "%2F", "a%b/c%25")) {
             assertEquals(v, ObjectTree.decodeSegment(ObjectTree.encodeSegment(v)), v);

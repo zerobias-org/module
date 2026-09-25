@@ -49,6 +49,20 @@ public interface ObjectTreeApi {
     /** Direct children of {@code id} (emergent from the buffer's DISTINCT values), or throw {@code noSuchObjectError}. (§2.1) */
     List<Map<String, Object>> children(String id) throws SQLException;
 
+    /** One page of children plus the total, computed by the tree rather than by slicing {@link #children}. */
+    record ChildPage(List<Map<String, Object>> items, long total) {
+    }
+
+    /**
+     * A page of {@code id}'s children pushed down to storage, or {@code null} when {@code id}
+     * has no such path and the caller should page {@link #children} in memory. Only an
+     * unbounded branch needs this: {@code /files} is every files row ever recorded (never
+     * evicted — the audit trail), so reading all of it to serve one page grows without limit.
+     */
+    default ChildPage childPage(String id, int limit, int offset) throws SQLException {
+        return null;
+    }
+
     /**
      * Resolve a collection id to its buffer scope, or throw: {@code noSuchObjectError} for
      * an unknown discriminator value, {@code UnsupportedOperationError} if the id is a

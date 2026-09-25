@@ -399,7 +399,9 @@ public final class ObjectTree implements ObjectTreeApi {
                 out.add(object(OPS));
                 return out;
             case FILES:
-                // Every files row (they are never evicted — the audit trail), newest discovery first.
+                // Every files row (they are never evicted — the audit trail), newest discovery
+                // first. The paged read is childPage(); this unpaged form is kept for callers
+                // that genuinely want the whole branch.
                 for (FileRow f : buffer.fileRows(null, Integer.MAX_VALUE, 0)) {
                     out.add(fileNode(f));
                 }
@@ -432,6 +434,23 @@ public final class ObjectTree implements ObjectTreeApi {
             default:
                 return dynamicChildren(id);
         }
+    }
+
+    /**
+     * {@code /files} paged in SQL ({@code LIMIT/OFFSET} + {@code count(*)}), same order as
+     * {@link #children}: the branch is every files row ever recorded, so it is never read
+     * whole to serve one page. Every other id pages in memory (null).
+     */
+    @Override
+    public ChildPage childPage(String id, int limit, int offset) throws SQLException {
+        if (!FILES.equals(id)) {
+            return null;
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (FileRow f : buffer.fileRows(null, limit, offset)) {
+            items.add(fileNode(f));
+        }
+        return new ChildPage(items, buffer.countFilesWhere(null));
     }
 
     /**

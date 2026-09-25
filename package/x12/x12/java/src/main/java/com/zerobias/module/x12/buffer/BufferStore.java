@@ -46,7 +46,7 @@ public final class BufferStore implements AutoCloseable {
 
     static final String TX_COLS = "id, element_key, file_id, source_name, received_at, isa_control, "
         + "gs_control, st_control, gs08, transaction_type, sender_id, receiver_id, interchange_at, "
-        + "schema_id, raw_x12, mapped_json, parser_error_count, envelope, status, lease_id, "
+        + "schema_id, raw_x12, parser_error_count, envelope, status, lease_id, "
         + "in_flight_until, acked_at";
 
     static final String FILE_COLS = "id, file_id, file_path, file_name, source_name, current_path, size_bytes, "
@@ -210,12 +210,32 @@ public final class BufferStore implements AutoCloseable {
         return insertTransactionUnsynchronized(row);
     }
 
+    /** Insert a transaction row together with its object graph, in one transaction. */
+    public synchronized boolean insertTransaction(TransactionRow row, List<EntityGraph.Entity> graph)
+            throws SQLException {
+        final boolean prev = conn.getAutoCommit();
+        conn.setAutoCommit(false);
+        try {
+            final boolean inserted = insertTransactionUnsynchronized(row);
+            if (inserted && graph != null && !graph.isEmpty()) {
+                insertGraphUnsynchronized(row, graph);
+            }
+            conn.commit();
+            return inserted;
+        } catch (SQLException | RuntimeException e) {
+            conn.rollback();
+            throw e;
+        } finally {
+            conn.setAutoCommit(prev);
+        }
+    }
+
     private boolean insertTransactionUnsynchronized(TransactionRow row) throws SQLException {
         final String sql = "INSERT INTO transactions (element_key, file_id, source_name, received_at, "
             + "isa_control, gs_control, st_control, gs08, transaction_type, sender_id, receiver_id, "
-            + "interchange_at, schema_id, raw_x12, mapped_json, parser_error_count, envelope, status, "
+            + "interchange_at, schema_id, raw_x12, parser_error_count, envelope, status, "
             + "lease_id, in_flight_until, acked_at) "
-            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(element_key) DO NOTHING";
+            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(element_key) DO NOTHING";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             int i = 1;
             ps.setString(i++, row.elementKey());
@@ -232,7 +252,6 @@ public final class BufferStore implements AutoCloseable {
             setNullableInstant(ps, i++, row.interchangeAt());
             ps.setString(i++, row.schemaId());
             ps.setBytes(i++, row.rawX12());
-            ps.setString(i++, row.mappedJson());
             ps.setInt(i++, row.parserErrorCount());
             ps.setString(i++, row.envelope() == null ? TransactionRow.ENVELOPE_FILE : row.envelope());
             ps.setString(i++, row.status() == null ? Status.NEW.wire() : row.status().wire());
@@ -526,13 +545,12 @@ public final class BufferStore implements AutoCloseable {
      * {@code status <> 'in_flight'} so a row leased between {@link #recastable} and
      * this update is not overwritten mid-flight. Returns true iff a row was updated.
      */
-    public synchronized boolean updateMapping(long id, String schemaId, String mappedJson)
+    public synchronized boolean updateSchemaId(long id, String schemaId)
             throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE transactions SET schema_id=?, mapped_json=? WHERE id=? AND status <> 'in_flight'")) {
+                "UPDATE transactions SET schema_id=? WHERE id=? AND status <> 'in_flight'")) {
             ps.setString(1, schemaId);
-            ps.setString(2, mappedJson);
-            ps.setLong(3, id);
+            ps.setLong(2, id);
             return ps.executeUpdate() > 0;
         }
     }
@@ -732,7 +750,6 @@ public final class BufferStore implements AutoCloseable {
             instant(rs, "interchange_at"),
             rs.getString("schema_id"),
             rs.getBytes("raw_x12"),
-            rs.getString("mapped_json"),
             rs.getInt("parser_error_count"),
             rs.getString("envelope"),
             Status.fromWire(rs.getString("status")),
@@ -1078,6 +1095,114 @@ public final class BufferStore implements AutoCloseable {
         return out;
     }
 
+    /**
+     * The typed document for one transaction set, reassembled from its graph (DESIGN §8.4).
+     * There is no stored document — this IS the read path for {@code take}, the structural
+     * collections and {@code validate}.
+     */
+    public synchronized Map<String, Object> documentFor(String elementKey) throws SQLException {
+        return EntityGraph.assemble(graphFor(elementKey));
+    }
+
+    /**
+     * Documents for a page of transaction sets in two queries rather than two per row: one
+     * pass over {@code entities}, one over {@code entity_values}, then assemble each.
+     */
+    public synchronized Map<String, Map<String, Object>> documentsFor(List<String> elementKeys)
+            throws SQLException {
+        final Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        if (elementKeys == null || elementKeys.isEmpty()) {
+            return out;
+        }
+        final String in = elementKeys.stream().map(k -> "?").collect(java.util.stream.Collectors.joining(","));
+        final Map<String, Map<Long, EntityGraph.Entity>> byKey = new LinkedHashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT " + ENTITY_COLS + " FROM entities WHERE element_key IN (" + in + ") ORDER BY id")) {
+            for (int i = 0; i < elementKeys.size(); i++) {
+                ps.setString(i + 1, elementKeys.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    final long id = rs.getLong("id");
+                    final long parent = rs.getLong("parent_id");
+                    final EntityGraph.Entity e = EntityGraph.Entity.of((int) id,
+                        rs.wasNull() ? null : (int) parent, rs.getString("schema_id"), rs.getString("xid"),
+                        rs.getString("kind"), rs.getString("property"), rs.getString("path"),
+                        rs.getInt("ordinal"));
+                    final String order = rs.getString("property_order");
+                    if (order != null && !order.isEmpty()) {
+                        e.propertyOrder.addAll(List.of(order.split(ORDER_SEP)));
+                    }
+                    byKey.computeIfAbsent(rs.getString("element_key"), k -> new LinkedHashMap<>()).put(id, e);
+                }
+            }
+        }
+        if (byKey.isEmpty()) {
+            return out;
+        }
+        final Map<Long, EntityGraph.Entity> flat = new LinkedHashMap<>();
+        byKey.values().forEach(flat::putAll);
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT v.entity_id, v.property, v.data_type, v.value_text, v.value_date "
+                + "FROM entity_values v JOIN entities e ON e.id = v.entity_id "
+                + "WHERE e.element_key IN (" + in + ") ORDER BY v.entity_id, v.seq")) {
+            for (int i = 0; i < elementKeys.size(); i++) {
+                ps.setString(i + 1, elementKeys.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    final EntityGraph.Entity e = flat.get(rs.getLong("entity_id"));
+                    if (e == null) {
+                        continue;
+                    }
+                    final String type = rs.getString("data_type");
+                    final String text = rs.getString("value_text");
+                    final long date = rs.getLong("value_date");
+                    e.values.add(new EntityGraph.Value(rs.getString("property"), type, text,
+                        EntityGraph.exactNumber(type, text), rs.wasNull() ? null : date));
+                }
+            }
+        }
+        for (Map.Entry<String, Map<Long, EntityGraph.Entity>> e : byKey.entrySet()) {
+            out.put(e.getKey(), EntityGraph.assemble(List.copyOf(e.getValue().values())));
+        }
+        return out;
+    }
+
+    /**
+     * Replace one transaction set's graph with a re-derived one and rebind its schema id —
+     * {@code ops/recast} (DESIGN §2.5). One transaction: a half-replaced graph would be a
+     * transaction whose content is partly old and partly new. Dimensions are left alone; they
+     * describe the interchange, not the materialization.
+     */
+    public synchronized boolean replaceGraph(TransactionRow row, String schemaId,
+            List<EntityGraph.Entity> graph) throws SQLException {
+        final boolean prev = conn.getAutoCommit();
+        conn.setAutoCommit(false);
+        try {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE transactions SET schema_id=? WHERE id=? AND status <> 'in_flight'")) {
+                ps.setString(1, schemaId);
+                ps.setLong(2, row.id());
+                if (ps.executeUpdate() == 0) {
+                    conn.rollback();
+                    return false;   // leased rows are never rewritten under the consumer
+                }
+            }
+            deleteGraphRows(List.of(row.elementKey()));
+            if (graph != null && !graph.isEmpty()) {
+                insertGraphUnsynchronized(row.withSchemaId(schemaId), graph);
+            }
+            conn.commit();
+            return true;
+        } catch (SQLException | RuntimeException e) {
+            conn.rollback();
+            throw e;
+        } finally {
+            conn.setAutoCommit(prev);
+        }
+    }
+
     /** How many instances a transaction set has (a cheap "is the graph there?" probe). */
     public synchronized long entityCount(String elementKey) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
@@ -1098,6 +1223,18 @@ public final class BufferStore implements AutoCloseable {
         if (elementKeys == null || elementKeys.isEmpty()) {
             return 0;
         }
+        return deleteGraphRows(elementKeys, true);
+    }
+
+    /** Entities + values for these keys; {@code withDims} also drops their dimensions. */
+    private int deleteGraphRows(List<String> elementKeys) throws SQLException {
+        return deleteGraphRows(elementKeys, false);
+    }
+
+    private int deleteGraphRows(List<String> elementKeys, boolean withDims) throws SQLException {
+        if (elementKeys == null || elementKeys.isEmpty()) {
+            return 0;
+        }
         final String in = elementKeys.stream().map(k -> "?").collect(java.util.stream.Collectors.joining(","));
         try (PreparedStatement vals = conn.prepareStatement(
                 "DELETE FROM entity_values WHERE entity_id IN "
@@ -1112,7 +1249,9 @@ public final class BufferStore implements AutoCloseable {
                 dims.setString(i + 1, elementKeys.get(i));
             }
             vals.executeUpdate();
-            dims.executeUpdate();
+            if (withDims) {
+                dims.executeUpdate();
+            }
             return ents.executeUpdate();
         }
     }

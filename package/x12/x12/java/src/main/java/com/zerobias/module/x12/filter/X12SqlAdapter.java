@@ -22,9 +22,10 @@ import java.util.Set;
  *       receiverId, receivedAt, status, leaseId} (the DESIGN §2.6 list) plus the other
  *       envelope fields that ARE real columns ({@code isaControlNumber, gsControlNumber,
  *       stControlNumber, interchangeDate, envelope, parserErrorCount, schemaId}).</li>
- *   <li>Everything else is a dotted path into the typed transaction body and resolves
- *       to {@code json_extract(mapped_json, '$.<path>')} via SQLite's JSON1 — e.g.
- *       {@code (loop2100.clp.clp02=1)}.</li>
+ *   <li>Everything else is a dotted path into the transaction body and resolves into the
+ *       OBJECT GRAPH (DESIGN §8.4) — {@code (loop2100.clp.clp02=1)} becomes a scalar
+ *       subquery for the {@code clp02} of a {@code clp} instance in that transaction set.
+ *       There is no stored document to {@code json_extract} from.</li>
  * </ul>
  *
  * <p>Two deliberate deviations from the SQL generic module's adapter:
@@ -200,7 +201,47 @@ public class X12SqlAdapter implements Adapter {
         if (col != null) {
             return col;
         }
-        return "json_extract(mapped_json, " + jsonPath(property) + ")";
+        return graphValue(property);
+    }
+
+    /**
+     * A body property resolves into the object graph (DESIGN §8.4). There is no stored
+     * document to {@code json_extract} from any more: the last path segment is the element and
+     * the one before it names the structure that carries it, so {@code loop2100.clp.clp04}
+     * becomes "the {@code clp04} of a {@code clp} instance in this transaction set".
+     *
+     * <p>A scalar subquery, ordered by instance id and limited to one, so the semantics match
+     * what {@code json_extract} gave: the FIRST matching instance, not "any". A filter that
+     * needs per-instance semantics — every claim over 1000 rather than a transaction whose
+     * first claim is — belongs on a business collection, where the grain is the row
+     * (DESIGN §8.5).
+     *
+     * <p>Numerics come back through {@code value_num / 1000000.0}: the column holds exact
+     * integer micro-units, so this is the comparison value, while the stored value itself
+     * stays exact in {@code value_text}.
+     */
+    private String graphValue(String property) {
+        for (String part : property.split("\\.")) {
+            if (part.isEmpty() || !part.matches("[A-Za-z0-9_]+")) {
+                throw new IllegalArgumentException("Illegal property path segment: '" + part + "'");
+            }
+        }
+        final int dot = property.lastIndexOf('.');
+        final String element = dot < 0 ? property : property.substring(dot + 1);
+        final String parentPath = dot < 0 ? null : property.substring(0, dot);
+        final String structure = parentPath == null ? null
+            : parentPath.substring(parentPath.lastIndexOf('.') + 1);
+        final StringBuilder sb = new StringBuilder("(SELECT CASE v2.data_type"
+            + " WHEN 'decimal' THEN v2.value_num / 1000000.0"
+            + " WHEN 'integer' THEN v2.value_num / 1000000"
+            + " ELSE v2.value_text END"
+            + " FROM entity_values v2 JOIN entities e2 ON e2.id = v2.entity_id"
+            + " WHERE e2.element_key = transactions.element_key AND v2.property = ")
+            .append(lit(element));
+        if (structure != null) {
+            sb.append(" AND e2.property = ").append(lit(structure));
+        }
+        return sb.append(" ORDER BY e2.id LIMIT 1)").toString();
     }
 
     private boolean isEpochColumn(String property) {

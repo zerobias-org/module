@@ -73,10 +73,10 @@ class MaterializerRecastHookTest {
         MaterializerRecastHook hook = new MaterializerRecastHook(new StructureResolver(), clock);
         for (String key : List.of(key835, key837)) {
             TransactionRow row = buffer.byElementKey(key).orElseThrow();
-            assertTrue(hook.recast(row).isEmpty(), key + ": identical → nothing to rewrite");
             RecastHook.Mapping m = hook.rematerialize(row);
             assertEquals(row.schemaId(), m.schemaId());
-            assertEquals(row.mappedJson(), m.mappedJson());
+            assertEquals(buffer.documentFor(key), m.body(), key + ": identical → nothing to rewrite");
+            assertTrue(hook.reproduces(m, row, buffer.documentFor(key)));
             assertEquals(List.of(), m.parserErrors());
         }
         Map<String, Object> out = ops.invoke("recast", Map.of());
@@ -103,17 +103,20 @@ class MaterializerRecastHookTest {
             String key = consumer.consume(cfg.sources().get(0), a, java.time.Instant.now()).fileId() + ":101:0001";
             TransactionRow row = b.byElementKey(key).orElseThrow();
             RecastHook.Mapping m = new MaterializerRecastHook(resolver, system).rematerialize(row);
-            assertEquals(row.mappedJson(), m.mappedJson(), "receivedAt must round-trip through the epoch-millis column");
-            assertTrue(m.reproduces(row));
+            assertEquals(b.documentFor(row.elementKey()), m.body(),
+                "the re-derived body must equal what the graph holds");
+            assertTrue(m.reproduces(row, b.documentFor(row.elementKey())));
         }
     }
 
     @Test
     void recastRestoresAStaleMapping() throws Exception {
         TransactionRow row = buffer.byElementKey(key835).orElseThrow();
-        String original = row.mappedJson();
-        assertTrue(buffer.updateMapping(row.id(), StructureResolver.ENVELOPE_SCHEMA, "{}"), "simulate a stale mapping");
-        assertEquals("{}", buffer.byElementKey(key835).orElseThrow().mappedJson());
+        java.util.Map<String, Object> original = buffer.documentFor(key835);
+        assertFalse(original.isEmpty());
+        // Simulate a stale materialization: the schema is rebound and the graph emptied.
+        assertTrue(buffer.replaceGraph(row, StructureResolver.ENVELOPE_SCHEMA, java.util.List.of()));
+        assertEquals(java.util.Map.of(), buffer.documentFor(key835));
 
         Map<String, Object> out = ops.invoke("recast", Map.of("filter", "(transactionType=835)"));
         assertEquals(1, out.get("examined"));
@@ -122,9 +125,11 @@ class MaterializerRecastHookTest {
         assertEquals(0, out.get("failed"));
 
         TransactionRow restored = buffer.byElementKey(key835).orElseThrow();
-        assertEquals(original, restored.mappedJson(), "the real JSON is back");
+        assertEquals(original, buffer.documentFor(key835), "the real graph is back");
         assertEquals(TestRows.SCHEMA_835, restored.schemaId());
-        JsonObject json = JsonParser.parseString(restored.mappedJson()).getAsJsonObject();
+        // the envelope is overlaid at read time, so it is on the element rather than the body
+        JsonObject json = JsonParser.parseString(new com.google.gson.Gson().toJson(
+            X12ProducerFacade.toElement(restored, buffer.documentFor(key835)))).getAsJsonObject();
         assertEquals(key835, json.get("elementKey").getAsString());
         assertEquals("remit.835", json.get("fileName").getAsString());
         assertTrue(json.has("header"), json.keySet().toString());
@@ -143,7 +148,9 @@ class MaterializerRecastHookTest {
         assertEquals(List.of(), fresh.get("parserErrors"));
 
         TransactionRow row = buffer.byElementKey(key837).orElseThrow();
-        buffer.updateMapping(row.id(), row.schemaId(), "{\"header\":{}}");
+        // Tamper with the stored representation: replace the graph with one bare scalar.
+        buffer.replaceGraph(row, row.schemaId(),
+            TestRows.graphOf(row.schemaId(), java.util.Map.of("tampered", "yes")));
         Map<String, Object> tampered = ops.invoke("validate", Map.of("elementKey", key837));
         assertEquals(false, tampered.get("repsAgree"));
         @SuppressWarnings("unchecked")
@@ -152,8 +159,9 @@ class MaterializerRecastHookTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> re = (Map<String, Object>) tampered.get("rematerialized");
         assertEquals(true, re.get("valid"));
-        assertNotEquals("{\"header\":{}}", ((MaterializerRecastHook) new MaterializerRecastHook(new StructureResolver(), clock))
-            .rematerialize(buffer.byElementKey(key837).orElseThrow()).mappedJson());
+        assertNotEquals(java.util.Map.of("tampered", "yes"),
+            new MaterializerRecastHook(new StructureResolver(), clock)
+                .rematerialize(buffer.byElementKey(key837).orElseThrow()).body());
     }
 
     @Test
@@ -163,13 +171,14 @@ class MaterializerRecastHookTest {
         buffer.insertTransaction(TransactionRow.builder()
             .fileId("/in/y.835@000000000000").sourceName("inbox").gsControl("8").stControl("0008").deriveElementKey()
             .receivedAt(TestRows.BASE).gs08("005010X221A1").transactionType("835").schemaId(TestRows.SCHEMA_835)
-            .rawX12("garbage".getBytes()).mappedJson("{}").build());
+            .rawX12("garbage".getBytes()).build());
         Map<String, Object> out = ops.invoke("recast", Map.of());
         assertEquals(4, out.get("examined"));
         assertEquals(2, out.get("failed"), "garbage raw + an ST/SE with no body (imsweb rejects it)");
         assertEquals(0, out.get("recast"));
         assertEquals(2, out.get("unchanged"), "the real rows are untouched");
-        assertEquals("{}", buffer.byElementKey("/in/y.835@000000000000:8:0008").orElseThrow().mappedJson());
+        assertEquals(java.util.Map.of(), buffer.documentFor("/in/y.835@000000000000:8:0008"),
+            "an unparseable row keeps its (empty) graph");
 
         Map<String, Object> v = ops.invoke("validate", Map.of("elementKey", "/in/y.835@000000000000:8:0008"));
         assertEquals(false, v.get("repsAgree"));

@@ -236,9 +236,6 @@ public final class FileConsumer {
             tx.interchange().controlNumber(), tx.group().controlNumber(), tx.st02(), gs08, transactionType,
             tx.interchange().senderId(), tx.interchange().receiverId(), interchangeAt, receivedAt, envelope,
             parsed.errors().size());
-        Map<String, Object> json = TransactionJson.build(env, materializer, tx.loop());
-        String mapped = TransactionJson.toJson(json);
-
         // Flatten the same materialized tree into the queryable object graph. Built from the
         // body alone — the envelope columns live on the transaction row, so duplicating them
         // as entity values would make every filter ambiguous about which copy it hit.
@@ -258,7 +255,6 @@ public final class FileConsumer {
             .interchangeAt(interchangeAt)
             .schemaId(schemaId)
             .rawX12(tx.rawX12().getBytes(StandardCharsets.UTF_8))
-            .mappedJson(mapped)
             .parserErrorCount(parsed.errors().size())
             .envelope(envelope)
             .build();

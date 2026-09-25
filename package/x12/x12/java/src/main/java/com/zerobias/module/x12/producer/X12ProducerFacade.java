@@ -137,9 +137,12 @@ public final class X12ProducerFacade {
         String where = composeWhere(coll, filter);
 
         List<TransactionRow> rows = buffer.search(where, size, offset);
+        // One batched graph read for the page, not one per row (DESIGN §8.4).
+        final Map<String, Map<String, Object>> bodies = buffer.documentsFor(
+            rows.stream().map(TransactionRow::elementKey).toList());
         List<Map<String, Object>> elements = new ArrayList<>(rows.size());
         for (TransactionRow r : rows) {
-            elements.add(toElement(r));
+            elements.add(toElement(r, bodies.get(r.elementKey())));
         }
         long total = buffer.countWhere(where);
         return pagedResults(elements, total, size, pageNumber);
@@ -156,7 +159,7 @@ public final class X12ProducerFacade {
         if (rows.isEmpty()) {
             throw ProducerException.noSuchObject(objectId + " / " + elementKey);
         }
-        return GSON.toJson(toElement(rows.get(0)));
+        return GSON.toJson(toElement(rows.get(0), buffer.documentFor(rows.get(0).elementKey())));
     }
 
     // --- Schemas -----------------------------------------------------------
@@ -285,20 +288,17 @@ public final class X12ProducerFacade {
     // --- element mapping (DESIGN §5 envelope overlay) ----------------------
 
     /**
-     * Build a collection element from a row: the typed body ({@code mapped_json})
+     * Build a collection element from a row and the document reassembled from its object graph
      * overlaid with the authoritative envelope (DESIGN §5): {@code elementKey, fileId,
      * fileName, sourceName, isaControlNumber, gsControlNumber, stControlNumber, gs08,
      * transactionType, senderId, receiverId, interchangeDate, receivedAt, status, leaseId,
      * envelope, parserErrorCount}. Static so {@code X12Operations} can use it as its
      * element mapper without a facade reference.
      */
-    public static Map<String, Object> toElement(TransactionRow r) {
+    public static Map<String, Object> toElement(TransactionRow r, Map<String, Object> body) {
         Map<String, Object> element = new LinkedHashMap<>();
-        JsonObject body = r.mappedJson() == null ? null : GSON.fromJson(r.mappedJson(), JsonObject.class);
         if (body != null) {
-            for (String k : body.keySet()) {
-                element.put(k, GSON.fromJson(body.get(k), Object.class));
-            }
+            element.putAll(body);
         }
         element.put("elementKey", r.elementKey());
         element.put("fileId", r.fileId());

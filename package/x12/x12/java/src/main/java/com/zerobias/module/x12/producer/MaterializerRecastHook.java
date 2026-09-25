@@ -31,8 +31,16 @@ public final class MaterializerRecastHook implements RecastHook {
 
     @Override
     public Optional<Mapping> recast(TransactionRow row) throws Exception {
-        Mapping m = rematerialize(row);
-        return m.reproduces(row) ? Optional.empty() : Optional.of(m);
+        return Optional.of(rematerialize(row));
+    }
+
+    /**
+     * Whether a re-derived mapping matches what the buffer holds. The caller supplies the
+     * stored document (reassembled from the graph), because the hook has no buffer.
+     */
+    @Override
+    public boolean reproduces(Mapping mapping, TransactionRow row, java.util.Map<String, Object> stored) {
+        return mapping.reproduces(row, stored);
     }
 
     @Override
@@ -50,8 +58,18 @@ public final class MaterializerRecastHook implements RecastHook {
             FileRow.fileNameOf(row.fileId()), row.sourceName(), row.isaControl(), row.gsControl(), row.stControl(),
             row.gs08(), row.transactionType(), row.senderId(), row.receiverId(), row.interchangeAt(),
             row.receivedAt(), row.envelope(), row.parserErrorCount());
-        String json = TransactionJson.toJson(TransactionJson.build(env, materializer, tx.loop()));
-        return new Mapping(schemaId, json, parsed.errors());
+        // The materialized tree IS the content; the graph is how it is stored (DESIGN §8.4).
+        // Flattened here because only the hook holds the structure index it needs.
+        final java.util.Map<String, Object> body = materializer.isPresent()
+            ? materializer.get().materializeTransaction(tx.loop())
+            : new java.util.LinkedHashMap<>();
+        final java.util.List<com.zerobias.module.x12.materializer.EntityGraph.Entity> graph =
+            materializer.isPresent()
+                ? com.zerobias.module.x12.materializer.EntityGraph.flatten(materializer.get().index(), body)
+                : java.util.List.of();
+        // The envelope overlay is applied at read time by the facade, not stored.
+        assert env != null;
+        return new Mapping(schemaId, body, graph, parsed.errors());
     }
 
     /** The transaction set the row describes: by (GS06, ST02) when the raw carries several, else the only one. */

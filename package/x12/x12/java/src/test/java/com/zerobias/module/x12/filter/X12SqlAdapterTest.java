@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * DESIGN §2.6: the {@link X12SqlAdapter} renders RFC4515 filters to SQLite WHERE
  * clauses that select <em>exactly</em> the rows lite-filter's in-memory
  * {@code matches()} evaluator accepts — proven by running both over the same seeded
- * buffer. Envelope properties hit real columns; body paths go through json_extract.
+ * buffer. Envelope properties hit real columns; body paths resolve into the object graph.
  */
 class X12SqlAdapterTest {
 
@@ -77,9 +77,12 @@ class X12SqlAdapterTest {
             TransactionRow row = new TransactionRow(0, t.key(), t.key().substring(0, t.key().indexOf(':')), "inbox",
                 Instant.parse(t.receivedAt()), "000000001", "1", "0001", t.gs08(), t.type(), t.sender(), "RCV",
                 null, "schema:table:x12." + t.gs08() + "." + t.type(), ("raw-" + t.key()).getBytes(),
-                GSON.toJson(t.body()), 0, TransactionRow.ENVELOPE_FILE, Status.fromWire(t.status()),
+                0, TransactionRow.ENVELOPE_FILE, Status.fromWire(t.status()),
                 null, null, null);
-            assertTrue(store.insertTransaction(row), "insert " + t.key());
+            // The body lives in the object graph now, not a column (DESIGN §8.4).
+            assertTrue(store.insertTransaction(row,
+                com.zerobias.module.x12.buffer.TestRows.graphFromMap(row.schemaId(), t.body())),
+                "insert " + t.key());
         }
         return store;
     }
@@ -163,7 +166,7 @@ class X12SqlAdapterTest {
         assertTrue(X12Filter.toWhereClause("(interchangeDate<2026-01-01)").contains("interchange_at < (unixepoch("));
         // a JSON-path date stays text and uses unixepoch on the extracted value
         assertTrue(X12Filter.toWhereClause("(header.bpr.bpr16:withinDays:7)")
-            .contains("unixepoch(json_extract(mapped_json, '$.header.bpr.bpr16'))"));
+            .contains("unixepoch((SELECT CASE v2.data_type"), where);
     }
 
     @Test
@@ -195,10 +198,16 @@ class X12SqlAdapterTest {
         for (Map.Entry<String, String> e : expected.entrySet()) {
             String where = X12Filter.toWhereClause("(" + e.getKey() + "=x)");
             assertTrue(where.startsWith(e.getValue() + " "), e.getKey() + " -> " + where);
-            assertFalse(where.contains("json_extract"), e.getKey() + " is a column, not a JSON path");
+            assertFalse(where.contains("entity_values"), e.getKey() + " is a column, not a graph lookup");
         }
-        assertTrue(X12Filter.toWhereClause("(loop2100.clp.clp02=1)").contains("json_extract"));
-        assertTrue(X12Filter.toWhereClause("(fileName=x)").contains("json_extract"), "fileName is not a column");
+        // A body path is a graph lookup: the element, scoped to the structure that carries it.
+        String body = X12Filter.toWhereClause("(loop2100.clp.clp02=1)");
+        assertTrue(body.contains("FROM entity_values v2 JOIN entities e2"), body);
+        assertTrue(body.contains("v2.property = 'clp02'"), body);
+        assertTrue(body.contains("e2.property = 'clp'"), body);
+        assertTrue(body.contains("e2.element_key = transactions.element_key"), body);
+        assertTrue(X12Filter.toWhereClause("(fileName=x)").contains("entity_values"),
+            "fileName is not a column");
     }
 
     @Test

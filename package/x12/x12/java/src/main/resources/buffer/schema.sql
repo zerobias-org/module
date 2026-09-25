@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   interchange_at     INTEGER,                 -- ISA09+ISA10 as epoch-millis
   schema_id          TEXT NOT NULL,           -- schema:table:x12.<GS08>.<TS>
   raw_x12            BLOB NOT NULL,           -- ST..SE verbatim (+ ISA/GS context lines)
-  mapped_json        TEXT NOT NULL,           -- typed JSON per DESIGN §5
+  -- No typed-document column: the content lives as the object graph below and is reassembled
+  -- on demand (DESIGN §8.4), so there is exactly one representation and nothing to keep in sync.
   parser_error_count INTEGER DEFAULT 0,
   envelope           TEXT NOT NULL DEFAULT 'file',   -- file | synthetic
   status             TEXT NOT NULL DEFAULT 'new',    -- new | in_flight | acked

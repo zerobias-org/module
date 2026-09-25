@@ -155,7 +155,6 @@ class GraphPersistenceTest {
             .transactionType("835")
             .schemaId("schema:table:x12.005010X221A1.835")
             .rawX12("ISA*".getBytes(java.nio.charset.StandardCharsets.UTF_8))
-            .mappedJson("{}")
             .envelope(TransactionRow.ENVELOPE_FILE)
             .build();
     }

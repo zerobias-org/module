@@ -471,7 +471,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   sender_id TEXT, receiver_id TEXT, interchange_at INTEGER,
   schema_id TEXT NOT NULL,
   raw_x12 BLOB NOT NULL,               -- ST..SE segments verbatim (+ ISA/GS context lines)
-  mapped_json TEXT NOT NULL,
+  -- no typed-document column: the content is the object graph (§8.4), reassembled on demand
   parser_error_count INTEGER DEFAULT 0, envelope TEXT NOT NULL DEFAULT 'file',
   status TEXT NOT NULL DEFAULT 'new', lease_id TEXT, in_flight_until INTEGER, acked_at INTEGER
 );
@@ -486,8 +486,9 @@ are never evicted — they are the audit trail), and backpressure are as in hl7/
 
 ### 8.4 The object graph
 
-`transactions.mapped_json` is a document; a document is not queryable. So every materialized
-**instance** is also a row:
+A document is not queryable, so the typed document is **not stored**. There is no
+`mapped_json` column: every materialized **instance** is a row, and the document is
+reassembled on demand. One representation, nothing to keep in sync.
 
 ```
 entities       one row per loop / segment / composite instance
@@ -517,9 +518,19 @@ Three rules the tests pin down:
   delete graph rows with their transaction, since SQLite enforces no foreign key unless the
   pragma is on.
 
-`EntityGraph.assemble` walks the rows back into the nested form — that is how `take`,
-`download` and `recast` keep working, and the round-trip equality test against the
-materializer is what licenses storing rows instead of the document.
+`EntityGraph.assemble` walks the rows back into the nested form, and **every read goes through
+it**: the structural collections, `ops/take`, `ops/validate` and `download`. `BufferStore`
+exposes `documentFor(elementKey)` and a batched `documentsFor(keys)` that reads a whole page in
+two queries rather than two per row. The round-trip equality test against the materializer is
+what licenses this: if it ever fails, the rows are no longer a faithful substitute.
+
+`ops/recast` replaces the graph (`replaceGraph`) instead of rewriting a column — one
+transaction, and a leased row is never rewritten under its consumer. Dimensions survive a
+recast: they describe the interchange, not the materialization.
+
+The envelope is **overlaid at read time** by `X12ProducerFacade.toElement`, never stored in the
+body — so a body cannot contradict the envelope, and there is one place that decides which
+wins.
 
 ### 8.5 Business entities
 
@@ -569,6 +580,14 @@ with no mapping simply has no business entities.
 Segment children are **emergent**, exactly like `/by-type`: `SELECT DISTINCT` over the
 dimensions actually present, so a payer node appears the first time that payer sends something.
 An unknown segment value is a 404, not an empty page.
+
+A **structural** filter (`/transactions`, `/by-type/<TS>`, `ops/take`) still compiles to SQL
+through `X12SqlAdapter`, but a body path now resolves into the graph rather than
+`json_extract`: `(loop2100.clp.clp04>1000)` becomes a scalar subquery for the `clp04` of a
+`clp` instance in that transaction set — the FIRST matching instance, which is the semantics
+`json_extract` had. A filter that needs per-instance semantics ("every claim over 1000", not
+"a transaction whose first claim is") belongs on a business collection, where the grain IS the
+row. Numeric comparisons read `value_num / 1000000.0`; the exact value stays in `value_text`.
 
 Scoping is pushed into SQL — grain always, plus a file or dimension equality inside a segment.
 A user filter is applied to the projected rows, because a business column can sit behind a

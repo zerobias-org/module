@@ -144,7 +144,9 @@ class X12ProducerFacadeTest {
     @Test
     void toElementOverlaysTheEnvelopeOverTheBody(@TempDir Path dir) throws Exception {
         TransactionRow r = TestRows.tx("1", "0001", 0);
-        Map<String, Object> e = X12ProducerFacade.toElement(r);
+        // The body now comes from the object graph; toElement overlays the envelope on top.
+        Map<String, Object> body = Map.of("header", Map.of("st", Map.of("st02", "0001")));
+        Map<String, Object> e = X12ProducerFacade.toElement(r, body);
         assertEquals(FILE_A + ":1:0001", e.get("elementKey"));
         assertEquals(FILE_A, e.get("fileId"));
         assertEquals("remit-a.835", e.get("fileName"));
@@ -165,8 +167,8 @@ class X12ProducerFacadeTest {
         assertTrue(e.containsKey("header"), "typed body keys are kept");
 
         // envelope is authoritative: a body claiming a different status is overridden
-        TransactionRow lying = r.withMapping(r.schemaId(), "{\"status\":\"acked\",\"senderId\":\"X\"}");
-        Map<String, Object> e2 = X12ProducerFacade.toElement(lying);
+        Map<String, Object> lyingBody = Map.of("status", "acked", "senderId", "X");
+        Map<String, Object> e2 = X12ProducerFacade.toElement(r, lyingBody);
         assertEquals("new", e2.get("status"));
         assertEquals("PAYERA", e2.get("senderId"));
 

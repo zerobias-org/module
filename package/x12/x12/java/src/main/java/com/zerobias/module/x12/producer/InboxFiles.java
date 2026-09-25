@@ -87,10 +87,10 @@ final class InboxFiles {
             return node(INBOX, "inbox", List.of("container"));
         }
         Node n = resolve(id);
-        if (Files.isDirectory(n.path())) {
+        if (Files.isDirectory(n.path(), LinkOption.NOFOLLOW_LINKS)) {
             return dirNode(id, n);
         }
-        if (Files.isRegularFile(n.path())) {
+        if (Files.isRegularFile(n.path(), LinkOption.NOFOLLOW_LINKS)) {
             return fileNode(id, n);
         }
         throw ProducerException.noSuchObject(id);
@@ -105,16 +105,18 @@ final class InboxFiles {
             return out;
         }
         Node n = resolve(id);
-        if (Files.isRegularFile(n.path())) {
+        if (Files.isRegularFile(n.path(), LinkOption.NOFOLLOW_LINKS)) {
             throw ProducerException.unsupported("Object is not a container: " + id);
         }
-        if (!Files.isDirectory(n.path())) {
+        if (!Files.isDirectory(n.path(), LinkOption.NOFOLLOW_LINKS)) {
             throw ProducerException.noSuchObject(id);
         }
         List<Path> entries = new ArrayList<>();
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(n.path())) {
             for (Path p : ds) {
-                if (!p.getFileName().toString().startsWith(".")) {
+                // Symlinks are not listed: resolve() refuses to address them, so a link can
+                // never become a way out of the source directory.
+                if (!p.getFileName().toString().startsWith(".") && !Files.isSymbolicLink(p)) {
                     entries.add(p);
                 }
             }
@@ -122,7 +124,7 @@ final class InboxFiles {
             throw ioFailure("list", id, e);
         }
         // Directories first, then files, each alphabetical — a stable order for a live readdir.
-        entries.sort(Comparator.comparing((Path p) -> Files.isDirectory(p) ? 0 : 1)
+        entries.sort(Comparator.comparing((Path p) -> Files.isDirectory(p, LinkOption.NOFOLLOW_LINKS) ? 0 : 1)
             .thenComparing(p -> p.getFileName().toString()));
         for (Path p : entries) {
             out.add(object(id + "/" + ObjectTree.encodeSegment(p.getFileName().toString())));
@@ -171,7 +173,7 @@ final class InboxFiles {
         Node parent = requireDirectory(parentId);
         String name = requireName(fileName, "fileName");
         Path target = parent.path().resolve(name);
-        if (Files.exists(target)) {
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             throw ProducerException.illegalArgument(
                 "Already exists: " + name + " (upload never replaces; delete it first)");
         }
@@ -223,7 +225,7 @@ final class InboxFiles {
             throw ProducerException.unsupported(
                 "A configured source directory is not deletable: " + id);
         }
-        if (!Files.exists(n.path())) {
+        if (!Files.exists(n.path(), LinkOption.NOFOLLOW_LINKS)) {
             throw ProducerException.noSuchObject(id);
         }
         try {
@@ -257,6 +259,14 @@ final class InboxFiles {
      * Every segment is decoded, {@code .}/{@code ..}/empty segments are rejected outright,
      * and the normalized result must still sit under the source root — an id can never
      * address anything outside its own mounted directory.
+     *
+     * <p>The lexical check alone is not enough: a symlink anywhere below the root
+     * ({@code inbox/link -> /etc}) makes {@code inbox/link/passwd} lexically "inside" while
+     * the filesystem follows it out. So every existing component below the configured root is
+     * lstat'ed and a symbolic link at any of them — not only the leaf — is a 404. (The root
+     * itself is operator configuration and may be a link, e.g. to a mount.) Stats and opens
+     * after this use {@code NOFOLLOW_LINKS} so a link swapped in afterwards is not followed
+     * at the leaf either.
      */
     private Node resolve(String id) {
         if (!owns(id) || INBOX.equals(id)) {
@@ -284,6 +294,13 @@ final class InboxFiles {
         if (!path.equals(root) && !path.startsWith(root)) {
             throw ProducerException.noSuchObject(id);
         }
+        Path walk = root;
+        for (Path component : root.relativize(path)) {
+            walk = walk.resolve(component);
+            if (Files.isSymbolicLink(walk)) {
+                throw ProducerException.noSuchObject(id);
+            }
+        }
         return new Node(source, path, segments.length == 1);
     }
 
@@ -293,8 +310,8 @@ final class InboxFiles {
                 "Pick a source directory (a child of " + INBOX + "); the branch root is not a real directory");
         }
         Node n = resolve(parentId);
-        if (!Files.isDirectory(n.path())) {
-            throw Files.exists(n.path())
+        if (!Files.isDirectory(n.path(), LinkOption.NOFOLLOW_LINKS)) {
+            throw Files.exists(n.path(), LinkOption.NOFOLLOW_LINKS)
                 ? ProducerException.unsupported("Object is not a container: " + parentId)
                 : ProducerException.noSuchObject(parentId);
         }
@@ -351,8 +368,9 @@ final class InboxFiles {
         o.put("sourceName", n.source().name());
         o.put("mimeType", BinaryContent.MIME_X12);
         try {
-            o.put("size", Files.size(n.path()));
-            o.put("modified", Instant.ofEpochMilli(Files.getLastModifiedTime(n.path()).toMillis()).toString());
+            BasicFileAttributes a = Files.readAttributes(n.path(), BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            o.put("size", a.size());
+            o.put("modified", Instant.ofEpochMilli(a.lastModifiedTime().toMillis()).toString());
         } catch (IOException e) {
             // A live view races with the feed and with inbox hygiene; report what we have.
             o.put("size", null);

@@ -252,7 +252,14 @@ The write surface is the interface's own container/binary write ops (Concepts.md
   configured source roots are never deletable — the daemon validated those mounts at boot
   (§3) and removing one takes the receiver down.
 - Path traversal cannot escape: every segment is decoded, `.`/`..`/empty are rejected, and
-  the normalized result must still sit under the source root.
+  the normalized result must still sit under the source root. Symlinks cannot escape either:
+  every existing component below the configured root is lstat'ed and a link at any of them is a
+  404 (links are not listed), and stats/opens use `NOFOLLOW_LINKS` so a link swapped in later is
+  not followed at the leaf.
+- Request bodies are capped at 64 MiB (the `maxFileBytes` default) on both sides — Javalin
+  `maxRequestSize` and `client_max_body_size 64m` in both committed nginx confs — so a real 835
+  batch can be uploaded raw; over the cap is a 413 in the errorModelBase envelope. The base64 JSON
+  intake inflates by a third, so it tops out near 48 MiB.
 
 All three are **off unless the deployment sets `config.allowFileManagement: true`**
 (default `false` in `runtimeConfig.yml`). This is a revenue-cycle feed: an open upload path

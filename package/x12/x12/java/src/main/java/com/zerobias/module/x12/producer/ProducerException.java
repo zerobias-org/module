@@ -95,6 +95,16 @@ public final class ProducerException extends RuntimeException {
     }
 
     /**
+     * 413 for a request body over the server's limit, in the {@code illegalArgumentError}
+     * shape (errorModelBase + {@code msg}) so a caller gets the platform envelope rather than
+     * the HTTP server's own error page.
+     */
+    public static ProducerException payloadTooLarge(long maxBytes) {
+        String message = "Request body exceeds the " + maxBytes + "-byte limit";
+        return new ProducerException("err.illegal.argument", 413, message, msg(message));
+    }
+
+    /**
      * {@code unexpectedError} (500) for a failure the caller cannot act on. Always the same
      * generic text: the cause (an SQLite or IO message) can name buffer or inbox paths inside
      * the container, so it is logged server-side and never echoed.

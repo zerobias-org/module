@@ -162,6 +162,37 @@ class InboxFilesTest {
         }
     }
 
+    @Test
+    void symlinksCannotEscapeTheSourceRoot() throws Exception {
+        Path outside = Files.createDirectories(dir.resolve("outside"));
+        Files.write(outside.resolve("secret.835"), EDI);
+        Files.createSymbolicLink(inboxDir.resolve("escape"), outside);               // a directory link
+        Files.createSymbolicLink(inboxDir.resolve("leak.835"), outside.resolve("secret.835")); // a leaf link
+        Files.createDirectories(inboxDir.resolve("real"));
+        Files.createSymbolicLink(inboxDir.resolve("real").resolve("up"), outside);  // a link below a real dir
+        Files.write(inboxDir.resolve("ok.835"), EDI);
+
+        for (String id : List.of(INBOX + "/inbox/escape", INBOX + "/inbox/escape/secret.835",
+                INBOX + "/inbox/leak.835", INBOX + "/inbox/real/up/secret.835")) {
+            assertEquals(404, assertThrows(ProducerException.class, () -> readOnly.getObject(id)).httpStatus(), id);
+            assertEquals(404, assertThrows(ProducerException.class, () -> readOnly.downloadBinary(id)).httpStatus(), id);
+        }
+        assertEquals(404, assertThrows(ProducerException.class,
+            () -> readOnly.getChildren(INBOX + "/inbox/escape", 100, 1)).httpStatus());
+        // writes through a link are refused and nothing lands outside
+        assertEquals(404, assertThrows(ProducerException.class,
+            () -> writable.uploadBinary(INBOX + "/inbox/escape", "planted.835", EDI)).httpStatus());
+        assertEquals(404, assertThrows(ProducerException.class,
+            () -> writable.createChildObject(INBOX + "/inbox/real/up", "d", List.of("container"))).httpStatus());
+        assertEquals(404, assertThrows(ProducerException.class,
+            () -> writable.deleteObject(INBOX + "/inbox/escape/secret.835")).httpStatus());
+        assertFalse(Files.exists(outside.resolve("planted.835")));
+        assertTrue(Files.exists(outside.resolve("secret.835")));
+        // the listing still works and simply does not show links
+        assertEquals(List.of("real", "ok.835"), names(page(readOnly.getChildren(INBOX + "/inbox", 100, 1))));
+        assertEquals(List.of(), names(page(readOnly.getChildren(INBOX + "/inbox/real", 100, 1))));
+    }
+
     // --- the gate -----------------------------------------------------------
 
     @Test

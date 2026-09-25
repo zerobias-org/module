@@ -131,4 +131,36 @@ class X12ApiServerTest {
             X12ApiServer.contentDisposition("remit.835.done"));
         assertEquals("attachment", X12ApiServer.contentDisposition(null));
     }
+
+    @Test
+    void oversizedBodiesAre413InThePlatformEnvelope() throws Exception {
+        Javalin small = Javalin.create(cfg -> {
+            cfg.showJavalinBanner = false;
+            cfg.http.maxRequestSize = 1024;
+        });
+        X12ApiServer.registerExceptionHandlers(small);
+        small.post("/echo", ctx -> ctx.result(String.valueOf(ctx.bodyAsBytes().length)));
+        small.start(0);
+        try {
+            HttpResponse<String> r = http.send(HttpRequest.newBuilder(
+                    URI.create("http://localhost:" + small.port() + "/echo"))
+                .POST(HttpRequest.BodyPublishers.ofByteArray(new byte[4096])).build(),
+                HttpResponse.BodyHandlers.ofString());
+            assertEquals(413, r.statusCode(), r.body());
+            JsonObject body = GSON.fromJson(r.body(), JsonObject.class);
+            assertEquals(413, body.get("statusCode").getAsInt());
+            assertTrue(body.has("key") && body.has("msg"), r.body());
+        } finally {
+            small.stop();
+        }
+    }
+
+    @Test
+    void requestLimitMatchesBothCommittedNginxConfs() throws Exception {
+        assertEquals(64L * 1024 * 1024, X12ApiServer.MAX_REQUEST_BYTES);
+        for (String conf : java.util.List.of("../nginx.conf", "../nginx-insecure.conf")) {
+            String text = java.nio.file.Files.readString(java.nio.file.Path.of(conf));
+            assertTrue(text.contains("client_max_body_size 64m;"), conf + " must allow what the Java side accepts");
+        }
+    }
 }

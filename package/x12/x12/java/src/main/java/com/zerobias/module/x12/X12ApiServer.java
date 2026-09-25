@@ -20,6 +20,7 @@ import com.zerobias.module.x12.producer.SchemaRegistry;
 import com.zerobias.module.x12.producer.X12Operations;
 import com.zerobias.module.x12.producer.X12ProducerFacade;
 import io.javalin.Javalin;
+import io.javalin.http.HttpResponseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,6 +64,14 @@ public final class X12ApiServer {
 
     private static final Logger LOG = LoggerFactory.getLogger(X12ApiServer.class);
     private static final Gson GSON = new Gson();
+
+    /**
+     * Largest accepted request body: 64 MiB, the receiver's {@code maxFileBytes} default, so a
+     * real 835 batch can be uploaded raw (Javalin's own default is 1 MiB). Must match
+     * {@code client_max_body_size 64m} in both committed nginx confs, which default to 1 MiB
+     * too; a base64 JSON upload inflates by a third, so that intake tops out near 48 MiB.
+     */
+    static final long MAX_REQUEST_BYTES = 64L * 1024 * 1024;
 
     /** Profile fields safe to log/display (the profile is informational; the daemon never reads it). */
     private static final Set<String> NONSENSITIVE_PROFILE_FIELDS = Set.of("ackDurability");
@@ -139,6 +148,7 @@ public final class X12ApiServer {
         Javalin app = Javalin.create(cfg -> {
             cfg.http.defaultContentType = "application/json";
             cfg.showJavalinBanner = false;
+            cfg.http.maxRequestSize = MAX_REQUEST_BYTES;
         });
         registerExceptionHandlers(app);
         registerRoutes(app);
@@ -338,6 +348,18 @@ public final class X12ApiServer {
         app.exception(ProducerException.class, (e, ctx) -> respond(ctx, e));
         app.exception(IllegalArgumentException.class, (e, ctx) ->
             respond(ctx, ProducerException.illegalArgument(e.getMessage())));
+        // Javalin's own HTTP errors (a body over maxRequestSize is a 413) keep their status and
+        // get the platform envelope, rather than being swallowed by the 500 below.
+        app.exception(HttpResponseException.class, (e, ctx) -> {
+            if (e.getStatus() == 413) {
+                respond(ctx, ProducerException.payloadTooLarge(MAX_REQUEST_BYTES));
+            } else if (e.getStatus() >= 500) {
+                LOG.error("HTTP {} serving {} {}", e.getStatus(), ctx.method(), ctx.path(), e);
+                respond(ctx, ProducerException.unexpected());
+            } else {
+                respond(ctx, ProducerException.illegalArgument(e.getMessage()));
+            }
+        });
         app.exception(Exception.class, (e, ctx) -> {
             LOG.error("Unexpected error serving {} {}", ctx.method(), ctx.path(), e);
             respond(ctx, ProducerException.unexpected());

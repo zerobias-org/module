@@ -273,7 +273,8 @@ public final class BusinessEntities {
             });
             for (EntityMapping.Dimension d : m.dimensions()) {
                 final EntityGraph.Value v = dims.get(d.name());
-                row.put(d.name(), v == null ? null : v.text());
+                // typed like a column: a decimal dimension is a number, not its text
+                row.put(d.name(), EntityMapping.typed(d.dataType(), v));
             }
             rows.add(row);
         }

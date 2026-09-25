@@ -536,6 +536,21 @@ public final class SchemaRegistry implements SchemaRegistryApi {
                 examples.add(-100);
                 examples.add(999);
                 break;
+            case "decimal":
+                // Same definition the codegen emits for guide schemas (CoreTypes): money is a
+                // JSON number carrying its scale, never text and never a float.
+                t.addProperty("jsonType", "number");
+                t.addProperty("description", "Decimal numbers for currency and precise calculations");
+                examples.add(new java.math.BigDecimal("19.99"));
+                examples.add(new java.math.BigDecimal("100.50"));
+                examples.add(new java.math.BigDecimal("-25.75"));
+                break;
+            case "date":
+                t.addProperty("jsonType", "string");
+                t.addProperty("description", "ISO 8601 dates (YYYY-MM-DD)");
+                examples.add("2025-10-29");
+                examples.add("2024-01-15");
+                break;
             case "date-time":
                 t.addProperty("jsonType", "string");
                 t.addProperty("description", "ISO 8601 timestamps");
@@ -550,7 +565,12 @@ public final class SchemaRegistry implements SchemaRegistryApi {
                 break;
         }
         t.add("examples", examples);
-        t.addProperty("htmlInput", "date-time".equals(name) ? "datetime-local" : "integer".equals(name) ? "number" : "text");
+        t.addProperty("htmlInput", switch (name) {
+            case "date-time" -> "datetime-local";
+            case "date" -> "date";
+            case "integer", "decimal" -> "number";
+            default -> "text";
+        });
         t.addProperty("isEnum", false);
         return t;
     }

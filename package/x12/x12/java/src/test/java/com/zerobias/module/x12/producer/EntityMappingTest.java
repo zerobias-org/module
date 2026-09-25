@@ -138,6 +138,43 @@ class EntityMappingTest {
     }
 
     @Test
+    void aDecimalIsProjectedFromItsLexicalValueNeverTheComparisonKey() {
+        // A value whose comparison key has lost its scale (what value_num / 1e6, or any float
+        // path, yields) must still project with the scale the wire carried.
+        EntityGraph.Entity anchor = EntityGraph.Entity.of(0, null, "schema:type:x", "2100", "loop", null, "", 0);
+        EntityGraph.Entity clp = EntityGraph.Entity.of(1, 0, "schema:type:x.CLP", "CLP", "segment", "clp", "clp", 0);
+        clp.values.add(new EntityGraph.Value("clp03", "decimal", "300.00", new BigDecimal("300"), null));
+        clp.values.add(new EntityGraph.Value("clp04", "decimal", "220.5", new BigDecimal("220.50000"), null));
+        clp.values.add(new EntityGraph.Value("clp05", "decimal", "not-a-number", new BigDecimal("40.00"), null));
+        clp.values.add(new EntityGraph.Value("clp09", "integer", "007", new BigDecimal("7.000"), null));
+        List<EntityGraph.Entity> graph = List.of(anchor, clp);
+
+        EntityMapping m = EntityMapping.parse("X", """
+            {"entities":[{"name":"C","anchorSchemaId":"schema:type:x","columns":[
+              {"name":"charged","path":"clp.clp03","dataType":"decimal"},
+              {"name":"paid","path":"clp.clp04","dataType":"decimal"},
+              {"name":"resp","path":"clp.clp05","dataType":"decimal"},
+              {"name":"freq","path":"clp.clp09","dataType":"integer"}]}]}""").get(0);
+        Map<String, Object> row = m.project(graph, anchor);
+
+        assertEquals("300.00", ((BigDecimal) row.get("charged")).toPlainString(), "scale from value_text");
+        assertEquals("220.5", ((BigDecimal) row.get("paid")).toPlainString());
+        assertEquals("40.00", ((BigDecimal) row.get("resp")).toPlainString(),
+            "unparseable text falls back to the comparison key rather than failing the row");
+        assertEquals(7L, row.get("freq"));
+        assertEquals("{\"charged\":300.00}", new com.google.gson.Gson().toJson(Map.of("charged", row.get("charged"))),
+            "Gson writes a BigDecimal's own scale");
+    }
+
+    @Test
+    void theFixtureAmountsKeepTheirWireScale() throws Exception {
+        Map<String, Object> first = project(graph(Fixtures.F835), byName(EntityMapping.forGuide(GUIDE), "Claim")).get(0);
+        assertEquals("300.00", ((BigDecimal) first.get("chargedAmount")).toPlainString());
+        assertEquals("220.00", ((BigDecimal) first.get("paidAmount")).toPlainString());
+        assertEquals("40.00", ((BigDecimal) first.get("patientResponsibility")).toPlainString());
+    }
+
+    @Test
     void anAbsentOptionalColumnIsPresentAndNull() throws Exception {
         List<EntityGraph.Entity> graph = graph(Fixtures.F835);
         EntityMapping line = byName(EntityMapping.forGuide(GUIDE), "ServiceLine");

@@ -103,6 +103,38 @@ class BusinessCollectionsTest {
     }
 
     @Test
+    void moneyKeepsItsLexicalScaleOnTheWire() throws Exception {
+        // CLP*CLM0001*1*300.00*220.00*40.00 — the wire says 300.00, so the element must too.
+        // Scale is part of the value for money (CLAUDE.md "Money is decimal, never float"):
+        // 300 or 300.0 would mean the amount went through value_num or a double somewhere.
+        String raw = facade.getCollectionElements(R + "/claims", "(claimId=CLM0001)", null, null, 50, 1, null);
+        assertTrue(raw.contains("\"chargedAmount\":300.00"), raw);
+        assertTrue(raw.contains("\"paidAmount\":220.00"), raw);
+        assertTrue(raw.contains("\"patientResponsibility\":40.00"), raw);
+        assertTrue(raw.contains("\"allowedAmount\":260.00"), raw);
+
+        // sorted and unfiltered pages go through the same projection
+        String sorted = facade.getCollectionElements(R + "/claims", null, "paidAmount", "desc", 50, 1, null);
+        assertTrue(sorted.contains("\"paidAmount\":240.00"), sorted);
+        String unfiltered = facade.getCollectionElements(R + "/remittances", null, null, null, 50, 1, null);
+        assertTrue(unfiltered.contains("\"paymentAmount\":450.00"), unfiltered);
+        String lines = facade.getCollectionElements(R + "/service-lines", "(procedureCode=36415)", null, null,
+            50, 1, null);
+        assertTrue(lines.contains("\"chargedAmount\":100.00"), lines);
+        assertTrue(lines.contains("\"paidAmount\":60.00"), lines);
+
+        // ... and the generated schema says so: a decimal is a JSON number, not "Text values"
+        JsonObject schema = GSON.fromJson(SCHEMAS.getSchema("schema:business:x12.835.Claim"), JsonObject.class);
+        java.util.Map<String, String> jsonTypes = new java.util.HashMap<>();
+        for (var el : schema.getAsJsonArray("dataTypes")) {
+            jsonTypes.put(el.getAsJsonObject().get("name").getAsString(),
+                el.getAsJsonObject().get("jsonType").getAsString());
+        }
+        assertEquals("number", jsonTypes.get("decimal"), jsonTypes.toString());
+        assertEquals("string", jsonTypes.get("date"), jsonTypes.toString());
+    }
+
+    @Test
     void segmentsAreEmergentAndScopeTheRows() throws Exception {
         // the collection is also a container of its segments
         List<String> segments = names(page(facade.getChildren(R + "/claims", 100, 1)));

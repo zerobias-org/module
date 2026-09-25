@@ -332,14 +332,33 @@ public final class EntityMapping {
     }
 
     private static Object typed(Column c, EntityGraph.Value v) {
+        return typed(c.dataType(), v);
+    }
+
+    /**
+     * A stored value in its declared business type. Shared by columns and dimensions so a
+     * decimal dimension is a number on the row exactly like a decimal column.
+     *
+     * <p>Numbers are built from {@code value_text}, the exact lexical form, never from
+     * {@code num}: {@code num} is the comparison key (CLAUDE.md "value_text is the value") and
+     * whatever produced it may have dropped the scale — {@code 300.00} must serialize as
+     * {@code 300.00}, not {@code 300}. {@code num} is only the fallback for text that does not
+     * parse, so a malformed element degrades rather than failing the row.
+     */
+    public static Object typed(String dataType, EntityGraph.Value v) {
         if (v == null) {
             return null;
         }
-        switch (c.dataType()) {
-            case "decimal":
-                return v.num() != null ? v.num() : EntityGraph.exactNumber("decimal", v.text());
-            case "integer":
-                final BigDecimal n = v.num() != null ? v.num() : EntityGraph.exactNumber("integer", v.text());
+        switch (dataType == null ? "string" : dataType) {
+            case "decimal": {
+                final BigDecimal exact = EntityGraph.exactNumber("decimal", v.text());
+                return exact != null ? exact : v.num();
+            }
+            case "integer": {
+                BigDecimal n = EntityGraph.exactNumber("integer", v.text());
+                if (n == null) {
+                    n = v.num();
+                }
                 if (n == null) {
                     return v.text();
                 }
@@ -348,8 +367,11 @@ public final class EntityMapping {
                 } catch (ArithmeticException notAnInteger) {
                     return n;
                 }
+            }
             case "boolean":
-                return v.num() != null && v.num().signum() != 0;
+                return v.text() != null
+                    ? EntityGraph.exactNumber("boolean", v.text()).signum() != 0
+                    : v.num() != null && v.num().signum() != 0;
             default:
                 return v.text();
         }

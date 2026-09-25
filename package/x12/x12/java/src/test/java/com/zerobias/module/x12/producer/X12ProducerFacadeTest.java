@@ -77,7 +77,7 @@ class X12ProducerFacadeTest {
 
             public BinaryContent downloadBinary(String id) {
                 object(id);
-                return new BinaryContent("ISA*00~".getBytes(), BinaryContent.MIME_X12, "a.835");
+                return new BinaryContent(id, java.nio.file.Path.of("a.835"), 7, BinaryContent.MIME_X12, "a.835");
             }
         };
     }

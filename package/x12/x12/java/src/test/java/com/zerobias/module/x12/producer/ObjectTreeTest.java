@@ -160,7 +160,10 @@ class ObjectTreeTest {
     @Test
     void downloadBinaryReadsCurrentPathAnd404sWhenGone() throws Exception {
         BinaryContent a = facade.downloadBinary(R + "/files/" + ObjectTree.encodeSegment(FILE_A));
-        assertArrayEquals(ProducerFixture.FILE_A_BYTES, a.bytes());
+        try (java.io.InputStream in = a.open()) {
+            assertArrayEquals(ProducerFixture.FILE_A_BYTES, in.readAllBytes());
+        }
+        assertEquals(ProducerFixture.FILE_A_BYTES.length, a.size(), "size for Content-Length, known before streaming");
         assertEquals("application/EDI-X12", a.mimeType());
         assertEquals("remit-a.835", a.fileName());
 
@@ -177,6 +180,18 @@ class ObjectTreeTest {
             () -> facade.downloadBinary(R + "/files/" + ObjectTree.encodeSegment(FILE_A) + "/transactions")).httpStatus());
         assertEquals(404, assertThrows(ProducerException.class,
             () -> facade.downloadBinary(R + "/files/" + ObjectTree.encodeSegment("/x/y.835"))).httpStatus());
+    }
+
+    @Test
+    void downloadNeverFollowsASymlinkAtTheConsumedPath() throws Exception {
+        java.nio.file.Path done = dir.resolve("remit-a.835.done");
+        java.nio.file.Path elsewhere = java.nio.file.Files.createDirectories(dir.resolve("outside")).resolve("secret");
+        java.nio.file.Files.move(done, elsewhere);
+        java.nio.file.Files.createSymbolicLink(done, elsewhere);
+        ProducerException gone = assertThrows(ProducerException.class,
+            () -> facade.downloadBinary(R + "/files/" + ObjectTree.encodeSegment(FILE_A)));
+        assertEquals(404, gone.httpStatus());
+        assertEquals("gone", gone.toBody().get("reason"));
     }
 
     @Test

@@ -587,14 +587,22 @@ public final class ObjectTree implements ObjectTreeApi {
         }
         FileRow f = requireFile(file[0], id);
         Path current = f.currentPath() == null ? null : Path.of(f.currentPath());
-        if (current == null || !Files.isRegularFile(current)) {
+        if (current == null) {
             throw ProducerException.fileGone(f.fileId());
         }
+        // Stat'ed without following links, like the open: a symlink left at the consumed path
+        // is not the file the receiver hashed, so it is "gone" rather than followed.
+        final java.nio.file.attribute.BasicFileAttributes attrs;
         try {
-            return new BinaryContent(Files.readAllBytes(current), BinaryContent.MIME_X12, f.fileName());
+            attrs = Files.readAttributes(current, java.nio.file.attribute.BasicFileAttributes.class,
+                java.nio.file.LinkOption.NOFOLLOW_LINKS);
         } catch (IOException e) {
             throw ProducerException.fileGone(f.fileId());
         }
+        if (!attrs.isRegularFile()) {
+            throw ProducerException.fileGone(f.fileId());
+        }
+        return new BinaryContent(id, current, attrs.size(), BinaryContent.MIME_X12, f.fileName());
     }
 
     // --- business entities (DESIGN §8.5) ------------------------------------

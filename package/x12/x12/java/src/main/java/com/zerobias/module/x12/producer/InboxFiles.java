@@ -9,8 +9,10 @@ import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -128,20 +130,28 @@ final class InboxFiles {
         return out;
     }
 
+    /**
+     * Where a live file's bytes are, for the HTTP layer to stream (DESIGN §2.8/§2.9) — never
+     * the bytes themselves. Stat'ed without following links, and {@link BinaryContent#open}
+     * opens it the same way, so a symlink planted (or swapped in) at the name is never
+     * followed out of the source directory.
+     */
     BinaryContent downloadBinary(String id) {
         Node n = resolve(id);
-        if (!Files.isRegularFile(n.path())) {
-            if (Files.isDirectory(n.path())) {
-                throw ProducerException.unsupported("Object is not a binary: " + id);
-            }
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(n.path(), BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException e) {
             throw ProducerException.noSuchObject(id);
         }
-        try {
-            return new BinaryContent(Files.readAllBytes(n.path()), BinaryContent.MIME_X12,
-                n.path().getFileName().toString());
-        } catch (IOException e) {
-            throw ioFailure("read", id, e);
+        if (attrs.isDirectory()) {
+            throw ProducerException.unsupported("Object is not a binary: " + id);
         }
+        if (!attrs.isRegularFile()) {
+            throw ProducerException.noSuchObject(id);
+        }
+        return new BinaryContent(id, n.path(), attrs.size(), BinaryContent.MIME_X12,
+            n.path().getFileName().toString());
     }
 
     // --- write surface (gated by config.allowFileManagement) ----------------

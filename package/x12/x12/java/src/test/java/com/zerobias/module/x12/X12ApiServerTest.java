@@ -37,6 +37,9 @@ class X12ApiServerTest {
         app.get("/bad-arg", ctx -> {
             throw new IllegalArgumentException("sortDir must be asc or desc, got 'sideways'");
         });
+        app.get("/download", ctx -> X12ApiServer.streamBinary(ctx, new com.zerobias.module.x12.producer.BinaryContent(
+            "/x", java.nio.file.Path.of(ctx.queryParam("path")), Long.parseLong(ctx.queryParam("size")),
+            com.zerobias.module.x12.producer.BinaryContent.MIME_X12, ctx.queryParam("name"))));
         app.start(0);
         base = "http://localhost:" + app.port();
     }
@@ -89,5 +92,43 @@ class X12ApiServerTest {
         return http.send(HttpRequest.newBuilder(URI.create(base + path))
             .header("content-type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void downloadsStreamWithLengthAndASafeDisposition(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir)
+            throws Exception {
+        byte[] bytes = new byte[256 * 1024];
+        for (int i = 0; i < bytes.length; i++) {
+            bytes[i] = (byte) ('A' + i % 26);
+        }
+        java.nio.file.Path f = java.nio.file.Files.write(dir.resolve("big.835"), bytes);
+        String evil = "x\"; filename=evil.exe\r\nSet-Cookie: a=b é.835";
+        HttpResponse<byte[]> r = http.send(HttpRequest.newBuilder(URI.create(base + "/download?path="
+                + java.net.URLEncoder.encode(f.toString(), java.nio.charset.StandardCharsets.UTF_8)
+                + "&size=" + bytes.length + "&name="
+                + java.net.URLEncoder.encode(evil, java.nio.charset.StandardCharsets.UTF_8)))
+            .header("Accept-Encoding", "gzip").GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200, r.statusCode());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(bytes, r.body(), "verbatim, not compressed");
+        assertEquals(String.valueOf(bytes.length), r.headers().firstValue("Content-Length").orElse(null));
+        assertTrue(r.headers().firstValue("Content-Encoding").isEmpty(), "compression off");
+        String cd = r.headers().firstValue("Content-Disposition").orElseThrow();
+        assertEquals("attachment; filename=\"x_; filename=evil.exe__Set-Cookie: a=b _.835\"; "
+            + "filename*=UTF-8''x%22%3B%20filename%3Devil.exe%0D%0ASet-Cookie%3A%20a%3Db%20%C3%A9.835", cd);
+        assertTrue(r.headers().firstValue("Set-Cookie").isEmpty());
+
+        // gone between resolve and open: 404 reason gone, not a 500
+        java.nio.file.Files.delete(f);
+        HttpResponse<String> gone = get("/download?path="
+            + java.net.URLEncoder.encode(f.toString(), java.nio.charset.StandardCharsets.UTF_8) + "&size=1&name=a");
+        assertEquals(404, gone.statusCode());
+        assertEquals("gone", GSON.fromJson(gone.body(), JsonObject.class).get("reason").getAsString());
+    }
+
+    @Test
+    void contentDispositionIsPlainForPlainNames() {
+        assertEquals("attachment; filename=\"remit.835.done\"; filename*=UTF-8''remit.835.done",
+            X12ApiServer.contentDisposition("remit.835.done"));
+        assertEquals("attachment", X12ApiServer.contentDisposition(null));
     }
 }

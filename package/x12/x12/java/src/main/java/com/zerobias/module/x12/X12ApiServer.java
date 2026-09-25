@@ -23,6 +23,9 @@ import io.javalin.Javalin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Base64;
@@ -256,14 +259,8 @@ public final class X12ApiServer {
             }
             Map<String, Object> argMap = castMap(args);
             if (OperationRouter.isBinaryDownload(method)) {
-                // DESIGN §2.8: full-content 200 with the raw EDI bytes.
                 Object id = argMap.get("objectId");
-                BinaryContent bin = facade.downloadBinary(id == null ? null : id.toString());
-                ctx.contentType(bin.mimeType() == null ? BinaryContent.MIME_X12 : bin.mimeType());
-                if (bin.fileName() != null) {
-                    ctx.header("Content-Disposition", "attachment; filename=\"" + bin.fileName() + "\"");
-                }
-                ctx.result(bin.bytes());
+                streamBinary(ctx, facade.downloadBinary(id == null ? null : id.toString()));
                 return;
             }
             String result = OperationRouter.executeOperation(facade, method, argMap);
@@ -276,6 +273,58 @@ public final class X12ApiServer {
                .contentType("application/json")
                .result(GSON.toJson(health.status()));
         });
+    }
+
+    /**
+     * DESIGN §2.8: full-content 200 with the raw EDI bytes, streamed from disk with a
+     * {@code Content-Length} rather than read onto the heap. Compression stays off — Javalin
+     * would gzip the stream after the length was set — and Javalin closes the stream once it
+     * is written.
+     */
+    static void streamBinary(io.javalin.http.Context ctx, BinaryContent bin) {
+        InputStream in;
+        try {
+            in = bin.open();
+        } catch (IOException e) {
+            // Removed (or swapped for a symlink) since it was resolved.
+            LOG.warn("download: {} vanished between resolve and open: {}", bin.objectId(), e.toString());
+            throw ProducerException.fileGone(bin.objectId());
+        }
+        ctx.minSizeForCompression(Integer.MAX_VALUE);
+        ctx.contentType(bin.mimeType() == null ? BinaryContent.MIME_X12 : bin.mimeType());
+        ctx.res().setCharacterEncoding(null);   // bytes, not text: no charset on the Content-Type
+        ctx.header("Content-Length", Long.toString(bin.size()));
+        ctx.header("Content-Disposition", contentDisposition(bin.fileName()));
+        ctx.result(in);
+    }
+
+    /**
+     * RFC 6266 {@code attachment} with an ASCII {@code filename} fallback (quotes,
+     * backslashes, control and non-ASCII characters replaced by {@code _}) and the exact name
+     * as RFC 5987 {@code filename*}. A file name is sender-controlled (it arrived on the
+     * feed), so nothing in it may end the header or the quoted string.
+     */
+    static String contentDisposition(String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            return "attachment";
+        }
+        StringBuilder ascii = new StringBuilder(fileName.length());
+        for (int i = 0; i < fileName.length(); i++) {
+            char c = fileName.charAt(i);
+            ascii.append(c < 0x20 || c > 0x7e || c == '"' || c == '\\' ? '_' : c);
+        }
+        StringBuilder pct = new StringBuilder();
+        for (byte b : fileName.getBytes(StandardCharsets.UTF_8)) {
+            int u = b & 0xff;
+            if ((u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z') || (u >= '0' && u <= '9')
+                    || "!#$&+-.^_`|~".indexOf(u) >= 0) {
+                pct.append((char) u);
+            } else {
+                pct.append('%').append(Character.toUpperCase(Character.forDigit(u >> 4, 16)))
+                   .append(Character.toUpperCase(Character.forDigit(u & 0xf, 16)));
+            }
+        }
+        return "attachment; filename=\"" + ascii + "\"; filename*=UTF-8''" + pct;
     }
 
     /**

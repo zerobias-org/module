@@ -205,6 +205,10 @@ paths inside the container, so it is logged server-side and never returned.
 path is resolved from the `files` table, so download keeps working after consumption; after the
 file is removed by inbox hygiene → 404 with `reason: gone`, the transactions remain). Range is not
 in the generated signature (interface prose only); v1 serves 200 full-content.
+The bytes are streamed from disk with a `Content-Length` (never read onto the heap; compression off)
+and opened `NOFOLLOW_LINKS`, so a symlink at the path is a 404 `gone`, not followed. The file name is
+sender-controlled, so `Content-Disposition` is RFC 6266 `attachment` with a sanitised ASCII
+`filename` and the exact name as RFC 5987 `filename*`.
 
 ### 2.9 Live inbox browse and file management
 

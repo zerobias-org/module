@@ -138,7 +138,10 @@ class InboxFilesTest {
         Files.write(inboxDir.resolve("raw.835"), EDI);
         BinaryContent bin = readOnly.downloadBinary(INBOX + "/inbox/raw.835");
         assertEquals("raw.835", bin.fileName());
-        assertEquals(new String(EDI, StandardCharsets.UTF_8), new String(bin.bytes(), StandardCharsets.UTF_8));
+        try (java.io.InputStream in = bin.open()) {
+            assertEquals(new String(EDI, StandardCharsets.UTF_8), new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        assertEquals(EDI.length, bin.size());
     }
 
     @Test

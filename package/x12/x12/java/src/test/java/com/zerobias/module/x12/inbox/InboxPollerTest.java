@@ -142,7 +142,12 @@ class InboxPollerTest {
         assertEquals(T0, handle.lastConsumed().orElseThrow());
         assertFalse(handle.backpressure());
         PollerStatus.SourceStatus s = handle.sources().get(0);
-        assertEquals(new PollerStatus.SourceStatus("inbox", inbox.toString(), true, 0, 0), s);
+        assertEquals(List.of("inbox", inbox.toString(), true, 0, 0),
+            List.of(s.name(), s.path(), s.writable(), s.pending(), s.errored()));
+        assertEquals(1, s.pollIntervalSec());
+        assertEquals(T0, s.lastScan());
+        assertFalse(s.failing());
+        assertEquals(null, s.lastError());
 
         // Nothing new: the .done is skipped, counts are zero.
         assertEquals(new RescanResult(0, 0, 0, 0), handle.rescan("inbox"));

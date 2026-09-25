@@ -711,9 +711,23 @@ unknown column name is a 400 rather than a silently empty result.
 
 ## 9. Health
 
-`/healthz` → `{poller: {up, lastScan, lastConsumed, bufferDepth, oldestUnackedSec, sources[]:
-{name, path, writable, pending, errored}}, db: {walBytes, lastCheckpoint}}`; 503 when any
-source is unwritable, when the poller thread is dead, or under backpressure.
+`/healthz` → `{poller: {up, lastScan, lastConsumed, bufferDepth, oldestUnackedSec, backpressure,
+sources[]: {name, path, writable, pending, errored, failing, stalled, lastScan?, lastScanStarted?,
+lastError?, lastErrorAt?}}, db: {walBytes, sizeBytes}}`; 503 when the poller thread is dead,
+under backpressure, or when any source is:
+
+- **unwritable**;
+- **failing** — its most recent scan failed (the buffer rejected the work, §4.2 "Isolation", or
+  the directory could not be listed) and no scan has completed since. `lastError`/`lastErrorAt`
+  say what and when, and stay visible after recovery;
+- **stalled** — no scan has completed and no file has finished for `3 × pollIntervalSec`
+  (at least 120 s), measured from the later of `lastScan` and the running scan's last finished
+  file (so a long catch-up scan over a backlog is not a stall), or from poller start before the
+  first scan completes.
+
+A live thread is not proof of ingestion: a buffer whose every INSERT failed (the
+`mapped_json NOT NULL` upgrade bug) kept `up=true` and a green probe while nothing moved.
+`lastScan` is the last scan that *completed*, never merely started.
 
 ## 10. Out of scope (v1)
 

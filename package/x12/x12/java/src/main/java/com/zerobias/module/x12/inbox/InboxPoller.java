@@ -62,6 +62,8 @@ public final class InboxPoller implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(InboxPoller.class);
 
+    private static final int MAX_ERROR_CHARS = 300;
+
     /** Always skipped, whatever the configured suffixes (DESIGN §4.2 step 1). */
     static final List<String> SKIP_SUFFIXES = List.of(".done", ".error", ".tmp", ".part", ".partial");
 
@@ -86,7 +88,15 @@ public final class InboxPoller implements AutoCloseable {
 
     private ScheduledExecutorService scheduler;
     private volatile boolean closed;
+    /** When {@link #start()} scheduled the scans; the stall reference before any scan completes. */
+    private volatile Instant startedAt;
+    private volatile Instant lastScanStarted;
+    /** The last scan that completed without failing. */
     private volatile Instant lastScan;
+    /** The last time the running scan finished a file. */
+    private volatile Instant lastProgress;
+    private volatile String lastError;
+    private volatile Instant lastErrorAt;
     private volatile Instant lastConsumed;
     private volatile boolean backpressure;
     private volatile int pending;
@@ -122,6 +132,7 @@ public final class InboxPoller implements AutoCloseable {
             t.setDaemon(true);
             return t;
         });
+        startedAt = Instant.now(clock);
         scheduler.scheduleWithFixedDelay(this::safeScan, 0, source.pollIntervalSec(), TimeUnit.SECONDS);
         LOG.info("poller '{}' watching {} (pattern {}, every {}s, stable for {}s)", source.name(), source.path(),
             source.pattern(), source.pollIntervalSec(), source.stableForSec());
@@ -139,9 +150,21 @@ public final class InboxPoller implements AutoCloseable {
     /**
      * One scan pass. Returns the counts the {@code ops/rescan} function reports. Throws only
      * when the buffer failed (see the class doc); one file's failure never ends the scan.
+     * Records the outcome for {@code /healthz}: a completed scan moves {@link #lastScan()}, a
+     * failed one (thrown, or a directory that cannot be listed) records the error instead.
      */
     public synchronized RescanResult scan() throws SQLException {
         Instant now = Instant.now(clock);
+        lastScanStarted = now;
+        try {
+            return scanOnce(now);
+        } catch (Throwable t) {
+            recordFailure(t.toString());
+            throw t;
+        }
+    }
+
+    private RescanResult scanOnce(Instant now) throws SQLException {
         int scanned = 0;
         int discovered = 0;
         int consumed = 0;
@@ -157,7 +180,7 @@ public final class InboxPoller implements AutoCloseable {
         } catch (IOException | DirectoryIteratorException e) {
             LOG.error("poller '{}' cannot list {}: {}", source.name(), dir, e.toString());
             this.writable = false;
-            this.lastScan = now;
+            recordFailure("cannot list " + dir + ": " + e);
             return new RescanResult(0, 0, 0, 0);
         }
         Set<Path> present = new HashSet<>();
@@ -168,6 +191,7 @@ public final class InboxPoller implements AutoCloseable {
         seen.removeIf(k -> !present.contains(k.path()));
 
         for (Candidate c : candidates) {
+            lastProgress = Instant.now(clock);
             Path p = c.path();
             SeenKey key = new SeenKey(p, c.size(), c.mtime());
             if (seen.contains(key)) {
@@ -230,7 +254,8 @@ public final class InboxPoller implements AutoCloseable {
         }
         this.pending = pendingNow;
         this.backpressure = pressure;
-        this.lastScan = now;
+        this.lastScan = Instant.now(clock);
+        this.lastProgress = this.lastScan;
         if (pressure) {
             LOG.warn("poller '{}': backpressure, {} file(s) left untouched", source.name(), pendingNow);
         }
@@ -284,6 +309,11 @@ public final class InboxPoller implements AutoCloseable {
         return source.matchesFileName(name);
     }
 
+    private void recordFailure(String message) {
+        lastError = message.length() <= MAX_ERROR_CHARS ? message : message.substring(0, MAX_ERROR_CHARS) + "…";
+        lastErrorAt = Instant.now(clock);
+    }
+
     /** Errors that leave the JVM itself unreliable end the scan; a file's OOM or stack overflow does not. */
     private static void rethrowIfFatal(Throwable e) {
         if (e instanceof VirtualMachineError && !(e instanceof OutOfMemoryError) && !(e instanceof StackOverflowError)) {
@@ -308,6 +338,7 @@ public final class InboxPoller implements AutoCloseable {
         return !closed && scheduler != null && !scheduler.isShutdown();
     }
 
+    /** The last scan that completed without failing. */
     public Optional<Instant> lastScan() {
         return Optional.ofNullable(lastScan);
     }
@@ -332,7 +363,8 @@ public final class InboxPoller implements AutoCloseable {
         } catch (SQLException e) {
             errored = -1;
         }
-        return new SourceStatus(source.name(), source.path(), w, pending, errored);
+        return new SourceStatus(source.name(), source.path(), w, pending, errored, source.pollIntervalSec(),
+            startedAt, lastScanStarted, lastScan, lastProgress, lastError, lastErrorAt);
     }
 
     @Override

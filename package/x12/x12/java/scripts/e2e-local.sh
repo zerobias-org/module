@@ -178,6 +178,11 @@ DENIED="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":$(
 check "(paidAmount>=230) matches only the 240.00 claim" "[ \"$HIGH\" = 1 ]"
 check "(paidAmount>=1000) matches nothing" "[ \"$NONE\" = 0 ]"
 check "(claimStatus=1) matches both" "[ \"$DENIED\" = 2 ]"
+# lite-filter drives both filter paths, so the extensions work here as well as on /transactions
+ENDS="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":$(jstr "$CLAIMS"),\"filter\":\"(claimId:endsWith:0002)\",\"pageSize\":10}")" 'j["count"]')"
+check "(claimId:endsWith:0002) — a lite-filter extension on a business collection" "[ \"$ENDS\" = 1 ]"
+BYPAYER_F="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":$(jstr "$CLAIMS"),\"filter\":\"(payerName=EXAMPLE HEALTH PLAN)\",\"pageSize\":10}")" 'j["count"]')"
+check "a dimension is filterable like any column" "[ \"$BYPAYER_F\" = 2 ]"
 LINES="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":\"$X12_RECEIVER/service-lines\",\"pageSize\":10}")" 'j["count"]')"
 check "/service-lines has its own grain: 3 lines" "[ \"$LINES\" = 3 ]"
 REMITS="$(jget "$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":\"$X12_RECEIVER/remittances\",\"pageSize\":10}")" 'j["count"]')"

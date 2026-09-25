@@ -149,11 +149,34 @@ class BusinessCollectionsTest {
     }
 
     @Test
+    void oneParserMeansTheExtensionOperatorsWorkHereToo() throws Exception {
+        // These come free from lite-filter — the structural path has always had them, and the
+        // business path gets exactly the same grammar now that both parse with it.
+        assertEquals(1, filtered("/claims", "(claimId:endsWith:0002)"));
+        assertEquals(2, filtered("/claims", "(claimId:startsWith:CLM)"));
+        assertEquals(2, filtered("/claims", "(payerClaimControlNumber:contains:2026)"));
+        assertEquals(1, filtered("/claims", "(claimId!=CLM0001)"));
+        assertEquals(2, filtered("/claims", "(paidAmount>0)"));
+        assertEquals(0, filtered("/claims", "(paidAmount<220)"), "strict bound excludes 220.00");
+        assertEquals(1, filtered("/claims", "(&(paidAmount>=220)(paidAmount<240))"));
+
+        // dimensions and provenance are filterable on the same footing as columns
+        assertEquals(2, filtered("/claims", "(payerName=EXAMPLE HEALTH PLAN)"));
+        assertEquals(0, filtered("/claims", "(payerName=SOMEONE ELSE)"));
+        assertEquals(2, filtered("/claims", "(elementKey=*)"));
+    }
+
+    @Test
     void anUnknownColumnIsReportedNotSilentlyEmpty() {
         ProducerException e = assertThrows(ProducerException.class, () -> facade.getCollectionElements(
             R + "/claims", "(nope=1)", null, null, 10, 1, null));
         assertEquals(400, e.httpStatus());
         assertTrue(e.getMessage().contains("nope"), e.getMessage());
+        assertTrue(e.getMessage().contains("available:"), "the error lists what IS filterable");
+
+        // a malformed filter is a 400 too, from the same parser the structural path uses
+        assertEquals(400, assertThrows(ProducerException.class, () -> facade.getCollectionElements(
+            R + "/claims", "(paidAmount>=", null, null, 10, 1, null)).httpStatus());
     }
 
     @Test

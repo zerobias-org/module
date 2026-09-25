@@ -590,9 +590,18 @@ through `X12SqlAdapter`, but a body path now resolves into the graph rather than
 row. Numeric comparisons read `value_num / 1000000.0`; the exact value stays in `value_text`.
 
 Scoping is pushed into SQL — grain always, plus a file or dimension equality inside a segment.
-A user filter is applied to the projected rows, because a business column can sit behind a
-qualifier predicate or inside a composite, which SQL over `entity_values` cannot express; a
-filtered page therefore reads the scoped set and pages after filtering. Correct, and bounded by
+**One parser for both paths.** A business filter is parsed by lite-filter — the same parser
+the structural path uses — and evaluated with lite-filter's own evaluator against the projected
+row, so the two surfaces cannot drift in what they accept; the extensions
+(`:contains:`, `:startsWith:`, `:endsWith:`) work on a claims collection exactly as on
+`/transactions`. The only thing layered on top is attribute validation, because the library
+cannot know which columns a business entity has: an unknown name is a 400 that lists what IS
+filterable, rather than an empty page that looks like "no matches".
+
+The structural path compiles that expression to SQL; the business path evaluates it in memory,
+because a business column can sit behind a qualifier predicate or inside a composite, which SQL
+over `entity_values` cannot express. A filtered page therefore reads the scoped set and pages
+after filtering. Correct, and bounded by
 the segment rather than the buffer — pushing the compilable subset down is a follow-up, and the
 value indexes are already in place for it. Filters compare by the column's declared type, so
 `(paidAmount>=1000)` is an exact decimal comparison and cannot match `999.99` lexically, and an

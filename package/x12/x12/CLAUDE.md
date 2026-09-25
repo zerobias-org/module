@@ -115,11 +115,13 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
 - **Business schemas are generated from the mappings**, never hand-written: a collection may not
   advertise a `collectionSchema` the registry cannot serve, and generating it keeps the schema
   and the projection from disagreeing.
-- **Two RFC4515 paths, deliberately.** Structural collections compile to SQL via
-  `X12SqlAdapter` (a body path is now a scalar subquery over `entity_values`, NOT
-  `json_extract` — that column is gone); business collections evaluate `BusinessFilter` over
-  projected rows. They are separate parsers today, which is duplication worth collapsing onto
-  lite-filter rather than extending twice. `sortBy`/`sortDir` are accepted and ignored on both.
+- **ONE RFC4515 parser: lite-filter.** Both paths parse with it. Structural collections
+  compile the expression to SQL via `X12SqlAdapter` (a body path is a scalar subquery over
+  `entity_values`, NOT `json_extract` — that column is gone); business collections evaluate it
+  with `Expression.matches(row)` over the projected row. Never hand-roll a filter parser here:
+  a second grammar is a second set of accepted syntaxes to keep in sync, and the extensions
+  come free. `BusinessFilter` adds only attribute validation, since the library cannot know an
+  entity's columns. `sortBy`/`sortDir` are accepted and ignored on both paths.
 - **The poller scans each source flat** (`newDirectoryStream`, DESIGN §4.2). A file
   uploaded into a subdirectory is browsable and downloadable but will never be consumed
   where it sits — that is what the `ingest` field on a live file node reports. If recursive

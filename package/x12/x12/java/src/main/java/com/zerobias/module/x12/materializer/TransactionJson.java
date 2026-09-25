@@ -43,9 +43,15 @@ public final class TransactionJson {
             int parserErrorCount) {
     }
 
-    /** {@code <fileId>:<GS06>:<ST02>} — the collection element key (DESIGN §2.1). */
-    public static String elementKey(String fileId, String gsControl, String stControl) {
-        return fileId + ":" + gsControl + ":" + stControl;
+    /**
+     * {@code <fileId>:<ISA13>:<GS06>:<ST02>} — the collection element key (DESIGN §2.1).
+     * ISA13 is part of it because one file may carry several interchanges, and GS06/ST02 are
+     * only unique within their interchange: two ISAs that both number their first group
+     * {@code 1} and their first set {@code 0001} are ordinary, not malformed. The key is
+     * opaque to every reader — nothing parses it back apart.
+     */
+    public static String elementKey(String fileId, String isaControl, String gsControl, String stControl) {
+        return fileId + ":" + isaControl + ":" + gsControl + ":" + stControl;
     }
 
     /** Envelope overlay + materialized body, in the stored key order. */

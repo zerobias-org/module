@@ -187,12 +187,9 @@ public final class BufferStore implements AutoCloseable {
 
     /**
      * Persist one interchange file and all of its transaction sets in ONE SQL
-     * transaction (DESIGN §4.2 step 3c): every row is inserted with
-     * {@code ON CONFLICT(element_key) DO NOTHING}, then the {@code files} row. On any
-     * failure the whole unit rolls back and the exception propagates (the caller then
-     * renames {@code .error}). Returns the number of transaction rows actually
-     * inserted (duplicates by element key are silently dropped). The caller renames
-     * {@code .done} only after this returns — rename is the ack.
+     * transaction (DESIGN §4.2 step 3c): the transaction rows, then the {@code files} row.
+     * Every row must land — see {@link #consumeFile(FileRow, List, Map, Map)}. The caller
+     * renames {@code .done} only after this returns — rename is the ack.
      */
     public synchronized int consumeFile(FileRow file, List<TransactionRow> rows) throws SQLException {
         return consumeFile(file, rows, Map.of());
@@ -212,37 +209,36 @@ public final class BufferStore implements AutoCloseable {
     }
 
     /**
+     * The whole consume unit. Every transaction row must land: the file's id is new (the
+     * consumer resolves redelivery/duplicates by checksum before calling this), so an element
+     * key that is already taken means two transaction sets of THIS file collide, and the unit
+     * is rolled back with a {@link DuplicateElementKeyException} rather than committed with a
+     * set missing — or, worse, with the surviving row carrying the other set's graph, since
+     * both would be filed under the same key in {@code graphs}. On any failure, {@link Error}s
+     * included, nothing is written and the exception propagates. Returns {@code rows.size()}.
+     *
      * @param dims element key → resolved business dimensions (DESIGN §8.5)
      */
     public synchronized int consumeFile(FileRow file, List<TransactionRow> rows,
             Map<String, List<EntityGraph.Entity>> graphs,
             Map<String, Map<String, EntityGraph.Value>> dims) throws SQLException {
-        final boolean prev = conn.getAutoCommit();
-        conn.setAutoCommit(false);
-        try {
-            int inserted = 0;
+        return SqlTransaction.run(conn, () -> {
             for (TransactionRow r : rows) {
-                if (insertTransactionUnsynchronized(r)) {
-                    inserted++;
-                    List<EntityGraph.Entity> graph = graphs == null ? null : graphs.get(r.elementKey());
-                    if (graph != null && !graph.isEmpty()) {
-                        insertGraphUnsynchronized(r, graph);
-                    }
-                    Map<String, EntityGraph.Value> d = dims == null ? null : dims.get(r.elementKey());
-                    if (d != null && !d.isEmpty()) {
-                        insertDimsUnsynchronized(r.elementKey(), d);
-                    }
+                if (!insertTransactionUnsynchronized(r)) {
+                    throw new DuplicateElementKeyException(r.elementKey());
+                }
+                List<EntityGraph.Entity> graph = graphs == null ? null : graphs.get(r.elementKey());
+                if (graph != null && !graph.isEmpty()) {
+                    insertGraphUnsynchronized(r, graph);
+                }
+                Map<String, EntityGraph.Value> d = dims == null ? null : dims.get(r.elementKey());
+                if (d != null && !d.isEmpty()) {
+                    insertDimsUnsynchronized(r.elementKey(), d);
                 }
             }
             insertFileUnsynchronized(file);
-            conn.commit();
-            return inserted;
-        } catch (SQLException | RuntimeException e) {
-            conn.rollback();
-            throw e;
-        } finally {
-            conn.setAutoCommit(prev);
-        }
+            return rows.size();
+        });
     }
 
     /**
@@ -257,7 +253,9 @@ public final class BufferStore implements AutoCloseable {
 
     /**
      * Persist one transaction set. Returns true if inserted, false if a row with the
-     * same {@code elementKey} already exists (silently dropped).
+     * same {@code elementKey} already exists. The insert keeps {@code ON CONFLICT DO NOTHING}
+     * so a taken key reads as {@code false} rather than as a constraint error that would look
+     * like a store failure; {@link #consumeFile} turns that {@code false} into a rollback.
      */
     public synchronized boolean insertTransaction(TransactionRow row) throws SQLException {
         return insertTransactionUnsynchronized(row);

@@ -121,7 +121,7 @@ ELEMS="$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":\"$X12_RECE
 echo "$ELEMS" | jpretty | head -40
 check "count=1, status new, typed body present" "[ \"$(jget "$ELEMS" 'j["count"]==1 and j["items"][0]["status"]=="new" and "header" in j["items"][0]')\" = True ]"
 KEY="$(jget "$ELEMS" 'j["items"][0]["elementKey"]')"
-check "elementKey = <fileId>:<GS06>:<ST02>" "[ \"$KEY\" = \"$FILE_ID:101:0001\" ]"
+check "elementKey = <fileId>:<ISA13>:<GS06>:<ST02>" "[ \"$KEY\" = \"$FILE_ID:000000101:101:0001\" ]"
 check "schema is the 835 table" "[ \"$(jget "$ELEMS" 'j["items"][0]["transactionType"]')\" = 835 ]"
 
 step "FunctionsApi.invokeFunction ops/validate (materializer behind the seam)"

@@ -58,7 +58,10 @@ build time, JUnit test surface, `zb.java-module` build — is inherited unchange
 
 Rules (from hl7/v2 `ObjectTree` javadoc, restated):
 - **A transaction set is an atom** — a collection *element*, never a node. Element key =
-  `<fileId>:<GS06>:<ST02>` (interchange file, group control number, transaction control number).
+  `<fileId>:<ISA13>:<GS06>:<ST02>` (interchange file, interchange control number, group control
+  number, transaction control number). ISA13 is in it because one file may carry several
+  interchanges and GS06/ST02 are only unique within theirs. The key is opaque: no reader splits
+  it, so its shape can change without a migration (older rows keep the key they were stored under).
 - **Folders are discriminators and their children are emergent**: read live from the buffer's
   `DISTINCT` values, so a node appears the first time matching data lands.
 - **`/files/<fileId>` is the one exception**: a file is both a folder (its transactions) and a
@@ -339,8 +342,14 @@ be distinct. `pattern` is a glob against the file name (case-insensitive).
       `X12Reader.FileType` via `TransactionTypes.fileTypeFor(gs08)`; unknown GS08 → parse fails
       with `unsupported-guide`.
    c. For every `ST_LOOP` in every `GS_LOOP` of every `ISA_LOOP`: materialize (§5), build the
-      envelope, `INSERT … ON CONFLICT(element_key) DO NOTHING` into `transactions`; insert the
-      `files` row (`status='consumed'`, counts).
+      envelope, insert into `transactions` (+ its graph and dimensions); insert the `files` row
+      (`status='consumed'`, counts). Every set must land: the `fileId` is new at this point
+      (3a resolved redelivery and duplicates by checksum), so an element key that is already
+      taken can only be two sets of *this* file sharing ISA13/GS06/ST02. That rolls the whole
+      file back and sends it down 3e as `duplicate-element-key` — acknowledging it `.done` would
+      silently drop one set. (The insert keeps `ON CONFLICT(element_key) DO NOTHING` only so the
+      clash reads as "not inserted" rather than as a constraint error indistinguishable from a
+      store failure; no path relies on it to skip a row.)
    d. `COMMIT`, **then** `rename(path, target)` where `target` is `<path><consumedSuffix>`, or
       `<path>.<discoveredAtEpochMillis><consumedSuffix>` when that name already exists (the same
       name delivered again with different bytes); the actual target is persisted in
@@ -499,7 +508,7 @@ CREATE INDEX IF NOT EXISTS files_path ON files(file_path);
 CREATE INDEX IF NOT EXISTS files_source ON files(source_name, status);
 CREATE TABLE IF NOT EXISTS transactions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  element_key TEXT NOT NULL UNIQUE,    -- <fileId>:<GS06>:<ST02>  (fileId = <path>@<hash12>)
+  element_key TEXT NOT NULL UNIQUE,    -- <fileId>:<ISA13>:<GS06>:<ST02>  (fileId = <path>@<hash12>)
   file_id TEXT NOT NULL, source_name TEXT NOT NULL,
   received_at INTEGER NOT NULL,
   isa_control TEXT, gs_control TEXT, st_control TEXT,

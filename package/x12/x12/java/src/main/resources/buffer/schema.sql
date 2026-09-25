@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS files_source ON files(source_name, status);
 -- One row per TRANSACTION SET (ST..SE) — the collection element / drain atom.
 CREATE TABLE IF NOT EXISTS transactions (
   id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-  element_key        TEXT NOT NULL UNIQUE,    -- <fileId>:<GS06>:<ST02>
+  element_key        TEXT NOT NULL UNIQUE,    -- <fileId>:<ISA13>:<GS06>:<ST02>
   file_id            TEXT NOT NULL,
   source_name        TEXT NOT NULL,
   received_at        INTEGER NOT NULL,
@@ -77,7 +77,7 @@ CREATE INDEX IF NOT EXISTS transactions_file ON transactions(file_id);
 -- collection element in its own right.
 CREATE TABLE IF NOT EXISTS entities (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  element_key  TEXT NOT NULL,            -- owning transaction set (<fileId>:<GS06>:<ST02>)
+  element_key  TEXT NOT NULL,            -- owning transaction set (<fileId>:<ISA13>:<GS06>:<ST02>)
   file_id      TEXT NOT NULL,            -- denormalized for file-scoped queries
   gs08         TEXT NOT NULL,            -- guide, so /by-type collections scope without a join
   schema_id    TEXT NOT NULL,            -- schema:type:x12.<GS08>.<xid> | schema:table:... at the root

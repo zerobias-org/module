@@ -15,7 +15,7 @@ import java.util.Map;
  * {@code ST03} (mandatory for 005010 bare sets — without it the guide is unknowable); the
  * functional identifier from {@code ST01}; dates from the clock; sender/receiver are the
  * fixed {@link #SYNTHETIC_ID}. All transaction sets in the file land in one functional
- * group with {@code GS06 = 1}, so element keys are {@code <fileId>:1:<ST02>}.
+ * group with {@code GS06 = 1}, so element keys are {@code <fileId>:000000001:1:<ST02>}.
  */
 public final class EnvelopeSynthesizer {
 

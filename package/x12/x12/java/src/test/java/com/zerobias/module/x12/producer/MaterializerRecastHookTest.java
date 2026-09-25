@@ -57,8 +57,8 @@ class MaterializerRecastHookTest {
         SourceConfig src = cfg.sources().get(0);
         Path a = Files.write(inbox.resolve("remit.835"), Fixtures.bytes(Fixtures.F835));
         Path b = Files.write(inbox.resolve("claims.837"), Fixtures.bytes(Fixtures.F837P));
-        key835 = consumer.consume(src, a, TestRows.BASE).fileId() + ":101:0001";
-        key837 = consumer.consume(src, b, TestRows.BASE).fileId() + ":102:0001";
+        key835 = consumer.consume(src, a, TestRows.BASE).fileId() + ":000000101:101:0001";
+        key837 = consumer.consume(src, b, TestRows.BASE).fileId() + ":000000102:102:0001";
         ops = new X12Operations(buffer, null, () -> new ProducerFixture.StubPoller(inbox), SCHEMAS,
             new MaterializerRecastHook(resolver, clock));
     }
@@ -100,7 +100,7 @@ class MaterializerRecastHookTest {
             StructureResolver resolver = new StructureResolver();
             FileConsumer consumer = new FileConsumer(b, null, cfg, resolver, system);
             Path a = Files.write(inbox.resolve("remit.835"), Fixtures.bytes(Fixtures.F835));
-            String key = consumer.consume(cfg.sources().get(0), a, java.time.Instant.now()).fileId() + ":101:0001";
+            String key = consumer.consume(cfg.sources().get(0), a, java.time.Instant.now()).fileId() + ":000000101:101:0001";
             TransactionRow row = b.byElementKey(key).orElseThrow();
             RecastHook.Mapping m = new MaterializerRecastHook(resolver, system).rematerialize(row);
             assertEquals(b.documentFor(row.elementKey()), m.body(),
@@ -169,7 +169,7 @@ class MaterializerRecastHookTest {
         buffer.insertTransaction(TestRows.tx("/in/x.835@000000000000", "inbox", "9", "0009", 0,
             "005010X221A1", "835", TestRows.SCHEMA_835, "P"));   // rawX12 = bare ST/SE with no body
         buffer.insertTransaction(TransactionRow.builder()
-            .fileId("/in/y.835@000000000000").sourceName("inbox").gsControl("8").stControl("0008").deriveElementKey()
+            .fileId("/in/y.835@000000000000").sourceName("inbox").isaControl("000000008").gsControl("8").stControl("0008").deriveElementKey()
             .receivedAt(TestRows.BASE).gs08("005010X221A1").transactionType("835").schemaId(TestRows.SCHEMA_835)
             .rawX12("garbage".getBytes()).build());
         Map<String, Object> out = ops.invoke("recast", Map.of());
@@ -177,10 +177,10 @@ class MaterializerRecastHookTest {
         assertEquals(2, out.get("failed"), "garbage raw + an ST/SE with no body (imsweb rejects it)");
         assertEquals(0, out.get("recast"));
         assertEquals(2, out.get("unchanged"), "the real rows are untouched");
-        assertEquals(java.util.Map.of(), buffer.documentFor("/in/y.835@000000000000:8:0008"),
+        assertEquals(java.util.Map.of(), buffer.documentFor("/in/y.835@000000000000:000000008:8:0008"),
             "an unparseable row keeps its (empty) graph");
 
-        Map<String, Object> v = ops.invoke("validate", Map.of("elementKey", "/in/y.835@000000000000:8:0008"));
+        Map<String, Object> v = ops.invoke("validate", Map.of("elementKey", "/in/y.835@000000000000:000000008:8:0008"));
         assertEquals(false, v.get("repsAgree"));
         @SuppressWarnings("unchecked")
         Map<String, Object> rv = (Map<String, Object>) v.get("rematerialized");

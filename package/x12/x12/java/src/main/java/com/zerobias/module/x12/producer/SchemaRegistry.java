@@ -325,7 +325,7 @@ public final class SchemaRegistry implements SchemaRegistryApi {
     }
 
     private static final String FILTER_DESC = "RFC4515 filter over envelope + schema property names (DESIGN §2.6)";
-    private static final String ELEMENT_KEY_DESC = "<fileId>:<GS06>:<ST02>";
+    private static final String ELEMENT_KEY_DESC = "<fileId>:<ISA13>:<GS06>:<ST02>";
 
     private static final Map<String, List<Param>> INPUTS = Map.of(
         "take", List.of(

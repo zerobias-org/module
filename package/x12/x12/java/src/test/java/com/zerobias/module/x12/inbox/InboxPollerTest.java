@@ -108,7 +108,7 @@ class InboxPollerTest {
         assertFalse(file.renameFailed());
 
         assertEquals(1, buffer.count());
-        TransactionRow row = buffer.byElementKey(fileId + ":101:0001").orElseThrow();
+        TransactionRow row = buffer.byElementKey(fileId + ":000000101:101:0001").orElseThrow();
         assertEquals(Status.NEW, row.status());
         assertEquals("005010X221A1", row.gs08());
         assertEquals("835", row.transactionType());
@@ -129,7 +129,7 @@ class InboxPollerTest {
         String json = new com.google.gson.Gson().toJson(
             com.zerobias.module.x12.producer.X12ProducerFacade.toElement(row,
                 buffer.documentFor(row.elementKey())));
-        assertTrue(json.contains("\"elementKey\":\"" + fileId + ":101:0001\""), json);
+        assertTrue(json.contains("\"elementKey\":\"" + fileId + ":000000101:101:0001\""), json);
         assertTrue(json.contains("\"transactionType\":\"835\""), json);
         assertTrue(json.contains("\"envelope\":\"file\""), json);
         assertTrue(json.contains("\"parserErrorCount\":0"), json);
@@ -286,7 +286,7 @@ class InboxPollerTest {
         assertEquals(new RescanResult(1, 1, 1, 0), handle.rescan(null));
         assertTrue(Files.exists(Path.of(accepted + ".done")));
         String fileId = FileConsumer.fileId(accepted, bare);
-        TransactionRow tx = buffer.byElementKey(fileId + ":1:0001").orElseThrow();
+        TransactionRow tx = buffer.byElementKey(fileId + ":000000001:1:0001").orElseThrow();
         assertEquals(TransactionRow.ENVELOPE_SYNTHETIC, tx.envelope());
         assertEquals("SYNTHETIC", tx.senderId());
         assertEquals("000000001", tx.isaControl());
@@ -342,8 +342,8 @@ class InboxPollerTest {
         assertEquals(stamped.toString(), row.currentPath(), "current_path = the actual rename target");
         assertEquals(again.toString(), row.filePath());
         assertEquals(buffer.fileById(first).orElseThrow().filePath(), row.filePath(), "same discovery path, two ids");
-        assertTrue(buffer.byElementKey(first + ":101:0001").isPresent(), "transactions from the first");
-        assertTrue(buffer.byElementKey(second + ":102:0001").isPresent(), "transactions from the second");
+        assertTrue(buffer.byElementKey(first + ":000000101:101:0001").isPresent(), "transactions from the first");
+        assertTrue(buffer.byElementKey(second + ":000000102:102:0001").isPresent(), "transactions from the second");
         assertEquals(List.of(first, second), buffer.distinctValues("file_id"));
     }
 
@@ -400,7 +400,7 @@ class InboxPollerTest {
         assertTrue(Files.exists(inbox.resolve("fix.835.done")));
         assertFalse(Files.exists(error));
         assertEquals(1, buffer.count());
-        assertTrue(buffer.byElementKey(fixedId + ":101:0001").isPresent());
+        assertTrue(buffer.byElementKey(fixedId + ":000000101:101:0001").isPresent());
         assertEquals(FileStatus.CONSUMED, buffer.fileById(fixedId).orElseThrow().status());
         assertEquals(FileStatus.ERROR, buffer.fileById(brokenId).orElseThrow().status(), "the failed bytes keep their audit row");
         assertEquals(2, buffer.fileCount());
@@ -482,7 +482,7 @@ class InboxPollerTest {
         assertEquals(List.of("payer-a", "payer-b"), handle.sources().stream().map(PollerStatus.SourceStatus::name).toList());
         assertEquals(0, handle.sources().get(0).errored());
         assertEquals(1, handle.sources().get(1).errored());
-        assertEquals("payer-b", buffer.byElementKey(FileConsumer.fileId(b.resolve("two.837"), Fixtures.bytes(Fixtures.F837P)) + ":102:0001")
+        assertEquals("payer-b", buffer.byElementKey(FileConsumer.fileId(b.resolve("two.837"), Fixtures.bytes(Fixtures.F837P)) + ":000000102:102:0001")
             .orElseThrow().sourceName());
         assertEquals(List.of("payer-a", "payer-b"), buffer.distinctValues("source_name"));
     }
@@ -526,11 +526,62 @@ class InboxPollerTest {
         Path f = drop(inbox, "remit.835", Fixtures.bytes(Fixtures.F835));
         FileConsumer.Result r = consumer.consume(new SourceConfig("inbox", inbox.toString(), "*", 1, 0), f, T0);
         assertEquals(FileConsumer.Outcome.CONSUMED, r.outcome());
-        TransactionRow row = buffer.byElementKey(r.fileId() + ":101:0001").orElseThrow();
+        TransactionRow row = buffer.byElementKey(r.fileId() + ":000000101:101:0001").orElseThrow();
         assertEquals(StructureResolver.ENVELOPE_SCHEMA, row.schemaId());
         assertEquals(0, row.parserErrorCount());
         // No structure index for an unbundled guide: nothing to flatten, so no graph at all.
         String unbundled = new com.google.gson.Gson().toJson(buffer.documentFor(row.elementKey()));
         assertFalse(unbundled.contains("\"header\""), unbundled);
+    }
+
+    // ---- element key: <fileId>:<ISA13>:<GS06>:<ST02> ---------------------------------------
+
+    /** The 835 fixture re-numbered as interchange {@code isa13}; GS06 and ST02 are unchanged. */
+    private static String interchange835(String isa13) {
+        return Fixtures.text(Fixtures.F835).strip()
+            .replace("*000000101*0*T*", "*" + isa13 + "*0*T*")
+            .replace("IEA*1*000000101~", "IEA*1*" + isa13 + "~");
+    }
+
+    @Test
+    void twoInterchangesReusingGroupAndSetNumbersAreBothKept(@TempDir Path dir) throws Exception {
+        // Each interchange numbers its own groups and sets: GS06=101/ST02=0001 twice in one file
+        // is ordinary. Without ISA13 in the key the second set was silently dropped.
+        Path inbox = inbox(dir);
+        open(dir, config(inbox, 0, false), new MutableClock(T0), null);
+        byte[] bytes = (interchange835("000000101") + "\n" + interchange835("000000201") + "\n")
+            .getBytes(StandardCharsets.UTF_8);
+        Path f = drop(inbox, "two-isa.835", bytes);
+        String fileId = FileConsumer.fileId(f, bytes);
+
+        assertEquals(new RescanResult(1, 1, 1, 0), handle.rescan(null));
+        assertEquals(2, buffer.count(), "one row per transaction set");
+        assertTrue(buffer.byElementKey(fileId + ":000000101:101:0001").isPresent());
+        assertTrue(buffer.byElementKey(fileId + ":000000201:101:0001").isPresent());
+        assertEquals(2, buffer.fileById(fileId).orElseThrow().transactionCount());
+        assertTrue(Files.exists(inbox.resolve("two-isa.835.done")));
+    }
+
+    @Test
+    void elementKeyCollisionInsideAFileSendsTheWholeFileToError(@TempDir Path dir) throws Exception {
+        // Two sets in one group both numbered ST02=0001: the key cannot tell them apart. The file
+        // must not be acknowledged .done with one of them missing (or wearing the other's graph).
+        Path inbox = inbox(dir);
+        open(dir, config(inbox, 0, false), new MutableClock(T0), null);
+        String x = Fixtures.text(Fixtures.F835).strip();
+        String set = x.substring(x.indexOf("ST*835*0001~"), x.indexOf("GE*1*101~"));
+        String doubled = x.replace("GE*1*101~", set + "GE*2*101~");
+        byte[] bytes = doubled.getBytes(StandardCharsets.UTF_8);
+        Path f = drop(inbox, "dup-st.835", bytes);
+        String fileId = FileConsumer.fileId(f, bytes);
+
+        assertEquals(new RescanResult(1, 1, 0, 1), handle.rescan(null));
+        assertEquals(0, buffer.count(), "rolled back: no transaction rows");
+        assertEquals(0, buffer.entityCount(fileId + ":000000101:101:0001"), "rolled back: no graph");
+        FileRow row = buffer.fileById(fileId).orElseThrow();
+        assertEquals(FileStatus.ERROR, row.status());
+        assertTrue(row.errorMessage().startsWith("duplicate-element-key"), row.errorMessage());
+        assertTrue(Files.exists(inbox.resolve("dup-st.835.error")));
+        assertFalse(Files.exists(inbox.resolve("dup-st.835.done")));
     }
 }

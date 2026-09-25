@@ -3,6 +3,7 @@ package com.zerobias.module.x12.inbox;
 import com.zerobias.module.x12.ModuleRuntimeConfig;
 import com.zerobias.module.x12.SourceConfig;
 import com.zerobias.module.x12.buffer.BufferStore;
+import com.zerobias.module.x12.buffer.DuplicateElementKeyException;
 import com.zerobias.module.x12.buffer.FileRow;
 import com.zerobias.module.x12.buffer.FileStatus;
 import com.zerobias.module.x12.buffer.RetentionSweeper;
@@ -192,15 +193,11 @@ public final class FileConsumer {
 
             // 3d. COMMIT, then rename — rename is the ack.
             // The object graph commits with its transaction rows (DESIGN §8.4).
-            int inserted = buffer.consumeFile(file, rows, graphs, dims);
+            buffer.consumeFile(file, rows, graphs, dims);
             if (!rename(abs, donePath)) {
                 buffer.markRenameFailed(fileId);
                 LOG.error("rename after commit failed for {} -> {}; row marked rename_failed (the id guards re-consumption)",
                     fileId, donePath);
-            }
-            if (inserted != rows.size()) {
-                LOG.warn("{}: {} of {} transaction(s) already present by element key; not re-inserted", fileId,
-                    rows.size() - inserted, rows.size());
             }
             if (!parsed.errors().isEmpty()) {
                 LOG.info("{}: consumed with {} non-fatal parser error(s): {}", fileId, parsed.errors().size(), parsed.errors());
@@ -208,8 +205,10 @@ public final class FileConsumer {
             LOG.info("consumed {} ({} bytes, {} transaction(s), {}, envelope={})", fileId, size, rows.size(),
                 parsed.gs08(), parsed.synthetic() ? TransactionRow.ENVELOPE_SYNTHETIC : TransactionRow.ENVELOPE_FILE);
             return new Result(Outcome.CONSUMED, fileId, rows.size(), null);
-        } catch (X12ParseException | RuntimeException e) {
-            // 3e. before commit: nothing was written for this file; rename .error + record.
+        } catch (X12ParseException | DuplicateElementKeyException | RuntimeException e) {
+            // 3e. before commit: nothing was written for this file (consumeFile rolled back);
+            // rename .error + record. A duplicate element key is two sets of this file sharing
+            // ISA13/GS06/ST02: acknowledging it .done would silently drop one of them.
             String message = errorMessage(e);
             Path errorPath = renameTarget(abs, errorSuffix, discoveredAt);
             LOG.warn("error: {} -> {}: {}", fileId, errorPath.getFileName(), message);
@@ -230,7 +229,8 @@ public final class FileConsumer {
         String schemaId = materializer.map(m -> m.index().tableSchemaId).orElse(StructureResolver.ENVELOPE_SCHEMA);
         String envelope = parsed.synthetic() ? TransactionRow.ENVELOPE_SYNTHETIC : TransactionRow.ENVELOPE_FILE;
         Instant interchangeAt = tx.interchange().interchangeAt().orElse(null);
-        String elementKey = TransactionJson.elementKey(fileId, tx.group().controlNumber(), tx.st02());
+        String elementKey = TransactionJson.elementKey(fileId, tx.interchange().controlNumber(),
+            tx.group().controlNumber(), tx.st02());
 
         TransactionJson.Envelope env = new TransactionJson.Envelope(elementKey, fileId, fileName, sourceName,
             tx.interchange().controlNumber(), tx.group().controlNumber(), tx.st02(), gs08, transactionType,
@@ -261,8 +261,8 @@ public final class FileConsumer {
     }
 
     static String errorMessage(Exception e) {
-        if (e instanceof X12ParseException pe) {
-            return pe.getMessage();
+        if (e instanceof X12ParseException || e instanceof DuplicateElementKeyException) {
+            return e.getMessage();
         }
         if (e instanceof IOException) {
             return "io: " + e;

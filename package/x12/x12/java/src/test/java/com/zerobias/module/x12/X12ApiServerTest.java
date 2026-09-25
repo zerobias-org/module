@@ -83,6 +83,18 @@ class X12ApiServerTest {
             "argMap must be an object");
     }
 
+    @Test
+    void uploadWhileReceiveOnlyIsUnsupportedWhateverTheArguments() throws Exception {
+        assertEquals(200, post("/connections", "{\"connectionId\":\"c1\"}").statusCode());
+        // Neither ?objectId= nor an argMap: without the gate first this was err.illegal.argument.
+        for (String body : new String[] {"ISA*00*", "{\"argMap\":{}}"}) {
+            HttpResponse<String> r = post("/connections/c1/BinaryApi.uploadBinaryContent", body);
+            assertEquals(400, r.statusCode(), r.body());
+            assertEquals("err.unsupported.operation",
+                GSON.fromJson(r.body(), JsonObject.class).get("key").getAsString(), r.body());
+        }
+    }
+
     private HttpResponse<String> get(String path) throws Exception {
         return http.send(HttpRequest.newBuilder(URI.create(base + path)).GET().build(),
             HttpResponse.BodyHandlers.ofString());

@@ -645,9 +645,14 @@ describeModule<X12>('X12 Receiver Module', (client) => {
     });
 
     it('uploadBinaryContent through the hub-sdk client is rejected with 400', async () => {
-      // Off: the receiver is receive-only. On: the client's (objectId, body) cannot carry the
-      // fileName the receiver requires (raw bytes + ?fileName=, or fileName + contentBase64).
+      // Off: the receiver is receive-only, and says so before looking at the arguments. On: the
+      // client's (objectId, body) cannot carry the fileName the receiver requires (raw bytes +
+      // ?fileName=, or fileName + contentBase64), so it is an argument error.
       const e = await rejectionOf(client.getBinaryApi().uploadBinaryContent(SOURCE_INBOX, fed().f835.bytes as never));
+      if (!fed().source.allowFileManagement) {
+        expectUnsupported(e);
+        return;
+      }
       expect(e).to.be.instanceOf(CoreError);
       expect((e as CoreError<any>).statusCode).to.equal(400);
     });

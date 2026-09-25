@@ -410,6 +410,12 @@ public final class X12ApiServer {
      * Returns the new file's object metadata as the interface's {@code 201} body.
      */
     private String upload(io.javalin.http.Context ctx) throws Exception {
+        // The gate answers first: a receive-only deployment says "unsupported", not "your
+        // arguments are wrong" — the caller cannot fix a disabled operation by fixing its body.
+        if (facade == null || !facade.fileManagementEnabled()) {
+            throw ProducerException.unsupported("uploadBinaryContent is disabled: the receiver is receive-only "
+                + "unless the deployment sets config.allowFileManagement=true");
+        }
         String objectId = ctx.queryParam("objectId");
         String fileName = ctx.queryParam("fileName");
         byte[] bytes = ctx.bodyAsBytes();

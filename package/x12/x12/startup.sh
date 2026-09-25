@@ -9,7 +9,14 @@ echo "Starting X12 Receiver Module..."
 # from MODULE_CONFIG (runtimeConfig.config.sources[].path); the Java process
 # validates every configured source at boot and refuses to start otherwise.
 echo "Buffer volume:      /var/lib/module"
-echo "MODULE_CONFIG:      ${MODULE_CONFIG:+set}${MODULE_CONFIG:-(absent — using runtimeConfig.yml defaults)}"
+# Only WHETHER it is set, never the value: MODULE_CONFIG is the operator's whole config
+# (paths, and whatever a future field carries) and has no place in container logs. The
+# old `${MODULE_CONFIG:+set}${MODULE_CONFIG:-...}` form printed the value whenever it was set.
+if [ -n "${MODULE_CONFIG}" ]; then
+    echo "MODULE_CONFIG:      set"
+else
+    echo "MODULE_CONFIG:      absent (using runtimeConfig.yml defaults)"
+fi
 
 # Create SSL directory
 mkdir -p /opt/module/ssl
@@ -50,20 +57,37 @@ if ! kill -0 $NGINX_PID 2>/dev/null; then
 fi
 echo "nginx started (PID: $NGINX_PID)"
 
-# Graceful shutdown
+# Graceful shutdown. Signal the children and WAIT for them: the Java shutdown hook stops the
+# HTTP routes and the pollers and then closes the buffer (a commit in flight finishes), and
+# exiting right after `kill` would let the runtime tear the container down under it. nginx
+# goes last so the ops port answers until Java is gone.
+JAVA_PID=
 shutdown() {
     echo "Shutting down..."
-    kill $JAVA_PID 2>/dev/null || true
-    kill $NGINX_PID 2>/dev/null || true
+    if [ -n "$JAVA_PID" ]; then
+        kill -TERM "$JAVA_PID" 2>/dev/null || true
+        wait "$JAVA_PID" 2>/dev/null || true
+    fi
+    kill -TERM "$NGINX_PID" 2>/dev/null || true
+    wait "$NGINX_PID" 2>/dev/null || true
     exit 0
 }
 trap shutdown TERM INT
 
-# Start the Java process in foreground (HTTP ops on $INTERNAL_PORT + inbox poller)
+# Start the Java process (HTTP ops on $INTERNAL_PORT + inbox poller) in the background so
+# this shell stays free to take the signal; the heap is sized from the container limit by
+# JAVA_OPTS (-XX:MaxRAMPercentage, Dockerfile), not a fixed -Xmx.
 echo "Starting X12 receiver on operations port $INTERNAL_PORT..."
 java $JAVA_OPTS -jar /opt/module/x12-receiver.jar &
 JAVA_PID=$!
 echo "X12 receiver started (PID: $JAVA_PID)"
 echo "X12 Receiver Module ready (operations on 8888)"
 
-wait $JAVA_PID
+# Java exiting on its own (a boot failure, a crash) ends the container with its status;
+# nginx is stopped first so nothing is left answering for a dead receiver.
+STATUS=0
+wait "$JAVA_PID" || STATUS=$?
+JAVA_PID=
+kill -TERM "$NGINX_PID" 2>/dev/null || true
+wait "$NGINX_PID" 2>/dev/null || true
+exit "$STATUS"

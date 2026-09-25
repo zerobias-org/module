@@ -33,8 +33,8 @@ durability:
     mountPath: /var/lib/x12/inbox
     access: rw
 
-# Container memory cap. JVM heap is -Xmx512m (Dockerfile); 1024 MB keeps the heap
-# at ~50% of the cap. The node's 512 MB default would OOM-kill this daemon
+# Container memory cap. The JVM heap is sized from it (-XX:MaxRAMPercentage=70,
+# Dockerfile JAVA_OPTS), so raising this raises the heap too; 1024 MB gives ~700 MB. The node's 512 MB default would OOM-kill this daemon
 # immediately, so declaring this is mandatory. (hl7/v2 DESIGN §8, PLAN D15)
 resources:
   memoryMb: 1024

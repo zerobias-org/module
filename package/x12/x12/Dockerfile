@@ -41,7 +41,10 @@ EXPOSE 8888
 
 # Default environment (overridable at deploy time)
 ENV INTERNAL_PORT=8889
-ENV JAVA_OPTS="-Xms256m -Xmx512m"
+# Heap follows the container limit (runtimeConfig.yml resources.memoryMb) instead of a fixed
+# -Xmx that silently stops tracking it: 70% leaves room for metaspace, threads, SQLite's
+# page cache and the parser's off-heap buffers.
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=70"
 ENV HUB_NODE_INSECURE=false
 # MODULE_CONFIG (runtimeConfig.config as JSON) is injected by Hub Node. Without it
 # the module falls back to the defaults baked into runtimeConfig.yml (copied above).

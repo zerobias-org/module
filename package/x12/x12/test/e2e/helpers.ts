@@ -20,10 +20,11 @@ import https from 'node:https';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import axios from 'axios';
+import { createWireProtocolClient } from '@zerobias-org/module-test-client';
 import { expect } from 'chai';
 import { CoreError } from '@zerobias-org/types-core-js';
 import type { X12 } from '../../hub-sdk/generated/api/index.js';
-import { CONTAINER_URL, MODULE_DIR, SECRET_NAME, TEST_MODE, X12_CONTAINER } from './constants.js';
+import { CONTAINER_URL, MODULE_DIR, TEST_MODE, X12_CONTAINER } from './constants.js';
 
 export const RECEIVER = '/x12-receiver';
 export const ENVELOPE_SCHEMA = 'schema:shared:x12.transaction-envelope';
@@ -32,7 +33,7 @@ export const ENVELOPE_SCHEMA = 'schema:shared:x12.transaction-envelope';
 const CONSUME_SLACK_SEC = 30;
 /** How often the wait nudges the poller (ops/rescan) and re-checks the files. */
 const RESCAN_EVERY_MS = 2000;
-/** The connection id describeModule's docker context registers (module-test-client). */
+/** The connection id the suite registers on the container (describeReceiver). */
 const WIRE_CONNECTION = 'e2e';
 
 /** One interchange/functional group/transaction set a fixture carries: ISA13, GS06, ST02. */
@@ -93,35 +94,6 @@ export function sha256(bytes: Buffer): string {
 
 function docker(args: string[]): string {
   return execFileSync('docker', args, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-}
-
-/**
- * Why describeModule would run nothing, or '' when it will run. describeModule discovers
- * secrets with `zbb secret list --module <package name>` and, when there is none, registers
- * a single skipped test — the gate then records a green testDocker that ran nothing. This
- * mirrors that discovery so the suite can fail with an actionable message instead.
- */
-export function missingSecretReason(): string {
-  if (SECRET_NAME) {
-    return '';
-  }
-  const moduleKey = JSON.parse(readFileSync(join(MODULE_DIR, 'package.json'), 'utf-8')).name as string;
-  const fix = `Create one (the profile is informational; any valid one works): `
-    + `zbb --slot <slot> secret create x12 --module ${moduleKey} x12Version=005010  `
-    + `— or set SECRET_NAME to an existing secret.`;
-  let names: unknown[];
-  try {
-    names = JSON.parse(execFileSync('zbb', ['secret', 'list', '--module', moduleKey, '--json'],
-      { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }));
-  } catch (e) {
-    return `could not list module secrets via \`zbb secret list --module ${moduleKey} --json\` `
-      + `(${(e as Error).message.split('\n')[0]}). Run through \`zbb --slot <slot> testDocker\`. ${fix}`;
-  }
-  if (!Array.isArray(names) || names.length === 0) {
-    return `no zbb secret is registered for ${moduleKey} in this slot, so describeModule would `
-      + `register one skipped test and the e2e suite would run nothing. ${fix}`;
-  }
-  return '';
 }
 
 /** The container to feed. Throws (never skips) when there is none. */
@@ -317,6 +289,39 @@ export function body(values: Record<string, unknown>): { [key: string]: object }
 // ── Raw wire (docker mode only) ─────────────────────────────
 
 const insecure = new https.Agent({ rejectUnauthorized: false });
+
+/**
+ * module-test-client's describeModule, minus the slot secret. describeModule runs once per
+ * `zbb secret` registered for the module and, with none, records one skipped test — a green
+ * testDocker that ran nothing. The receiver has no credentials (its connection profile is
+ * empty: the daemon reads MODULE_CONFIG, never the profile), so a secret could only ever be
+ * invented to satisfy the harness. This connects with an empty profile instead and fails —
+ * never skips — without a container.
+ */
+export function describeReceiver(name: string, fn: (client: X12) => void,
+  errorDeserializer?: (data: unknown) => Error): void {
+  describe(`${name} [${TEST_MODE}]`, function () {
+    this.timeout(120000);
+    const ref: { client?: X12 } = {};
+    const proxy = new Proxy({} as X12, {
+      get(_target, prop) {
+        if (!ref.client) {
+          throw new Error('Client not initialized — use inside it()');
+        }
+        return (ref.client as any)[prop];
+      },
+    });
+    before(async function () {
+      requireRawWire();
+      await axios.post(`${CONTAINER_URL}/connections`, { connectionId: WIRE_CONNECTION, connectionProfile: {} },
+        { httpsAgent: insecure });
+      ref.client = createWireProtocolClient<X12>({
+        mode: 'docker', baseUrl: CONTAINER_URL, connectionId: WIRE_CONNECTION, moduleDir: MODULE_DIR, errorDeserializer,
+      });
+    });
+    fn(proxy);
+  });
+}
 
 /** True when the raw-wire checks can run (docker mode, gradle's CONTAINER_URL). */
 export function hasRawWire(): boolean {

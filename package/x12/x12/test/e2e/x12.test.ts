@@ -11,16 +11,15 @@
  * receiver de-duplicates by content, so the suite needs a container that has not seen these
  * bytes before — gradle starts a fresh one (new anonymous volumes) for every run.
  *
- * Nothing here skips. describeModule runs nothing without a module secret in the slot, so a
- * precondition test fails first with the command that fixes it; no container to feed is a
- * failed before() hook, not skipped data tests.
+ * Nothing here skips, and nothing needs a slot secret: the receiver has no credentials, so the
+ * suite connects with an empty profile (describeReceiver). No container to feed is a failed
+ * before() hook, not skipped data tests.
  *
  * The drain cycle (take → ack → purge) runs last because it removes the 837P rows.
  */
 
 import { expect } from 'chai';
 import { CoreError, IllegalArgumentError, NoSuchObjectError } from '@zerobias-org/types-core-js';
-import { describeModule } from '@zerobias-org/module-test-client';
 import type { X12 } from '../../hub-sdk/generated/api/index.js';
 import type {
   CreateObjectRequest,
@@ -38,7 +37,7 @@ import {
   consumeBoundMs,
   dropFixtures,
   expectUnsupported,
-  missingSecretReason,
+  describeReceiver,
   moduleContainer,
   names,
   planFeed,
@@ -76,16 +75,7 @@ const DESC = 'desc' as unknown as SortDirectionDef;
 
 type Row = Record<string, any>;
 
-const noSecret = missingSecretReason();
-if (noSecret) {
-  describe('X12 Receiver Module — e2e preconditions', () => {
-    it('has a module secret for describeModule to run against', () => {
-      throw new Error(noSecret);
-    });
-  });
-}
-
-describeModule<X12>('X12 Receiver Module', (client) => {
+describeReceiver('X12 Receiver Module', (client) => {
   let feed: Feed | undefined;
 
   /** The fed fixtures; before() either set them or failed the whole block. */

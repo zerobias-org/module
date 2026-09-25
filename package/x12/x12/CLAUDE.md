@@ -54,13 +54,13 @@ cd <repo-root>/package/x12/x12 && zbb --slot <slot> gate   # the truth
 
 ### The e2e suite (`test/e2e`, run by `testDocker`)
 
-- **It needs a module secret in the slot, once:**
-  `zbb --slot <slot> secret create x12 --module @zerobias-org/module-x12-x12 x12Version=005010`.
-  `describeModule` (module-test-client) runs once per `zbb secret` whose module is this package,
-  and with none it registers a single *skipped* test — a green `testDocker` that ran nothing. The
-  suite checks for that first and fails with the command above instead. The profile is
-  informational (the daemon never reads it), so any valid one works; `SECRET_NAME=<name>` picks
-  an existing one.
+- **No slot secret.** The receiver has no credentials and an empty connection profile (the
+  daemon reads `MODULE_CONFIG`, never the profile), so the suite does not use module-test-client's
+  `describeModule` — that runs once per `zbb secret` for the module and, with none, records a
+  single *skipped* test (a green `testDocker` that ran nothing). `describeReceiver`
+  (`test/e2e/helpers.ts`) connects to gradle's container with `connectionProfile: {}` and fails,
+  never skips, without one. Do not add a required profile field to make `describeModule` work:
+  a secret for this module could only be invented.
 - **Fed by `docker cp`, not the API.** Gradle's `startModuleExec` starts the image with the
   committed `runtimeConfig.yml` `config` as `MODULE_CONFIG`, so `allowFileManagement` is false and
   there is no upload path (and the hub-sdk `uploadBinaryContent(objectId, body)` cannot carry the

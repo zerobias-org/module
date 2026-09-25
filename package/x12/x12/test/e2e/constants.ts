@@ -1,7 +1,7 @@
 /**
  * Environment for the X12 receiver e2e suite — the only file in this module that reads
  * process.env. Gradle's testDocker task sets TEST_MODE / MODULE_DIR / CONTAINER_URL
- * (@zerobias-org/module-test-client reads CONTAINER_URL and SECRET_NAME itself).
+ * (describeReceiver in helpers.ts connects to CONTAINER_URL; no slot secret is involved).
  */
 
 /** direct | docker | hub. java-http modules have no direct mode; testDocker sets `docker`. */
@@ -13,8 +13,6 @@ export const MODULE_DIR = process.env.MODULE_DIR ?? process.cwd();
 /** The running container's ops endpoint in docker mode (raw-wire checks only). */
 export const CONTAINER_URL = process.env.CONTAINER_URL ?? '';
 
-/** An explicit module secret; when unset describeModule discovers one via `zbb secret list`. */
-export const SECRET_NAME = process.env.SECRET_NAME ?? '';
 
 /**
  * Docker container whose inbox the suite drops fixture files into. Empty = in docker mode

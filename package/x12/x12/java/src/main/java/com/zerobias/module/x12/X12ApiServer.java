@@ -189,9 +189,17 @@ public final class X12ApiServer {
         String errorSuffix = mc == null ? ModuleRuntimeConfig.DEFAULT_ERROR_SUFFIX : mc.errorSuffix();
         List<SourceConfig> sources = mc == null ? List.of() : mc.sources();
         boolean fileManagement = mc != null && mc.allowFileManagement();
+        // Business element schemas are generated from the mappings, so a /claims collection can
+        // advertise a collectionSchema the registry actually serves (DESIGN §8.5).
+        List<com.zerobias.module.x12.producer.mapping.EntityMapping> mappings =
+            com.zerobias.module.x12.producer.BusinessEntities.mappingsFor(
+                com.zerobias.module.x12.producer.PackCatalog.fromClasspath().guides());
+        schemas.addMappingSchemas(mappings);
         ObjectTreeApi tree = new ObjectTree(buffer, schemas, () -> pollers, consumedSuffix, sources, errorSuffix);
         RecastHook recaster = new MaterializerRecastHook(new StructureResolver(), Clock.systemUTC());
         OperationsApi ops = new X12Operations(buffer, X12ProducerFacade::toElement, () -> pollers, schemas, recaster);
+        LOG.info("Business entities: {}", mappings.stream()
+            .map(m -> m.collection() + " (" + m.name() + " @ " + m.anchorSchemaId() + ")").toList());
         LOG.info("Producer: {} schema(s), tree={}, ops={}, fileManagement={}", schemas.size(),
             tree.getClass().getSimpleName(), ops.getClass().getSimpleName(),
             fileManagement ? "ENABLED (uploads/mkdir/delete accepted under /inbox)" : "disabled (receive-only)");

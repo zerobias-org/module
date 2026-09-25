@@ -57,13 +57,25 @@ final class ProducerFixture {
         a.add(TestRows.tx("1", "0001", 0));
         a.add(TestRows.tx("1", "0002", 10));
         a.add(TestRows.tx("1", "0003", 20));
-        buffer.consumeFile(file(FILE_A, "inbox", aDone.toString(), "sha-a", FileStatus.CONSUMED, 3, BASE), a);
+        buffer.consumeFile(file(FILE_A, "inbox", aDone.toString(), "sha-a", FileStatus.CONSUMED, 3, BASE), a,
+            graphsFor(a));
 
         List<TransactionRow> b = new ArrayList<>();
         b.add(TestRows.tx(FILE_B, "sftp", "2", "0001", 30, "005010X222A1", "837P", TestRows.SCHEMA_837P, "CLINIC"));
         b.add(TestRows.tx(FILE_B, "sftp", "3", "0001", 40, GS08_837P_ALT, "837P", SCHEMA_837P_ALT, "CLINIC"));
         buffer.consumeFile(file(FILE_B, "sftp", dir.resolve("claims-b.837.done").toString(), "sha-b",
-            FileStatus.CONSUMED, 2, BASE.plusSeconds(30)), b);
+            FileStatus.CONSUMED, 2, BASE.plusSeconds(30)), b, graphsFor(b));
+    }
+
+    /** A minimal graph per row: the content lives in the graph now, not a column (DESIGN §8.4). */
+    static java.util.Map<String, java.util.List<com.zerobias.module.x12.materializer.EntityGraph.Entity>>
+            graphsFor(List<TransactionRow> rows) {
+        java.util.Map<String, java.util.List<com.zerobias.module.x12.materializer.EntityGraph.Entity>> out =
+            new java.util.LinkedHashMap<>();
+        for (TransactionRow r : rows) {
+            out.put(r.elementKey(), TestRows.graph(r.schemaId(), r.stControl()));
+        }
+        return out;
     }
 
     static FileRow file(String fileId, String source, String currentPath, String checksum, FileStatus status,

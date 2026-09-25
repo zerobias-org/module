@@ -56,7 +56,7 @@ public final class X12Operations implements OperationsApi {
     private static final Gson GSON = new Gson();
 
     private final BufferStore buffer;
-    private final Function<TransactionRow, Map<String, Object>> elementMapper;
+    private final java.util.function.BiFunction<TransactionRow, Map<String, Object>, Map<String, Object>> elementMapper;
     private final Supplier<PollerHandle> pollers;
     private final SchemaRegistryApi schemas;
     private final RecastHook recaster;
@@ -67,7 +67,8 @@ public final class X12Operations implements OperationsApi {
         this(buffer, X12ProducerFacade::toElement, pollers, schemas, RecastHook.NONE);
     }
 
-    public X12Operations(BufferStore buffer, Function<TransactionRow, Map<String, Object>> elementMapper,
+    public X12Operations(BufferStore buffer,
+            java.util.function.BiFunction<TransactionRow, Map<String, Object>, Map<String, Object>> elementMapper,
             Supplier<PollerHandle> pollers, SchemaRegistryApi schemas, RecastHook recaster) {
         this.buffer = buffer;
         this.elementMapper = elementMapper == null ? X12ProducerFacade::toElement : elementMapper;
@@ -165,9 +166,12 @@ public final class X12Operations implements OperationsApi {
         String where = renderFilter(strArg(input, "filter"));
 
         Lease lease = buffer.takeWhere(where, max, ttl);
+        // Reassembled from the object graph, batched for the whole lease (DESIGN §8.4).
+        final Map<String, Map<String, Object>> bodies = buffer.documentsFor(
+            lease.transactions().stream().map(TransactionRow::elementKey).toList());
         List<Map<String, Object>> transactions = new ArrayList<>(lease.transactions().size());
         for (TransactionRow r : lease.transactions()) {
-            transactions.add(elementMapper.apply(r));
+            transactions.add(elementMapper.apply(r, bodies.get(r.elementKey())));
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("leaseId", lease.leaseId());      // null when nothing was drainable (serializeNulls)
@@ -211,12 +215,12 @@ public final class X12Operations implements OperationsApi {
         for (TransactionRow row : rows) {
             try {
                 Optional<RecastHook.Mapping> m = recaster.recast(row);
-                if (m.isPresent() && buffer.updateMapping(row.id(), m.get().schemaId(), m.get().mappedJson())) {
+                if (m.isEmpty() || recaster.reproduces(m.get(), row, buffer.documentFor(row.elementKey()))) {
+                    unchanged++;   // the current definitions reproduce what is stored
+                } else if (buffer.replaceGraph(row, m.get().schemaId(), m.get().graph())) {
                     recast++;
                 } else {
-                    // empty = reproduced the stored value; update==false = row got leased
-                    // between select and write (skipped). Either way, nothing rewritten.
-                    unchanged++;
+                    unchanged++;   // leased between select and write; never rewritten under a consumer
                 }
             } catch (Exception e) {
                 failed++;
@@ -271,15 +275,16 @@ public final class X12Operations implements OperationsApi {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("elementKey", row.elementKey());
         out.put("schemaId", row.schemaId());
-        out.put("stored", storedVerdict(row));
+        final Map<String, Object> storedBody = buffer.documentFor(row.elementKey());
+        out.put("stored", storedVerdict(row, storedBody));
         List<String> parserErrors = List.of();
         if (recaster.available()) {
             try {
                 RecastHook.Mapping m = recaster.rematerialize(row);
-                Map<String, Object> rv = storedVerdict(row.withMapping(m.schemaId(), m.mappedJson()));
+                Map<String, Object> rv = storedVerdict(row.withSchemaId(m.schemaId()), m.body());
                 rv.put("schemaId", m.schemaId());
                 out.put("rematerialized", rv);
-                out.put("repsAgree", m.reproduces(row));
+                out.put("repsAgree", recaster.reproduces(m, row, storedBody));
                 parserErrors = m.parserErrors();
             } catch (Exception e) {
                 Map<String, Object> rv = new LinkedHashMap<>();
@@ -298,25 +303,20 @@ public final class X12Operations implements OperationsApi {
         return out;
     }
 
-    /** {@code {valid, errors[]}} for the stored representation of {@code row}. */
-    private Map<String, Object> storedVerdict(TransactionRow row) {
+    /**
+     * {@code {valid, errors[]}} for a representation of {@code row}: its schema must be
+     * registered and {@code body} must be a non-empty document. An empty body means the graph
+     * is missing — a transaction row with no instances is exactly the corruption this reports.
+     */
+    private Map<String, Object> storedVerdict(TransactionRow row, Map<String, Object> body) {
         List<String> errors = new ArrayList<>();
         if (row.schemaId() == null || row.schemaId().isBlank()) {
             errors.add("schemaId is missing");
         } else if (!schemas.has(row.schemaId())) {
             errors.add("schema not registered: " + row.schemaId());
         }
-        if (row.mappedJson() == null || row.mappedJson().isBlank()) {
-            errors.add("mapped_json is empty");
-        } else {
-            try {
-                JsonObject body = GSON.fromJson(row.mappedJson(), JsonObject.class);
-                if (body == null) {
-                    errors.add("mapped_json is not a JSON object");
-                }
-            } catch (JsonSyntaxException | IllegalStateException e) {
-                errors.add("mapped_json does not parse: " + e.getMessage());
-            }
+        if (body == null || body.isEmpty()) {
+            errors.add("the object graph for this transaction set is empty");
         }
         requireEnvelope(errors, "elementKey", row.elementKey());
         requireEnvelope(errors, "fileId", row.fileId());

@@ -32,10 +32,11 @@ java/
     ├── ModuleConfig.java / ModuleRuntimeConfig.java / RuntimeConfigFile.java   env (MODULE_CONFIG)
     ├── inbox/        InboxPoller, SourceConfig, FileStability, FileConsumer (parse → buffer → rename)
     ├── parser/       X12Parse (imsweb wrapper), TransactionTypes (GS08 → FileType/display name), EnvelopeSynthesizer
-    ├── materializer/ Materializer, X12Normalizer, StructureIndex, StructureResolver
+    ├── materializer/ Materializer, EntityGraph (flatten/assemble the object graph), X12Normalizer, StructureIndex, StructureResolver
     ├── buffer/       BufferStore, LeaseManager, RetentionSweeper, TransactionRow, FileRow, Lease, Status
     ├── filter/       X12SqlAdapter, X12Filter   (RFC4515 → SQLite)
-    ├── producer/     OperationRouter, X12ProducerFacade, ObjectTree, InboxFiles (live /inbox browse + file mgmt), SchemaRegistry, PackCatalog (content packs), X12Operations, MaterializerRecastHook, ProducerException
+    ├── producer/     OperationRouter, X12ProducerFacade, ObjectTree, InboxFiles (live /inbox browse + file mgmt), SchemaRegistry, PackCatalog (content packs), BusinessEntities + BusinessFilter + mapping/EntityMapping (business collections), X12Operations, MaterializerRecastHook, ProducerException
+    ├── resources/mappings/<GS08>.json   business entity mappings — CONTENT, not code
     └── health/       HealthCheck
 ```
 
@@ -91,6 +92,39 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
   fails — which is the point. `x12-core` is the module's own contract and is marked
   `core: true`; never let content supersede it. External packs will need namespaced ids
   (`schema:type:x12.<vendor>.<gs08>.<xid>`), so don't widen the id shape in the meantime.
+- **There is no stored document.** `mapped_json` is gone: the graph is the representation and
+  every read goes through `EntityGraph.assemble` (`BufferStore.documentFor` / batched
+  `documentsFor`). Do not add a document column back "for speed" — that is two
+  representations to keep in sync, which is what this replaced. The envelope is overlaid at
+  read time by `toElement`, never stored in the body.
+- **`value_text` is the value; `value_num` is a comparison key.** Amounts live in
+  `entity_values` as exact integer micro-units for filtering and in `value_text` for
+  reassembly. Never read an amount back from `value_num` — that is how `450.00` becomes
+  `450.0`, and money must not round-trip through a float. Same rule for `transaction_dims`.
+- **Wire order is persisted, not implied.** `entities.property_order` and `entity_values.seq`
+  exist because a composite is a child row and would otherwise reassemble after every scalar.
+  The round-trip test (`EntityGraphTest`, `GraphPersistenceTest`) is what licenses storing rows
+  instead of the document — keep it passing or the graph is not a faithful substitute.
+- **The graph commits with its transaction.** One SQL transaction for transaction rows + graph +
+  dimensions, and the `.done` rename after it returns. Every delete path must drop graph and dim
+  rows too: there is no FK enforcement unless the pragma is on.
+- **Grain is declared by the anchor.** A mapping's `anchorSchemaId` IS its grain (Claim =
+  loop2100). Don't add a business entity without deciding its grain, and remember CAS carries up
+  to six (reason, amount, quantity) triplets — anchoring an Adjustment at the segment would hide
+  five of them.
+- **Business schemas are generated from the mappings**, never hand-written: a collection may not
+  advertise a `collectionSchema` the registry cannot serve, and generating it keeps the schema
+  and the projection from disagreeing.
+- **ONE RFC4515 parser: lite-filter.** Both paths parse with it. Structural collections
+  compile the expression to SQL via `X12SqlAdapter` (a body path is a scalar subquery over
+  `entity_values`, NOT `json_extract` — that column is gone); business collections evaluate it
+  with `Expression.matches(row)` over the projected row. Never hand-roll a filter parser here:
+  a second grammar is a second set of accepted syntaxes to keep in sync, and the extensions
+  come free. `BusinessFilter` adds only attribute validation, since the library cannot know an
+  entity's columns. `sortBy`/`sortDir` are honored on both: SQL `ORDER BY` for structural
+  collections, a typed comparator for business rows, NULLs last in both directions, and a 400
+  for an unknown attribute or direction. A sort property is resolved by the adapter, never
+  interpolated into SQL raw.
 - **The poller scans each source flat** (`newDirectoryStream`, DESIGN §4.2). A file
   uploaded into a subdirectory is browsable and downloadable but will never be consumed
   where it sits — that is what the `ingest` field on a live file node reports. If recursive

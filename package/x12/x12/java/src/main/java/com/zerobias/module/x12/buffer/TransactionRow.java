@@ -7,7 +7,9 @@ import java.time.Instant;
  * the collection element / drain atom.
  *
  * <p>{@code rawX12} is the ST..SE segments verbatim plus the ISA/GS context lines
- * (audit / {@code ops/raw} / re-materialization); {@code mappedJson} is the typed JSON
+ * (audit / {@code ops/raw} / re-materialization). The typed document is NOT a column: it
+ * lives as the object graph (DESIGN §8.4) and is reassembled on demand, so there is exactly
+ * one representation of a transaction's content and nothing to keep in sync. The typed JSON
  * (DESIGN §5). {@code elementKey} ({@code <fileId>:<GS06>:<ST02>}) is the natural key —
  * duplicate inserts are dropped. {@code leaseId}/{@code inFlightUntil} are set while
  * {@code status == IN_FLIGHT}; {@code ackedAt} when {@code ACKED}. {@code envelope} is
@@ -29,7 +31,6 @@ public record TransactionRow(
     Instant interchangeAt,
     String schemaId,
     byte[] rawX12,
-    String mappedJson,
     int parserErrorCount,
     String envelope,
     Status status,
@@ -41,13 +42,14 @@ public record TransactionRow(
     public static final String ENVELOPE_SYNTHETIC = "synthetic";
 
     /**
-     * A copy with a re-derived mapping ({@code schemaId} + {@code mappedJson}), every
+     * A copy bound to a re-derived {@code schemaId} (the graph itself is replaced separately
+     * by {@code BufferStore.replaceGraph}), every
      * other field unchanged ({@code ops/recast} / {@code ops/validate}).
      */
-    public TransactionRow withMapping(String newSchemaId, String newMappedJson) {
+    public TransactionRow withSchemaId(String newSchemaId) {
         return new TransactionRow(id, elementKey, fileId, sourceName, receivedAt, isaControl, gsControl,
             stControl, gs08, transactionType, senderId, receiverId, interchangeAt, newSchemaId, rawX12,
-            newMappedJson, parserErrorCount, envelope, status, leaseId, inFlightUntil, ackedAt);
+            parserErrorCount, envelope, status, leaseId, inFlightUntil, ackedAt);
     }
 
     /** Builder for the consume path (the poller fills the envelope field by field). */
@@ -70,7 +72,6 @@ public record TransactionRow(
         private Instant interchangeAt;
         private String schemaId;
         private byte[] rawX12;
-        private String mappedJson;
         private int parserErrorCount;
         private String envelope = ENVELOPE_FILE;
 
@@ -91,7 +92,6 @@ public record TransactionRow(
         public Builder interchangeAt(Instant v) { this.interchangeAt = v; return this; }
         public Builder schemaId(String v) { this.schemaId = v; return this; }
         public Builder rawX12(byte[] v) { this.rawX12 = v; return this; }
-        public Builder mappedJson(String v) { this.mappedJson = v; return this; }
         public Builder parserErrorCount(int v) { this.parserErrorCount = v; return this; }
         public Builder envelope(String v) { this.envelope = v; return this; }
 
@@ -111,7 +111,7 @@ public record TransactionRow(
         public TransactionRow build() {
             return new TransactionRow(0, elementKey, fileId, sourceName, receivedAt, isaControl, gsControl,
                 stControl, gs08, transactionType, senderId, receiverId, interchangeAt, schemaId, rawX12,
-                mappedJson, parserErrorCount, envelope == null ? ENVELOPE_FILE : envelope,
+                parserErrorCount, envelope == null ? ENVELOPE_FILE : envelope,
                 Status.NEW, null, null, null);
         }
     }

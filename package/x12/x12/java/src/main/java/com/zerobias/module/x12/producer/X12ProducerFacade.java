@@ -120,15 +120,37 @@ public final class X12ProducerFacade {
     public String getCollectionElements(String objectId, String filter, String sortBy,
             String sortDir, int pageSize, int pageNumber, String pageToken) throws SQLException {
         requireId(objectId);
+        // A business collection projects rows out of the object graph (DESIGN §8.5) rather than
+        // reading transaction rows, so it resolves before the buffer-backed path.
+        if (tree instanceof ObjectTree) {
+            final BusinessEntities.Scope scope = ((ObjectTree) tree).businessScope(objectId);
+            if (scope != null) {
+                final int size = clampPageSize(pageSize);
+                final BusinessEntities.Page page;
+                try {
+                    page = ((ObjectTree) tree).business()
+                        .page(scope, businessFilter(scope, filter), sortBy, sortDir, size, pageNumber);
+                } catch (IllegalArgumentException badSort) {
+                    throw ProducerException.illegalArgument("Malformed sort: " + badSort.getMessage());
+                }
+                // Nulls are kept here: a business collection promises the shape its schema
+                // declares, so a column the transaction lacks is present-and-null rather than
+                // absent. Dropping it would make every row a different shape on the wire.
+                return pagedResultsKeepingNulls(page.rows(), page.total(), size, pageNumber);
+            }
+        }
         ObjectTreeApi.Collection coll = tree.resolveCollection(objectId);
         int size = clampPageSize(pageSize);
         int offset = Math.max(0, pageNumber - 1) * size;
         String where = composeWhere(coll, filter);
 
-        List<TransactionRow> rows = buffer.search(where, size, offset);
+        List<TransactionRow> rows = buffer.search(where, size, offset, orderBy(sortBy, sortDir));
+        // One batched graph read for the page, not one per row (DESIGN §8.4).
+        final Map<String, Map<String, Object>> bodies = buffer.documentsFor(
+            rows.stream().map(TransactionRow::elementKey).toList());
         List<Map<String, Object>> elements = new ArrayList<>(rows.size());
         for (TransactionRow r : rows) {
-            elements.add(toElement(r));
+            elements.add(toElement(r, bodies.get(r.elementKey())));
         }
         long total = buffer.countWhere(where);
         return pagedResults(elements, total, size, pageNumber);
@@ -145,7 +167,7 @@ public final class X12ProducerFacade {
         if (rows.isEmpty()) {
             throw ProducerException.noSuchObject(objectId + " / " + elementKey);
         }
-        return GSON.toJson(toElement(rows.get(0)));
+        return GSON.toJson(toElement(rows.get(0), buffer.documentFor(rows.get(0).elementKey())));
     }
 
     // --- Schemas -----------------------------------------------------------
@@ -168,6 +190,38 @@ public final class X12ProducerFacade {
     public BinaryContent downloadBinary(String objectId) throws SQLException {
         requireId(objectId);
         return tree.downloadBinary(objectId);
+    }
+
+    /**
+     * A validated {@code ORDER BY} for the buffer-backed collections, or null when none was
+     * asked for. Built by the filter adapter from the same property mapping, so sorting and
+     * filtering agree on what a property means, and never from the caller's raw string.
+     */
+    private static String orderBy(String sortBy, String sortDir) {
+        try {
+            return X12Filter.orderBy(sortBy, sortDir);
+        } catch (IllegalArgumentException bad) {
+            throw ProducerException.illegalArgument("Malformed sort: " + bad.getMessage());
+        }
+    }
+
+    /**
+     * Compile an RFC4515 filter into a predicate over projected business rows. Business columns
+     * can sit behind a qualifier predicate or inside a composite, which the value table cannot
+     * express as SQL, so the comparison happens on the projected row — bounded by the segment,
+     * never the whole buffer (DESIGN §8.5.1). Unknown column names are a 400, not an empty page:
+     * a typo in a filter should say so.
+     */
+    private java.util.function.Predicate<Map<String, Object>> businessFilter(
+            BusinessEntities.Scope scope, String filter) {
+        if (filter == null || filter.isBlank()) {
+            return null;
+        }
+        try {
+            return BusinessFilter.compile(scope.mapping(), filter);
+        } catch (IllegalArgumentException bad) {
+            throw ProducerException.illegalArgument("Malformed filter: " + bad.getMessage());
+        }
     }
 
     // --- File management: gated by config.allowFileManagement (DESIGN §2.9) --
@@ -255,20 +309,17 @@ public final class X12ProducerFacade {
     // --- element mapping (DESIGN §5 envelope overlay) ----------------------
 
     /**
-     * Build a collection element from a row: the typed body ({@code mapped_json})
+     * Build a collection element from a row and the document reassembled from its object graph
      * overlaid with the authoritative envelope (DESIGN §5): {@code elementKey, fileId,
      * fileName, sourceName, isaControlNumber, gsControlNumber, stControlNumber, gs08,
      * transactionType, senderId, receiverId, interchangeDate, receivedAt, status, leaseId,
      * envelope, parserErrorCount}. Static so {@code X12Operations} can use it as its
      * element mapper without a facade reference.
      */
-    public static Map<String, Object> toElement(TransactionRow r) {
+    public static Map<String, Object> toElement(TransactionRow r, Map<String, Object> body) {
         Map<String, Object> element = new LinkedHashMap<>();
-        JsonObject body = r.mappedJson() == null ? null : GSON.fromJson(r.mappedJson(), JsonObject.class);
         if (body != null) {
-            for (String k : body.keySet()) {
-                element.put(k, GSON.fromJson(body.get(k), Object.class));
-            }
+            element.putAll(body);
         }
         element.put("elementKey", r.elementKey());
         element.put("fileId", r.fileId());
@@ -328,14 +379,25 @@ public final class X12ProducerFacade {
      * runtime contract) breaks the data-explorer tree. {@code count} is the total
      * matching rows, not the page; {@code pageNumber} is 1-based on the wire.
      */
+    /** {@link #pagedResults} that keeps null-valued fields (DESIGN §8.5: one row shape). */
+    static String pagedResultsKeepingNulls(List<Map<String, Object>> items, long count,
+            int pageSize, int pageNumber) {
+        return GSON_NULLS.toJson(envelope(items, count, pageSize, pageNumber));
+    }
+
     public static String pagedResults(List<Map<String, Object>> items, long count,
+            int pageSize, int pageNumber) {
+        return GSON.toJson(envelope(items, count, pageSize, pageNumber));
+    }
+
+    private static Map<String, Object> envelope(List<Map<String, Object>> items, long count,
             int pageSize, int pageNumber) {
         Map<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("items", items);
         envelope.put("count", count);
         envelope.put("pageSize", pageSize);
         envelope.put("pageNumber", pageNumber);
-        return GSON.toJson(envelope);
+        return envelope;
     }
 
     private int clampPageSize(int pageSize) {

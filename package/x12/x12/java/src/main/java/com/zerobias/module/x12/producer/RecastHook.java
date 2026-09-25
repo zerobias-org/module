@@ -1,8 +1,10 @@
 package com.zerobias.module.x12.producer;
 
 import com.zerobias.module.x12.buffer.TransactionRow;
+import com.zerobias.module.x12.materializer.EntityGraph;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -10,7 +12,7 @@ import java.util.Optional;
  * Re-materialization of a buffered row from its stored {@code raw_x12} under the
  * currently-loaded definitions, for {@code ops/recast} and {@code ops/validate}
  * (DESIGN §2.5). {@link MaterializerRecastHook} is the production implementation
- * (parse {@code raw_x12} with imsweb → {@code Materializer} → typed JSON); {@link #NONE}
+ * (parse {@code raw_x12} with imsweb → {@code Materializer} → tree + object graph); {@link #NONE}
  * is the degrade: {@code recast} rewrites nothing and says so, {@code validate} reports
  * {@code rematerialized: null}.
  */
@@ -20,20 +22,22 @@ public interface RecastHook {
      * A re-derived mapping: the schema id + typed JSON the current definitions produce,
      * and the non-fatal parser errors imsweb reported on the way ({@code validate.parserErrors}).
      */
-    record Mapping(String schemaId, String mappedJson, List<String> parserErrors) {
+    record Mapping(String schemaId, Map<String, Object> body,
+            List<EntityGraph.Entity> graph, List<String> parserErrors) {
 
         public Mapping {
             parserErrors = parserErrors == null ? List.of() : List.copyOf(parserErrors);
+            graph = graph == null ? List.of() : List.copyOf(graph);
         }
 
-        public Mapping(String schemaId, String mappedJson) {
-            this(schemaId, mappedJson, List.of());
-        }
-
-        /** True when this mapping is byte-identical to what {@code row} stores. */
-        public boolean reproduces(TransactionRow row) {
+        /**
+         * True when the current definitions reproduce what the buffer already holds — compared
+         * against the document reassembled from the stored graph, since that IS the stored
+         * representation now (DESIGN §8.4).
+         */
+        public boolean reproduces(TransactionRow row, Map<String, Object> storedBody) {
             return schemaId != null && schemaId.equals(row.schemaId())
-                && mappedJson != null && mappedJson.equals(row.mappedJson());
+                && body != null && body.equals(storedBody);
         }
     }
 
@@ -50,7 +54,15 @@ public interface RecastHook {
      * {@link #recast}: empty there means "identical to stored".
      */
     default Mapping rematerialize(TransactionRow row) throws Exception {
-        return recast(row).orElse(new Mapping(row.schemaId(), row.mappedJson()));
+        return recast(row).orElse(new Mapping(row.schemaId(), Map.of(), List.of(), List.of()));
+    }
+
+    /**
+     * Whether {@code mapping} reproduces what the buffer holds for {@code row}, given the
+     * document reassembled from its stored graph.
+     */
+    default boolean reproduces(Mapping mapping, TransactionRow row, Map<String, Object> stored) {
+        return mapping.reproduces(row, stored);
     }
 
     /** True when a real materializer is behind this hook. */

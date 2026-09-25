@@ -69,7 +69,6 @@ class BufferStoreTest {
             assertEquals(BASE.minusSeconds(3600), got.interchangeAt());
             assertEquals(SCHEMA_835, got.schemaId());
             assertArrayEquals(row.rawX12(), got.rawX12());
-            assertEquals(row.mappedJson(), got.mappedJson());
             assertEquals(TransactionRow.ENVELOPE_FILE, got.envelope());
             assertEquals(0, got.parserErrorCount());
             assertEquals(Status.NEW, got.status());
@@ -256,11 +255,12 @@ class BufferStoreTest {
             assertEquals(1, s.recastable("transaction_type = '835'", 10).size());
 
             long leasedId = lease.transactions().get(0).id();
-            assertFalse(s.updateMapping(leasedId, "schema:x", "{}"), "in_flight row is never rewritten");
-            assertTrue(s.updateMapping(rc.get(0).id(), "schema:table:x12.005010X221A1.835", "{\"v\":2}"));
-            assertEquals("{\"v\":2}", s.byElementKey(rc.get(0).elementKey()).orElseThrow().mappedJson());
+            assertFalse(s.updateSchemaId(leasedId, "schema:x"), "in_flight row is never rewritten");
+            assertTrue(s.updateSchemaId(rc.get(0).id(), "schema:table:x12.005010X221A1.835"));
+            assertEquals("schema:table:x12.005010X221A1.835",
+                s.byElementKey(rc.get(0).elementKey()).orElseThrow().schemaId());
 
-            TransactionRow copy = rc.get(0).withMapping("schema:y", "{\"v\":3}");
+            TransactionRow copy = rc.get(0).withSchemaId("schema:y");
             assertEquals("schema:y", copy.schemaId());
             assertEquals(rc.get(0).elementKey(), copy.elementKey());
         }
@@ -292,7 +292,7 @@ class BufferStoreTest {
     void builderRequiresKeyPartsForDerivation() {
         assertThrows(IllegalStateException.class, () -> TransactionRow.builder().fileId("/f").deriveElementKey());
         TransactionRow r = TransactionRow.builder().fileId("/f").gsControl("1").stControl("2").deriveElementKey()
-            .receivedAt(BASE).gs08("x").transactionType("835").schemaId("s").rawX12(new byte[0]).mappedJson("{}")
+            .receivedAt(BASE).gs08("x").transactionType("835").schemaId("s").rawX12(new byte[0])
             .build();
         assertEquals("/f:1:2", r.elementKey());
         assertEquals(Status.NEW, r.status());

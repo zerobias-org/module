@@ -1,0 +1,130 @@
+{
+  "gs08": "005010X221A1",
+  "transactionType": "835",
+  "description": "Health Care Claim Payment/Advice (835) — business entities projected out of the object graph (DESIGN §8.5).",
+
+  "dimensions": [
+    {
+      "name": "payerName",
+      "path": "header.loop1000A.n1.n102",
+      "dataType": "string",
+      "description": "N1*PR — the payer that issued this remittance; the segment for 'claims for this payer'"
+    },
+    {
+      "name": "payerId",
+      "path": "header.loop1000A.n1.n104",
+      "dataType": "string",
+      "description": "N1*PR identification code (N104), stable where the name is not"
+    },
+    {
+      "name": "payeeName",
+      "path": "header.loop1000B.n1.n102",
+      "dataType": "string",
+      "description": "N1*PE — the provider/payee being paid"
+    },
+    {
+      "name": "payeeNpi",
+      "path": "header.loop1000B.n1.n104",
+      "dataType": "string",
+      "description": "N1*PE identification code, an NPI when N103=XX"
+    },
+    {
+      "name": "checkOrEftNumber",
+      "path": "header.trn.trn02",
+      "dataType": "string",
+      "description": "TRN02 — the check/EFT trace number the whole remittance settles under"
+    },
+    {
+      "name": "paymentEffectiveDate",
+      "path": "header.bpr.bpr16",
+      "dataType": "date",
+      "description": "BPR16 — payment effective date, for date-range segmentation"
+    }
+  ],
+
+  "entities": [
+    {
+      "name": "Remittance",
+      "collection": "remittances",
+      "description": "One payment advice: grain is the transaction set (ST..SE).",
+      "anchorSchemaId": "schema:table:x12.005010X221A1.835",
+      "schemaId": "schema:business:x12.835.Remittance",
+      "columns": [
+        { "name": "transactionControlNumber", "path": "st.st02", "dataType": "string", "primaryKey": true,
+          "description": "ST02" },
+        { "name": "paymentAmount", "path": "header.bpr.bpr02", "dataType": "decimal",
+          "description": "BPR02 total actual provider payment amount" },
+        { "name": "creditDebitFlag", "path": "header.bpr.bpr03", "dataType": "string" },
+        { "name": "paymentMethod", "path": "header.bpr.bpr04", "dataType": "string",
+          "description": "BPR04: ACH, CHK, FWT, NON" },
+        { "name": "paymentFormat", "path": "header.bpr.bpr05", "dataType": "string" },
+        { "name": "effectiveDate", "path": "header.bpr.bpr16", "dataType": "date" },
+        { "name": "checkOrEftNumber", "path": "header.trn.trn02", "dataType": "string",
+          "description": "TRN02" },
+        { "name": "payerIdentifier", "path": "header.trn.trn03", "dataType": "string" },
+        { "name": "productionDate", "path": "header.dtm[dtm01=405].dtm02", "dataType": "date",
+          "description": "DTM*405 — the date the payer produced the advice" },
+        { "name": "payerName", "path": "header.loop1000A.n1.n102", "dataType": "string" },
+        { "name": "payeeName", "path": "header.loop1000B.n1.n102", "dataType": "string" },
+        { "name": "payeeNpi", "path": "header.loop1000B.n1.n104", "dataType": "string" }
+      ]
+    },
+    {
+      "name": "Claim",
+      "collection": "claims",
+      "description": "One adjudicated claim. Grain is loop2100 — the CLP loop — so a remittance with n claims yields n rows.",
+      "anchorSchemaId": "schema:type:x12.005010X221A1.2100",
+      "schemaId": "schema:business:x12.835.Claim",
+      "columns": [
+        { "name": "claimId", "path": "clp.clp01", "dataType": "string", "primaryKey": true,
+          "description": "CLP01 — the submitter's claim control number" },
+        { "name": "claimStatus", "path": "clp.clp02", "dataType": "string",
+          "enumSchemaId": "schema:enum:x12.codes.1029",
+          "description": "CLP02 claim status code (1=primary accepted, 4=denied, 22=reversal, ...)" },
+        { "name": "chargedAmount", "path": "clp.clp03", "dataType": "decimal",
+          "description": "CLP03 total submitted charges" },
+        { "name": "paidAmount", "path": "clp.clp04", "dataType": "decimal",
+          "description": "CLP04 amount paid — the column most filters are about" },
+        { "name": "patientResponsibility", "path": "clp.clp05", "dataType": "decimal",
+          "description": "CLP05 patient responsibility amount" },
+        { "name": "claimFilingIndicator", "path": "clp.clp06", "dataType": "string" },
+        { "name": "payerClaimControlNumber", "path": "clp.clp07", "dataType": "string",
+          "description": "CLP07 — the payer's own claim number, the join key back to the payer" },
+        { "name": "facilityTypeCode", "path": "clp.clp08", "dataType": "string" },
+        { "name": "patientLastName", "path": "nm1[nm101=QC].nm103", "dataType": "string",
+          "description": "NM1*QC — the qualifier is what makes this the patient and not the provider" },
+        { "name": "patientFirstName", "path": "nm1[nm101=QC].nm104", "dataType": "string" },
+        { "name": "patientMemberId", "path": "nm1[nm101=QC].nm109", "dataType": "string" },
+        { "name": "renderingProviderLastName", "path": "nm1[nm101=82].nm103", "dataType": "string",
+          "description": "NM1*82 — rendering provider" },
+        { "name": "renderingProviderNpi", "path": "nm1[nm101=82].nm109", "dataType": "string" },
+        { "name": "allowedAmount", "path": "amt[amt01=AU].amt02", "dataType": "decimal",
+          "description": "AMT*AU — coverage amount" },
+        { "name": "statementFromDate", "path": "dtm[dtm01=232].dtm02", "dataType": "date" },
+        { "name": "statementToDate", "path": "dtm[dtm01=233].dtm02", "dataType": "date" }
+      ]
+    },
+    {
+      "name": "ServiceLine",
+      "collection": "service-lines",
+      "description": "One adjudicated service line. Grain is loop2110 — the SVC loop — so a claim with n lines yields n rows.",
+      "anchorSchemaId": "schema:type:x12.005010X221A1.2110",
+      "schemaId": "schema:business:x12.835.ServiceLine",
+      "columns": [
+        { "name": "procedureCode", "path": "svc.svc01.c00302", "dataType": "string", "primaryKey": true,
+          "description": "SVC01-2 inside composite C003 — the procedure actually adjudicated" },
+        { "name": "procedureQualifier", "path": "svc.svc01.c00301", "dataType": "string",
+          "description": "SVC01-1: HC (HCPCS/CPT), AD, ER, HP, ..." },
+        { "name": "chargedAmount", "path": "svc.svc02", "dataType": "decimal" },
+        { "name": "paidAmount", "path": "svc.svc03", "dataType": "decimal" },
+        { "name": "revenueCode", "path": "svc.svc04", "dataType": "string" },
+        { "name": "paidUnits", "path": "svc.svc05", "dataType": "decimal",
+          "description": "SVC05 units of service paid" },
+        { "name": "serviceDate", "path": "dtm[dtm01=472].dtm02", "dataType": "date",
+          "description": "DTM*472 — the date of service" },
+        { "name": "allowedAmount", "path": "amt[amt01=B6].amt02", "dataType": "decimal",
+          "description": "AMT*B6 — allowed actual" }
+      ]
+    }
+  ]
+}

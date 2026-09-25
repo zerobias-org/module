@@ -1,5 +1,7 @@
 package com.zerobias.module.x12.buffer;
 
+import com.zerobias.module.x12.materializer.EntityGraph;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -14,7 +16,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -41,7 +46,7 @@ public final class BufferStore implements AutoCloseable {
 
     static final String TX_COLS = "id, element_key, file_id, source_name, received_at, isa_control, "
         + "gs_control, st_control, gs08, transaction_type, sender_id, receiver_id, interchange_at, "
-        + "schema_id, raw_x12, mapped_json, parser_error_count, envelope, status, lease_id, "
+        + "schema_id, raw_x12, parser_error_count, envelope, status, lease_id, "
         + "in_flight_until, acked_at";
 
     static final String FILE_COLS = "id, file_id, file_path, file_name, source_name, current_path, size_bytes, "
@@ -137,6 +142,28 @@ public final class BufferStore implements AutoCloseable {
      * {@code .done} only after this returns — rename is the ack.
      */
     public synchronized int consumeFile(FileRow file, List<TransactionRow> rows) throws SQLException {
+        return consumeFile(file, rows, Map.of());
+    }
+
+    /**
+     * Consume a file, its transaction sets and their object graphs in ONE transaction
+     * (DESIGN §8.4). The graph is not an afterthought: a committed transaction row whose
+     * entities are missing would be queryable-but-empty, so both land or neither does —
+     * and the {@code .done} rename still happens only after this returns.
+     *
+     * @param graphs element key → flattened instances ({@code EntityGraph.flatten} output)
+     */
+    public synchronized int consumeFile(FileRow file, List<TransactionRow> rows,
+            Map<String, List<EntityGraph.Entity>> graphs) throws SQLException {
+        return consumeFile(file, rows, graphs, Map.of());
+    }
+
+    /**
+     * @param dims element key → resolved business dimensions (DESIGN §8.5)
+     */
+    public synchronized int consumeFile(FileRow file, List<TransactionRow> rows,
+            Map<String, List<EntityGraph.Entity>> graphs,
+            Map<String, Map<String, EntityGraph.Value>> dims) throws SQLException {
         final boolean prev = conn.getAutoCommit();
         conn.setAutoCommit(false);
         try {
@@ -144,6 +171,14 @@ public final class BufferStore implements AutoCloseable {
             for (TransactionRow r : rows) {
                 if (insertTransactionUnsynchronized(r)) {
                     inserted++;
+                    List<EntityGraph.Entity> graph = graphs == null ? null : graphs.get(r.elementKey());
+                    if (graph != null && !graph.isEmpty()) {
+                        insertGraphUnsynchronized(r, graph);
+                    }
+                    Map<String, EntityGraph.Value> d = dims == null ? null : dims.get(r.elementKey());
+                    if (d != null && !d.isEmpty()) {
+                        insertDimsUnsynchronized(r.elementKey(), d);
+                    }
                 }
             }
             insertFileUnsynchronized(file);
@@ -175,12 +210,32 @@ public final class BufferStore implements AutoCloseable {
         return insertTransactionUnsynchronized(row);
     }
 
+    /** Insert a transaction row together with its object graph, in one transaction. */
+    public synchronized boolean insertTransaction(TransactionRow row, List<EntityGraph.Entity> graph)
+            throws SQLException {
+        final boolean prev = conn.getAutoCommit();
+        conn.setAutoCommit(false);
+        try {
+            final boolean inserted = insertTransactionUnsynchronized(row);
+            if (inserted && graph != null && !graph.isEmpty()) {
+                insertGraphUnsynchronized(row, graph);
+            }
+            conn.commit();
+            return inserted;
+        } catch (SQLException | RuntimeException e) {
+            conn.rollback();
+            throw e;
+        } finally {
+            conn.setAutoCommit(prev);
+        }
+    }
+
     private boolean insertTransactionUnsynchronized(TransactionRow row) throws SQLException {
         final String sql = "INSERT INTO transactions (element_key, file_id, source_name, received_at, "
             + "isa_control, gs_control, st_control, gs08, transaction_type, sender_id, receiver_id, "
-            + "interchange_at, schema_id, raw_x12, mapped_json, parser_error_count, envelope, status, "
+            + "interchange_at, schema_id, raw_x12, parser_error_count, envelope, status, "
             + "lease_id, in_flight_until, acked_at) "
-            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(element_key) DO NOTHING";
+            + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(element_key) DO NOTHING";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             int i = 1;
             ps.setString(i++, row.elementKey());
@@ -197,7 +252,6 @@ public final class BufferStore implements AutoCloseable {
             setNullableInstant(ps, i++, row.interchangeAt());
             ps.setString(i++, row.schemaId());
             ps.setBytes(i++, row.rawX12());
-            ps.setString(i++, row.mappedJson());
             ps.setInt(i++, row.parserErrorCount());
             ps.setString(i++, row.envelope() == null ? TransactionRow.ENVELOPE_FILE : row.envelope());
             ps.setString(i++, row.status() == null ? Status.NEW.wire() : row.status().wire());
@@ -433,11 +487,26 @@ public final class BufferStore implements AutoCloseable {
     /** As {@link #search(String, int)} but with an OFFSET for page-number paging. */
     public synchronized List<TransactionRow> search(String whereClause, int limit, int offset)
             throws SQLException {
+        return search(whereClause, limit, offset, null);
+    }
+
+    /**
+     * @param orderBy a validated ORDER BY fragment (see {@code X12Filter.orderBy}), or null for
+     *     the default newest-first order. Never accept a caller's raw string here.
+     */
+    public synchronized List<TransactionRow> search(String whereClause, int limit, int offset,
+            String orderBy) throws SQLException {
         StringBuilder sql = new StringBuilder("SELECT ").append(TX_COLS).append(" FROM transactions");
         if (whereClause != null && !whereClause.isBlank()) {
             sql.append(" WHERE ").append(whereClause);
         }
-        sql.append(" ORDER BY received_at DESC, id DESC LIMIT ? OFFSET ?");
+        if (orderBy != null && !orderBy.isBlank()) {
+            // the requested sort first, then the default order as a stable tiebreak
+            sql.append(" ORDER BY ").append(orderBy).append(", received_at DESC, id DESC");
+        } else {
+            sql.append(" ORDER BY received_at DESC, id DESC");
+        }
+        sql.append(" LIMIT ? OFFSET ?");
         try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
             ps.setInt(1, limit);
             ps.setInt(2, Math.max(0, offset));
@@ -491,13 +560,12 @@ public final class BufferStore implements AutoCloseable {
      * {@code status <> 'in_flight'} so a row leased between {@link #recastable} and
      * this update is not overwritten mid-flight. Returns true iff a row was updated.
      */
-    public synchronized boolean updateMapping(long id, String schemaId, String mappedJson)
+    public synchronized boolean updateSchemaId(long id, String schemaId)
             throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE transactions SET schema_id=?, mapped_json=? WHERE id=? AND status <> 'in_flight'")) {
+                "UPDATE transactions SET schema_id=? WHERE id=? AND status <> 'in_flight'")) {
             ps.setString(1, schemaId);
-            ps.setString(2, mappedJson);
-            ps.setLong(3, id);
+            ps.setLong(2, id);
             return ps.executeUpdate() > 0;
         }
     }
@@ -547,19 +615,44 @@ public final class BufferStore implements AutoCloseable {
     synchronized int deleteAckedOlderThanMillis(long cutoffMillis) throws SQLException {
         // Inclusive boundary (age >= olderThan): purge(PT0S) means "all acked",
         // which must include rows acked at the current instant (acked_at == cutoff).
+        final List<String> keys = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT element_key FROM transactions WHERE status='acked' AND acked_at IS NOT NULL "
+                + "AND acked_at <= ?")) {
+            ps.setLong(1, cutoffMillis);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    keys.add(rs.getString(1));
+                }
+            }
+        }
         try (PreparedStatement ps = conn.prepareStatement(
                 "DELETE FROM transactions WHERE status='acked' AND acked_at IS NOT NULL AND acked_at <= ?")) {
             ps.setLong(1, cutoffMillis);
-            return ps.executeUpdate();
+            final int purged = ps.executeUpdate();
+            deleteGraphs(keys);   // the graph goes with its transaction, never outlives it
+            return purged;
         }
     }
 
     synchronized int deleteOldestAcked(int limit) throws SQLException {
+        final List<String> keys = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT element_key FROM transactions WHERE status='acked' ORDER BY received_at ASC LIMIT ?")) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    keys.add(rs.getString(1));
+                }
+            }
+        }
         try (PreparedStatement ps = conn.prepareStatement(
                 "DELETE FROM transactions WHERE id IN (SELECT id FROM transactions WHERE status='acked' "
                 + "ORDER BY received_at ASC LIMIT ?)")) {
             ps.setInt(1, limit);
-            return ps.executeUpdate();
+            final int purged = ps.executeUpdate();
+            deleteGraphs(keys);
+            return purged;
         }
     }
 
@@ -672,7 +765,6 @@ public final class BufferStore implements AutoCloseable {
             instant(rs, "interchange_at"),
             rs.getString("schema_id"),
             rs.getBytes("raw_x12"),
-            rs.getString("mapped_json"),
             rs.getInt("parser_error_count"),
             rs.getString("envelope"),
             Status.fromWire(rs.getString("status")),
@@ -712,4 +804,471 @@ public final class BufferStore implements AutoCloseable {
         final int v = rs.getInt(col);
         return rs.wasNull() ? null : v;
     }
+    // --- object graph (DESIGN §8.4) -----------------------------------------
+
+    private static final String ENTITY_COLS =
+        "id, element_key, file_id, gs08, schema_id, xid, kind, parent_id, property, path, ordinal, "
+        + "property_order";
+    /** {@code property_order} joiner: a unit separator can never occur in an X12 property name. */
+    private static final String ORDER_SEP = "\u001f";
+
+    /**
+     * Insert one transaction set's instances and their typed values. Local ids from
+     * {@link EntityGraph} are remapped onto generated row ids as we go, so parent edges
+     * survive; a child always follows its parent in flatten order, which is why one pass is
+     * enough.
+     */
+    private void insertGraphUnsynchronized(TransactionRow tx, List<EntityGraph.Entity> graph)
+            throws SQLException {
+        final Map<Integer, Long> ids = new HashMap<>();
+        try (PreparedStatement ent = conn.prepareStatement(
+                "INSERT INTO entities (element_key, file_id, gs08, schema_id, xid, kind, parent_id, "
+                + "property, path, ordinal, property_order) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                Statement.RETURN_GENERATED_KEYS);
+             PreparedStatement val = conn.prepareStatement(
+                "INSERT INTO entity_values (entity_id, seq, property, data_type, value_text, value_num, "
+                + "value_date) VALUES (?,?,?,?,?,?,?)")) {
+            for (EntityGraph.Entity e : graph) {
+                ent.setString(1, tx.elementKey());
+                ent.setString(2, tx.fileId());
+                ent.setString(3, tx.gs08());
+                ent.setString(4, e.schemaId);
+                ent.setString(5, e.xid);
+                ent.setString(6, e.kind);
+                if (e.parentLocalId == null) {
+                    ent.setNull(7, Types.BIGINT);
+                } else {
+                    final Long parent = ids.get(e.parentLocalId);
+                    if (parent == null) {
+                        throw new SQLException("graph out of order: " + e.path + " precedes its parent");
+                    }
+                    ent.setLong(7, parent);
+                }
+                ent.setString(8, e.property);
+                ent.setString(9, e.path);
+                ent.setInt(10, e.ordinal);
+                ent.setString(11, String.join(ORDER_SEP, e.propertyOrder));
+                ent.executeUpdate();
+                final long id;
+                try (ResultSet keys = ent.getGeneratedKeys()) {
+                    if (!keys.next()) {
+                        throw new SQLException("no generated id for entity " + e.path);
+                    }
+                    id = keys.getLong(1);
+                }
+                ids.put(e.localId, id);
+                int seq = 0;
+                for (EntityGraph.Value v : e.values) {
+                    val.setLong(1, id);
+                    val.setInt(2, seq++);
+                    val.setString(3, v.property());
+                    val.setString(4, v.dataType());
+                    val.setString(5, v.text());
+                    final Long micros = microUnits(v.num());
+                    if (micros == null) {
+                        val.setNull(6, Types.INTEGER);
+                    } else {
+                        val.setLong(6, micros);
+                    }
+                    if (v.date() == null) {
+                        val.setNull(7, Types.INTEGER);
+                    } else {
+                        val.setLong(7, v.date());
+                    }
+                    val.addBatch();
+                }
+                val.executeBatch();
+            }
+        }
+    }
+
+    /** One transaction set's instances, parents before children, with their values attached. */
+    public synchronized List<EntityGraph.Entity> graphFor(String elementKey) throws SQLException {
+        final Map<Long, EntityGraph.Entity> byId = new LinkedHashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT " + ENTITY_COLS + " FROM entities WHERE element_key=? ORDER BY id")) {
+            ps.setString(1, elementKey);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    final long id = rs.getLong("id");
+                    final long parent = rs.getLong("parent_id");
+                    final EntityGraph.Entity e = EntityGraph.Entity.of((int) id,
+                        rs.wasNull() ? null : (int) parent,
+                        rs.getString("schema_id"), rs.getString("xid"), rs.getString("kind"),
+                        rs.getString("property"), rs.getString("path"), rs.getInt("ordinal"));
+                    final String order = rs.getString("property_order");
+                    if (order != null && !order.isEmpty()) {
+                        e.propertyOrder.addAll(List.of(order.split(ORDER_SEP)));
+                    }
+                    byId.put(id, e);
+                }
+            }
+        }
+        if (byId.isEmpty()) {
+            return List.of();
+        }
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT v.entity_id, v.property, v.data_type, v.value_text, v.value_num, v.value_date "
+                + "FROM entity_values v JOIN entities e ON e.id = v.entity_id "
+                + "WHERE e.element_key=? ORDER BY v.entity_id, v.seq")) {
+            ps.setString(1, elementKey);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    final EntityGraph.Entity e = byId.get(rs.getLong("entity_id"));
+                    if (e == null) {
+                        continue;
+                    }
+                    // The value comes back from value_text, which is exact; value_num is a
+                    // comparison key and would lose scale (450.00 -> 450.0) if trusted here.
+                    final String text = rs.getString("value_text");
+                    final long date = rs.getLong("value_date");
+                    e.values.add(new EntityGraph.Value(rs.getString("property"), rs.getString("data_type"),
+                        text, EntityGraph.exactNumber(rs.getString("data_type"), text),
+                        rs.wasNull() ? null : date));
+                }
+            }
+        }
+        return List.copyOf(byId.values());
+    }
+
+    // --- business dimensions (DESIGN §8.5) ----------------------------------
+
+    /**
+     * Store one transaction set's resolved dimensions. Written in the consume transaction
+     * alongside the graph, because a claim that cannot be segmented by its payer is not much
+     * more useful than a blob.
+     */
+    private void insertDimsUnsynchronized(String elementKey, Map<String, EntityGraph.Value> dims)
+            throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT OR REPLACE INTO transaction_dims (element_key, dim, data_type, value_text, "
+                + "value_num, value_date) VALUES (?,?,?,?,?,?)")) {
+            for (Map.Entry<String, EntityGraph.Value> e : dims.entrySet()) {
+                final EntityGraph.Value v = e.getValue();
+                if (v == null) {
+                    continue;
+                }
+                ps.setString(1, elementKey);
+                ps.setString(2, e.getKey());
+                ps.setString(3, v.dataType());
+                ps.setString(4, v.text());
+                final Long micros = microUnits(v.num());
+                if (micros == null) {
+                    ps.setNull(5, Types.INTEGER);
+                } else {
+                    ps.setLong(5, micros);
+                }
+                if (v.date() == null) {
+                    ps.setNull(6, Types.INTEGER);
+                } else {
+                    ps.setLong(6, v.date());
+                }
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
+
+    /** The dimensions of one transaction set, as {@code dim -> value}. */
+    public synchronized Map<String, EntityGraph.Value> dimsFor(String elementKey) throws SQLException {
+        final Map<String, EntityGraph.Value> out = new LinkedHashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT dim, data_type, value_text, value_num, value_date FROM transaction_dims "
+                + "WHERE element_key=? ORDER BY dim")) {
+            ps.setString(1, elementKey);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    final String type = rs.getString("data_type");
+                    final String text = rs.getString("value_text");
+                    final long date = rs.getLong("value_date");
+                    out.put(rs.getString("dim"), new EntityGraph.Value(rs.getString("dim"), type, text,
+                        EntityGraph.exactNumber(type, text), rs.wasNull() ? null : date));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The distinct values a dimension takes — the emergent children of a {@code /by-<dim>} node. */
+    public synchronized List<String> distinctDim(String dim) throws SQLException {
+        final List<String> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT DISTINCT value_text FROM transaction_dims WHERE dim=? AND value_text IS NOT NULL "
+                + "ORDER BY value_text")) {
+            ps.setString(1, dim);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(rs.getString(1));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Micro-units for the comparison column; null when unscalable or out of long range. */
+    static Long microUnits(java.math.BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return value.movePointRight(6).setScale(0, java.math.RoundingMode.HALF_UP).longValueExact();
+        } catch (ArithmeticException tooBig) {
+            return null;
+        }
+    }
+
+    /**
+     * Anchor instances of a business entity, scoped and paged (DESIGN §8.5). The scope is
+     * pushed into SQL — {@code schema_id} always, plus a file or a dimension equality when the
+     * caller is inside a {@code /by-<dim>} segment — so a segmented collection never loads the
+     * whole buffer to filter it in memory.
+     *
+     * <p>Each key is {@code element_key + US + path + US + file_id} — enough to locate the
+     * instance and stamp its provenance without a second query.
+     *
+     * @param anchorSchemaId the grain
+     * @param fileId         restrict to one interchange file, or null
+     * @param dim            dimension name to match, or null
+     * @param dimValue       the dimension value to match when {@code dim} is set
+     */
+    public synchronized List<String> anchorKeys(String anchorSchemaId, String fileId, String dim,
+            String dimValue, int limit, int offset) throws SQLException {
+        final StringBuilder sql = new StringBuilder(
+            "SELECT e.element_key, e.path, e.file_id FROM entities e");
+        if (dim != null) {
+            sql.append(" JOIN transaction_dims d ON d.element_key = e.element_key AND d.dim = ? "
+                + "AND d.value_text = ?");
+        }
+        sql.append(" WHERE e.schema_id = ?");
+        if (fileId != null) {
+            sql.append(" AND e.file_id = ?");
+        }
+        sql.append(" ORDER BY e.id LIMIT ? OFFSET ?");
+        final List<String> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            int i = 1;
+            if (dim != null) {
+                ps.setString(i++, dim);
+                ps.setString(i++, dimValue);
+            }
+            ps.setString(i++, anchorSchemaId);
+            if (fileId != null) {
+                ps.setString(i++, fileId);
+            }
+            ps.setInt(i++, limit);
+            ps.setInt(i, offset);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(rs.getString("element_key") + "\u001f" + rs.getString("path")
+                        + "\u001f" + rs.getString("file_id"));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Total anchors in the same scope, for the PagedResults count. */
+    public synchronized long anchorCount(String anchorSchemaId, String fileId, String dim,
+            String dimValue) throws SQLException {
+        final StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM entities e");
+        if (dim != null) {
+            sql.append(" JOIN transaction_dims d ON d.element_key = e.element_key AND d.dim = ? "
+                + "AND d.value_text = ?");
+        }
+        sql.append(" WHERE e.schema_id = ?");
+        if (fileId != null) {
+            sql.append(" AND e.file_id = ?");
+        }
+        try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            int i = 1;
+            if (dim != null) {
+                ps.setString(i++, dim);
+                ps.setString(i++, dimValue);
+            }
+            ps.setString(i++, anchorSchemaId);
+            if (fileId != null) {
+                ps.setString(i, fileId);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getLong(1) : 0L;
+            }
+        }
+    }
+
+    /** The files that contributed anchors of this grain — emergent {@code /by-file} children. */
+    public synchronized List<String> distinctAnchorFiles(String anchorSchemaId) throws SQLException {
+        final List<String> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT DISTINCT file_id FROM entities WHERE schema_id=? ORDER BY file_id")) {
+            ps.setString(1, anchorSchemaId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(rs.getString(1));
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The typed document for one transaction set, reassembled from its graph (DESIGN §8.4).
+     * There is no stored document — this IS the read path for {@code take}, the structural
+     * collections and {@code validate}.
+     */
+    public synchronized Map<String, Object> documentFor(String elementKey) throws SQLException {
+        return EntityGraph.assemble(graphFor(elementKey));
+    }
+
+    /**
+     * Documents for a page of transaction sets in two queries rather than two per row: one
+     * pass over {@code entities}, one over {@code entity_values}, then assemble each.
+     */
+    public synchronized Map<String, Map<String, Object>> documentsFor(List<String> elementKeys)
+            throws SQLException {
+        final Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        if (elementKeys == null || elementKeys.isEmpty()) {
+            return out;
+        }
+        final String in = elementKeys.stream().map(k -> "?").collect(java.util.stream.Collectors.joining(","));
+        final Map<String, Map<Long, EntityGraph.Entity>> byKey = new LinkedHashMap<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT " + ENTITY_COLS + " FROM entities WHERE element_key IN (" + in + ") ORDER BY id")) {
+            for (int i = 0; i < elementKeys.size(); i++) {
+                ps.setString(i + 1, elementKeys.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    final long id = rs.getLong("id");
+                    final long parent = rs.getLong("parent_id");
+                    final EntityGraph.Entity e = EntityGraph.Entity.of((int) id,
+                        rs.wasNull() ? null : (int) parent, rs.getString("schema_id"), rs.getString("xid"),
+                        rs.getString("kind"), rs.getString("property"), rs.getString("path"),
+                        rs.getInt("ordinal"));
+                    final String order = rs.getString("property_order");
+                    if (order != null && !order.isEmpty()) {
+                        e.propertyOrder.addAll(List.of(order.split(ORDER_SEP)));
+                    }
+                    byKey.computeIfAbsent(rs.getString("element_key"), k -> new LinkedHashMap<>()).put(id, e);
+                }
+            }
+        }
+        if (byKey.isEmpty()) {
+            return out;
+        }
+        final Map<Long, EntityGraph.Entity> flat = new LinkedHashMap<>();
+        byKey.values().forEach(flat::putAll);
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT v.entity_id, v.property, v.data_type, v.value_text, v.value_date "
+                + "FROM entity_values v JOIN entities e ON e.id = v.entity_id "
+                + "WHERE e.element_key IN (" + in + ") ORDER BY v.entity_id, v.seq")) {
+            for (int i = 0; i < elementKeys.size(); i++) {
+                ps.setString(i + 1, elementKeys.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    final EntityGraph.Entity e = flat.get(rs.getLong("entity_id"));
+                    if (e == null) {
+                        continue;
+                    }
+                    final String type = rs.getString("data_type");
+                    final String text = rs.getString("value_text");
+                    final long date = rs.getLong("value_date");
+                    e.values.add(new EntityGraph.Value(rs.getString("property"), type, text,
+                        EntityGraph.exactNumber(type, text), rs.wasNull() ? null : date));
+                }
+            }
+        }
+        for (Map.Entry<String, Map<Long, EntityGraph.Entity>> e : byKey.entrySet()) {
+            out.put(e.getKey(), EntityGraph.assemble(List.copyOf(e.getValue().values())));
+        }
+        return out;
+    }
+
+    /**
+     * Replace one transaction set's graph with a re-derived one and rebind its schema id —
+     * {@code ops/recast} (DESIGN §2.5). One transaction: a half-replaced graph would be a
+     * transaction whose content is partly old and partly new. Dimensions are left alone; they
+     * describe the interchange, not the materialization.
+     */
+    public synchronized boolean replaceGraph(TransactionRow row, String schemaId,
+            List<EntityGraph.Entity> graph) throws SQLException {
+        final boolean prev = conn.getAutoCommit();
+        conn.setAutoCommit(false);
+        try {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE transactions SET schema_id=? WHERE id=? AND status <> 'in_flight'")) {
+                ps.setString(1, schemaId);
+                ps.setLong(2, row.id());
+                if (ps.executeUpdate() == 0) {
+                    conn.rollback();
+                    return false;   // leased rows are never rewritten under the consumer
+                }
+            }
+            deleteGraphRows(List.of(row.elementKey()));
+            if (graph != null && !graph.isEmpty()) {
+                insertGraphUnsynchronized(row.withSchemaId(schemaId), graph);
+            }
+            conn.commit();
+            return true;
+        } catch (SQLException | RuntimeException e) {
+            conn.rollback();
+            throw e;
+        } finally {
+            conn.setAutoCommit(prev);
+        }
+    }
+
+    /** How many instances a transaction set has (a cheap "is the graph there?" probe). */
+    public synchronized long entityCount(String elementKey) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM entities WHERE element_key=?")) {
+            ps.setString(1, elementKey);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getLong(1) : 0L;
+            }
+        }
+    }
+
+    /**
+     * Drop the graph for element keys whose transaction rows are going away. Called by every
+     * delete path: SQLite enforces no foreign key unless the pragma is on, so orphaned
+     * entities would otherwise accumulate invisibly and inflate every query that scans them.
+     */
+    synchronized int deleteGraphs(List<String> elementKeys) throws SQLException {
+        if (elementKeys == null || elementKeys.isEmpty()) {
+            return 0;
+        }
+        return deleteGraphRows(elementKeys, true);
+    }
+
+    /** Entities + values for these keys; {@code withDims} also drops their dimensions. */
+    private int deleteGraphRows(List<String> elementKeys) throws SQLException {
+        return deleteGraphRows(elementKeys, false);
+    }
+
+    private int deleteGraphRows(List<String> elementKeys, boolean withDims) throws SQLException {
+        if (elementKeys == null || elementKeys.isEmpty()) {
+            return 0;
+        }
+        final String in = elementKeys.stream().map(k -> "?").collect(java.util.stream.Collectors.joining(","));
+        try (PreparedStatement vals = conn.prepareStatement(
+                "DELETE FROM entity_values WHERE entity_id IN "
+                + "(SELECT id FROM entities WHERE element_key IN (" + in + "))");
+             PreparedStatement ents = conn.prepareStatement(
+                "DELETE FROM entities WHERE element_key IN (" + in + ")");
+             PreparedStatement dims = conn.prepareStatement(
+                "DELETE FROM transaction_dims WHERE element_key IN (" + in + ")")) {
+            for (int i = 0; i < elementKeys.size(); i++) {
+                vals.setString(i + 1, elementKeys.get(i));
+                ents.setString(i + 1, elementKeys.get(i));
+                dims.setString(i + 1, elementKeys.get(i));
+            }
+            vals.executeUpdate();
+            if (withDims) {
+                dims.executeUpdate();
+            }
+            return ents.executeUpdate();
+        }
+    }
+
 }

@@ -471,7 +471,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   sender_id TEXT, receiver_id TEXT, interchange_at INTEGER,
   schema_id TEXT NOT NULL,
   raw_x12 BLOB NOT NULL,               -- ST..SE segments verbatim (+ ISA/GS context lines)
-  mapped_json TEXT NOT NULL,
+  -- no typed-document column: the content is the object graph (§8.4), reassembled on demand
   parser_error_count INTEGER DEFAULT 0, envelope TEXT NOT NULL DEFAULT 'file',
   status TEXT NOT NULL DEFAULT 'new', lease_id TEXT, in_flight_until INTEGER, acked_at INTEGER
 );
@@ -483,6 +483,140 @@ PRAGMA journal_mode = WAL;
 
 Durability (`ackDurability`), drain/lease SQL, retention sweeper (acked rows only; `files` rows
 are never evicted — they are the audit trail), and backpressure are as in hl7/v2 §8.
+
+### 8.4 The object graph
+
+A document is not queryable, so the typed document is **not stored**. There is no
+`mapped_json` column: every materialized **instance** is a row, and the document is
+reassembled on demand. One representation, nothing to keep in sync.
+
+```
+entities       one row per loop / segment / composite instance
+               (element_key, file_id, gs08, schema_id, xid, kind, parent_id, property,
+                path, ordinal, property_order)
+entity_values  one row per scalar field
+               (entity_id, seq, property, data_type, value_text, value_num, value_date)
+```
+
+`schema_id` is the **real** pack schema — `schema:type:x12.005010X221A1.CLP`, the same id
+`getSchema` serves — and `parent_id` is the edge, so a transaction set is a graph of
+addressable objects. `path` (`detail[0].loop2000[0].loop2100[1].clp`) identifies an instance
+uniquely within its transaction set.
+
+Three rules the tests pin down:
+
+- **`value_text` is the value; `value_num` is only a comparison key.** Amounts are stored as
+  exact integer **micro-units** (×10⁶, half-up) so range filters and `ORDER BY` are integer
+  comparisons, and reassembly reads the lexical form — a decimal must not round-trip through a
+  float (`450.00` came back `450.0` when it did). Dates go to `value_date` as epoch-millis.
+- **Wire order is data.** Field order is part of the contract (§5) and a composite is a child
+  row rather than a value, so each instance stores its `property_order` and each value its
+  `seq`. Without them a reassembled segment lists every scalar before every composite.
+- **The graph commits with its transaction.** One SQL transaction covers the transaction rows,
+  the graph and the dimensions; the `.done` rename still happens only after it returns. A
+  committed row whose entities were missing would be queryable-but-empty. Purge and retention
+  delete graph rows with their transaction, since SQLite enforces no foreign key unless the
+  pragma is on.
+
+`EntityGraph.assemble` walks the rows back into the nested form, and **every read goes through
+it**: the structural collections, `ops/take`, `ops/validate` and `download`. `BufferStore`
+exposes `documentFor(elementKey)` and a batched `documentsFor(keys)` that reads a whole page in
+two queries rather than two per row. The round-trip equality test against the materializer is
+what licenses this: if it ever fails, the rows are no longer a faithful substitute.
+
+`ops/recast` replaces the graph (`replaceGraph`) instead of rewriting a column — one
+transaction, and a leased row is never rewritten under its consumer. Dimensions survive a
+recast: they describe the interchange, not the materialization.
+
+The envelope is **overlaid at read time** by `X12ProducerFacade.toElement`, never stored in the
+body — so a body cannot contradict the envelope, and there is one place that decides which
+wins.
+
+### 8.5 Business entities
+
+The graph is X12-shaped: `loop2100` whose `clp` child has a `clp04`. A **mapping** says what
+that *is* — a Claim whose `paidAmount` is `clp.clp04` — and at what **grain**: one row per
+instance of the declared `anchor` schema. Choosing the anchor chooses the grain, which is why
+it is declared, never inferred.
+
+| Entity | Anchor = grain | Rows per 835 |
+|---|---|---|
+| `Remittance` | the transaction root | 1 per transaction set |
+| `Claim` | `loop2100` | n claims |
+| `ServiceLine` | `loop2110` | n lines per claim |
+
+Column paths are relative to the anchor and may carry a **qualifier predicate**, which is how
+the semantics X12 hides in code positions become names: `nm1[nm101=QC].nm103` is the patient's
+last name, `amt[amt01=AU].amt02` the allowed amount, `svc.svc01.c00302` the procedure inside
+composite C003. A column the transaction lacks is present and null, so every row of a
+collection has one shape.
+
+**Dimensions** are transaction-level values (payer, payee, check number, effective date)
+resolved once per transaction set into `transaction_dims` and merged onto every row anchored
+under it. The payer lives in `N1*PR` up in the header, so without that "claims for this payer"
+would walk up the graph per claim instead of hitting an index.
+
+Business element schemas are **generated from the mappings** (`schema:business:x12.835.Claim`)
+and registered at boot: a collection may not advertise a `collectionSchema` the registry
+cannot serve, and generating it means the schema and the projection can never disagree about
+what a Claim has. Every row also carries `elementKey` and `fileId`, so any business row traces
+back to the interchange that delivered it.
+
+Mappings are **content, not code** — `mappings/<GS08>.json`, shipped in the pack format (§7) —
+so a trading-partner variant or a new entity is a mapping file, not a module release. A guide
+with no mapping simply has no business entities.
+
+#### 8.5.1 Collections, segments and filters
+
+```
+/x12-receiver
+├─ /claims                            collection, Claim schema, one element per CLP loop
+│   ├─ /claims/by-file/<fileId>       "claims from this file"
+│   └─ /claims/by-payerName/<value>   "claims for this payer"  (also by-payeeNpi, by-check…)
+├─ /service-lines  …
+└─ /remittances    …
+```
+
+Segment children are **emergent**, exactly like `/by-type`: `SELECT DISTINCT` over the
+dimensions actually present, so a payer node appears the first time that payer sends something.
+An unknown segment value is a 404, not an empty page.
+
+A **structural** filter (`/transactions`, `/by-type/<TS>`, `ops/take`) still compiles to SQL
+through `X12SqlAdapter`, but a body path now resolves into the graph rather than
+`json_extract`: `(loop2100.clp.clp04>1000)` becomes a scalar subquery for the `clp04` of a
+`clp` instance in that transaction set — the FIRST matching instance, which is the semantics
+`json_extract` had. A filter that needs per-instance semantics ("every claim over 1000", not
+"a transaction whose first claim is") belongs on a business collection, where the grain IS the
+row. Numeric comparisons read `value_num / 1000000.0`; the exact value stays in `value_text`.
+
+Scoping is pushed into SQL — grain always, plus a file or dimension equality inside a segment.
+**One parser for both paths.** A business filter is parsed by lite-filter — the same parser
+the structural path uses — and evaluated with lite-filter's own evaluator against the projected
+row, so the two surfaces cannot drift in what they accept; the extensions
+(`:contains:`, `:startsWith:`, `:endsWith:`) work on a claims collection exactly as on
+`/transactions`. The only thing layered on top is attribute validation, because the library
+cannot know which columns a business entity has: an unknown name is a 400 that lists what IS
+filterable, rather than an empty page that looks like "no matches".
+
+The structural path compiles that expression to SQL; the business path evaluates it in memory,
+because a business column can sit behind a qualifier predicate or inside a composite, which SQL
+over `entity_values` cannot express. A filtered page therefore reads the scoped set and pages
+after filtering.
+
+**Sorting** works on both paths. `sortBy` resolves through the same property mapping the
+filter uses — an envelope column or a graph lookup for a body path on the structural side, a
+declared column or dimension on the business side — so a sort and a filter can never disagree
+about what a property means. The structural path emits `ORDER BY` in SQL (built by the adapter,
+never from the caller's raw string); the business path sorts the projected rows by the column's
+declared type, so an amount orders numerically and a date as an ISO string. **NULLs sort last
+in both directions**, so a page is never led by rows missing the field it was sorted on, and an
+unknown attribute or direction is a 400 rather than an arbitrary order. A business collection
+serializes nulls, because its schema promises a shape: a column the transaction lacks is
+present-and-null, not absent. Correct, and bounded by
+the segment rather than the buffer — pushing the compilable subset down is a follow-up, and the
+value indexes are already in place for it. Filters compare by the column's declared type, so
+`(paidAmount>=1000)` is an exact decimal comparison and cannot match `999.99` lexically, and an
+unknown column name is a 400 rather than a silently empty result.
 
 ## 9. Health
 

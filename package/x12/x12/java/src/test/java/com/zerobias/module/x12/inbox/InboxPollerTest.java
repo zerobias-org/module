@@ -124,7 +124,11 @@ class InboxPollerTest {
         assertEquals(0, row.parserErrorCount());
         String raw = new String(row.rawX12(), StandardCharsets.UTF_8);
         assertTrue(raw.startsWith("ISA*00*") && raw.contains("ST*835*0001~") && raw.endsWith("IEA*1*000000101~\n"), raw);
-        String json = row.mappedJson();
+        // The document is the object graph reassembled, with the envelope overlaid at read
+        // time by the facade (DESIGN §8.4) — there is no stored JSON column to inspect.
+        String json = new com.google.gson.Gson().toJson(
+            com.zerobias.module.x12.producer.X12ProducerFacade.toElement(row,
+                buffer.documentFor(row.elementKey())));
         assertTrue(json.contains("\"elementKey\":\"" + fileId + ":101:0001\""), json);
         assertTrue(json.contains("\"transactionType\":\"835\""), json);
         assertTrue(json.contains("\"envelope\":\"file\""), json);
@@ -287,8 +291,9 @@ class InboxPollerTest {
         assertEquals("SYNTHETIC", tx.senderId());
         assertEquals("000000001", tx.isaControl());
         assertEquals("005010X221A1", tx.gs08());
-        assertTrue(tx.mappedJson().contains("\"envelope\":\"synthetic\""));
-        assertTrue(tx.mappedJson().contains("\"clp04\":220.00"));
+        assertEquals("synthetic", tx.envelope(), "the envelope is a row column, not body content");
+        String body = new com.google.gson.Gson().toJson(buffer.documentFor(tx.elementKey()));
+        assertTrue(body.contains("\"clp04\":220.00"), body);
     }
 
     @Test
@@ -523,7 +528,9 @@ class InboxPollerTest {
         assertEquals(FileConsumer.Outcome.CONSUMED, r.outcome());
         TransactionRow row = buffer.byElementKey(r.fileId() + ":101:0001").orElseThrow();
         assertEquals(StructureResolver.ENVELOPE_SCHEMA, row.schemaId());
-        assertTrue(row.mappedJson().contains("\"parserErrorCount\":0"));
-        assertFalse(row.mappedJson().contains("\"header\""), row.mappedJson());
+        assertEquals(0, row.parserErrorCount());
+        // No structure index for an unbundled guide: nothing to flatten, so no graph at all.
+        String unbundled = new com.google.gson.Gson().toJson(buffer.documentFor(row.elementKey()));
+        assertFalse(unbundled.contains("\"header\""), unbundled);
     }
 }

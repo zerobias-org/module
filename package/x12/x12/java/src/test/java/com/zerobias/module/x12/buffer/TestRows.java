@@ -1,5 +1,10 @@
 package com.zerobias.module.x12.buffer;
 
+import com.zerobias.module.x12.materializer.EntityGraph;
+
+import java.util.List;
+import java.util.Map;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -35,8 +40,62 @@ public final class TestRows {
             .interchangeAt(BASE.minusSeconds(3600))
             .schemaId(schemaId)
             .rawX12(("ST*" + type + "*" + stControl + "~SE*2*" + stControl + "~").getBytes())
-            .mappedJson("{\"header\":{\"st\":{\"st02\":\"" + stControl + "\"}}}")
             .build();
+    }
+
+    /**
+     * The minimal object graph a seeded row needs so its content is readable: a transaction
+     * root whose {@code st} child carries {@code st02}. The document is no longer a column
+     * (DESIGN §8.4), so a row without a graph has no content — which is what
+     * {@code validate} reports.
+     */
+    public static List<EntityGraph.Entity> graph(String schemaId, String stControl) {
+        return graphFromMap(schemaId, Map.of("header", Map.of("st", Map.of("st02", stControl))));
+    }
+
+    /** A one-instance graph whose root carries these string scalars, in order. */
+    public static List<EntityGraph.Entity> graphOf(String schemaId, Map<String, String> scalars) {
+        EntityGraph.Entity root = EntityGraph.Entity.of(0, null, schemaId, "ST_LOOP", "loop", null, "", 0);
+        for (Map.Entry<String, String> e : scalars.entrySet()) {
+            root.propertyOrder.add(e.getKey());
+            root.values.add(new EntityGraph.Value(e.getKey(), "string", e.getValue(), null, null));
+        }
+        return List.of(root);
+    }
+
+    /**
+     * A graph from a nested map, for tests that used to hand-write a {@code mapped_json} body:
+     * a nested map becomes a child instance (its key is the property), a scalar becomes a
+     * value on the current instance. Types are inferred so numeric filters see numbers.
+     */
+    public static List<EntityGraph.Entity> graphFromMap(String schemaId, Map<String, Object> body) {
+        List<EntityGraph.Entity> out = new java.util.ArrayList<>();
+        EntityGraph.Entity root = EntityGraph.Entity.of(0, null, schemaId, "ST_LOOP", "loop", null, "", 0);
+        out.add(root);
+        walk(out, root, body, "");
+        return out;
+    }
+
+    private static void walk(List<EntityGraph.Entity> out, EntityGraph.Entity parent,
+            Map<String, Object> node, String path) {
+        for (Map.Entry<String, Object> e : node.entrySet()) {
+            parent.propertyOrder.add(e.getKey());
+            if (e.getValue() instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> child = (Map<String, Object>) e.getValue();
+                String childPath = path.isEmpty() ? e.getKey() : path + "." + e.getKey();
+                EntityGraph.Entity entity = EntityGraph.Entity.of(out.size(), parent.localId,
+                    "schema:type:x12.test." + e.getKey().toUpperCase(java.util.Locale.ROOT),
+                    e.getKey().toUpperCase(java.util.Locale.ROOT), "segment", e.getKey(), childPath, 0);
+                out.add(entity);
+                walk(out, entity, child, childPath);
+            } else if (e.getValue() != null) {
+                final Object v = e.getValue();
+                final String type = v instanceof Number ? "decimal" : "string";
+                parent.values.add(new EntityGraph.Value(e.getKey(), type, String.valueOf(v),
+                    v instanceof Number ? new java.math.BigDecimal(v.toString()) : null, null));
+            }
+        }
     }
 
     public static FileRow file(String fileId, String source, String checksum, FileStatus status, int txCount) {

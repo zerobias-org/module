@@ -187,12 +187,13 @@ class X12OperationsTest {
         assertEquals(false, badStored.get("valid"));
         assertEquals(List.of("schema not registered: " + ProducerFixture.SCHEMA_837P_ALT), badStored.get("errors"));
 
-        // a row whose mapped_json is corrupt
-        buffer.updateMapping(buffer.byElementKey(KEY_B1).get().id(), TestRows.SCHEMA_837P, "{not json");
+        // a row whose stored content is gone: the graph is the representation now (DESIGN §8.4)
+        buffer.replaceGraph(buffer.byElementKey(KEY_B1).get(), TestRows.SCHEMA_837P, List.of());
         @SuppressWarnings("unchecked")
         Map<String, Object> corrupt = (Map<String, Object>) ops.invoke("validate", Map.of("elementKey", KEY_B1)).get("stored");
         assertEquals(false, corrupt.get("valid"));
-        assertTrue(((List<?>) corrupt.get("errors")).get(0).toString().startsWith("mapped_json does not parse"));
+        assertTrue(((List<?>) corrupt.get("errors")).get(0).toString().contains("object graph"),
+            String.valueOf(corrupt.get("errors")));
 
         assertEquals(404, assertThrows(ProducerException.class,
             () -> ops.invoke("validate", Map.of("elementKey", "nope"))).httpStatus());
@@ -214,7 +215,8 @@ class X12OperationsTest {
             if ("837P".equals(row.transactionType())) {
                 throw new IllegalStateException("no map");
             }
-            return Optional.of(new RecastHook.Mapping(row.schemaId(), "{\"recast\":true}"));
+            return Optional.of(new RecastHook.Mapping(row.schemaId(), Map.of("note", "recast"),
+                TestRows.graphOf(row.schemaId(), Map.of("note", "recast")), List.of()));
         };
         X12Operations withHook = new X12Operations(buffer, null, () -> poller, SCHEMAS, hook);
         Map<String, Object> r = withHook.invoke("recast", Map.of());
@@ -223,9 +225,9 @@ class X12OperationsTest {
         assertEquals(0, r.get("unchanged"));
         assertEquals(2, r.get("failed"));
         assertFalse(r.containsKey("note"));
-        TransactionRow a2 = buffer.byElementKey(KEY_A2).get();
-        assertEquals("{\"recast\":true}", a2.mappedJson());
-        assertEquals("{\"header\":{\"st\":{\"st02\":\"0001\"}}}", buffer.byElementKey(KEY_A1).get().mappedJson(), "in_flight row untouched");
+        assertEquals(Map.of("note", "recast"), buffer.documentFor(KEY_A2), "the graph was replaced");
+        assertEquals(Map.of("header", Map.of("st", Map.of("st02", "0001"))), buffer.documentFor(KEY_A1),
+            "in_flight row untouched");
 
         Map<String, Object> v = withHook.invoke("validate", Map.of("elementKey", KEY_A3));
         assertNotNull(v.get("rematerialized"));

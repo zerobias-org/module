@@ -43,7 +43,7 @@ import java.util.stream.Stream;
  * </pre>
  *
  * <p>A <em>transaction set is an atom</em> — a collection element keyed
- * {@code <fileId>:<GS06>:<ST02>}, never a node. Folders are discriminators and their
+ * {@code <fileId>:<ISA13>:<GS06>:<ST02>}, never a node. Folders are discriminators and their
  * children are <em>emergent</em>: read live from the buffer's DISTINCT values, so a node
  * appears the first time matching data lands. {@code /files/<fileId>} is the one
  * exception: a file is both a folder (its transactions) and a binary (its bytes).

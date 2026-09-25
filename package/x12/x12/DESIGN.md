@@ -194,7 +194,10 @@ of range or not an integer is a 400 `illegalArgumentError`, not a silent default
 Identical to hl7/v2 §2.7: wire body is the OpenAPI `errorModelBase` (`{key, template, timestamp,
 statusCode}` + subtype fields). 404 for unknown object/schema/lease/file, 400
 `UnsupportedOperationError` for every write op (`createChildObject`, `addCollectionElement`,
-`uploadBinaryContent`, `updateDocumentData`, …), 400 `illegalArgumentError` for bad filters.
+`uploadBinaryContent`, `updateDocumentData`, …), 400 `illegalArgumentError` for bad filters, bad
+function input and a request body that is not valid JSON (or not an object). Anything unexpected is a
+500 `err.unexpected` with a fixed generic message: the cause (SQLite, IO) can name buffer and inbox
+paths inside the container, so it is logged server-side and never returned.
 
 ### 2.8 Binary download
 

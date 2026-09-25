@@ -141,6 +141,24 @@ class InboxFilesTest {
         assertEquals(new String(EDI, StandardCharsets.UTF_8), new String(bin.bytes(), StandardCharsets.UTF_8));
     }
 
+    @Test
+    void filesystemFailuresDoNotLeakContainerPaths() throws Exception {
+        Path locked = Files.createDirectories(inboxDir.resolve("locked"));
+        assertTrue(locked.toFile().setWritable(false, false));
+        try {
+            org.junit.jupiter.api.Assumptions.assumeFalse(Files.isWritable(locked), "running as root");
+            ProducerException e = assertThrows(ProducerException.class,
+                () -> writable.createChildObject(INBOX + "/inbox/locked", "sub", List.of("container")));
+            assertEquals(500, e.httpStatus());
+            assertEquals("err.unexpected", e.key());
+            String wire = GSON.toJson(e.toBody());
+            assertFalse(wire.contains(dir.toString()), wire);
+            assertFalse(wire.contains("AccessDenied"), wire);
+        } finally {
+            locked.toFile().setWritable(true, false);
+        }
+    }
+
     // --- the gate -----------------------------------------------------------
 
     @Test

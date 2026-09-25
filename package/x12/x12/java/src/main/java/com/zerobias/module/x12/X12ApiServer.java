@@ -2,6 +2,7 @@ package com.zerobias.module.x12;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.RetentionSweeper;
 import com.zerobias.module.x12.health.HealthCheck;
@@ -70,7 +71,7 @@ public final class X12ApiServer {
     private PollerHandle pollers;
     private HealthCheck health;
 
-    private X12ApiServer() {
+    X12ApiServer() {
     }
 
     public static void main(String[] args) {
@@ -201,7 +202,7 @@ public final class X12ApiServer {
         return new X12ProducerFacade(buffer, tree, schemas, ops, fileManagement);
     }
 
-    private void registerRoutes(Javalin app) {
+    void registerRoutes(Javalin app) {
         app.get("/", ctx -> {
             JsonObject body = new JsonObject();
             body.add("nonsensitiveProfileFields", GSON.toJsonTree(NONSENSITIVE_PROFILE_FIELDS));
@@ -209,8 +210,8 @@ public final class X12ApiServer {
         });
 
         app.post("/connections", ctx -> {
-            Map<?, ?> requestBody = GSON.fromJson(ctx.body(), Map.class);
-            Object connectionId = requestBody == null ? null : requestBody.get("connectionId");
+            Map<String, Object> requestBody = parseBody(ctx);
+            Object connectionId = requestBody.get("connectionId");
             if (connectionId == null || connectionId.toString().isBlank()) {
                 throw ProducerException.illegalArgument("connectionId is required");
             }
@@ -249,8 +250,11 @@ public final class X12ApiServer {
                 ctx.status(201).contentType("application/json").result(upload(ctx));
                 return;
             }
-            Map<String, Object> requestBody = castMap(GSON.fromJson(ctx.body(), Map.class));
-            Map<String, Object> argMap = castMap(requestBody.get("argMap"));
+            Object args = parseBody(ctx).get("argMap");
+            if (args != null && !(args instanceof Map)) {
+                throw ProducerException.illegalArgument("argMap must be a JSON object");
+            }
+            Map<String, Object> argMap = castMap(args);
             if (OperationRouter.isBinaryDownload(method)) {
                 // DESIGN §2.8: full-content 200 with the raw EDI bytes.
                 Object id = argMap.get("objectId");
@@ -274,20 +278,39 @@ public final class X12ApiServer {
         });
     }
 
-    private void registerExceptionHandlers(Javalin app) {
-        app.exception(ProducerException.class, (e, ctx) ->
-            ctx.status(e.httpStatus()).contentType("application/json").result(GSON.toJson(e.toBody())));
-        app.exception(IllegalArgumentException.class, (e, ctx) -> {
-            ProducerException pe = ProducerException.illegalArgument(e.getMessage());
-            ctx.status(pe.httpStatus()).contentType("application/json").result(GSON.toJson(pe.toBody()));
-        });
+    /**
+     * Every error body is the interface's {@code errorModelBase}. A {@link ProducerException}
+     * carries its own status; an {@link IllegalArgumentException} is a caller mistake the
+     * lite-filter / sort code raises with a caller-facing message (400); anything else is a
+     * 500 with a generic message — the cause is logged here, never returned, because an SQLite
+     * or IO message can name buffer and inbox paths inside the container.
+     */
+    static void registerExceptionHandlers(Javalin app) {
+        app.exception(ProducerException.class, (e, ctx) -> respond(ctx, e));
+        app.exception(IllegalArgumentException.class, (e, ctx) ->
+            respond(ctx, ProducerException.illegalArgument(e.getMessage())));
         app.exception(Exception.class, (e, ctx) -> {
-            LOG.error("Unexpected error", e);
-            JsonObject body = new JsonObject();
-            body.addProperty("code", "internalError");
-            body.addProperty("message", String.valueOf(e.getMessage()));
-            ctx.status(500).contentType("application/json").result(body.toString());
+            LOG.error("Unexpected error serving {} {}", ctx.method(), ctx.path(), e);
+            respond(ctx, ProducerException.unexpected());
         });
+    }
+
+    private static void respond(io.javalin.http.Context ctx, ProducerException e) {
+        ctx.status(e.httpStatus()).contentType("application/json").result(GSON.toJson(e.toBody()));
+    }
+
+    /** The request body as a JSON object; empty body = empty object; malformed or not an object = 400. */
+    private static Map<String, Object> parseBody(io.javalin.http.Context ctx) {
+        Object parsed;
+        try {
+            parsed = GSON.fromJson(ctx.body(), Object.class);
+        } catch (JsonParseException e) {
+            throw ProducerException.illegalArgument("Request body is not valid JSON");
+        }
+        if (parsed != null && !(parsed instanceof Map)) {
+            throw ProducerException.illegalArgument("Request body must be a JSON object");
+        }
+        return castMap(parsed);
     }
 
     /**
@@ -307,7 +330,7 @@ public final class X12ApiServer {
         String fileName = ctx.queryParam("fileName");
         byte[] bytes = ctx.bodyAsBytes();
         if (objectId == null || objectId.isBlank()) {
-            Map<String, Object> argMap = castMap(castMap(GSON.fromJson(ctx.body(), Map.class)).get("argMap"));
+            Map<String, Object> argMap = castMap(parseBody(ctx).get("argMap"));
             objectId = asString(argMap.get("objectId"));
             fileName = fileName != null ? fileName : asString(argMap.get("fileName"));
             Object encoded = argMap.get("contentBase64");

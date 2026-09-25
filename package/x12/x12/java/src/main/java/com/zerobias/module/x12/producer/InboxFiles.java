@@ -1,6 +1,8 @@
 package com.zerobias.module.x12.producer;
 
 import com.zerobias.module.x12.SourceConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.DirectoryNotEmptyException;
@@ -49,6 +51,8 @@ import java.util.UUID;
  * which case it is, so a caller never has to guess.
  */
 final class InboxFiles {
+
+    private static final Logger LOG = LoggerFactory.getLogger(InboxFiles.class);
 
     static final String INBOX = ObjectTreeApi.RECEIVER + "/inbox";
     private static final String PREFIX = INBOX + "/";
@@ -113,7 +117,7 @@ final class InboxFiles {
                 }
             }
         } catch (IOException e) {
-            throw ProducerException.illegalArgument("Cannot list " + id + ": " + e);
+            throw ioFailure("list", id, e);
         }
         // Directories first, then files, each alphabetical — a stable order for a live readdir.
         entries.sort(Comparator.comparing((Path p) -> Files.isDirectory(p) ? 0 : 1)
@@ -136,7 +140,7 @@ final class InboxFiles {
             return new BinaryContent(Files.readAllBytes(n.path()), BinaryContent.MIME_X12,
                 n.path().getFileName().toString());
         } catch (IOException e) {
-            throw ProducerException.illegalArgument("Cannot read " + id + ": " + e);
+            throw ioFailure("read", id, e);
         }
     }
 
@@ -171,7 +175,7 @@ final class InboxFiles {
             } catch (IOException ignore) {
                 // best effort; a leftover dotfile is invisible to the poller and to browse
             }
-            throw ProducerException.illegalArgument("Cannot write " + name + " to " + parentId + ": " + e);
+            throw ioFailure("write " + name + " into", parentId, e);
         }
         String id = parentId + "/" + ObjectTree.encodeSegment(name);
         return fileNode(id, new Node(parent.source(), target, false));
@@ -187,7 +191,7 @@ final class InboxFiles {
         } catch (FileAlreadyExistsException e) {
             throw ProducerException.illegalArgument("Already exists: " + dir);
         } catch (IOException e) {
-            throw ProducerException.illegalArgument("Cannot create " + dir + " under " + parentId + ": " + e);
+            throw ioFailure("create " + dir + " under", parentId, e);
         }
         String id = parentId + "/" + ObjectTree.encodeSegment(dir);
         return dirNode(id, new Node(parent.source(), target, false));
@@ -218,8 +222,18 @@ final class InboxFiles {
             throw ProducerException.illegalArgument(
                 "Directory is not empty: " + id + " (delete its children first)");
         } catch (IOException e) {
-            throw ProducerException.illegalArgument("Cannot delete " + id + ": " + e);
+            throw ioFailure("delete", id, e);
         }
+    }
+
+    /**
+     * A filesystem failure the caller cannot act on: logged here with the cause, answered as a
+     * generic 500. {@code IOException.toString()} carries absolute container paths, which are
+     * not the caller's business.
+     */
+    private static ProducerException ioFailure(String action, String id, IOException e) {
+        LOG.error("inbox: cannot {} {}", action, id, e);
+        return ProducerException.unexpected();
     }
 
     // --- resolution ---------------------------------------------------------

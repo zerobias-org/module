@@ -111,6 +111,8 @@
       "anchorSchemaId": "schema:type:x12.005010X221A1.2110",
       "schemaId": "schema:business:x12.835.ServiceLine",
       "columns": [
+        { "name": "claimId", "path": "^loop2100.clp.clp01", "dataType": "string",
+          "description": "CLP01 of the enclosing claim (the ^ step reads the ancestor loop2100) — the join key back to /claims" },
         { "name": "procedureCode", "path": "svc.svc01.c00302", "dataType": "string", "primaryKey": true,
           "description": "SVC01-2 inside composite C003 — the procedure actually adjudicated" },
         { "name": "procedureQualifier", "path": "svc.svc01.c00301", "dataType": "string",

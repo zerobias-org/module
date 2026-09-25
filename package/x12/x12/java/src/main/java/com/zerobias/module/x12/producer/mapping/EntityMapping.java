@@ -38,6 +38,12 @@ import java.util.Map;
  * transaction-level values (payer, payee) resolved once per transaction set so segmentation —
  * "claims for this payer" — is an indexed lookup instead of a walk up the graph per row.
  *
+ * <p>A path step may also be {@code ^property}: the nearest ANCESTOR of the current instance
+ * that sits under {@code property}. That is how a row reaches data its grain inherits — a
+ * service line's claim id ({@code ^loop2300.clm.clm01}), an 837 claim's subscriber
+ * ({@code ^loop2000B.loop2010BA.nm1.nm109}) — exactly, per instance, instead of through a
+ * transaction-level dimension that would have to pick one of several.
+ *
  * <p>Mappings are content, not code: they ship in the pack format, so a trading-partner
  * variant or a new business entity does not need a module release.
  */
@@ -46,10 +52,20 @@ public final class EntityMapping {
     private static final Logger LOG = LoggerFactory.getLogger(EntityMapping.class);
     private static final Gson GSON = new Gson();
 
-    /** One named column: where to read it from the anchor, and how it is typed. */
+    /**
+     * One named column: where to read it from the anchor, and how it is typed. {@code part}
+     * ({@code from}/{@code to}, optional) takes one end of a date range: a {@code DTP} with
+     * format {@code RD8} carries {@code CCYYMMDD-CCYYMMDD} in one element, and a single
+     * {@code D8} date is both its own start and end.
+     */
     public record Column(String name, String path, String dataType, boolean primaryKey,
-            String enumSchemaId, String description) {
+            String enumSchemaId, String description, String part) {
+        public Column(String name, String path, String dataType, boolean primaryKey,
+                String enumSchemaId, String description) {
+            this(name, path, dataType, primaryKey, enumSchemaId, description, null);
+        }
     }
+
 
     /** A transaction-level value carried onto every row anchored under it. */
     public record Dimension(String name, String path, String dataType, String description) {
@@ -162,13 +178,17 @@ public final class EntityMapping {
         }
         final List<EntityMapping> mappings = GUIDE_CACHE.computeIfAbsent(gs08 == null ? "" : gs08,
             EntityMapping::forGuide);
-        if (mappings.isEmpty()) {
-            return Map.of();
+        List<Dimension> declared = List.of();
+        for (EntityMapping m : mappings) {
+            if (!m.dimensions().isEmpty()) {
+                declared = m.dimensions();
+                break;
+            }
         }
         final EntityGraph.Entity root = graph.get(0);
         final Map<String, EntityGraph.Value> out = new LinkedHashMap<>();
-        for (Dimension d : mappings.get(0).dimensions()) {
-            final EntityGraph.Value v = read(graph, root, d.path());
+        for (Dimension d : declared) {
+            final EntityGraph.Value v = unambiguous(readAll(graph, root, d.path()));
             if (v != null) {
                 out.put(d.name(), v);
             }
@@ -176,16 +196,44 @@ public final class EntityMapping {
         return out;
     }
 
+    /**
+     * The one value every match agrees on, or null. A dimension is a fact about the whole
+     * transaction set, so it only exists when the transaction states one: an 835 has one
+     * {@code N1*PR}, but an 837 batch may carry several billing providers or payers under its
+     * HL loops, and attributing all of it to whichever came first would put claims in the
+     * wrong payer's segment. Ambiguous means absent; the per-claim value is still a column.
+     */
+    private static EntityGraph.Value unambiguous(List<EntityGraph.Value> values) {
+        EntityGraph.Value found = null;
+        for (EntityGraph.Value v : values) {
+            if (v == null || v.text() == null) {
+                continue;
+            }
+            if (found == null) {
+                found = v;
+            } else if (!found.text().equals(v.text())) {
+                return null;
+            }
+        }
+        return found;
+    }
+
     private static final Map<String, List<EntityMapping>> GUIDE_CACHE =
         new java.util.concurrent.ConcurrentHashMap<>();
 
     // --- parsing ------------------------------------------------------------
 
-    /** Every mapping on the classpath for a guide, or empty when none ships. */
+    /**
+     * Every mapping on the classpath for a guide, or empty when none ships. Any accepted
+     * spelling resolves to the canonical guide ({@code 005010X223A1} and {@code 005010X223}
+     * are materialized with the {@code 005010X223A2} structure, so they share its mapping and
+     * its anchor schema ids).
+     */
     public static List<EntityMapping> forGuide(String gs08) {
         if (gs08 == null) {
             return List.of();
         }
+        gs08 = com.zerobias.module.x12.parser.TransactionTypes.canonical(gs08).orElse(gs08.trim());
         final String resource = "/mappings/" + gs08 + ".json";
         try (InputStream in = EntityMapping.class.getResourceAsStream(resource)) {
             if (in == null) {
@@ -233,14 +281,16 @@ public final class EntityMapping {
                 columns.add(new Column(str(c, "name"), str(c, "path"),
                     orDefault(str(c, "dataType"), "string"),
                     c.has("primaryKey") && c.get("primaryKey").getAsBoolean(),
-                    str(c, "enumSchemaId"), str(c, "description")));
+                    str(c, "enumSchemaId"), str(c, "description"), str(c, "part")));
             }
-            if (str(e, "name") == null || str(e, "anchorSchemaId") == null || columns.isEmpty()) {
+            final String name = str(e, "name");
+            final String collection = name == null ? null
+                : orDefault(str(e, "collection"), name.toLowerCase(Locale.ROOT));
+            if (name == null || str(e, "anchorSchemaId") == null || columns.isEmpty()) {
                 LOG.warn("skipping mapping entry without name/anchorSchemaId/columns: {}", e);
                 continue;
             }
-            out.add(new EntityMapping(str(e, "name"), orDefault(str(e, "collection"),
-                str(e, "name").toLowerCase(Locale.ROOT)), gs08, str(e, "anchorSchemaId"),
+            out.add(new EntityMapping(name, collection, gs08, str(e, "anchorSchemaId"),
                 str(e, "schemaId"), str(e, "description"), columns, dims));
         }
         return out;
@@ -265,7 +315,9 @@ public final class EntityMapping {
         final String[] steps = path.split("\\.");
         EntityGraph.Entity current = anchor;
         for (int i = 0; i < steps.length - 1; i++) {
-            current = child(subtree, current, steps[i]);
+            current = steps[i].startsWith("^")
+                ? ancestor(subtree, current, steps[i].substring(1))
+                : child(subtree, current, steps[i]);
             if (current == null) {
                 return null;
             }
@@ -273,9 +325,80 @@ public final class EntityMapping {
         return value(current, steps[steps.length - 1]);
     }
 
+    /**
+     * Every value the path reaches, following EVERY matching child at each step rather than
+     * the first — so a dimension can tell "the transaction says one thing" from "it says
+     * several" (see {@link #dimensions}).
+     */
+    public static List<EntityGraph.Value> readAll(List<EntityGraph.Entity> subtree,
+            EntityGraph.Entity anchor, String path) {
+        if (path == null || path.isBlank() || anchor == null) {
+            return List.of();
+        }
+        final String[] steps = path.split("\\.");
+        List<EntityGraph.Entity> frontier = List.of(anchor);
+        for (int i = 0; i < steps.length - 1 && !frontier.isEmpty(); i++) {
+            final List<EntityGraph.Entity> next = new ArrayList<>();
+            for (EntityGraph.Entity e : frontier) {
+                if (steps[i].startsWith("^")) {
+                    final EntityGraph.Entity a = ancestor(subtree, e, steps[i].substring(1));
+                    if (a != null && !next.contains(a)) {
+                        next.add(a);
+                    }
+                } else {
+                    next.addAll(children(subtree, e, steps[i], Integer.MAX_VALUE));
+                }
+            }
+            frontier = next;
+        }
+        final List<EntityGraph.Value> out = new ArrayList<>();
+        for (EntityGraph.Entity e : frontier) {
+            final EntityGraph.Value v = value(e, steps[steps.length - 1]);
+            if (v != null) {
+                out.add(v);
+            }
+        }
+        return out;
+    }
+
+    /** The nearest ancestor (not self) that sits under {@code property}, if any. */
+    private static EntityGraph.Entity ancestor(List<EntityGraph.Entity> subtree, EntityGraph.Entity from,
+            String property) {
+        EntityGraph.Entity current = from;
+        while (current != null && current.parentLocalId != null) {
+            current = byLocalId(subtree, current.parentLocalId);
+            if (current != null && property.equals(current.property)) {
+                return current;
+            }
+        }
+        return null;
+    }
+
+    private static EntityGraph.Entity byLocalId(List<EntityGraph.Entity> subtree, int localId) {
+        // flatten order puts an entity at its own local id; a graph read back from the buffer
+        // uses row ids instead, so fall back to a scan when the fast path misses
+        if (localId >= 0 && localId < subtree.size() && subtree.get(localId).localId == localId) {
+            return subtree.get(localId);
+        }
+        for (EntityGraph.Entity e : subtree) {
+            if (e.localId == localId) {
+                return e;
+            }
+        }
+        return null;
+    }
+
     /** The first child under {@code property} whose qualifier predicate holds, if any. */
     private static EntityGraph.Entity child(List<EntityGraph.Entity> subtree, EntityGraph.Entity parent,
             String step) {
+        final List<EntityGraph.Entity> found = children(subtree, parent, step, 1);
+        return found.isEmpty() ? null : found.get(0);
+    }
+
+    /** Up to {@code limit} children under {@code property} whose qualifier predicate holds. */
+    private static List<EntityGraph.Entity> children(List<EntityGraph.Entity> subtree,
+            EntityGraph.Entity parent, String step, int limit) {
+        final List<EntityGraph.Entity> out = new ArrayList<>();
         final int open = step.indexOf('[');
         final String property = open < 0 ? step : step.substring(0, open);
         String predProperty = null;
@@ -295,15 +418,21 @@ public final class EntityMapping {
             if (!property.equals(e.property)) {
                 continue;
             }
+            final boolean matches;
             if (predProperty == null) {
-                return e;
+                matches = true;
+            } else {
+                final EntityGraph.Value v = value(e, predProperty);
+                matches = v != null && predValue != null && predValue.equals(v.text());
             }
-            final EntityGraph.Value v = value(e, predProperty);
-            if (v != null && predValue != null && predValue.equals(v.text())) {
-                return e;
+            if (matches) {
+                out.add(e);
+                if (out.size() >= limit) {
+                    break;
+                }
             }
         }
-        return null;
+        return out;
     }
 
     private static EntityGraph.Value value(EntityGraph.Entity entity, String property) {
@@ -332,6 +461,12 @@ public final class EntityMapping {
     }
 
     private static Object typed(Column c, EntityGraph.Value v) {
+        if (v != null && c.part() != null && v.text() != null) {
+            // RD8 "CCYYMMDD-CCYYMMDD": one end of the range; a lone D8 date is both ends
+            final String[] ends = v.text().split("-", 2);
+            final String picked = "to".equals(c.part()) && ends.length == 2 ? ends[1] : ends[0];
+            v = new EntityGraph.Value(v.property(), v.dataType(), picked.trim(), null, null);
+        }
         return typed(c.dataType(), v);
     }
 
@@ -372,9 +507,24 @@ public final class EntityMapping {
                 return v.text() != null
                     ? EntityGraph.exactNumber("boolean", v.text()).signum() != 0
                     : v.num() != null && v.num().signum() != 0;
+            case "date":
+                return isoDate(v.text());
             default:
                 return v.text();
         }
+    }
+
+    /**
+     * A date column is an ISO {@code YYYY-MM-DD} string. A {@code DT} element is already
+     * normalized by the materializer; a {@code DTP03}/{@code DMG02} is {@code AN} on the wire
+     * (its format lives in the qualifier), so a bare {@code CCYYMMDD} is rewritten here. Any
+     * other shape is returned as-is rather than guessed at.
+     */
+    static String isoDate(String text) {
+        if (text != null && text.length() == 8 && text.chars().allMatch(Character::isDigit)) {
+            return text.substring(0, 4) + "-" + text.substring(4, 6) + "-" + text.substring(6);
+        }
+        return text;
     }
 
     private static String str(JsonObject o, String key) {

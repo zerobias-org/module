@@ -52,12 +52,21 @@ public final class BusinessEntities {
         }
     }
 
-    /** Every bundled guide's mappings, in guide order. */
+    /**
+     * Every bundled guide's mappings, one per collection, in guide order. A collection belongs
+     * to the first guide that declares it: its grain is that guide's loop.
+     */
     public static List<EntityMapping> mappingsFor(List<String> guides) {
         final List<EntityMapping> out = new ArrayList<>();
         final Set<String> seen = new LinkedHashSet<>();
+        final Set<String> seenGuides = new LinkedHashSet<>();
         for (String gs08 : guides == null ? List.<String>of() : guides) {
-            for (EntityMapping m : EntityMapping.forGuide(gs08)) {
+            final List<EntityMapping> ms = EntityMapping.forGuide(gs08);
+            // aliases (005010X223A1 → 005010X223A2) resolve to the same mapping: read it once
+            if (ms.isEmpty() || !seenGuides.add(ms.get(0).gs08())) {
+                continue;
+            }
+            for (EntityMapping m : ms) {
                 if (seen.add(m.collection())) {
                     out.add(m);
                 }
@@ -102,7 +111,17 @@ public final class BusinessEntities {
         if (FILE_SEGMENT.equals(segment)) {
             return buffer.distinctAnchorFiles(m.anchorSchemaId());
         }
-        return buffer.distinctDim(segment);
+        // Dimensions are shared by name across guides (an 835 and an 837 both have a
+        // payerName), so the distinct values are narrowed to those that actually scope a row
+        // of THIS entity — otherwise /claims/by-payerName would list payers that only ever
+        // sent an 837 and lead to an empty page.
+        final List<String> out = new ArrayList<>();
+        for (String value : buffer.distinctDim(segment)) {
+            if (buffer.anchorCount(m.anchorSchemaId(), null, segment, value) > 0) {
+                out.add(value);
+            }
+        }
+        return out;
     }
 
     /** A resolved scope: the grain plus at most one file and one dimension equality. */
@@ -152,6 +171,12 @@ public final class BusinessEntities {
         final List<Map<String, Object>> all = project(m,
             buffer.anchorKeys(m.anchorSchemaId(), scope.fileId(), scope.dim(), scope.dimValue(),
                 Integer.MAX_VALUE, 0));
+        return slice(all, filter, order, pageSize, offset);
+    }
+
+    private static Page slice(List<Map<String, Object>> all,
+            java.util.function.Predicate<Map<String, Object>> filter,
+            java.util.Comparator<Map<String, Object>> order, int pageSize, int offset) {
         final List<Map<String, Object>> matched = new ArrayList<>();
         for (Map<String, Object> row : all) {
             if (filter == null || filter.test(row)) {

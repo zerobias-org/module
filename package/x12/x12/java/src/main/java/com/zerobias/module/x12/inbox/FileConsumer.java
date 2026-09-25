@@ -182,7 +182,7 @@ public final class FileConsumer {
             // Resolve the guide's business dimensions once per transaction set: the payer lives
             // in the header, so segmenting claims by payer must not mean walking up per claim.
             for (Map.Entry<String, List<EntityGraph.Entity>> e : graphs.entrySet()) {
-                final Map<String, EntityGraph.Value> resolved = resolveDimensions(parsed.gs08(), e.getValue());
+                final Map<String, EntityGraph.Value> resolved = EntityMapping.dimensions(parsed.gs08(), e.getValue());
                 if (!resolved.isEmpty()) {
                     dims.put(e.getKey(), resolved);
                 }
@@ -259,29 +259,6 @@ public final class FileConsumer {
             .envelope(envelope)
             .build();
     }
-
-    /** The guide's declared dimensions, read off the transaction root (DESIGN §8.5). */
-    private Map<String, EntityGraph.Value> resolveDimensions(String gs08, List<EntityGraph.Entity> graph) {
-        if (graph == null || graph.isEmpty()) {
-            return Map.of();
-        }
-        final List<EntityMapping> mappings = mappingCache.computeIfAbsent(gs08 == null ? "" : gs08,
-            EntityMapping::forGuide);
-        if (mappings.isEmpty()) {
-            return Map.of();
-        }
-        final EntityGraph.Entity root = graph.get(0);
-        final Map<String, EntityGraph.Value> out = new LinkedHashMap<>();
-        for (EntityMapping.Dimension d : mappings.get(0).dimensions()) {
-            final EntityGraph.Value v = EntityMapping.read(graph, root, d.path());
-            if (v != null) {
-                out.put(d.name(), v);
-            }
-        }
-        return out;
-    }
-
-    private final Map<String, List<EntityMapping>> mappingCache = new LinkedHashMap<>();
 
     static String errorMessage(Exception e) {
         if (e instanceof X12ParseException pe) {

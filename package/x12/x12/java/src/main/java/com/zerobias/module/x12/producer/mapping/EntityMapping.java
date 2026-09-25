@@ -152,6 +152,33 @@ public final class EntityMapping {
         return null;
     }
 
+    /**
+     * The guide's declared dimensions, read off the transaction root (DESIGN §8.5). Shared by
+     * ingest and the startup graph backfill so both resolve a transaction set identically.
+     */
+    public static Map<String, EntityGraph.Value> dimensions(String gs08, List<EntityGraph.Entity> graph) {
+        if (graph == null || graph.isEmpty()) {
+            return Map.of();
+        }
+        final List<EntityMapping> mappings = GUIDE_CACHE.computeIfAbsent(gs08 == null ? "" : gs08,
+            EntityMapping::forGuide);
+        if (mappings.isEmpty()) {
+            return Map.of();
+        }
+        final EntityGraph.Entity root = graph.get(0);
+        final Map<String, EntityGraph.Value> out = new LinkedHashMap<>();
+        for (Dimension d : mappings.get(0).dimensions()) {
+            final EntityGraph.Value v = read(graph, root, d.path());
+            if (v != null) {
+                out.put(d.name(), v);
+            }
+        }
+        return out;
+    }
+
+    private static final Map<String, List<EntityMapping>> GUIDE_CACHE =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
     // --- parsing ------------------------------------------------------------
 
     /** Every mapping on the classpath for a guide, or empty when none ships. */

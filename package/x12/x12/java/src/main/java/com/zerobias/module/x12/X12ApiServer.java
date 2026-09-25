@@ -7,6 +7,7 @@ import com.zerobias.module.x12.buffer.RetentionSweeper;
 import com.zerobias.module.x12.health.HealthCheck;
 import com.zerobias.module.x12.materializer.StructureResolver;
 import com.zerobias.module.x12.producer.BinaryContent;
+import com.zerobias.module.x12.producer.GraphBackfill;
 import com.zerobias.module.x12.producer.MaterializerRecastHook;
 import com.zerobias.module.x12.producer.ObjectTree;
 import com.zerobias.module.x12.producer.ObjectTreeApi;
@@ -111,6 +112,9 @@ public final class X12ApiServer {
         this.buffer = new BufferStore(config.bufferDbPath(), mc.fullDurability());
         LOG.info("Buffer open at {} (ackDurability={})", config.bufferDbPath(),
             mc.fullDurability() ? "full" : "normal");
+        // Rows buffered before the object graph existed have no body: rebuild it from raw_x12
+        // before anything can drain or browse them (and before the pollers add new rows).
+        GraphBackfill.run(buffer, new MaterializerRecastHook(new StructureResolver(), Clock.systemUTC()));
 
         if (mc.retention().isBounded()) {
             this.retentionSweeper = new RetentionSweeper(buffer, mc.retention(), Clock.systemUTC());

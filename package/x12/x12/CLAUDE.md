@@ -97,6 +97,14 @@ Auth: `~/.m2/settings.xml` server id `github` with `${env.GITHUB_ACTOR}` / `${en
   `documentsFor`). Do not add a document column back "for speed" — that is two
   representations to keep in sync, which is what this replaced. The envelope is overlaid at
   read time by `toElement`, never stored in the body.
+- **The buffer outlives the image; `schema.sql` is not a migration.** The `x12-buffer` volume
+  survives every redeploy, and `CREATE TABLE IF NOT EXISTS` never alters a table that is already
+  there. Any column change to `schema.sql` needs a step in `BufferStore.migrate` (probe the real
+  shape, bump `SCHEMA_VERSION`) and a frozen copy of the old DDL under
+  `src/test/resources/buffer/` exercised like `LegacyBufferUpgradeTest`. Dropping `mapped_json`
+  without one stopped ingest on every upgraded receiver while health stayed green. Rows that
+  predate the graph are rebuilt from `raw_x12` by `GraphBackfill` at startup, before the pollers
+  and routes open.
 - **`value_text` is the value; `value_num` is a comparison key.** Amounts live in
   `entity_values` as exact integer micro-units for filtering and in `value_text` for
   reassembly. Never read an amount back from `value_num` — that is how `450.00` becomes

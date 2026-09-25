@@ -1,6 +1,8 @@
 package com.zerobias.module.x12.buffer;
 
 import com.zerobias.module.x12.materializer.EntityGraph;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -44,6 +46,8 @@ import java.util.Set;
  */
 public final class BufferStore implements AutoCloseable {
 
+    private static final Logger LOG = LoggerFactory.getLogger(BufferStore.class);
+
     static final String TX_COLS = "id, element_key, file_id, source_name, received_at, isa_control, "
         + "gs_control, st_control, gs08, transaction_type, sender_id, receiver_id, interchange_at, "
         + "schema_id, raw_x12, parser_error_count, envelope, status, lease_id, "
@@ -63,6 +67,9 @@ public final class BufferStore implements AutoCloseable {
         "schema_id", "envelope");
 
     private static final String SCHEMA_RESOURCE = "/buffer/schema.sql";
+
+    /** {@code PRAGMA user_version} of the shape {@code schema.sql} creates; see {@link #migrate}. */
+    static final int SCHEMA_VERSION = 1;
 
     private final Connection conn;
     private final Clock clock;
@@ -91,9 +98,55 @@ public final class BufferStore implements AutoCloseable {
                 st.execute(stmt);
             }
         }
+        migrate();
         // ackDurability=full -> fsync per commit (DESIGN §8); overrides the schema's NORMAL.
         try (Statement st = conn.createStatement()) {
             st.execute("PRAGMA synchronous=" + (fullDurability ? "FULL" : "NORMAL"));
+        }
+    }
+
+    /**
+     * Bring an existing buffer up to {@link #SCHEMA_VERSION}. The buffer volume outlives every
+     * redeploy by design, and {@code CREATE TABLE IF NOT EXISTS} never alters a table that is
+     * already there — so every column change to {@code schema.sql} needs a step here, or an
+     * upgraded container opens a table its INSERTs no longer match.
+     *
+     * <p>Steps probe the actual shape rather than trusting {@code user_version} alone: buffers
+     * written before versioning carry 0 whatever their shape.
+     */
+    private void migrate() throws SQLException {
+        final boolean prev = conn.getAutoCommit();
+        conn.setAutoCommit(false);
+        try (Statement st = conn.createStatement()) {
+            // v1: the typed document moved into the object graph (DESIGN §8.4). The legacy
+            // column is NOT NULL, so while it exists every ingest INSERT fails. Its content is
+            // not carried over: raw_x12 is the source, and the startup backfill rebuilds the
+            // graph from it (BufferStore#graphless).
+            if (hasColumn("transactions", "mapped_json")) {
+                st.execute("ALTER TABLE transactions DROP COLUMN mapped_json");
+                LOG.info("buffer migration: dropped transactions.mapped_json (graph replaces it)");
+            }
+            if (queryLong("PRAGMA user_version") < SCHEMA_VERSION) {
+                st.execute("PRAGMA user_version = " + SCHEMA_VERSION);
+            }
+            conn.commit();
+        } catch (SQLException | RuntimeException e) {
+            conn.rollback();
+            throw e;
+        } finally {
+            conn.setAutoCommit(prev);
+        }
+    }
+
+    private boolean hasColumn(String table, String column) throws SQLException {
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (rs.next()) {
+                if (column.equalsIgnoreCase(rs.getString("name"))) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -1192,6 +1245,16 @@ public final class BufferStore implements AutoCloseable {
      */
     public synchronized boolean replaceGraph(TransactionRow row, String schemaId,
             List<EntityGraph.Entity> graph) throws SQLException {
+        return replaceGraph(row, schemaId, graph, null);
+    }
+
+    /**
+     * {@link #replaceGraph(TransactionRow, String, List)} that also rewrites the dimensions
+     * when {@code dims} is non-null — the startup backfill, where a row with no graph has no
+     * dimensions either and would otherwise stay invisible to business-collection filters.
+     */
+    public synchronized boolean replaceGraph(TransactionRow row, String schemaId,
+            List<EntityGraph.Entity> graph, Map<String, EntityGraph.Value> dims) throws SQLException {
         final boolean prev = conn.getAutoCommit();
         conn.setAutoCommit(false);
         try {
@@ -1204,9 +1267,12 @@ public final class BufferStore implements AutoCloseable {
                     return false;   // leased rows are never rewritten under the consumer
                 }
             }
-            deleteGraphRows(List.of(row.elementKey()));
+            deleteGraphRows(List.of(row.elementKey()), dims != null);
             if (graph != null && !graph.isEmpty()) {
                 insertGraphUnsynchronized(row.withSchemaId(schemaId), graph);
+            }
+            if (dims != null && !dims.isEmpty()) {
+                insertDimsUnsynchronized(row.elementKey(), dims);
             }
             conn.commit();
             return true;
@@ -1216,6 +1282,30 @@ public final class BufferStore implements AutoCloseable {
         } finally {
             conn.setAutoCommit(prev);
         }
+    }
+
+    /**
+     * Transaction rows with no object graph, oldest first, skipping leased rows and any
+     * {@code excluded} keys. A row lands here when it was written before the graph existed
+     * (see {@link #migrate}) or when its guide has no materializer — the latter legitimately
+     * stays graphless, which is why the caller passes back the keys it already tried.
+     */
+    public synchronized List<TransactionRow> graphless(int limit, Set<String> excluded) throws SQLException {
+        final List<TransactionRow> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT " + TX_COLS + " FROM transactions t WHERE status <> 'in_flight' "
+                + "AND NOT EXISTS (SELECT 1 FROM entities e WHERE e.element_key = t.element_key) "
+                + "ORDER BY id ASC")) {
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next() && out.size() < limit) {
+                    final TransactionRow row = mapTransaction(rs);
+                    if (excluded == null || !excluded.contains(row.elementKey())) {
+                        out.add(row);
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     /** How many instances a transaction set has (a cheap "is the graph there?" probe). */

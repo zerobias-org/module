@@ -264,7 +264,8 @@ public final class X12ProducerFacade {
         return GSON.toJson(body);
     }
 
-    private void requireFileManagement(String operationId) {
+    /** 400 {@code UnsupportedOperationError} unless {@code config.allowFileManagement} is set. */
+    public void requireFileManagement(String operationId) {
         if (!allowFileManagement) {
             throw ProducerException.unsupported(operationId
                 + " is disabled: the receiver is receive-only unless the deployment sets "

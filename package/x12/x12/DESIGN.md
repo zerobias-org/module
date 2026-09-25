@@ -173,11 +173,14 @@ Same lite-filter constraints as hl7/v2 §2.6 (date-only literals; absolute-date 
 ### 2.7 Errors
 
 RPC method names on the wire (`POST /connections/{id}/{ApiClass.method}`) use the interface's
-operationIds: `ObjectsApi.getRootObject|getObject|getChildren|objectSearch|searchChildObjects`,
+operationIds: `ObjectsApi.getRootObject|getObject|getChildren|searchChildObjects`,
 `CollectionsApi.getCollectionElements|getCollectionElement|searchCollectionElements`,
 `DocumentsApi.getDocumentData`, `BinaryApi.downloadBinary`, `FunctionsApi.invokeFunction|
-validateFunctionInput`, `SchemasApi.getSchema`. The router also accepts `BinaryApi.downloadBinaryContent`
-and `DocumentsApi.getDocument` as aliases.
+validateFunctionInput`, `SchemasApi.getSchema`, plus the gated `ObjectsApi.createChildObject|deleteObject`
+and `BinaryApi.uploadBinaryContent` (§2.9). Names are matched exactly — there are no aliases — and
+`argMap` keys are the interface's parameter names (`schemaId`, `createObjectRequest`, `requestBody`,
+`validateFunctionInputRequest`). `objectSearch` is not implemented, so api.yml does not reference its
+path and `isSupported` answers false. `isSupported` is an explicit whitelist of the ops above.
 
 Identical to hl7/v2 §2.7: wire body is the OpenAPI `errorModelBase` (`{key, template, timestamp,
 statusCode}` + subtype fields). 404 for unknown object/schema/lease/file, 400

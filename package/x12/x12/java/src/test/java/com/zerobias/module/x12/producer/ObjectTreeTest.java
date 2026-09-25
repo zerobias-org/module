@@ -392,7 +392,7 @@ class ObjectTreeTest {
             Map.of("objectId", R + "/by-type/835", "pageSize", 10, "pageNumber", 1)));
         assertEquals(3, viaRouter.get("count").getAsLong());
         JsonObject schema = GSON.fromJson(OperationRouter.executeOperation(facade, "SchemasApi.getSchema",
-            Map.of("objectId", "schema:type:x12.005010X221A1.CLP")), JsonObject.class);
+            Map.of("schemaId", "schema:type:x12.005010X221A1.CLP")), JsonObject.class);
         assertEquals("schema:type:x12.005010X221A1.CLP", schema.get("id").getAsString());
         JsonObject empty = GSON.fromJson(OperationRouter.executeOperation(facade, "FunctionsApi.invokeFunction",
             Map.of("objectId", R + "/ops/take", "requestBody", Map.of("filter", "(transactionType=999)"))), JsonObject.class);

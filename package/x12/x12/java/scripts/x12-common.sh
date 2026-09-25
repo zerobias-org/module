@@ -105,7 +105,7 @@ x12_upload() {
 # mkdir PARENT_OBJECT_ID NAME  -> the new container's object JSON
 x12_mkdir() {
   x12_rpc ObjectsApi.createChildObject \
-    "{\"objectId\":$(jstr "$1"),\"object\":{\"name\":$(jstr "$2"),\"objectClass\":[\"container\"]}}"
+    "{\"objectId\":$(jstr "$1"),\"createObjectRequest\":{\"name\":$(jstr "$2"),\"objectClass\":[\"container\"]}}"
 }
 
 # delete OBJECT_ID

@@ -46,7 +46,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@code GET  /connections/{id}/metadata} — connection metadata</li>
  *   <li>{@code GET  /connections/{id}/isSupported/{operationId}}</li>
  *   <li>{@code POST /connections/{id}/{method}} — dispatch via {@link OperationRouter};
- *       {@code BinaryApi.downloadBinaryContent} streams the file bytes (DESIGN §2.8) and
+ *       {@code BinaryApi.downloadBinary} streams the file bytes (DESIGN §2.8) and
  *       {@code BinaryApi.uploadBinaryContent} takes them as the request body (DESIGN §2.9)</li>
  *   <li>{@code GET  /healthz} — daemon health probe (DESIGN §9)</li>
  * </ul>
@@ -62,15 +62,6 @@ public final class X12ApiServer {
 
     /** Profile fields safe to log/display (the profile is informational; the daemon never reads it). */
     private static final Set<String> NONSENSITIVE_PROFILE_FIELDS = Set.of("ackDurability");
-
-    /** Data-write operations this receiver never supports: transactions arrive as inbox files. */
-    private static final Set<String> NEVER_SUPPORTED = Set.of(
-        "updateObject", "addCollectionElement", "updateCollectionElement",
-        "deleteCollectionElement", "executeBulkOperations", "updateDocumentData", "updateDocument");
-
-    /** File-management operations, supported only when {@code config.allowFileManagement} is set. */
-    private static final Set<String> FILE_MANAGEMENT = Set.of(
-        "uploadBinaryContent", "uploadBinary", "createChildObject", "deleteObject");
 
     private final Map<String, String> connections = new ConcurrentHashMap<>();
     private X12ProducerFacade facade;
@@ -335,24 +326,13 @@ public final class X12ApiServer {
     }
 
     /**
-     * {@code isSupported}: the receiver's real capability set, not a blanket yes. Data
-     * writes are never supported (transactions arrive as files); the file-management ops
-     * follow {@code config.allowFileManagement}, so an operator can see from the outside
-     * whether this deployment accepts uploads.
+     * {@code isSupported}: the receiver's real capability set, not a blanket yes — an
+     * explicit whitelist of the routed, implemented operations ({@link OperationRouter#isSupported}).
+     * The file-management ops follow {@code config.allowFileManagement}, so an operator can see
+     * from the outside whether this deployment accepts uploads.
      */
     boolean supported(String operationId) {
-        String op = operationId == null ? "" : operationId.trim();
-        int dot = op.lastIndexOf('.');   // accept "deleteObject" and "ObjectsApi.deleteObject" alike
-        if (dot >= 0) {
-            op = op.substring(dot + 1);
-        }
-        if (NEVER_SUPPORTED.contains(op)) {
-            return false;
-        }
-        if (FILE_MANAGEMENT.contains(op)) {
-            return facade != null && facade.fileManagementEnabled();
-        }
-        return true;
+        return OperationRouter.isSupported(operationId, facade != null && facade.fileManagementEnabled());
     }
 
     private static String asString(Object o) {

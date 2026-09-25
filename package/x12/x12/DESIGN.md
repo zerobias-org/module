@@ -527,7 +527,20 @@ PRAGMA journal_mode = WAL;
 ```
 
 Durability (`ackDurability`), drain/lease SQL, retention sweeper (acked rows only; `files` rows
-are never evicted — they are the audit trail), and backpressure are as in hl7/v2 §8.
+are never evicted — they are the audit trail), and backpressure are as in hl7/v2 §8, with these
+x12 specifics:
+
+- **Deletes are batched and atomic with the graph.** `purge` and both retention axes delete
+  in batches of 500 acked rows (oldest `acked_at` first); each batch is ONE SQL transaction
+  that removes the rows *and* their `entities`, `entity_values` and `transaction_dims`, so a
+  failure can never orphan a graph, and a batch never binds more parameters than SQLite allows
+  however many rows are due. The store's lock is released between batches.
+- **Capacity is live data.** `retention.maxBytes` and backpressure compare
+  `(page_count − freelist_count) × page_size` (`usedBytes`), not the file size: pages a delete
+  freed are room at once. `/stats` `dbSizeBytes` and `/healthz` `db.sizeBytes` stay the file size.
+- **Every delete path vacuums.** `purge`, the `maxAge` pass and the `maxBytes` loop are each
+  followed by `PRAGMA incremental_vacuum(n)` run to completion (run with `execute()` the pragma
+  steps once and frees a single page), so the file shrinks as well.
 
 ### 8.4 The object graph
 

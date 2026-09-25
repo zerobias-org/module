@@ -655,67 +655,153 @@ public final class BufferStore implements AutoCloseable {
         }
     }
 
-    /** Delete acked rows acked longer ago than {@code olderThan} ({@code ops/purge}). */
-    public synchronized int purge(Duration olderThan) throws SQLException {
+    /**
+     * Delete acked rows acked longer ago than {@code olderThan} ({@code ops/purge}) and hand
+     * the freed pages back to the filesystem. Not synchronized as a whole: each batch takes
+     * the monitor on its own (see {@link #DELETE_BATCH}).
+     */
+    public int purge(Duration olderThan) throws SQLException {
         final long cutoff = nowMillis() - olderThan.toMillis();
-        return deleteAckedOlderThanMillis(cutoff);
+        final int n = deleteAckedOlderThanMillis(cutoff);
+        incrementalVacuum();
+        return n;
     }
 
     // --- primitives used by RetentionSweeper ---
 
-    synchronized int deleteAckedOlderThanMillis(long cutoffMillis) throws SQLException {
-        // Inclusive boundary (age >= olderThan): purge(PT0S) means "all acked",
-        // which must include rows acked at the current instant (acked_at == cutoff).
-        final List<String> keys = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT element_key FROM transactions WHERE status='acked' AND acked_at IS NOT NULL "
-                + "AND acked_at <= ?")) {
-            ps.setLong(1, cutoffMillis);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    keys.add(rs.getString(1));
-                }
-            }
-        }
-        try (PreparedStatement ps = conn.prepareStatement(
-                "DELETE FROM transactions WHERE status='acked' AND acked_at IS NOT NULL AND acked_at <= ?")) {
-            ps.setLong(1, cutoffMillis);
-            final int purged = ps.executeUpdate();
-            deleteGraphs(keys);   // the graph goes with its transaction, never outlives it
-            return purged;
-        }
+    /**
+     * Rows per delete batch for {@code purge} and retention. Each batch binds its keys as
+     * parameters, so it must stay far below SQLite's host-parameter limit (32766 by default,
+     * 999 on old builds) however many rows are due; and each batch is one SQL transaction
+     * that deletes the transaction rows <em>and</em> their entities, values and dimensions
+     * together, so a failure part-way can never leave an orphaned graph (or a graph whose
+     * transaction is gone). The monitor is released between batches, so evicting millions of
+     * acked rows never stalls ingestion or a {@code take} for the whole sweep.
+     */
+    static final int DELETE_BATCH = 500;
+
+    /** Free pages handed back per {@code incremental_vacuum} step, for the same reason. */
+    static final int VACUUM_BATCH_PAGES = 1024;
+
+    /*
+     * Both deletes reach their rows through transactions_acked (status, acked_at) — see
+     * schema.sql — so eviction goes by ack age, like maxAge. Inclusive boundary on the age
+     * cut: purge(PT0S) means "all acked", which must include rows acked at the current instant.
+     */
+    private static final String SELECT_ACKED_OLDER_THAN_SQL =
+        "SELECT id, element_key FROM transactions WHERE status = 'acked' AND acked_at <= ? "
+        + "ORDER BY acked_at ASC, id ASC LIMIT ?";
+    private static final String SELECT_OLDEST_ACKED_SQL =
+        "SELECT id, element_key FROM transactions WHERE status = 'acked' "
+        + "ORDER BY acked_at ASC, id ASC LIMIT ?";
+
+    /** Every acked row acked at or before {@code cutoffMillis}, in batches; returns the total. */
+    int deleteAckedOlderThanMillis(long cutoffMillis) throws SQLException {
+        int total = 0;
+        int n;
+        do {
+            n = deleteAckedBatch(SELECT_ACKED_OLDER_THAN_SQL, cutoffMillis, DELETE_BATCH);
+            total += n;
+        } while (n == DELETE_BATCH);
+        return total;
     }
 
-    synchronized int deleteOldestAcked(int limit) throws SQLException {
-        final List<String> keys = new ArrayList<>();
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT element_key FROM transactions WHERE status='acked' ORDER BY received_at ASC LIMIT ?")) {
-            ps.setInt(1, limit);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    keys.add(rs.getString(1));
-                }
+    /** Up to {@code limit} of the longest-acked rows, in batches; returns how many went. */
+    int deleteOldestAcked(int limit) throws SQLException {
+        int total = 0;
+        while (total < limit) {
+            final int want = Math.min(DELETE_BATCH, limit - total);
+            final int n = deleteAckedBatch(SELECT_OLDEST_ACKED_SQL, null, want);
+            total += n;
+            if (n < want) {
+                break;
             }
         }
-        try (PreparedStatement ps = conn.prepareStatement(
-                "DELETE FROM transactions WHERE id IN (SELECT id FROM transactions WHERE status='acked' "
-                + "ORDER BY received_at ASC LIMIT ?)")) {
-            ps.setInt(1, limit);
-            final int purged = ps.executeUpdate();
-            deleteGraphs(keys);
-            return purged;
-        }
+        return total;
     }
 
-    /** Current database size in bytes (page_count × page_size); {@code /stats} + backpressure. */
+    /**
+     * One batch: pick up to {@code limit} acked rows, then delete their graph, dimensions and
+     * the rows themselves in ONE SQL transaction. {@code cutoffMillis} binds the first
+     * parameter when non-null.
+     */
+    private synchronized int deleteAckedBatch(String selectSql, Long cutoffMillis, int limit) throws SQLException {
+        return SqlTransaction.run(conn, () -> {
+            final List<Long> ids = new ArrayList<>();
+            final List<String> keys = new ArrayList<>();
+            try (PreparedStatement ps = conn.prepareStatement(selectSql)) {
+                int i = 1;
+                if (cutoffMillis != null) {
+                    ps.setLong(i++, cutoffMillis);
+                }
+                ps.setInt(i, limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        ids.add(rs.getLong(1));
+                        keys.add(rs.getString(2));
+                    }
+                }
+            }
+            if (ids.isEmpty()) {
+                return 0;
+            }
+            deleteGraphRows(keys, true);   // the graph goes with its transaction, never outlives it
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM transactions WHERE id IN (" + placeholders(ids.size()) + ")")) {
+                for (int i = 0; i < ids.size(); i++) {
+                    ps.setLong(i + 1, ids.get(i));
+                }
+                return ps.executeUpdate();
+            }
+        });
+    }
+
+    /** Size of the database file in bytes (page_count × page_size), free pages included; {@code /stats}. */
     public synchronized long dbSizeBytes() throws SQLException {
         return queryLong("PRAGMA page_count") * queryLong("PRAGMA page_size");
     }
 
-    synchronized void incrementalVacuum() throws SQLException {
-        try (Statement st = conn.createStatement()) {
-            st.execute("PRAGMA incremental_vacuum");
+    /**
+     * Bytes held by live data ((page_count − freelist_count) × page_size) — the retention
+     * ceiling and backpressure measure. Pages a delete freed sit on the freelist until they
+     * are vacuumed; counting them would keep the buffer "over capacity" after the very
+     * eviction that made room.
+     */
+    public synchronized long usedBytes() throws SQLException {
+        return (queryLong("PRAGMA page_count") - queryLong("PRAGMA freelist_count")) * queryLong("PRAGMA page_size");
+    }
+
+    /**
+     * Hand free pages back to the filesystem, {@link #VACUUM_BATCH_PAGES} per step, the
+     * monitor released between steps. Called after every delete path (purge, maxAge, maxBytes).
+     */
+    void incrementalVacuum() throws SQLException {
+        long free = freePages();
+        while (free > 0) {
+            vacuumPages(VACUUM_BATCH_PAGES);
+            final long left = freePages();
+            if (left >= free) {
+                return;   // auto_vacuum is off (a buffer created before it was enabled): nothing to hand back
+            }
+            free = left;
         }
+    }
+
+    synchronized long freePages() throws SQLException {
+        return queryLong("PRAGMA freelist_count");
+    }
+
+    private synchronized void vacuumPages(int pages) throws SQLException {
+        // The pragma frees one page per VM step. With this driver Statement.execute() steps
+        // once — a bare `PRAGMA incremental_vacuum` via execute() freed a single page — while
+        // executeUpdate() runs the statement to completion (up to `pages`).
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("PRAGMA incremental_vacuum(" + pages + ")");
+        }
+    }
+
+    private static String placeholders(int n) {
+        return String.join(",", java.util.Collections.nCopies(n, "?"));
     }
 
     // --- health / stats metrics (DESIGN §9) ---------------------------------
@@ -1318,15 +1404,24 @@ public final class BufferStore implements AutoCloseable {
     }
 
     /**
-     * Drop the graph for element keys whose transaction rows are going away. Called by every
-     * delete path: SQLite enforces no foreign key unless the pragma is on, so orphaned
-     * entities would otherwise accumulate invisibly and inflate every query that scans them.
+     * Drop the graph (entities, values, dimensions) for element keys whose transaction rows
+     * are going away, {@link #DELETE_BATCH} keys per SQL transaction. SQLite enforces no
+     * foreign key unless the pragma is on, so orphaned entities would otherwise accumulate
+     * invisibly and inflate every query that scans them. The retention/purge paths do not
+     * call this — they delete the graph inside the same transaction as its rows.
      */
-    synchronized int deleteGraphs(List<String> elementKeys) throws SQLException {
+    int deleteGraphs(List<String> elementKeys) throws SQLException {
         if (elementKeys == null || elementKeys.isEmpty()) {
             return 0;
         }
-        return deleteGraphRows(elementKeys, true);
+        int total = 0;
+        for (int from = 0; from < elementKeys.size(); from += DELETE_BATCH) {
+            final List<String> chunk = elementKeys.subList(from, Math.min(elementKeys.size(), from + DELETE_BATCH));
+            synchronized (this) {
+                total += SqlTransaction.run(conn, () -> deleteGraphRows(chunk, true));
+            }
+        }
+        return total;
     }
 
     /** Entities + values for these keys; {@code withDims} also drops their dimensions. */
@@ -1334,11 +1429,12 @@ public final class BufferStore implements AutoCloseable {
         return deleteGraphRows(elementKeys, false);
     }
 
+    /** Callers bound {@code elementKeys} to {@link #DELETE_BATCH}: one parameter per key per statement. */
     private int deleteGraphRows(List<String> elementKeys, boolean withDims) throws SQLException {
         if (elementKeys == null || elementKeys.isEmpty()) {
             return 0;
         }
-        final String in = elementKeys.stream().map(k -> "?").collect(java.util.stream.Collectors.joining(","));
+        final String in = placeholders(elementKeys.size());
         try (PreparedStatement vals = conn.prepareStatement(
                 "DELETE FROM entity_values WHERE entity_id IN "
                 + "(SELECT id FROM entities WHERE element_key IN (" + in + "))");

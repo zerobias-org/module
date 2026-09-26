@@ -1,0 +1,143 @@
+name: PR Guard
+
+# Fast, secret-free structural checks that run on EVERY pull request.
+#
+# Deliberately separate from the content test workflow, which is label-gated
+# ("approved") and therefore does not run on a freshly-opened PR. These checks
+# are meant to catch structural mistakes before a reviewer spends attention.
+#
+# No secrets are used, so this is safe on pull requests from forks — which is
+# how external contributions arrive.
+#
+# TODO: once proven here, move the body to a reusable workflow in
+# zerobias-org/devops (matching publish.yml's pattern) and call it from all six
+# content repos.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: PR Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Base branch must be dev (promotions excepted)
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          if [ "$BASE" != "main" ]; then
+            echo "base=$BASE — ok"; exit 0
+          fi
+          for b in dev qa uat; do
+            if [ "$HEAD" = "$b" ]; then
+              echo "promotion PR $HEAD -> main — ok"; exit 0
+            fi
+          done
+          echo "::error::PR targets 'main' from '$HEAD'. Contributions target 'dev'."
+          echo "Only promotion branches (dev, qa, uat) may target main."
+          exit 1
+
+      - name: Branch must be based on the target branch
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          # Catches a branch cut from one branch but targeting another. If the
+          # branch was cut from 'main' and targets 'dev', then 'dev' is not an
+          # ancestor of HEAD, and the PR diff silently includes every commit
+          # 'main' has that 'dev' lacks — other people's work, dragged along.
+          #
+          # Observed for real: PR #41 arrived as 81 files / +11073 where only 32
+          # were the author's; the other 49 were exactly the main->dev delta.
+          git fetch --no-tags origin "$BASE"
+          if git merge-base --is-ancestor "origin/$BASE" HEAD; then
+            echo "branch is based on '$BASE' — ok"; exit 0
+          fi
+          AHEAD=$(git rev-list --count "HEAD..origin/$BASE" || echo '?')
+          echo "::error::Branch is not based on '$BASE'."
+          echo "  'origin/$BASE' is not an ancestor of this branch, so the diff"
+          echo "  includes commits that belong to whatever branch it was cut from."
+          echo "  origin/$BASE has $AHEAD commit(s) this branch has never seen."
+          echo ""
+          echo "  Fix by rebasing onto the target:"
+          echo "    git fetch origin $BASE"
+          echo "    git rebase --onto origin/$BASE <original-base> \$(git rev-parse --abbrev-ref HEAD)"
+          echo "    git push --force-with-lease"
+          echo ""
+          echo "  Use the --onto form: a plain 'git rebase origin/$BASE' will try to"
+          echo "  replay the foreign commits rather than drop them."
+          exit 1
+
+      - name: Collect changed package directories
+        id: pkgs
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE"
+          git diff --name-only "origin/$BASE"...HEAD > /tmp/changed.txt || true
+          grep '^package/' /tmp/changed.txt \
+            | awk -F/ 'NF>2 {d=""; for (i=1; i<NF; i++) d = d $i "/"; print d}' \
+            | sed 's:/$::' | sort -u > /tmp/pkgdirs.txt || true
+          COUNT=$(grep -c . /tmp/pkgdirs.txt || true)
+          echo "count=${COUNT:-0}" >> "$GITHUB_OUTPUT"
+          echo "changed package dirs (${COUNT:-0}):"; cat /tmp/pkgdirs.txt || true
+
+      - name: gate-stamp.json must accompany package changes
+        if: steps.pkgs.outputs.count != '0'
+        run: |
+          FAIL=0
+          while read -r d; do
+            [ -z "$d" ] && continue
+            [ -f "$d/package.json" ] || continue
+            if ! grep -qx "$d/gate-stamp.json" /tmp/changed.txt; then
+              echo "::error file=$d/package.json::$d changed but $d/gate-stamp.json was not committed."
+              echo "  Run 'zbb gate' locally and commit the stamp — CI validates it, it does not regenerate it."
+              FAIL=1
+            fi
+          done < /tmp/pkgdirs.txt
+          exit $FAIL
+
+      - name: New packages must use the @zerobias-org scope
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          FAIL=0
+          ADDED=$(git diff --name-only --diff-filter=A "origin/$BASE"...HEAD \
+                  | grep -E '^package/.*/package\.json$' || true)
+          [ -z "$ADDED" ] && { echo "no new packages"; exit 0; }
+          for f in $ADDED; do
+            NAME=$(node -p "require('./$f').name || ''" 2>/dev/null || echo "")
+            case "$NAME" in
+              @zerobias-org/*) echo "$f -> $NAME — ok" ;;
+              "")  echo "::warning file=$f::could not read package name" ;;
+              *)   echo "::error file=$f::'$NAME' is outside the @zerobias-org scope"; FAIL=1 ;;
+            esac
+          done
+          exit $FAIL
+
+      - name: No package content sourced from private auditlogic repos
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          # Scoped to package/** on purpose: documentation legitimately refers to
+          # auditlogic, and should not trip this check.
+          ADDED=$(git diff --name-only --diff-filter=A "origin/$BASE"...HEAD \
+                  | grep '^package/' || true)
+          [ -z "$ADDED" ] && { echo "no added package files"; exit 0; }
+          HITS=$(echo "$ADDED" | xargs -r grep -lE 'github\.com[:/]auditlogic/' 2>/dev/null || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::Added package files reference a private auditlogic repo:"
+            echo "$HITS" | sed 's/^/  /'
+            echo "auditlogic/* repos are PRIVATE; this repo is PUBLIC."
+            echo "Depend on the published package instead of copying its contents."
+            exit 1
+          fi
+          echo "no auditlogic provenance markers — ok"

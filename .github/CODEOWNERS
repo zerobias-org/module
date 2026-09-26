@@ -1,0 +1,12 @@
+# Code review for catalog content.
+#
+# Listing users here auto-requests their review on every PR.
+#
+# WARNING: GitHub silently IGNORES an unknown or non-member username — no error,
+# no requested review. Verify every handle before editing this file.
+# (e.g. "Stumpass" does not exist; the correct handle is "Stumpas".)
+#
+# Consider replacing these with a team (@zerobias-org/catalog-reviewers) so the
+# reviewer set is maintained in one place rather than once per repo.
+
+*   @catalin-t @Stumpas @kevinmccarthy

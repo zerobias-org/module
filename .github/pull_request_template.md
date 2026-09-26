@@ -1,3 +1,16 @@
+# How this was built
+
+> New modules are **generated**, not hand-authored. Build via the meta-repo:
+> https://github.com/zerobias-org/zerobias -> `.claude/skills/create-connector/`
+> (`/create-product` -> `/create-module` -> `/create-collector`).
+
+- [ ] : Built via `/create-module` (meta-repo `create-connector` flow)
+- [ ] : Brief path: `.connector/<vendor>-[<suite>-]<product>.md`
+- [ ] : Base branch is `dev`
+
+<!-- If any box above is unchecked, explain here BEFORE spending more effort.
+     Hand-authored modules are very likely to be sent back. -->
+
 # Related Issue
 - Jira Ticket Link goes here
 
@@ -19,6 +32,17 @@ When doing a `premajor` on a PR, the pull_request workflow will automatically se
 Please, use `dry-run` before labelling as `premajor`, this will flush out any possiblity that other module version may be altered by the process. (i.e. as a side effect of a `master` merge)
 
 `Pre-Majored` modules, will be graduated to their major version when merged into master.
+
+# Catalog identity
+
+- [ ] : `moduleId` in `package.json` matches an existing catalog module record — **not** a newly minted UUID. Verify that `store.Module.get(<moduleId>)` resolves.
+- [ ] : Product wiring uses product dependencies + `x-product-infos`. There is no `packageNames` authoring field — that name appears in `store.Module.list` *responses* only.
+- [ ] : `api.yml` was designed by the `/create-module` pipeline, not written by hand.
+
+# Content safety
+
+- [ ] : No files copied from a private auditlogic repo into this public repo.
+- [ ] : No credentials, tokens, or customer data anywhere in the diff.
 
 # Notes:
 

@@ -41,7 +41,7 @@ class X12ApiServerTest {
             throw new IllegalStateException(SECRET);
         });
         app.get("/bad-arg", ctx -> {
-            throw new IllegalArgumentException("sortDir must be asc or desc, got 'sideways'");
+            throw new IllegalArgumentException("distinctValues not allowed for column: " + SECRET);
         });
         app.get("/download", ctx -> X12ApiServer.streamBinary(ctx, new com.zerobias.module.x12.producer.BinaryContent(
             "/x", java.nio.file.Path.of(ctx.queryParam("path")), Long.parseLong(ctx.queryParam("size")),
@@ -67,12 +67,13 @@ class X12ApiServerTest {
     }
 
     @Test
-    void illegalArgumentStaysA400WithItsMessage() throws Exception {
+    void aBareIllegalArgumentExceptionIsABugNotA400() throws Exception {
+        // A caller mistake is raised as ProducerException where it is detected; a bare IAE got
+        // past that, so it is a bug: a generic 500, not a 400 echoing an internal message.
         HttpResponse<String> r = get("/bad-arg");
-        assertEquals(400, r.statusCode());
-        JsonObject body = GSON.fromJson(r.body(), JsonObject.class);
-        assertEquals("err.illegal.argument", body.get("key").getAsString());
-        assertTrue(body.get("msg").getAsString().contains("sideways"));
+        assertEquals(500, r.statusCode());
+        assertFalse(r.body().contains("buffer.db"), r.body());
+        assertEquals("err.unexpected", GSON.fromJson(r.body(), JsonObject.class).get("key").getAsString());
     }
 
     @Test

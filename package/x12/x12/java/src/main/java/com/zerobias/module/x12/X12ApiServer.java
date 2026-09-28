@@ -327,15 +327,14 @@ public final class X12ApiServer {
 
     /**
      * Every error body is the interface's {@code errorModelBase}. A {@link ProducerException}
-     * carries its own status; an {@link IllegalArgumentException} is a caller mistake the
-     * lite-filter / sort code raises with a caller-facing message (400); anything else is a
-     * 500 with a generic message — the cause is logged here, never returned, because an SQLite
-     * or IO message can name buffer and inbox paths inside the container.
+     * carries its own status: a caller mistake is raised as one where it is detected (the
+     * filter, sort and paging code included), with a message written for the caller. Anything
+     * else — a bare {@link IllegalArgumentException} too — is a bug and a 500 with a generic
+     * message: the cause is logged here, never returned, because an SQLite or IO message can
+     * name buffer and inbox paths inside the container.
      */
     static void registerExceptionHandlers(Javalin app) {
         app.exception(ProducerException.class, (e, ctx) -> respond(ctx, e));
-        app.exception(IllegalArgumentException.class, (e, ctx) ->
-            respond(ctx, ProducerException.illegalArgument(e.getMessage())));
         // Javalin's own HTTP errors (a body over maxRequestSize is a 413) keep their status and
         // get the platform envelope, rather than being swallowed by the 500 below.
         app.exception(HttpResponseException.class, (e, ctx) -> {

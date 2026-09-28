@@ -91,14 +91,15 @@ class FileIsolationTest {
     }
 
     @Test
-    void maxFileBytesDefaultsAndIsCapped() {
+    void maxFileBytesDefaultsAndIsBounded() {
         assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES, ModuleRuntimeConfig.defaults().maxFileBytes());
         assertEquals(64L * 1024 * 1024, ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES);
-        assertEquals(ModuleRuntimeConfig.MAX_MAX_FILE_BYTES,
-            ModuleRuntimeConfig.parse("{\"maxFileBytes\":" + Long.MAX_VALUE + "}").maxFileBytes());
         assertEquals(1000L, ModuleRuntimeConfig.parse("{\"maxFileBytes\":1000}").maxFileBytes());
-        assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES,
-            ModuleRuntimeConfig.parse("{\"maxFileBytes\":0}").maxFileBytes());
+        // Out of range fails the boot (strict config) rather than being clamped or defaulted.
+        assertThrows(ModuleRuntimeConfig.InvalidConfigException.class,
+            () -> ModuleRuntimeConfig.parse("{\"maxFileBytes\":" + Long.MAX_VALUE + "}"));
+        assertThrows(ModuleRuntimeConfig.InvalidConfigException.class,
+            () -> ModuleRuntimeConfig.parse("{\"maxFileBytes\":0}"));
     }
 
     @Test

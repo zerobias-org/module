@@ -1,5 +1,7 @@
 package com.zerobias.module.x12;
 
+import com.zerobias.module.x12.ModuleRuntimeConfig.InvalidConfigException;
+import com.zerobias.module.x12.buffer.RetentionConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -11,13 +13,14 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Parsing of the opaque MODULE_CONFIG (DESIGN §3, §4.1) and its resolution chain:
  * env → runtime config file (JSON or the image's runtimeConfig.yml) → defaults.
- * Malformed input must degrade to safe defaults, never crash; directory validation
+ * Defaults apply only when no config is present; a present config that is malformed, carries
+ * an unknown key or a wrong-typed or out-of-range value fails the boot. Directory validation
  * is separate and fatal by design.
  */
 class ModuleRuntimeConfigTest {
@@ -29,11 +32,12 @@ class ModuleRuntimeConfigTest {
         + "\"ackDurability\":\"full\","
         + "\"retention\":{\"maxBytes\":10737418240,\"maxAge\":\"P90D\"},"
         + "\"allowBareTransactionSets\":true,"
-        + "\"allowFileManagement\":true}";
+        + "\"allowFileManagement\":true,"
+        + "\"maxFileBytes\":1048576}";
 
     @Test
     void absentOrEmptyMeansDefaults() {
-        for (String s : new String[] {null, "", "{}", "not json", "[1,2]"}) {
+        for (String s : new String[] {null, "", "  ", "{}"}) {
             ModuleRuntimeConfig c = ModuleRuntimeConfig.parse(s);
             assertEquals(1, c.sources().size(), "default source for input: " + s);
             assertEquals("inbox", c.sources().get(0).name());
@@ -46,6 +50,7 @@ class ModuleRuntimeConfigTest {
             assertFalse(c.retention().isBounded());
             assertFalse(c.allowBareTransactionSets());
             assertFalse(c.allowFileManagement(), "file management is opt-in, never a default");
+            assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES, c.maxFileBytes());
         }
     }
 
@@ -62,26 +67,133 @@ class ModuleRuntimeConfigTest {
         assertEquals(Duration.ofDays(90), c.retention().maxAge());
         assertTrue(c.allowBareTransactionSets());
         assertTrue(c.allowFileManagement());
+        assertEquals(1048576L, c.maxFileBytes());
     }
 
     @Test
     void fileManagementIsOnlyEnabledByALiteralTrue() {
-        // A typo, a string, or a missing key must all leave the write surface shut: this is
-        // the flag that decides whether an API caller can put files on the volume.
-        for (String s : new String[] {"{}", "{\"allowFileManagement\":false}", "{\"allowFileManagement\":\"true\"}",
-                "{\"allowFileManagement\":1}", "{\"allowFileManagment\":true}", "{\"allowFileManagement\":null}"}) {
+        // Absent or false leaves the write surface shut: this is the flag that decides whether
+        // an API caller can put files on the volume.
+        for (String s : new String[] {"{}", "{\"allowFileManagement\":false}"}) {
             assertFalse(ModuleRuntimeConfig.parse(s).allowFileManagement(), s);
+        }
+        // A string, a number, a null or a misspelt key is a mistake: the boot stops, so the
+        // surface never opens on one (and the operator learns the flag did not take).
+        for (String s : new String[] {"{\"allowFileManagement\":\"true\"}", "{\"allowFileManagement\":1}",
+                "{\"allowFileManagment\":true}", "{\"allowFileManagement\":null}"}) {
+            assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse(s), s);
         }
         assertTrue(ModuleRuntimeConfig.parse("{\"allowFileManagement\":true}").allowFileManagement());
     }
 
     @Test
-    void ackDurabilityIsCaseInsensitiveAndOnlyAnExplicitNormalWeakensIt() {
+    void ackDurabilityIsCaseInsensitiveAndAnythingElseIsRefused() {
         assertTrue(ModuleRuntimeConfig.parse("{\"ackDurability\":\"FULL\"}").fullDurability());
         assertFalse(ModuleRuntimeConfig.parse("{\"ackDurability\":\"normal\"}").fullDurability());
         assertFalse(ModuleRuntimeConfig.parse("{\"ackDurability\":\"NORMAL\"}").fullDurability());
-        assertTrue(ModuleRuntimeConfig.parse("{\"ackDurability\":\"bogus\"}").fullDurability(), "unknown keeps full");
-        assertTrue(ModuleRuntimeConfig.parse("{\"sources\":[]}").fullDurability(), "absent means full");
+        assertTrue(ModuleRuntimeConfig.parse("{\"consumedSuffix\":\".ok\"}").fullDurability(), "absent means full");
+        // Before, an unknown value quietly meant full; refusing it is what tells the operator.
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse("{\"ackDurability\":\"bogus\"}"));
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse("{\"ackDurability\":false}"));
+    }
+
+    @Test
+    void malformedConfigFailsInsteadOfFallingBackToDefaults() {
+        for (String bad : new String[] {
+            "not json",
+            "{\"sources\":",
+            "[1,2]",
+            "\"a string\"",
+            "{\"sources\":[{\"name\":\"ok\",\"path\":\"/x\"},{\"name\":\"nopath\"}]}",
+            "{\"sources\":[\"junk\"]}",
+            "{\"sources\":[{\"path\":\"/noname\"}]}",
+            "{\"sources\":[{\"name\":\" \",\"path\":\"/x\"}]}",
+            "{\"sources\":[]}",
+            "{\"sources\":\"nope\"}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\"},{\"name\":\"a\",\"path\":\"/b\"}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pollIntervalSec\":\"30\"}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pollIntervalSec\":0}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pollIntervalSec\":1.5}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pollIntervalSec\":4294967296}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"stableForSec\":-1}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pattern\":\"*.{x12\"}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pattern\":\"\"}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"patern\":\"*\"}]}",
+            "{\"consumedSuffix\":7}",
+            "{\"errorSuffix\":\"\"}",
+            "{\"consumedSuffix\":\"/../x\"}",
+            "{\"allowBareTransactionSets\":\"yes\"}",
+            "{\"maxFileBytes\":0}",
+            "{\"maxFileBytes\":\"64MB\"}",
+            "{\"maxFileBytes\":" + Long.MAX_VALUE + "}",
+            "{\"retention\":\"P90D\"}",
+            "{\"retention\":null}",
+            "{\"retention\":{\"maxBytes\":\"10GB\"}}",
+            "{\"retention\":{\"maxBytes\":0}}",
+            "{\"retention\":{\"maxAge\":\"90 days\"}}",
+            "{\"retention\":{\"maxAge\":\"PT0S\"}}",
+            "{\"retention\":{\"maxAge\":\"P90D\",\"maxbytes\":1}}",
+            "{\"retension\":{\"maxAge\":\"P90D\"}}",
+        }) {
+            InvalidConfigException e = assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse(bad), bad);
+            assertTrue(e.getMessage().startsWith("invalid module config: "), e.getMessage());
+        }
+    }
+
+    @Test
+    void aTypoedRetentionFailsTheBootInsteadOfDisablingEviction() {
+        // The case that motivated fail-fast: before, each of these parsed to "unbounded".
+        assertTrue(ModuleRuntimeConfig.parse("{\"retention\":{\"maxBytes\":2048,\"maxAge\":\"P7D\"}}").retention()
+            .isBounded());
+        for (String typo : new String[] {"{\"retention\":{\"max_age\":\"P7D\"}}", "{\"Retention\":{\"maxAge\":\"P7D\"}}",
+                "{\"retention\":{\"maxAge\":\"7d\"}}", "{\"retention\":[{\"maxAge\":\"P7D\"}]}"}) {
+            InvalidConfigException e = assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse(typo));
+            assertTrue(e.getMessage().contains("etention"), e.getMessage());
+        }
+    }
+
+    @Test
+    void typeErrorsNameTheTypeNotTheValue() {
+        // A value in the wrong place may be anything; the log gets its JSON type only.
+        InvalidConfigException e = assertThrows(InvalidConfigException.class,
+            () -> ModuleRuntimeConfig.parse("{\"allowFileManagement\":\"s3cr3t-value\"}"));
+        assertTrue(e.getMessage().contains("got a string"), e.getMessage());
+        assertFalse(e.getMessage().contains("s3cr3t-value"), e.getMessage());
+        InvalidConfigException bad = assertThrows(InvalidConfigException.class,
+            () -> ModuleRuntimeConfig.parse("{\"sources\":[{\"name\":\"a\",\"path\":\"/a\"}],\"s3cr3t\":1"));
+        assertFalse(bad.getMessage().contains("s3cr3t"), "a JSON syntax error reports a position: " + bad.getMessage());
+    }
+
+    @Test
+    void nestedSourcesAreFineAtLoad() {
+        // Each poller scans its own directory flat; only the same directory is a clash (validateSources).
+        assertEquals(2, ModuleRuntimeConfig.parse(
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/in\"},{\"name\":\"b\",\"path\":\"/in/b\"}]}").sources().size());
+    }
+
+    @Test
+    void maxFileBytesIsBounded() {
+        List<SourceConfig> one = List.of(new SourceConfig("a", "/a", "*", 1, 0));
+        assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES,
+            new ModuleRuntimeConfig(one, ".done", ".error", true, RetentionConfig.none(), false, false).maxFileBytes());
+        assertEquals(ModuleRuntimeConfig.MAX_MAX_FILE_BYTES, ModuleRuntimeConfig.parse(
+            "{\"maxFileBytes\":" + ModuleRuntimeConfig.MAX_MAX_FILE_BYTES + "}").maxFileBytes(), "the cap itself is allowed");
+        for (long bad : new long[] {0, -1, ModuleRuntimeConfig.MAX_MAX_FILE_BYTES + 1}) {
+            assertThrows(InvalidConfigException.class, () -> new ModuleRuntimeConfig(one, ".done", ".error", true,
+                RetentionConfig.none(), false, false, bad), "constructed with " + bad);
+            assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse("{\"maxFileBytes\":" + bad + "}"),
+                "parsed " + bad);
+        }
+    }
+
+    @Test
+    void everyKeyTheShippedConfigCarriesIsKnown() throws Exception {
+        // The image's runtimeConfig.yml is what gradle's testDocker injects as MODULE_CONFIG.
+        RuntimeConfigFile shipped = RuntimeConfigFile.loadPath(Path.of("../runtimeConfig.yml")).orElseThrow();
+        assertTrue(ModuleRuntimeConfig.KEYS.containsAll(shipped.config().keySet()), shipped.config().keySet().toString());
+        ModuleRuntimeConfig c = ModuleRuntimeConfig.fromConfigObject(shipped.config());
+        assertTrue(c.retention().isBounded(), "the shipped retention parses");
+        assertFalse(c.allowFileManagement());
     }
 
     @Test
@@ -90,27 +202,6 @@ class ModuleRuntimeConfigTest {
         ModuleRuntimeConfig c = ModuleRuntimeConfig.resolve(Map.of(), Path.of("../runtimeConfig.yml").toString());
         assertTrue(c.fullDurability(), "runtimeConfig.yml ackDurability");
         assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES, c.maxFileBytes());
-    }
-
-    @Test
-    void malformedSourceEntriesAreSkippedAndEmptyListFallsBackToDefault() {
-        ModuleRuntimeConfig c = ModuleRuntimeConfig.parse(
-            "{\"sources\":[{\"name\":\"ok\",\"path\":\"/x\"},{\"name\":\"nopath\"},\"junk\",{\"path\":\"/noname\"}]}");
-        assertEquals(List.of(new SourceConfig("ok", "/x", "*", 30, 60)), c.sources());
-
-        ModuleRuntimeConfig empty = ModuleRuntimeConfig.parse("{\"sources\":[]}");
-        assertEquals("inbox", empty.sources().get(0).name(), "empty sources[] → default source");
-        ModuleRuntimeConfig wrongType = ModuleRuntimeConfig.parse("{\"sources\":\"nope\"}");
-        assertEquals("inbox", wrongType.sources().get(0).name());
-    }
-
-    @Test
-    void badMaxAgeDisablesOnlyAgeAxis() {
-        ModuleRuntimeConfig c = ModuleRuntimeConfig.parse(
-            "{\"consumedSuffix\":\".x\",\"retention\":{\"maxBytes\":2048,\"maxAge\":\"90 days\"}}");
-        assertNull(c.retention().maxAge());
-        assertEquals(2048L, c.retention().maxBytes());
-        assertEquals(".x", c.consumedSuffix(), "bad maxAge must not discard the rest");
     }
 
     @Test
@@ -142,10 +233,22 @@ class ModuleRuntimeConfigTest {
         // 4. Nothing present → defaults.
         ModuleRuntimeConfig dflt = ModuleRuntimeConfig.resolve(Map.of(), dir.resolve("missing.yml").toString());
         assertEquals(".done", dflt.consumedSuffix());
-        // An unreadable RUNTIME_CONFIG_FILE falls through to the yml, never crashes.
+        // A RUNTIME_CONFIG_FILE that does not exist is absent: fall through to the yml.
         ModuleRuntimeConfig badPointer = ModuleRuntimeConfig.resolve(
             Map.of("RUNTIME_CONFIG_FILE", dir.resolve("nope.json").toString()), yml.toString());
         assertEquals(".yml-done", badPointer.consumedSuffix());
+    }
+
+    @Test
+    void presentButBrokenConfigFailsWhicheverChannelItCameThrough(@TempDir Path dir) throws Exception {
+        Path garbage = Files.writeString(dir.resolve("runtime.json"), "{\"config\":");
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.resolve(
+            Map.of("RUNTIME_CONFIG_FILE", garbage.toString()), dir.resolve("missing.yml").toString()));
+        Path wrongType = Files.writeString(dir.resolve("runtimeConfig.yml"), "config:\n  maxFileBytes: lots\n");
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.resolve(Map.of(), wrongType.toString()));
+        assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.resolve(
+            Map.of("MODULE_CONFIG", "{\"ackDurability\":\"sometimes\"}"), wrongType.toString()),
+            "MODULE_CONFIG is checked on its own merits");
     }
 
     @Test

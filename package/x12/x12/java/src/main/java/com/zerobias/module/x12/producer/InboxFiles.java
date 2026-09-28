@@ -56,7 +56,7 @@ final class InboxFiles {
 
     private static final Logger LOG = LoggerFactory.getLogger(InboxFiles.class);
 
-    static final String INBOX = ObjectTreeApi.RECEIVER + "/inbox";
+    static final String INBOX = ObjectTree.RECEIVER + "/inbox";
     private static final String PREFIX = INBOX + "/";
 
     /** What the poller will do with a file at this path, derived from config (never cached). */

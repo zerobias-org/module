@@ -16,7 +16,7 @@ import java.util.Set;
 
 /**
  * The guide-independent schemas (DESIGN §2.1, §2.2, §5, §8, §9): the transaction
- * envelope overlay, the file (binary node) metadata, the receiver stats document
+ * envelope overlay, the file document (a {@code /files/<fileId>} node's files row), the receiver stats document
  * and the receiver's own enums under {@code schema:enum:x12.ops.*}. Also the
  * generic enum-schema builder used for the code sets.
  */
@@ -72,7 +72,10 @@ public final class SharedSchemas {
         return s;
     }
 
-    /** {@code /files/<fileId>} binary-node metadata (DESIGN §2.1 binary fields + §8 files table). */
+    /**
+     * The {@code /files/<fileId>} document: the node's {@code files} row (DESIGN §8), read with
+     * {@code getDocumentData}. The node itself carries only the interface's binary fields.
+     */
     public static Schema file() {
         final Schema s = new Schema(SchemaIds.requireValid(FILE_ID));
         s.properties.add(new Property("fileId", CoreTypes.STRING).required(true).primaryKey(true)
@@ -90,34 +93,45 @@ public final class SharedSchemas {
         s.properties.add(new Property("consumedAt", CoreTypes.DATE_TIME));
         s.properties.add(new Property("status", CoreTypes.STRING).required(true)
             .references(new Reference(SchemaIds.opsEnum(FILE_STATUS))));
-        s.properties.add(new Property("tags", CoreTypes.STRING).multi(true).description("source:<name>, status:<consumed|error>"));
+        s.properties.add(new Property("tags", CoreTypes.STRING).multi(true).required(true)
+            .description("source:<name>, status:<consumed|error|duplicate>"));
         s.properties.add(new Property("isaCount", CoreTypes.INTEGER).description("ISA_LOOPs in the file"));
         s.properties.add(new Property("transactionCount", CoreTypes.INTEGER).description("ST..SE atoms buffered from the file"));
         s.properties.add(new Property("errorMessage", CoreTypes.STRING));
-        s.properties.add(new Property("renameFailed", CoreTypes.BOOLEAN).description("Committed but the .done rename failed"));
-        s.properties.add(new Property("redeliveryCount", CoreTypes.INTEGER)
+        s.properties.add(new Property("renameFailed", CoreTypes.BOOLEAN).required(true)
+            .description("Committed but the .done rename failed"));
+        s.properties.add(new Property("redeliveryCount", CoreTypes.INTEGER).required(true)
             .description("Times the same bytes re-landed at the same path after this row was recorded"));
         return s;
     }
 
-    /** {@code /stats} document (DESIGN §2.1 "poller + buffer metrics", §9, §11.2). */
+    /**
+     * {@code /stats} document (DESIGN §2.1 "poller + buffer metrics", §9). Exactly the
+     * fields {@code ObjectTree} emits; the ones it always emits are required, the rest are
+     * omitted when there is nothing to report.
+     */
     public static Schema receiverStats() {
         final Schema s = new Schema(SchemaIds.requireValid(STATS_ID));
         s.properties.add(new Property("up", CoreTypes.BOOLEAN).required(true).description("Every poller thread alive"));
-        s.properties.add(new Property("lastScan", CoreTypes.DATE_TIME));
-        s.properties.add(new Property("lastConsumed", CoreTypes.DATE_TIME));
-        s.properties.add(new Property("bufferDepth", CoreTypes.INTEGER).required(true).description("Un-acked transactions"));
-        s.properties.add(new Property("oldestUnackedSec", CoreTypes.INTEGER));
-        s.properties.add(new Property("backpressure", CoreTypes.BOOLEAN).required(true));
-        s.properties.add(new Property("newCount", CoreTypes.INTEGER).description("Transactions with status new"));
-        s.properties.add(new Property("inFlightCount", CoreTypes.INTEGER).description("Transactions with status in_flight"));
-        s.properties.add(new Property("ackedCount", CoreTypes.INTEGER).description("Transactions with status acked"));
-        s.properties.add(new Property("fileCount", CoreTypes.INTEGER).description("Rows in the files table"));
-        s.properties.add(new Property("doneFileCount", CoreTypes.INTEGER).description(".done files still in the inboxes"));
-        s.properties.add(new Property("oldestDoneFileAgeSec", CoreTypes.INTEGER));
-        s.properties.add(new Property("walBytes", CoreTypes.INTEGER));
-        s.properties.add(new Property("lastCheckpoint", CoreTypes.DATE_TIME));
-        s.properties.add(new Property("sources", CoreTypes.STRING).multi(true)
+        s.properties.add(new Property("lastScan", CoreTypes.DATE_TIME).description("Most recent scan of any source"));
+        s.properties.add(new Property("lastConsumed", CoreTypes.DATE_TIME).description("Most recent file consumed"));
+        s.properties.add(new Property("bufferDepth", CoreTypes.INTEGER).required(true)
+            .description("Un-acked transactions (new + in_flight)"));
+        s.properties.add(new Property("oldestUnackedSec", CoreTypes.INTEGER)
+            .description("Age of the oldest un-acked transaction; absent when there is none"));
+        s.properties.add(new Property("backpressure", CoreTypes.BOOLEAN).required(true)
+            .description("Buffer over its byte ceiling; new files are left untouched"));
+        s.properties.add(new Property("newCount", CoreTypes.INTEGER).required(true).description("Transactions with status new"));
+        s.properties.add(new Property("inFlightCount", CoreTypes.INTEGER).required(true).description("Transactions with status in_flight"));
+        s.properties.add(new Property("ackedCount", CoreTypes.INTEGER).required(true).description("Transactions with status acked"));
+        s.properties.add(new Property("fileCount", CoreTypes.INTEGER).required(true).description("Rows in the files table"));
+        s.properties.add(new Property("doneFileCount", CoreTypes.INTEGER).required(true).description(".done files still in the inboxes"));
+        s.properties.add(new Property("oldestDoneFileAgeSec", CoreTypes.INTEGER)
+            .description("Age of the oldest .done file; absent when there is none"));
+        s.properties.add(new Property("walBytes", CoreTypes.INTEGER).required(true).description("Size of the WAL file"));
+        s.properties.add(new Property("dbSizeBytes", CoreTypes.INTEGER).required(true)
+            .description("Size of the database file, free pages included"));
+        s.properties.add(new Property("sources", CoreTypes.STRING).multi(true).required(true)
             .references(new Reference(STATS_SOURCE_ID)));
         return s;
     }
@@ -127,9 +141,8 @@ public final class SharedSchemas {
         s.properties.add(new Property("name", CoreTypes.STRING).required(true));
         s.properties.add(new Property("path", CoreTypes.STRING).required(true));
         s.properties.add(new Property("writable", CoreTypes.BOOLEAN).required(true));
-        s.properties.add(new Property("pending", CoreTypes.INTEGER).description("Candidate files not yet consumed"));
-        s.properties.add(new Property("errored", CoreTypes.INTEGER).description(".error files"));
-        s.properties.add(new Property("lastScan", CoreTypes.DATE_TIME));
+        s.properties.add(new Property("pending", CoreTypes.INTEGER).required(true).description("Candidate files not yet consumed"));
+        s.properties.add(new Property("errored", CoreTypes.INTEGER).required(true).description(".error files"));
         return s;
     }
 

@@ -22,7 +22,8 @@ class SchemaRegistryTest {
     @Test
     void classpathRegistryServesEveryDesignIdFamily() {
         SchemaRegistry r = SchemaRegistry.fromClasspath();
-        assertTrue(r.size() > 600, "codegen output + builtins indexed, got " + r.size());
+        // Seven canonical guides (aliases resolve to them and have no schemas of their own), codes, core, builtins.
+        assertTrue(r.size() > 500, "codegen output + builtins indexed, got " + r.size());
 
         for (String id : List.of(
                 "schema:table:x12.005010X221A1.835",       // transaction set (collection schema)
@@ -37,7 +38,7 @@ class SchemaRegistryTest {
                 "schema:function:x12.ops.take:input",      // in-code
                 "schema:function:x12.ops.take:output",
                 "schema:function:x12.ops.rescan:output",
-                SchemaRegistry.OPS_ERROR_SCHEMA,
+                SchemaRegistry.NOT_FOUND_ERROR_SCHEMA,
                 SchemaRegistry.OPS_VERDICT_SCHEMA)) {
             assertTrue(r.has(id), id);
             JsonObject schema = GSON.fromJson(r.getSchema(id), JsonObject.class);
@@ -64,12 +65,14 @@ class SchemaRegistryTest {
 
     @Test
     void everyFunctionHasInputAndOutput() {
-        SchemaRegistry r = SchemaRegistry.functionsOnly();
+        java.util.Map<String, String> builtins = SchemaRegistry.builtinSchemas();
         for (String fn : SchemaRegistry.OPS_FUNCTIONS) {
-            assertTrue(r.has(SchemaRegistry.functionInputId(fn)), fn + ":input");
-            assertTrue(r.has(SchemaRegistry.functionOutputId(fn)), fn + ":output");
+            assertTrue(builtins.containsKey(SchemaRegistry.functionInputId(fn)), fn + ":input");
+            assertTrue(builtins.containsKey(SchemaRegistry.functionOutputId(fn)), fn + ":output");
         }
-        assertEquals(SchemaRegistry.OPS_FUNCTIONS.size() * 2 + 2, r.size());
+        assertEquals(SchemaRegistry.OPS_FUNCTIONS.size() * 2 + 2, builtins.size(), "plus not-found-error and verdict");
+        SchemaRegistry r = SchemaRegistry.fromClasspath();
+        builtins.keySet().forEach(id -> assertTrue(r.has(id), id));
     }
 
     @Test

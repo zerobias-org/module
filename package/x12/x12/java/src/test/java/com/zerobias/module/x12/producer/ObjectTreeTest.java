@@ -23,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -32,7 +31,7 @@ class ObjectTreeTest {
 
     private static final Gson GSON = new Gson();
     private static final SchemaRegistry SCHEMAS = SchemaRegistry.fromClasspath();
-    private static final String R = ObjectTreeApi.RECEIVER;
+    private static final String R = ObjectTree.RECEIVER;
 
     @TempDir
     Path dir;
@@ -46,9 +45,8 @@ class ObjectTreeTest {
         buffer = new BufferStore(dir.resolve("buffer.db").toString(), false, new TestRows.MutableClock(TestRows.BASE.plusSeconds(3600)));
         ProducerFixture.seed(buffer, dir);
         poller = new ProducerFixture.StubPoller(dir);
-        tree = new ObjectTree(buffer, SCHEMAS, () -> poller, ".done");
-        facade = new X12ProducerFacade(buffer, tree, SCHEMAS,
-            new X12Operations(buffer, X12ProducerFacade::toElement, () -> poller, SCHEMAS, RecastHook.NONE));
+        tree = ProducerFixture.tree(buffer, SCHEMAS, poller);
+        facade = ProducerFixture.facade(buffer, tree, SCHEMAS, poller);
     }
 
     @AfterEach
@@ -98,9 +96,10 @@ class ObjectTreeTest {
         assertEquals(List.of("function"), classes(take));
         assertEquals("schema:function:x12.ops.take:input", take.get("inputSchema").getAsString());
         assertEquals("schema:function:x12.ops.take:output", take.get("outputSchema").getAsString());
-        assertTrue(take.getAsJsonObject("throws").has("backpressure"));
+        assertEquals(0, take.getAsJsonObject("throws").size(), "take raises nothing function-specific");
         assertTrue(SCHEMAS.has(take.get("inputSchema").getAsString()), "declared function schemas resolve");
-        assertTrue(SCHEMAS.has(take.getAsJsonObject("throws").get("backpressure").getAsString()));
+        JsonObject raw = item(ops, 6);
+        assertTrue(SCHEMAS.has(raw.getAsJsonObject("throws").get("not_found").getAsString()));
         assertEquals(404, assertThrows(ProducerException.class, () -> facade.getObject(R + "/ops/nope")).httpStatus());
         assertEquals(0, page(facade.getChildren(R + "/ops/take", 100, 1)).get("count").getAsInt(), "leaf has no children");
     }
@@ -108,20 +107,23 @@ class ObjectTreeTest {
     // --- /files ----------------------------------------------------------------
 
     @Test
-    void filesAreContainerAndBinaryWithRoundTrippingIds() throws Exception {
+    void filesAreContainerDocumentAndBinaryWithRoundTrippingIds() throws Exception {
         JsonObject files = page(facade.getChildren(R + "/files", 100, 1));
         assertEquals(2, files.get("count").getAsInt());
+        // Only DataProducerObject fields (interface 2.2.6): it has no binarySchema, so the files
+        // row is the node's document rather than extra keys on the node.
+        java.util.Set<String> objectFields = java.util.Set.of("id", "name", "objectClass", "documentSchema",
+            "fileName", "size", "mimeType", "checksum", "modified", "created", "tags");
         JsonObject a = null;
         for (JsonElement e : files.getAsJsonArray("items")) {
             JsonObject f = e.getAsJsonObject();
-            assertEquals(List.of("container", "binary"), classes(f));
-            for (String k : List.of("fileName", "size", "mimeType", "checksum", "modified", "created", "tags")) {
-                assertTrue(f.has(k), "binary field " + k);
-            }
+            assertEquals(List.of("container", "document", "binary"), classes(f));
+            assertEquals("schema:shared:x12.file", f.get("documentSchema").getAsString());
+            assertEquals(objectFields, f.keySet(), "interface fields only");
             assertEquals("application/EDI-X12", f.get("mimeType").getAsString());
             assertFalse(f.get("id").getAsString().substring((R + "/files/").length()).contains("/"),
                 "fileId is percent-encoded into one path segment: " + f.get("id"));
-            if (FILE_A.equals(f.get("fileId").getAsString())) {
+            if ((R + "/files/" + ObjectTree.encodeSegment(FILE_A)).equals(f.get("id").getAsString())) {
                 a = f;
             }
         }
@@ -135,8 +137,21 @@ class ObjectTreeTest {
 
         // the emitted id round-trips through getObject / getChildren / getCollectionElements
         String id = a.get("id").getAsString();
-        assertEquals(R + "/files/" + ObjectTree.encodeSegment(FILE_A), id);
         assertEquals(a, GSON.fromJson(facade.getObject(id), JsonObject.class));
+
+        // the files row is the node's document, in the shape its documentSchema declares
+        JsonObject doc = GSON.fromJson(facade.getDocumentData(id), JsonObject.class);
+        assertEquals(FILE_A, doc.get("fileId").getAsString());
+        assertEquals(com.zerobias.module.x12.buffer.FileRow.pathOf(FILE_A), doc.get("filePath").getAsString());
+        assertEquals("inbox", doc.get("sourceName").getAsString());
+        assertEquals(dir.resolve("remit-a.835.done").toString(), doc.get("currentPath").getAsString());
+        assertEquals("consumed", doc.get("status").getAsString());
+        assertEquals(3, doc.get("transactionCount").getAsInt());
+        assertEquals(0, doc.get("redeliveryCount").getAsInt());
+        assertFalse(doc.get("renameFailed").getAsBoolean());
+        assertConformsTo("schema:shared:x12.file", doc);
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> facade.getDocumentData(id + "/transactions")).httpStatus(), "the collection is not a document");
         JsonObject kids = page(facade.getChildren(id, 100, 1));
         assertEquals(1, kids.get("count").getAsInt());
         JsonObject txs = item(kids, 0);
@@ -198,59 +213,28 @@ class ObjectTreeTest {
 
     @Test
     void filesArePagedInSqlNotReadWhole() throws Exception {
-        // A tree that refuses the unpaged /files read: getChildren must page it in storage.
-        ObjectTreeApi guarded = new ObjectTreeApi() {
-            @Override
-            public Map<String, Object> object(String id) throws java.sql.SQLException {
-                return tree.object(id);
-            }
-
-            @Override
-            public List<Map<String, Object>> children(String id) throws java.sql.SQLException {
-                if ((R + "/files").equals(id)) {
-                    throw new AssertionError("/files read whole to serve one page");
-                }
-                return tree.children(id);
-            }
-
-            @Override
-            public ChildPage childPage(String id, int limit, int offset) throws java.sql.SQLException {
-                return tree.childPage(id, limit, offset);
-            }
-
-            @Override
-            public Collection resolveCollection(String id) throws java.sql.SQLException {
-                return tree.resolveCollection(id);
-            }
-
-            @Override
-            public Map<String, Object> documentData(String id) throws java.sql.SQLException {
-                return tree.documentData(id);
-            }
-
-            @Override
-            public BinaryContent downloadBinary(String id) throws java.sql.SQLException {
-                return tree.downloadBinary(id);
-            }
-        };
-        X12ProducerFacade f = new X12ProducerFacade(buffer, guarded, SCHEMAS, OperationsApi.NONE);
         long total = buffer.fileCount();
         assertTrue(total >= 2, "fixture has at least two files");
 
         List<String> all = new java.util.ArrayList<>();
-        page(f.getChildren(R + "/files", 100, 1)).getAsJsonArray("items")
+        page(facade.getChildren(R + "/files", 100, 1)).getAsJsonArray("items")
             .forEach(i -> all.add(i.getAsJsonObject().get("id").getAsString()));
         assertEquals(total, all.size());
         List<String> paged = new java.util.ArrayList<>();
         for (int p = 1; p <= total; p++) {
-            JsonObject one = page(f.getChildren(R + "/files", 1, p));
+            JsonObject one = page(facade.getChildren(R + "/files", 1, p));
             assertEquals(total, one.get("count").getAsLong(), "count is the total, not the page");
             assertEquals(1, one.getAsJsonArray("items").size());
             paged.add(one.getAsJsonArray("items").get(0).getAsJsonObject().get("id").getAsString());
         }
         assertEquals(all, paged, "same order page by page as in one page");
-        assertEquals(0, page(f.getChildren(R + "/files", 1, (int) total + 1)).getAsJsonArray("items").size());
-        // the unpaged children() still lists the same nodes, same order
+        assertEquals(0, page(facade.getChildren(R + "/files", 1, (int) total + 1)).getAsJsonArray("items").size());
+        // one page is one LIMIT/OFFSET read: the tree hands back exactly the page asked for
+        ObjectTree.ChildPage second = tree.childPage(R + "/files", 1, 1);
+        assertEquals(1, second.items().size());
+        assertEquals(total, second.total());
+        assertEquals(all.get(1), second.items().get(0).get("id"));
+        // the unpaged children() lists the same nodes, same order
         List<String> unpaged = new java.util.ArrayList<>();
         tree.children(R + "/files").forEach(m -> unpaged.add((String) m.get("id")));
         assertEquals(all, unpaged);
@@ -269,20 +253,28 @@ class ObjectTreeTest {
     // --- discriminators ---------------------------------------------------------
 
     @Test
-    void byTypeInterposesTheVersionOnlyWhenATypeSpansGuides() throws Exception {
+    void byTypeIsAlwaysAContainerOfOneCollectionPerGuide() throws Exception {
         JsonObject byType = page(facade.getChildren(R + "/by-type", 100, 1));
         assertEquals(List.of("835", "837P"), names(byType));
 
+        // One guide or two, /by-type/<TS> is a container: an id saved as a collection must not
+        // turn into a container the day a second GS08 of the same type lands.
         JsonObject t835 = item(byType, 0);
-        assertEquals(List.of("collection"), classes(t835), "single guide → the type IS the collection");
-        assertEquals("schema:table:x12.005010X221A1.835", t835.get("collectionSchema").getAsString());
-        assertEquals(3, t835.get("collectionSize").getAsLong());
+        assertEquals(List.of("container"), classes(t835), "a single guide is still a container");
+        assertFalse(t835.has("collectionSchema"));
         assertEquals(R + "/by-type/835", t835.get("id").getAsString());
-        assertEquals(404, assertThrows(ProducerException.class,
-            () -> facade.getObject(R + "/by-type/835/005010X221A1")).httpStatus(), "version node exists only when required");
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> facade.getCollectionElements(R + "/by-type/835", null, null, null, 10, 1, null)).httpStatus());
+        JsonObject only = page(facade.getChildren(R + "/by-type/835", 100, 1));
+        assertEquals(List.of("005010X221A1"), names(only));
+        assertEquals(List.of("collection"), classes(item(only, 0)));
+        assertEquals("schema:table:x12.005010X221A1.835", item(only, 0).get("collectionSchema").getAsString());
+        assertEquals(3, item(only, 0).get("collectionSize").getAsLong());
+        assertEquals(3, page(facade.getCollectionElements(R + "/by-type/835/005010X221A1", null, null, null, 10, 1,
+            null)).get("count").getAsLong());
 
         JsonObject t837 = item(byType, 1);
-        assertEquals(List.of("container"), classes(t837), "two guides → container");
+        assertEquals(List.of("container"), classes(t837));
         assertFalse(t837.has("collectionSchema"));
         assertEquals(400, assertThrows(ProducerException.class,
             () -> facade.getCollectionElements(R + "/by-type/837P", null, null, null, 10, 1, null)).httpStatus(),
@@ -393,8 +385,31 @@ class ObjectTreeTest {
         assertEquals(400, assertThrows(ProducerException.class, () -> facade.getDocumentData(R + "/transactions")).httpStatus());
         assertEquals(404, assertThrows(ProducerException.class, () -> facade.getDocumentData(R + "/nope")).httpStatus());
 
-        ObjectTree noPoller = new ObjectTree(buffer, () -> null);
-        assertFalse((Boolean) noPoller.documentData(R + "/stats").get("up"));
+        assertConformsTo("schema:shared:x12.receiver-stats", stats);
+    }
+
+    /**
+     * {@code body} is exactly what the served schema declares: every field it carries is a
+     * property of the schema, and every required property is there. Nested objects referencing
+     * another schema (the /stats sources) are checked against that one.
+     */
+    private static void assertConformsTo(String schemaId, JsonObject body) {
+        JsonObject schema = GSON.fromJson(SCHEMAS.getSchema(schemaId), JsonObject.class);
+        java.util.Map<String, JsonObject> props = new java.util.LinkedHashMap<>();
+        schema.getAsJsonArray("properties").forEach(p -> props.put(p.getAsJsonObject().get("name").getAsString(),
+            p.getAsJsonObject()));
+        for (String key : body.keySet()) {
+            assertTrue(props.containsKey(key), schemaId + " does not declare " + key);
+        }
+        props.forEach((name, p) -> {
+            if (p.has("required") && p.get("required").getAsBoolean()) {
+                assertTrue(body.has(name), schemaId + " requires " + name + ": " + body);
+            }
+            if (p.has("references") && body.has(name) && body.get(name).isJsonArray()) {
+                String ref = p.getAsJsonObject("references").get("schemaId").getAsString();
+                body.getAsJsonArray(name).forEach(e -> assertConformsTo(ref, e.getAsJsonObject()));
+            }
+        });
     }
 
     @Test
@@ -466,7 +481,7 @@ class ObjectTreeTest {
 
         // and the read path through the router still works
         JsonObject viaRouter = page(OperationRouter.executeOperation(facade, "CollectionsApi.getCollectionElements",
-            Map.of("objectId", R + "/by-type/835", "pageSize", 10, "pageNumber", 1)));
+            Map.of("objectId", R + "/by-type/835/005010X221A1", "pageSize", 10, "pageNumber", 1)));
         assertEquals(3, viaRouter.get("count").getAsLong());
         JsonObject schema = GSON.fromJson(OperationRouter.executeOperation(facade, "SchemasApi.getSchema",
             Map.of("schemaId", "schema:type:x12.005010X221A1.CLP")), JsonObject.class);

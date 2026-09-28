@@ -5,146 +5,126 @@ import com.google.gson.JsonObject;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.TestRows;
 import com.zerobias.module.x12.buffer.TransactionRow;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static com.zerobias.module.x12.buffer.TestRows.FILE_A;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The facade skeleton: the mandatory PagedResults envelope, the DESIGN §5 envelope
- * overlay, the receive-only write rejections, the default 404s, and delegation to a
- * plugged-in {@link ObjectTreeApi}/{@link OperationsApi}.
+ * The facade over a real tree: the mandatory PagedResults envelope and paging bounds, the
+ * DESIGN §5 envelope overlay, the receive-only write rejections, and the error envelope.
  */
 class X12ProducerFacadeTest {
 
     private static final Gson GSON = new Gson();
+    private static final SchemaRegistry SCHEMAS = SchemaRegistry.fromClasspath();
+    private static final String R = ObjectTree.RECEIVER;
 
-    /** A minimal tree: root → /x12-receiver → /transactions (all rows) + /ops/take. */
-    private static ObjectTreeApi tinyTree() {
-        return new ObjectTreeApi() {
-            private Map<String, Object> obj(String id, String name, String cls) {
-                Map<String, Object> o = new LinkedHashMap<>();
-                o.put("id", id);
-                o.put("name", name);
-                o.put("objectClass", List.of(cls));
-                return o;
-            }
+    @TempDir
+    Path dir;
+    private BufferStore buffer;
+    private ProducerFixture.StubPoller poller;
+    private ObjectTree tree;
+    private X12ProducerFacade facade;
 
-            public Map<String, Object> object(String id) {
-                switch (id) {
-                    case "/": return obj("/", "/", "container");
-                    case "/x12-receiver": return obj("/x12-receiver", "x12-receiver", "container");
-                    case "/x12-receiver/transactions": return obj(id, "transactions", "collection");
-                    case "/x12-receiver/ops/take": return obj(id, "take", "function");
-                    case "/x12-receiver/stats": return obj(id, "stats", "document");
-                    default: throw ProducerException.noSuchObject(id);
-                }
-            }
+    @BeforeEach
+    void open() throws Exception {
+        buffer = new BufferStore(dir.resolve("buffer.db").toString(), false);
+        poller = new ProducerFixture.StubPoller(dir);
+        tree = ProducerFixture.tree(buffer, SCHEMAS, poller);
+        facade = ProducerFixture.facade(buffer, tree, SCHEMAS, poller);
+    }
 
-            public List<Map<String, Object>> children(String id) {
-                if ("/".equals(id)) {
-                    return List.of(object("/x12-receiver"));
-                }
-                if ("/x12-receiver".equals(id)) {
-                    return List.of(object("/x12-receiver/transactions"), object("/x12-receiver/stats"));
-                }
-                object(id);
-                return List.of();
-            }
-
-            public Collection resolveCollection(String id) {
-                if ("/x12-receiver/transactions".equals(id)) {
-                    return new Collection(id, null, "schema:shared:x12.transaction-envelope");
-                }
-                object(id);
-                throw ProducerException.unsupported("not a collection: " + id);
-            }
-
-            public Map<String, Object> documentData(String id) {
-                object(id);
-                return Map.of("bufferDepth", 2);
-            }
-
-            public BinaryContent downloadBinary(String id) {
-                object(id);
-                return new BinaryContent(id, java.nio.file.Path.of("a.835"), 7, BinaryContent.MIME_X12, "a.835");
-            }
-        };
+    @AfterEach
+    void close() throws Exception {
+        buffer.close();
     }
 
     @Test
-    void skeletonServesRootAnd404sEverythingElse(@TempDir Path dir) throws Exception {
-        try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            X12ProducerFacade f = X12ProducerFacade.skeleton(b);
-            JsonObject root = GSON.fromJson(f.getRootObject(), JsonObject.class);
-            assertEquals("/", root.get("id").getAsString());
-            assertEquals("/", root.get("name").getAsString(), "root id == name == '/'");
-            JsonObject kids = GSON.fromJson(f.getChildren("/", 100, 1), JsonObject.class);
-            assertEquals(0, kids.getAsJsonArray("items").size());
-            assertEquals(0, kids.get("count").getAsInt());
+    void constructionRejectsAMissingCollaborator() {
+        // A missing tree, registry or function set is a wiring bug: it used to be swapped for a
+        // stub that answered 404 to everything, which looks like an empty receiver, not a broken one.
+        X12Operations ops = ProducerFixture.ops(buffer, poller, SCHEMAS);
+        assertThrows(NullPointerException.class, () -> new X12ProducerFacade(buffer, null, SCHEMAS, ops, false));
+        assertThrows(NullPointerException.class, () -> new X12ProducerFacade(buffer, tree, null, ops, false));
+        assertThrows(NullPointerException.class, () -> new X12ProducerFacade(buffer, tree, SCHEMAS, null, false));
+        assertThrows(NullPointerException.class, () -> new X12Operations(buffer, null, SCHEMAS, row -> null));
+        assertThrows(NullPointerException.class, () -> new X12Operations(buffer, poller, SCHEMAS, null));
+        assertThrows(NullPointerException.class,
+            () -> new ObjectTree(buffer, SCHEMAS, null, ".done", List.of(), ".error"));
+    }
 
-            assertEquals(404, assertThrows(ProducerException.class, () -> f.getObject("/x12-receiver")).httpStatus());
-            assertEquals(404, assertThrows(ProducerException.class,
-                () -> f.getCollectionElements("/x12-receiver/transactions", null, null, null, 10, 1, null)).httpStatus());
-            assertEquals(404, assertThrows(ProducerException.class, () -> f.getSchema("schema:shared:x12.file")).httpStatus());
-            assertEquals(404, assertThrows(ProducerException.class,
-                () -> f.invokeFunction("/x12-receiver/ops/take", "{}")).httpStatus());
-            assertEquals(400, assertThrows(ProducerException.class, () -> f.downloadBinary("/")).httpStatus());
-            assertEquals(400, assertThrows(ProducerException.class, () -> f.getObject("")).httpStatus());
-            assertEquals(400, assertThrows(ProducerException.class, () -> f.getSchema(null)).httpStatus());
+    @Test
+    void paginatedOpsReturnThePagedResultsEnvelope() throws Exception {
+        buffer.insertTransaction(TestRows.tx("1", "0001", 0));
+        buffer.insertTransaction(TestRows.tx("1", "0002", 1));
+        buffer.insertTransaction(TestRows.tx("1", "0003", 2));
+
+        JsonObject page = GSON.fromJson(
+            facade.getCollectionElements(R + "/transactions", null, null, null, 2, 2, null), JsonObject.class);
+        assertTrue(page.has("items"), "PagedResults MUST carry items");
+        assertEquals(3, page.get("count").getAsLong(), "count = total matches, not the page");
+        assertEquals(2, page.get("pageSize").getAsInt());
+        assertEquals(2, page.get("pageNumber").getAsInt(), "1-based on the wire");
+        assertEquals(1, page.getAsJsonArray("items").size());
+        assertEquals("0001", page.getAsJsonArray("items").get(0).getAsJsonObject().get("stControlNumber").getAsString(),
+            "newest first → page 2 of size 2 holds the oldest");
+
+        JsonObject filtered = GSON.fromJson(facade.getCollectionElements(R + "/transactions",
+            "(stControlNumber=0002)", null, null, 10, 1, null), JsonObject.class);
+        assertEquals(1, filtered.get("count").getAsLong());
+
+        List<Map<String, Object>> receiverKids = tree.children(R);
+        JsonObject kids = GSON.fromJson(facade.getChildren(R, 1, 2), JsonObject.class);
+        assertEquals(receiverKids.size(), kids.get("count").getAsInt());
+        assertEquals(receiverKids.get(1).get("name"),
+            kids.getAsJsonArray("items").get(0).getAsJsonObject().get("name").getAsString());
+
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> facade.getCollectionElements(R + "/transactions", "(bad", null, null, 10, 1, null)).httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> facade.getCollectionElements(R + "/transactions", null, null, null, 5000, 1, null)).httpStatus());
+
+        String raw = X12ProducerFacade.pagedResults(List.of(), 0, 100, 1);
+        assertEquals("{\"items\":[],\"count\":0,\"pageSize\":100,\"pageNumber\":1}", raw);
+    }
+
+    @Test
+    void aPageNumberPastTheAddressableOffsetIsA400NotPageOne() throws Exception {
+        buffer.insertTransaction(TestRows.tx("1", "0001", 0));
+        // (2_147_485 - 1) * 1000 overflows an int to a negative offset, which SQLite reads as 0:
+        // the caller got page 1 back as if it were page two million.
+        int wraps = 2_147_485;
+        assertTrue((wraps - 1) * 1000 < 0, "the int product wraps");
+        for (String id : List.of(R + "/transactions", R + "/claims")) {
+            ProducerException e = assertThrows(ProducerException.class,
+                () -> facade.getCollectionElements(id, null, null, null, 1000, wraps, null), id);
+            assertEquals(400, e.httpStatus(), id);
+            assertEquals("err.illegal.argument", e.key(), id);
         }
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> facade.getChildren(R, 1000, wraps)).httpStatus());
+        // the last addressable page is still served, empty
+        JsonObject last = GSON.fromJson(facade.getCollectionElements(R + "/transactions", null, null, null,
+            1000, 2_147_484, null), JsonObject.class);
+        assertEquals(0, last.getAsJsonArray("items").size());
+        assertEquals(1, last.get("count").getAsLong());
     }
 
     @Test
-    void paginatedOpsReturnThePagedResultsEnvelope(@TempDir Path dir) throws Exception {
-        try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            b.insertTransaction(TestRows.tx("1", "0001", 0));
-            b.insertTransaction(TestRows.tx("1", "0002", 1));
-            b.insertTransaction(TestRows.tx("1", "0003", 2));
-            X12ProducerFacade f = new X12ProducerFacade(b, tinyTree(), null, null);
-
-            JsonObject page = GSON.fromJson(
-                f.getCollectionElements("/x12-receiver/transactions", null, null, null, 2, 2, null), JsonObject.class);
-            assertTrue(page.has("items"), "PagedResults MUST carry items");
-            assertEquals(3, page.get("count").getAsLong(), "count = total matches, not the page");
-            assertEquals(2, page.get("pageSize").getAsInt());
-            assertEquals(2, page.get("pageNumber").getAsInt(), "1-based on the wire");
-            assertEquals(1, page.getAsJsonArray("items").size());
-            assertEquals("0001", page.getAsJsonArray("items").get(0).getAsJsonObject().get("stControlNumber").getAsString(),
-                "newest first → page 2 of size 2 holds the oldest");
-
-            JsonObject filtered = GSON.fromJson(f.getCollectionElements("/x12-receiver/transactions",
-                "(stControlNumber=0002)", null, null, 10, 1, null), JsonObject.class);
-            assertEquals(1, filtered.get("count").getAsLong());
-
-            JsonObject kids = GSON.fromJson(f.getChildren("/x12-receiver", 1, 2), JsonObject.class);
-            assertEquals(2, kids.get("count").getAsInt());
-            assertEquals("stats", kids.getAsJsonArray("items").get(0).getAsJsonObject().get("name").getAsString());
-
-            assertEquals(400, assertThrows(ProducerException.class,
-                () -> f.getCollectionElements("/x12-receiver/transactions", "(bad", null, null, 10, 1, null)).httpStatus());
-            assertEquals(400, assertThrows(ProducerException.class,
-                () -> f.getCollectionElements("/x12-receiver/transactions", null, null, null, 5000, 1, null)).httpStatus());
-
-            String raw = X12ProducerFacade.pagedResults(List.of(), 0, 100, 1);
-            assertEquals("{\"items\":[],\"count\":0,\"pageSize\":100,\"pageNumber\":1}", raw);
-        }
-    }
-
-    @Test
-    void toElementOverlaysTheEnvelopeOverTheBody(@TempDir Path dir) throws Exception {
+    void toElementOverlaysTheEnvelopeOverTheBody() throws Exception {
         TransactionRow r = TestRows.tx("1", "0001", 0);
-        // The body now comes from the object graph; toElement overlays the envelope on top.
+        // The body comes from the object graph; toElement overlays the envelope on top.
         Map<String, Object> body = Map.of("header", Map.of("st", Map.of("st02", "0001")));
         Map<String, Object> e = X12ProducerFacade.toElement(r, body);
         assertEquals(FILE_A + ":000000001:1:0001", e.get("elementKey"));
@@ -172,46 +152,34 @@ class X12ProducerFacadeTest {
         assertEquals("new", e2.get("status"));
         assertEquals("PAYERA", e2.get("senderId"));
 
-        try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            b.insertTransaction(r);
-            X12ProducerFacade f = new X12ProducerFacade(b, tinyTree(), null, null);
-            JsonObject got = GSON.fromJson(f.getCollectionElement("/x12-receiver/transactions", r.elementKey()), JsonObject.class);
-            assertEquals(r.elementKey(), got.get("elementKey").getAsString());
-            assertEquals(404, assertThrows(ProducerException.class,
-                () -> f.getCollectionElement("/x12-receiver/transactions", "nope")).httpStatus());
-        }
+        buffer.insertTransaction(r);
+        JsonObject got = GSON.fromJson(facade.getCollectionElement(R + "/transactions", r.elementKey()), JsonObject.class);
+        assertEquals(r.elementKey(), got.get("elementKey").getAsString());
+        assertEquals(404, assertThrows(ProducerException.class,
+            () -> facade.getCollectionElement(R + "/transactions", "nope")).httpStatus());
     }
 
     @Test
-    void writeSurfaceIsRejectedAndDelegatesDocumentsBinaryFunctions(@TempDir Path dir) throws Exception {
-        try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            OperationsApi ops = (fn, input) -> Map.of("fn", fn, "echo", input, "leaseId", java.util.Optional.empty());
-            X12ProducerFacade f = new X12ProducerFacade(b, tinyTree(), null, (fn, input) -> {
-                Map<String, Object> out = new LinkedHashMap<>();
-                out.put("fn", fn);
-                out.put("max", input.get("max"));
-                out.put("leaseId", null);
-                return out;
-            });
-            for (ProducerException e : List.of(
-                    assertThrows(ProducerException.class, () -> f.createCollectionElement("/x", "{}")),
-                    assertThrows(ProducerException.class, () -> f.updateCollectionElement("/x", "k", "{}")),
-                    assertThrows(ProducerException.class, () -> f.deleteCollectionElement("/x", "k")))) {
-                assertEquals(400, e.httpStatus());
-                assertEquals("err.unsupported.operation", e.key());
-            }
-
-            String out = f.invokeFunction("/x12-receiver/ops/take", "{\"max\":5}");
-            assertEquals("{\"fn\":\"take\",\"max\":5.0,\"leaseId\":null}", out, "serializeNulls on function output");
-            assertEquals(400, assertThrows(ProducerException.class,
-                () -> f.invokeFunction("/x12-receiver/transactions", "{}")).httpStatus(), "not a function");
-
-            assertEquals("{\"bufferDepth\":2}", f.getDocumentData("/x12-receiver/stats"));
-            BinaryContent bin = f.downloadBinary("/x12-receiver/stats");
-            assertEquals("application/EDI-X12", bin.mimeType());
-            assertEquals("a.835", bin.fileName());
-            assertFalse(ops == null);
+    void writeSurfaceIsRejectedAndFunctionOutputKeepsNulls() throws Exception {
+        for (ProducerException e : List.of(
+                assertThrows(ProducerException.class, () -> facade.createCollectionElement("/x", "{}")),
+                assertThrows(ProducerException.class, () -> facade.updateCollectionElement("/x", "k", "{}")),
+                assertThrows(ProducerException.class, () -> facade.deleteCollectionElement("/x", "k")))) {
+            assertEquals(400, e.httpStatus());
+            assertEquals("err.unsupported.operation", e.key());
         }
+
+        String out = facade.invokeFunction(R + "/ops/take", "{\"max\":5}");
+        assertEquals("{\"leaseId\":null,\"transactions\":[],\"remaining\":0}", out, "serializeNulls on function output");
+        assertEquals(400, assertThrows(ProducerException.class,
+            () -> facade.invokeFunction(R + "/transactions", "{}")).httpStatus(), "not a function");
+
+        assertTrue(GSON.fromJson(facade.getDocumentData(R + "/stats"), JsonObject.class).has("bufferDepth"));
+        assertEquals(400, assertThrows(ProducerException.class, () -> facade.downloadBinary(R + "/stats")).httpStatus(),
+            "a document is not a binary");
+        assertEquals(400, assertThrows(ProducerException.class, () -> facade.getObject("")).httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class, () -> facade.getSchema(null)).httpStatus());
+        assertEquals(404, assertThrows(ProducerException.class, () -> facade.getObject(R + "/nope")).httpStatus());
     }
 
     @Test
@@ -226,7 +194,6 @@ class X12ProducerFacadeTest {
         Map<String, Object> gone = ProducerException.fileGone("/f").toBody();
         assertEquals("gone", gone.get("reason"));
         assertEquals("file", gone.get("type"));
-        assertEquals("lease", ProducerException.noSuchLease("L").toBody().get("type"));
         assertEquals("schema", ProducerException.noSuchSchema("s").toBody().get("type"));
 
         Map<String, Object> ia = ProducerException.illegalArgument("bad").toBody();

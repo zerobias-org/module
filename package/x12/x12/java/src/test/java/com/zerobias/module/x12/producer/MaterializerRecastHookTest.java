@@ -9,6 +9,7 @@ import com.zerobias.module.x12.buffer.RetentionConfig;
 import com.zerobias.module.x12.buffer.TestRows;
 import com.zerobias.module.x12.buffer.TransactionRow;
 import com.zerobias.module.x12.inbox.FileConsumer;
+import com.zerobias.module.x12.inbox.InboxFixture;
 import com.zerobias.module.x12.materializer.StructureResolver;
 import com.zerobias.module.x12.parser.Fixtures;
 import org.junit.jupiter.api.AfterEach;
@@ -57,9 +58,9 @@ class MaterializerRecastHookTest {
         SourceConfig src = cfg.sources().get(0);
         Path a = Files.write(inbox.resolve("remit.835"), Fixtures.bytes(Fixtures.F835));
         Path b = Files.write(inbox.resolve("claims.837"), Fixtures.bytes(Fixtures.F837P));
-        key835 = consumer.consume(src, a, TestRows.BASE).fileId() + ":000000101:101:0001";
-        key837 = consumer.consume(src, b, TestRows.BASE).fileId() + ":000000102:102:0001";
-        ops = new X12Operations(buffer, null, () -> new ProducerFixture.StubPoller(inbox), SCHEMAS,
+        key835 = InboxFixture.consume(consumer, src, a, TestRows.BASE).fileId() + ":000000101:101:0001";
+        key837 = InboxFixture.consume(consumer, src, b, TestRows.BASE).fileId() + ":000000102:102:0001";
+        ops = new X12Operations(buffer, new ProducerFixture.StubPoller(inbox), SCHEMAS,
             new MaterializerRecastHook(resolver, clock));
     }
 
@@ -76,7 +77,7 @@ class MaterializerRecastHookTest {
             RecastHook.Mapping m = hook.rematerialize(row);
             assertEquals(row.schemaId(), m.schemaId());
             assertEquals(buffer.documentFor(key), m.body(), key + ": identical → nothing to rewrite");
-            assertTrue(hook.reproduces(m, row, buffer.documentFor(key)));
+            assertTrue(m.reproduces(row, buffer.documentFor(key)));
             assertEquals(List.of(), m.parserErrors());
         }
         Map<String, Object> out = ops.invoke("recast", Map.of());
@@ -100,7 +101,7 @@ class MaterializerRecastHookTest {
             StructureResolver resolver = new StructureResolver();
             FileConsumer consumer = new FileConsumer(b, null, cfg, resolver, system);
             Path a = Files.write(inbox.resolve("remit.835"), Fixtures.bytes(Fixtures.F835));
-            String key = consumer.consume(cfg.sources().get(0), a, java.time.Instant.now()).fileId() + ":000000101:101:0001";
+            String key = InboxFixture.consume(consumer, cfg.sources().get(0), a, java.time.Instant.now()).fileId() + ":000000101:101:0001";
             TransactionRow row = b.byElementKey(key).orElseThrow();
             RecastHook.Mapping m = new MaterializerRecastHook(resolver, system).rematerialize(row);
             assertEquals(b.documentFor(row.elementKey()), m.body(),
@@ -165,11 +166,32 @@ class MaterializerRecastHookTest {
     }
 
     @Test
+    void aSetIsRematerializedUnderItsOwnGroupsGuide() throws Exception {
+        // A raw holding an 835 group and an 837P group: the 837P set must be re-derived with
+        // the 837P index, not the file's first (835) group's.
+        String claims = Fixtures.text(Fixtures.F837P);
+        String mixed = Fixtures.text(Fixtures.F835).replace("IEA*1*000000101~",
+            claims.substring(claims.indexOf("GS*"), claims.indexOf("IEA*")) + "IEA*2*000000101~");
+        TransactionRow row = TransactionRow.builder()
+            .fileId("/in/mixed.x12@000000000000").sourceName("inbox").isaControl("000000101").gsControl("102")
+            .stControl("0001").elementKey(TransactionRow.elementKey("/in/mixed.x12@000000000000", "000000101", "102", "0001"))
+            .receivedAt(TestRows.BASE).gs08("005010X222A1")
+            .transactionType("837P").schemaId(TestRows.SCHEMA_837P)
+            .rawX12(mixed.getBytes(java.nio.charset.StandardCharsets.UTF_8)).build();
+        RecastHook.Mapping m = new MaterializerRecastHook(new StructureResolver(), clock).rematerialize(row);
+        assertEquals(TestRows.SCHEMA_837P, m.schemaId());
+        TransactionRow ingested = buffer.byElementKey(key837).orElseThrow();
+        assertEquals(buffer.documentFor(key837), m.body(), "the same body the 837P fixture ingested to");
+        assertEquals(ingested.schemaId(), m.schemaId());
+    }
+
+    @Test
     void unparseableRawIsFailedNotFatal() throws Exception {
         buffer.insertTransaction(TestRows.tx("/in/x.835@000000000000", "inbox", "9", "0009", 0,
             "005010X221A1", "835", TestRows.SCHEMA_835, "P"));   // rawX12 = bare ST/SE with no body
         buffer.insertTransaction(TransactionRow.builder()
-            .fileId("/in/y.835@000000000000").sourceName("inbox").isaControl("000000008").gsControl("8").stControl("0008").deriveElementKey()
+            .fileId("/in/y.835@000000000000").sourceName("inbox").isaControl("000000008").gsControl("8").stControl("0008")
+            .elementKey(TransactionRow.elementKey("/in/y.835@000000000000", "000000008", "8", "0008"))
             .receivedAt(TestRows.BASE).gs08("005010X221A1").transactionType("835").schemaId(TestRows.SCHEMA_835)
             .rawX12("garbage".getBytes()).build());
         Map<String, Object> out = ops.invoke("recast", Map.of());

@@ -13,16 +13,22 @@ import java.util.regex.Pattern;
  */
 public record Separators(char element, char repetition, char component, char segment, String lineBreak) {
 
-    /** ISA is exactly this many characters, terminator included (DESIGN §4.2b, imsweb). */
+    /** ISA is exactly this many characters, terminator included (DESIGN §4.2 step 3b, imsweb). */
     public static final int ISA_LENGTH = 106;
 
     public static final Separators DEFAULT = new Separators('*', '^', ':', '~', "");
 
+    /** Where the element separator sits in the fixed-width ISA: before each of ISA01..ISA16. */
+    private static final int[] ISA_ELEMENT_OFFSETS = {3, 6, 17, 20, 31, 34, 50, 53, 69, 76, 81, 83, 89, 99, 101, 103};
+
+    /** ISA11 in a 4010 interchange: a standards identifier, not a repetition separator. */
+    private static final char NO_REPETITION = 'U';
+
     /**
-     * Read the delimiters from text that starts with an ISA segment. Throws when the text is
-     * too short, does not start with {@code ISA}, or the header does not split into its 16
-     * elements with the delimiter it declares (e.g. a header that declares {@code |} but is
-     * written with {@code *}).
+     * Read the delimiters from text that starts with an ISA segment. Throws {@code bad-isa} when
+     * the text is too short, the element separator is not at every fixed ISA position (a padded
+     * field one character short shifts ISA16 and the terminator, and every later segment would
+     * split wrongly), or a delimiter is a letter, digit or blank or collides with another one.
      */
     public static Separators fromIsa(String text) throws X12ParseException {
         if (text == null || !text.startsWith("ISA")) {
@@ -36,9 +42,21 @@ public record Separators(char element, char repetition, char component, char seg
         char repetition = text.charAt(82);
         char component = text.charAt(104);
         char segment = text.charAt(105);
-        if (isDataChar(element) || isDataChar(component) || isDataChar(segment)) {
-            throw new X12ParseException("bad-separators: ISA declares an alphanumeric or blank delimiter"
-                + " (element='" + element + "', component='" + component + "', segment='" + segment + "')");
+        for (int at : ISA_ELEMENT_OFFSETS) {
+            if (text.charAt(at) != element) {
+                throw new X12ParseException("bad-isa: element separator '" + element + "' expected at ISA character "
+                    + (at + 1) + " but found '" + text.charAt(at) + "'; the ISA is not " + ISA_LENGTH + " fixed-width characters");
+            }
+        }
+        boolean hasRepetition = repetition != NO_REPETITION;
+        if (isDataChar(element) || isDataChar(component) || isDataChar(segment) || (hasRepetition && isDataChar(repetition))) {
+            throw new X12ParseException("bad-isa: ISA declares an alphanumeric or blank delimiter" + describe(element,
+                repetition, component, segment));
+        }
+        if (element == component || element == segment || component == segment
+                || (hasRepetition && (repetition == element || repetition == component || repetition == segment))) {
+            throw new X12ParseException("bad-isa: ISA delimiters are not distinct" + describe(element, repetition,
+                component, segment));
         }
         String[] isaTokens = text.substring(0, ISA_LENGTH - 1).split(Pattern.quote(String.valueOf(element)), -1);
         if (isaTokens.length != 17) {
@@ -54,9 +72,20 @@ public record Separators(char element, char repetition, char component, char seg
         return new Separators(element, repetition, component, segment, lineBreak);
     }
 
+    private static String describe(char element, char repetition, char component, char segment) {
+        return " (element='" + element + "', repetition='" + repetition + "', component='" + component
+            + "', segment='" + segment + "')";
+    }
+
     /** True when the char cannot be a delimiter (letters, digits, whitespace other than a line break). */
     static boolean isDataChar(char c) {
         return Character.isLetterOrDigit(c) || (Character.isWhitespace(c) && c != '\n' && c != '\r');
+    }
+
+    /** True when both carry the same four delimiters (the line style may differ). */
+    public boolean sameDelimiters(Separators other) {
+        return element == other.element && repetition == other.repetition && component == other.component
+            && segment == other.segment;
     }
 
     /** True when ISA11 is a usable repetition separator (5010 {@code ^}); 4010 carried {@code U} there. */
@@ -76,10 +105,5 @@ public record Separators(char element, char repetition, char component, char seg
     public String[] splitRepetitions(String elementText) {
         return hasRepetition() ? elementText.split(Pattern.quote(String.valueOf(repetition)), -1)
             : new String[] {elementText};
-    }
-
-    /** imsweb's view of the same delimiters (segment, element, component). */
-    public com.imsweb.x12.Separators toImsweb() {
-        return new com.imsweb.x12.Separators(segment, element, component);
     }
 }

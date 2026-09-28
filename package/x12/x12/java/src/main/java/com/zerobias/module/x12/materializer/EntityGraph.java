@@ -27,9 +27,10 @@ import java.util.Map;
  *
  * <p>Structure comes from the {@link StructureIndex} the codegen emitted, not from guessing:
  * a loop's {@code structures} say which property is a loop and which is a segment, and a
- * segment's {@code fields} carry the core type per element. Properties the index does not
- * describe (a trading partner's extra segment) are still captured — by reversing the
- * materializer's own naming — so nothing is silently dropped.
+ * segment's {@code fields} carry the core type per element. A segment or loop the materializer
+ * found outside the loop the map puts it in is still captured, resolved by the index's own
+ * names; a segment the index does not describe at all (a trading partner's private segment)
+ * has no schema id to store under, so only {@code raw_x12} keeps it.
  */
 public final class EntityGraph {
 
@@ -269,9 +270,11 @@ public final class EntityGraph {
 
     /**
      * Resolve a materialized property to its structure. The index's {@code structures} are
-     * authoritative; anything it does not list is matched by reversing the materializer's
-     * naming ({@code loop2100} → loop {@code 2100}, {@code clp} → segment {@code CLP}), which
-     * is how a partner's undeclared segment still lands in the graph instead of vanishing.
+     * authoritative; a property this loop does not list (a segment or loop imsweb placed
+     * elsewhere than the map says) is matched the way the materializer named it: a loop by the
+     * name the index references it with ({@link StructureIndex#loopXid}), a segment by its
+     * lower-cased xid ({@code clp} → {@code CLP}). A segment the index has no entry for at all
+     * has no schema id to store under, so it stays in {@code raw_x12} only.
      */
     private Ref resolve(StructureIndex.LoopEntry entry, String property) {
         if (entry != null) {
@@ -284,16 +287,13 @@ public final class EntityGraph {
         if (index == null) {
             return null;
         }
+        final String loopXid = index.loopXid(property);
+        if (loopXid != null) {
+            return new Ref(loopXid, true);
+        }
         final String upper = property.toUpperCase(Locale.ROOT);
         if (index.segment(upper) != null) {
             return new Ref(upper, false);
-        }
-        final String loopXid = property.startsWith("loop") ? property.substring(4) : upper;
-        if (index.loop(loopXid) != null) {
-            return new Ref(loopXid, true);
-        }
-        if (index.loop(upper) != null) {
-            return new Ref(upper, true);
         }
         return null;
     }

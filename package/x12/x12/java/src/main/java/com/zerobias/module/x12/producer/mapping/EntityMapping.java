@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.zerobias.module.x12.materializer.EntityGraph;
+import com.zerobias.module.x12.materializer.X12Normalizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * A business entity projected out of the object graph (DESIGN §8.5).
@@ -60,11 +62,17 @@ public final class EntityMapping {
     private static final Logger LOG = LoggerFactory.getLogger(EntityMapping.class);
     private static final Gson GSON = new Gson();
 
+    /** An RD8 range as sent, {@code CCYYMMDD-CCYYMMDD}: what a graph stored before DTP03 was normalized holds. */
+    private static final Pattern WIRE_RANGE = Pattern.compile("^\\d{8}-\\d{8}$");
+    /** An ISO date, alone or leading a DT-qualified date-time ({@code YYYY-MM-DDTHH:MM:SS}). */
+    private static final Pattern ISO_DATE = Pattern.compile("^\\d{4}-\\d{2}-\\d{2}(T.*)?$");
+
     /**
      * One named column: where to read it from the anchor, and how it is typed. {@code part}
      * ({@code from}/{@code to}, optional) takes one end of a date range: a {@code DTP} with
-     * format {@code RD8} carries {@code CCYYMMDD-CCYYMMDD} in one element, and a single
-     * {@code D8} date is both its own start and end.
+     * format {@code RD8} carries both ends in one element, materialized as the ISO 8601
+     * interval {@code YYYY-MM-DD/YYYY-MM-DD}, and a single {@code D8} date is both its own
+     * start and end.
      */
     public record Column(String name, String path, String dataType, boolean primaryKey,
             String enumSchemaId, String description, String part) {
@@ -123,11 +131,6 @@ public final class EntityMapping {
         this.grain = grain;
         this.identity = identity;
         this.guides = List.copyOf(guides);
-    }
-
-    /** {@link #GRAIN_ANCHOR} or {@link #GRAIN_DIMENSION}. */
-    public String grain() {
-        return grain;
     }
 
     public boolean isDimensionGrain() {
@@ -563,8 +566,8 @@ public final class EntityMapping {
 
     private static Object typed(Column c, EntityGraph.Value v) {
         if (v != null && c.part() != null && v.text() != null) {
-            // RD8 "CCYYMMDD-CCYYMMDD": one end of the range; a lone D8 date is both ends
-            final String[] ends = v.text().split("-", 2);
+            // one end of an RD8 range; a lone D8 date is both ends
+            final String[] ends = rangeEnds(v.text());
             final String picked = "to".equals(c.part()) && ends.length == 2 ? ends[1] : ends[0];
             v = new EntityGraph.Value(v.property(), v.dataType(), picked.trim(), null, null);
         }
@@ -616,16 +619,37 @@ public final class EntityMapping {
     }
 
     /**
-     * A date column is an ISO {@code YYYY-MM-DD} string. A {@code DT} element is already
-     * normalized by the materializer; a {@code DTP03}/{@code DMG02} is {@code AN} on the wire
-     * (its format lives in the qualifier), so a bare {@code CCYYMMDD} is rewritten here. Any
-     * other shape is returned as-is rather than guessed at.
+     * The ends of a date range: the ISO 8601 interval {@code YYYY-MM-DD/YYYY-MM-DD} the
+     * materializer writes for an RD8 {@code DTP03}, or the wire form {@code CCYYMMDD-CCYYMMDD}
+     * a graph stored before that normalization still holds. Anything else is a single value —
+     * never split on the hyphens of an ISO date.
+     */
+    static String[] rangeEnds(String text) {
+        final String t = text.trim();
+        if (t.indexOf('/') >= 0) {
+            return t.split("/", 2);
+        }
+        if (WIRE_RANGE.matcher(t).matches()) {
+            return t.split("-", 2);
+        }
+        return new String[] {t};
+    }
+
+    /**
+     * A date column is an ISO {@code YYYY-MM-DD} string. The materializer already writes a
+     * {@code DT} element, and a {@code DTP03}/{@code DMG02} by its format qualifier, in ISO form;
+     * a DT-qualified date-time contributes its date. A bare {@code CCYYMMDD} (a graph stored
+     * before DTP03 was normalized) is converted when it is a real date, exactly as the
+     * materializer would. Any other shape is returned as-is rather than guessed at.
      */
     static String isoDate(String text) {
-        if (text != null && text.length() == 8 && text.chars().allMatch(Character::isDigit)) {
-            return text.substring(0, 4) + "-" + text.substring(4, 6) + "-" + text.substring(6);
+        if (text == null) {
+            return null;
         }
-        return text;
+        if (ISO_DATE.matcher(text).matches()) {
+            return text.substring(0, 10);
+        }
+        return X12Normalizer.dateTimePeriod(text, "D8");
     }
 
     private static String str(JsonObject o, String key) {

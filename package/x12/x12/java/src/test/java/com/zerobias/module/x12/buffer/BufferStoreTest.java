@@ -271,12 +271,6 @@ class BufferStoreTest {
             assertEquals("0002", rc.get(0).stControl());
             assertEquals(1, s.recastable("transaction_type = '835'", 10).size());
 
-            long leasedId = lease.transactions().get(0).id();
-            assertFalse(s.updateSchemaId(leasedId, "schema:x"), "in_flight row is never rewritten");
-            assertTrue(s.updateSchemaId(rc.get(0).id(), "schema:table:x12.005010X221A1.835"));
-            assertEquals("schema:table:x12.005010X221A1.835",
-                s.byElementKey(rc.get(0).elementKey()).orElseThrow().schemaId());
-
             TransactionRow copy = rc.get(0).withSchemaId("schema:y");
             assertEquals("schema:y", copy.schemaId());
             assertEquals(rc.get(0).elementKey(), copy.elementKey());
@@ -287,7 +281,6 @@ class BufferStoreTest {
     void healthMetricsAndDbSize(@TempDir Path dir) throws Exception {
         MutableClock clock = new MutableClock(BASE.plusSeconds(1000));
         try (BufferStore s = open(dir, clock)) {
-            assertTrue(s.lastReceivedMillis().isEmpty());
             assertTrue(s.lastConsumedMillis().isEmpty());
             assertTrue(s.oldestUnackedSeconds().isEmpty());
             assertTrue(s.dbSizeBytes() > 0);
@@ -295,7 +288,6 @@ class BufferStoreTest {
 
             s.consumeFile(file(FILE_A, "inbox", "c1", FileStatus.CONSUMED, 2),
                 List.of(tx("1", "0001", 0), tx("1", "0002", 600)));
-            assertEquals(BASE.plusSeconds(600).toEpochMilli(), s.lastReceivedMillis().getAsLong());
             assertEquals(BASE.toEpochMilli(), s.lastConsumedMillis().getAsLong());
             assertEquals(1000L, s.oldestUnackedSeconds().getAsLong());
 
@@ -306,13 +298,10 @@ class BufferStoreTest {
     }
 
     @Test
-    void builderRequiresKeyPartsForDerivation() {
-        assertThrows(IllegalStateException.class, () -> TransactionRow.builder().fileId("/f").deriveElementKey());
-        assertThrows(IllegalStateException.class,
-            () -> TransactionRow.builder().fileId("/f").gsControl("1").stControl("2").deriveElementKey(),
-            "ISA13 is part of the key");
+    void theElementKeyCarriesTheInterchangeAndTheBuilderDefaults() {
+        assertEquals("/f:9:1:2", TransactionRow.elementKey("/f", "9", "1", "2"), "ISA13 is part of the key");
         TransactionRow r = TransactionRow.builder().fileId("/f").isaControl("9").gsControl("1").stControl("2")
-            .deriveElementKey()
+            .elementKey(TransactionRow.elementKey("/f", "9", "1", "2"))
             .receivedAt(BASE).gs08("x").transactionType("835").schemaId("s").rawX12(new byte[0])
             .build();
         assertEquals("/f:9:1:2", r.elementKey());

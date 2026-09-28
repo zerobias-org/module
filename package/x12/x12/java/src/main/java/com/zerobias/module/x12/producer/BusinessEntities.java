@@ -177,7 +177,7 @@ public final class BusinessEntities {
     public Page page(Scope scope, java.util.function.Predicate<Map<String, Object>> filter,
             String sortBy, String sortDir, int pageSize, int pageNumber) throws SQLException {
         final EntityMapping m = scope.mapping();
-        final int offset = Math.max(0, pageNumber - 1) * pageSize;
+        final int offset = X12ProducerFacade.pageOffset(pageSize, pageNumber);
         final java.util.Comparator<Map<String, Object>> order = comparator(m, sortBy, sortDir);
 
         if (m.isDimensionGrain()) {
@@ -359,7 +359,7 @@ public final class BusinessEntities {
     /**
      * A comparator for {@code sortBy}, or null when no sort was asked for.
      *
-     * @throws IllegalArgumentException for an unknown attribute or direction — a sort on a
+     * @throws ProducerException (400) for an unknown attribute or direction — a sort on a
      *     field that does not exist is a mistake, not an arbitrary order
      */
     java.util.Comparator<Map<String, Object>> comparator(EntityMapping mapping, String sortBy,
@@ -370,8 +370,8 @@ public final class BusinessEntities {
         final String attribute = sortBy.trim();
         final String type = mapping.typeOf(attribute);
         if (type == null) {
-            throw new IllegalArgumentException("unknown sort attribute '" + attribute + "' on "
-                + mapping.name() + "; available: " + mapping.attributes().keySet());
+            throw ProducerException.illegalArgument("Malformed sort: unknown sort attribute '" + attribute
+                + "' on " + mapping.name() + "; available: " + mapping.attributes().keySet());
         }
         final boolean descending = "DESC".equals(
             com.zerobias.module.x12.filter.X12Filter.direction(sortDir));

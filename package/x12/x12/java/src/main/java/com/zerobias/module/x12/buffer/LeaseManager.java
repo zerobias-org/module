@@ -48,27 +48,19 @@ final class LeaseManager {
     Lease take(String schemaId, String extraWhere, int max, Duration leaseTtl) throws SQLException {
         final long now = now();
         final Duration ttl = clampTtl(leaseTtl);
-
-        final boolean prev = conn.getAutoCommit();
-        conn.setAutoCommit(false);
-        try {
+        // Any Throwable after markInFlight — a RuntimeException mapping a row, an OOM building a
+        // big batch — must roll back: committing would leave rows in_flight under a lease id
+        // nobody was ever given, invisible to take until the TTL runs out.
+        return SqlTransaction.run(conn, () -> {
             final List<Long> ids = candidateIds(schemaId, extraWhere, max, now);
             if (ids.isEmpty()) {
-                conn.commit();
                 return Lease.empty(backlog(now));
             }
             final String leaseId = UUID.randomUUID().toString();
             markInFlight(ids, leaseId, now + ttl.toMillis());
             final List<TransactionRow> rows = fetchByIds(ids);
-            final long remaining = backlog(now);
-            conn.commit();
-            return new Lease(leaseId, rows, remaining);
-        } catch (SQLException e) {
-            conn.rollback();
-            throw e;
-        } finally {
-            conn.setAutoCommit(prev);
-        }
+            return new Lease(leaseId, rows, backlog(now));
+        });
     }
 
     int ack(String leaseId, List<String> elementKeys) throws SQLException {

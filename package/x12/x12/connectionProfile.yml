@@ -17,10 +17,3 @@ properties:
       value comes from runtimeConfig.config.ackDurability. (DESIGN §8.1)
     enum: [normal, full]
     default: full
-  senderDiscriminator:
-    type: string
-    description: >-
-      Which envelope field keys the /by-sender views. ISA06 (interchange sender
-      ID, default) or GS02 (application sender code). (DESIGN §11.4)
-    enum: [ISA06, GS02]
-    default: ISA06

@@ -80,12 +80,12 @@ class FileIsolationTest {
         Path f = Files.write(inbox.resolve("big.835"), bytes);
 
         p.scan();
-        String fileId = FileConsumer.fileId(f, bytes);
+        String fileId = InboxFixture.fileId(f, bytes);
         FileRow row = buffer.fileById(fileId).orElseThrow(() -> new AssertionError("error row keyed by the streamed hash"));
         assertEquals(FileStatus.ERROR, row.status());
         assertTrue(row.errorMessage().startsWith("too-large: " + bytes.length + " bytes exceeds maxFileBytes"),
             row.errorMessage());
-        assertEquals(FileConsumer.sha256(bytes), row.checksum(), "hashed as a stream, whole");
+        assertEquals(InboxFixture.sha256(bytes), row.checksum(), "hashed as a stream, whole");
         assertEquals(0, buffer.count());
         assertTrue(Files.exists(inbox.resolve("big.835.error")));
     }
@@ -116,7 +116,7 @@ class FileIsolationTest {
         Files.write(inbox.resolve("b.837"), Fixtures.bytes(Fixtures.F837P));
 
         p.scan();
-        FileRow ra = buffer.fileById(FileConsumer.fileId(a, Fixtures.bytes(Fixtures.F835))).orElseThrow();
+        FileRow ra = buffer.fileById(InboxFixture.fileId(a, Fixtures.bytes(Fixtures.F835))).orElseThrow();
         assertEquals(FileStatus.ERROR, ra.status(), "the file that blew up is that file's error");
         assertTrue(ra.errorMessage().contains("OutOfMemoryError"), ra.errorMessage());
         assertTrue(Files.exists(inbox.resolve("a.835.error")));
@@ -140,7 +140,7 @@ class FileIsolationTest {
 
         p.scan();
         assertTrue(Files.exists(inbox.resolve("a.835.done")));
-        FileRow rb = buffer.fileById(FileConsumer.fileId(b, another835("000000201"))).orElseThrow();
+        FileRow rb = buffer.fileById(InboxFixture.fileId(b, another835("000000201"))).orElseThrow();
         assertEquals(FileStatus.ERROR, rb.status());
         assertTrue(rb.errorMessage().startsWith("buffer-rejected"), rb.errorMessage());
         assertTrue(Files.exists(inbox.resolve("b.835.error")));

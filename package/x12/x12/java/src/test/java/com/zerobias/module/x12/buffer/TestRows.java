@@ -33,7 +33,7 @@ public final class TestRows {
             long offsetSec, String gs08, String type, String schemaId, String sender) {
         return TransactionRow.builder()
             .fileId(fileId).sourceName(source).isaControl("000000001").gsControl(gsControl).stControl(stControl)
-            .deriveElementKey()
+            .elementKey(TransactionRow.elementKey(fileId, "000000001", gsControl, stControl))
             .receivedAt(BASE.plusSeconds(offsetSec))
             .gs08(gs08).transactionType(type)
             .senderId(sender).receiverId("PROVIDER1")

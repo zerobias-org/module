@@ -7,6 +7,7 @@ import com.zerobias.module.x12.ModuleRuntimeConfig;
 import com.zerobias.module.x12.SourceConfig;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.inbox.FileConsumer;
+import com.zerobias.module.x12.inbox.InboxFixture;
 import com.zerobias.module.x12.materializer.StructureResolver;
 import com.zerobias.module.x12.parser.Fixtures;
 import org.junit.jupiter.api.AfterEach;
@@ -40,7 +41,7 @@ class BusinessParties837Test {
 
     private static final Gson GSON = new Gson();
     private static final SchemaRegistry SCHEMAS = SchemaRegistry.fromClasspath();
-    private static final String R = ObjectTreeApi.RECEIVER;
+    private static final String R = ObjectTree.RECEIVER;
 
     @TempDir
     Path dir;
@@ -70,16 +71,16 @@ class BusinessParties837Test {
             .replace("005010X223A2", "005010X223A1")
             .replace("CLM*CLM0002*", "CLM*CLM0003*"));
 
-        ObjectTree tree = new ObjectTree(buffer, SCHEMAS, () -> null, ".done", List.of(source), ".error");
-        facade = new X12ProducerFacade(buffer, tree, SCHEMAS,
-            new X12Operations(buffer, X12ProducerFacade::toElement, () -> null, SCHEMAS, RecastHook.NONE));
+        ProducerFixture.StubPoller poller = new ProducerFixture.StubPoller(inbox);
+        ObjectTree tree = new ObjectTree(buffer, SCHEMAS, poller, ".done", List.of(source), ".error");
+        facade = ProducerFixture.facade(buffer, tree, SCHEMAS, poller);
     }
 
     private static void drop(FileConsumer consumer, SourceConfig source, Path inbox, String name, String text)
             throws Exception {
         Path file = inbox.resolve(name);
         Files.write(file, text.getBytes(StandardCharsets.UTF_8));
-        FileConsumer.Result r = consumer.consume(source, file, java.time.Instant.now());
+        FileConsumer.Result r = InboxFixture.consume(consumer, source, file, java.time.Instant.now());
         assertEquals(FileConsumer.Outcome.CONSUMED, r.outcome(), name + ": " + r.message());
     }
 

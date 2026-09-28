@@ -98,7 +98,7 @@ public final class BufferStore implements AutoCloseable {
                 st.execute(stmt);
             }
         }
-        migrate();
+        migrate(conn);
         // ackDurability=full -> fsync per commit (DESIGN §8); overrides the schema's NORMAL.
         try (Statement st = conn.createStatement()) {
             st.execute("PRAGMA synchronous=" + (fullDurability ? "FULL" : "NORMAL"));
@@ -113,32 +113,33 @@ public final class BufferStore implements AutoCloseable {
      *
      * <p>Steps probe the actual shape rather than trusting {@code user_version} alone: buffers
      * written before versioning carry 0 whatever their shape.
+     *
+     * <p>Static over the connection so a test can drive it through one that fails partway.
      */
-    private void migrate() throws SQLException {
-        final boolean prev = conn.getAutoCommit();
-        conn.setAutoCommit(false);
-        try (Statement st = conn.createStatement()) {
-            // v1: the typed document moved into the object graph (DESIGN §8.4). The legacy
-            // column is NOT NULL, so while it exists every ingest INSERT fails. Its content is
-            // not carried over: raw_x12 is the source, and the startup backfill rebuilds the
-            // graph from it (BufferStore#graphless).
-            if (hasColumn("transactions", "mapped_json")) {
-                st.execute("ALTER TABLE transactions DROP COLUMN mapped_json");
-                LOG.info("buffer migration: dropped transactions.mapped_json (graph replaces it)");
+    static void migrate(Connection conn) throws SQLException {
+        SqlTransaction.run(conn, () -> {
+            try (Statement st = conn.createStatement()) {
+                // v1: the typed document moved into the object graph (DESIGN §8.4). The legacy
+                // column is NOT NULL, so while it exists every ingest INSERT fails. Its content is
+                // not carried over: raw_x12 is the source, and the startup backfill rebuilds the
+                // graph from it (BufferStore#graphless).
+                if (hasColumn(conn, "transactions", "mapped_json")) {
+                    st.execute("ALTER TABLE transactions DROP COLUMN mapped_json");
+                    LOG.info("buffer migration: dropped transactions.mapped_json (graph replaces it)");
+                }
+                final long version;
+                try (ResultSet rs = st.executeQuery("PRAGMA user_version")) {
+                    version = rs.next() ? rs.getLong(1) : 0L;
+                }
+                if (version < SCHEMA_VERSION) {
+                    st.execute("PRAGMA user_version = " + SCHEMA_VERSION);
+                }
             }
-            if (queryLong("PRAGMA user_version") < SCHEMA_VERSION) {
-                st.execute("PRAGMA user_version = " + SCHEMA_VERSION);
-            }
-            conn.commit();
-        } catch (SQLException | RuntimeException e) {
-            conn.rollback();
-            throw e;
-        } finally {
-            conn.setAutoCommit(prev);
-        }
+            return null;
+        });
     }
 
-    private boolean hasColumn(String table, String column) throws SQLException {
+    private static boolean hasColumn(Connection conn, String table, String column) throws SQLException {
         try (Statement st = conn.createStatement();
              ResultSet rs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
             while (rs.next()) {
@@ -243,7 +244,7 @@ public final class BufferStore implements AutoCloseable {
 
     /**
      * Insert a {@code files} row on its own (the {@code error} and {@code duplicate}
-     * paths, DESIGN §4.2 a/e). {@code file_id} ({@code <path>@<hash>}) is UNIQUE: the
+     * paths, DESIGN §4.2 steps 3a/3e). {@code file_id} ({@code <path>@<hash>}) is UNIQUE: the
      * same bytes re-landing at the same path is a redelivery ({@link #bumpRedelivery}),
      * never a second row — the consumer resolves that before inserting.
      */
@@ -261,24 +262,19 @@ public final class BufferStore implements AutoCloseable {
         return insertTransactionUnsynchronized(row);
     }
 
-    /** Insert a transaction row together with its object graph, in one transaction. */
+    /**
+     * Insert a transaction row together with its object graph, in one transaction; on any
+     * failure, {@link Error}s included, neither lands.
+     */
     public synchronized boolean insertTransaction(TransactionRow row, List<EntityGraph.Entity> graph)
             throws SQLException {
-        final boolean prev = conn.getAutoCommit();
-        conn.setAutoCommit(false);
-        try {
+        return SqlTransaction.run(conn, () -> {
             final boolean inserted = insertTransactionUnsynchronized(row);
             if (inserted && graph != null && !graph.isEmpty()) {
                 insertGraphUnsynchronized(row, graph);
             }
-            conn.commit();
             return inserted;
-        } catch (SQLException | RuntimeException e) {
-            conn.rollback();
-            throw e;
-        } finally {
-            conn.setAutoCommit(prev);
-        }
+        });
     }
 
     private boolean insertTransactionUnsynchronized(TransactionRow row) throws SQLException {
@@ -476,6 +472,9 @@ public final class BufferStore implements AutoCloseable {
 
     // --- drain / lease (DESIGN §2.5) -----------------------------------------
 
+    /** The longest lease {@code take} grants; a longer {@code leaseTtl} is cut to this. */
+    public static final Duration MAX_LEASE_TTL = LeaseManager.MAX_TTL;
+
     public synchronized Lease take(String schemaId, int max, Duration leaseTtl) throws SQLException {
         return leases.take(schemaId, max, leaseTtl);
     }
@@ -511,6 +510,16 @@ public final class BufferStore implements AutoCloseable {
 
     public synchronized long count() throws SQLException {
         return queryLong("SELECT count(*) FROM transactions");
+    }
+
+    /**
+     * The drainable backlog: rows not yet acked ({@code new} + {@code in_flight}). This is what
+     * {@code bufferDepth} means on {@code /healthz}, {@code /stats} and the connection metadata —
+     * acked rows are waiting only for retention, so counting them would make a fully drained
+     * receiver look backed up.
+     */
+    public synchronized long unackedCount() throws SQLException {
+        return queryLong("SELECT count(*) FROM transactions WHERE status <> 'acked'");
     }
 
     public synchronized long count(Status status) throws SQLException {
@@ -603,21 +612,6 @@ public final class BufferStore implements AutoCloseable {
                 }
                 return out;
             }
-        }
-    }
-
-    /**
-     * Rewrite a row's materialized JSON + schema id ({@code ops/recast}). Guarded on
-     * {@code status <> 'in_flight'} so a row leased between {@link #recastable} and
-     * this update is not overwritten mid-flight. Returns true iff a row was updated.
-     */
-    public synchronized boolean updateSchemaId(long id, String schemaId)
-            throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "UPDATE transactions SET schema_id=? WHERE id=? AND status <> 'in_flight'")) {
-            ps.setString(1, schemaId);
-            ps.setLong(2, id);
-            return ps.executeUpdate() > 0;
         }
     }
 
@@ -814,11 +808,6 @@ public final class BufferStore implements AutoCloseable {
         } catch (IOException e) {
             return 0L;
         }
-    }
-
-    /** Epoch-millis of the most recently received transaction, or empty if the buffer is empty. */
-    public synchronized OptionalLong lastReceivedMillis() throws SQLException {
-        return queryNullableLong("SELECT max(received_at) FROM transactions");
     }
 
     /** Epoch-millis of the most recent file consumption, or empty if none yet. */
@@ -1377,16 +1366,15 @@ public final class BufferStore implements AutoCloseable {
      */
     public synchronized boolean replaceGraph(TransactionRow row, String schemaId,
             List<EntityGraph.Entity> graph, Map<String, EntityGraph.Value> dims) throws SQLException {
-        final boolean prev = conn.getAutoCommit();
-        conn.setAutoCommit(false);
-        try {
+        // An Error half-way (OOM while inserting a big graph) must roll back too: committing
+        // here would leave the old graph deleted and only part of the new one written.
+        return SqlTransaction.run(conn, () -> {
             try (PreparedStatement ps = conn.prepareStatement(
                     "UPDATE transactions SET schema_id=? WHERE id=? AND status <> 'in_flight'")) {
                 ps.setString(1, schemaId);
                 ps.setLong(2, row.id());
                 if (ps.executeUpdate() == 0) {
-                    conn.rollback();
-                    return false;   // leased rows are never rewritten under the consumer
+                    return false;   // leased rows are never rewritten under the consumer; nothing changed
                 }
             }
             deleteGraphRows(List.of(row.elementKey()), dims != null);
@@ -1396,14 +1384,8 @@ public final class BufferStore implements AutoCloseable {
             if (dims != null && !dims.isEmpty()) {
                 insertDimsUnsynchronized(row.elementKey(), dims);
             }
-            conn.commit();
             return true;
-        } catch (SQLException | RuntimeException e) {
-            conn.rollback();
-            throw e;
-        } finally {
-            conn.setAutoCommit(prev);
-        }
+        });
     }
 
     /**

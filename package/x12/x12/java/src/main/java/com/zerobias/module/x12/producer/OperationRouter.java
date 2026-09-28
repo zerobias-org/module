@@ -202,8 +202,7 @@ public final class OperationRouter {
             case "updateCollectionElement":
                 return facade.updateCollectionElement(str(argMap, "objectId"), str(argMap, "elementKey"), null);
             case "deleteCollectionElement":
-                facade.deleteCollectionElement(str(argMap, "objectId"), str(argMap, "elementKey"));
-                return "{\"status\":\"deleted\"}";
+                return facade.deleteCollectionElement(str(argMap, "objectId"), str(argMap, "elementKey"));
             default:
                 throw ProducerException.unsupported("Unsupported CollectionsApi method: " + methodName);
         }

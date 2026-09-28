@@ -6,7 +6,6 @@ import com.zerobias.module.x12.producer.mapping.EntityMapping;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
@@ -38,14 +37,22 @@ final class BusinessFilter {
     }
 
     /**
-     * Parse and bind a filter to {@code mapping}. Throws {@link IllegalArgumentException} for a
-     * malformed filter or an attribute the entity does not have — a typo in a filter should say
-     * so rather than return an empty page that looks like "no matches".
+     * Parse and bind a filter to {@code mapping}. A malformed filter or an attribute the entity
+     * does not have is a 400 — a typo in a filter should say so rather than return an empty page
+     * that looks like "no matches". So is a comparison lite-filter can only reject while
+     * evaluating a row (a {@code :between:} without two bounds): the predicate raises it too.
      */
     static Predicate<Map<String, Object>> compile(EntityMapping mapping, String filter) {
         final Expression expression = X12Filter.parse(filter);
         requireKnownAttributes(mapping, expression);
-        return row -> expression.matches(row == null ? Map.of() : row);
+        return row -> {
+            try {
+                return expression.matches(row == null ? Map.of() : row);
+            } catch (IllegalArgumentException malformed) {
+                // lite-filter's evaluator reports an operand it cannot compare this way.
+                throw ProducerException.illegalArgument("Malformed filter: " + malformed.getMessage());
+            }
+        };
     }
 
     /**
@@ -60,8 +67,9 @@ final class BusinessFilter {
         final List<String> unknown = new ArrayList<>();
         collectAttributes(expression, unknown, known);
         if (!unknown.isEmpty()) {
-            throw new IllegalArgumentException("unknown attribute" + (unknown.size() > 1 ? "s " : " ")
-                + unknown + " on " + mapping.name() + "; available: " + known.keySet());
+            throw ProducerException.illegalArgument("Malformed filter: unknown attribute"
+                + (unknown.size() > 1 ? "s " : " ") + unknown + " on " + mapping.name()
+                + "; available: " + known.keySet());
         }
     }
 

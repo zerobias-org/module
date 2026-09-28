@@ -8,8 +8,8 @@ import java.util.Map;
 /**
  * The runtime materializer driver for one implementation guide (DESIGN §5/§6),
  * emitted as {@code structure-index/<GS08>.json}. Plain data: the receiver
- * copies this class (and only this class) into its materializer package and
- * loads the JSON with Gson at boot.
+ * keeps a copy of this class in its materializer package and loads the JSON
+ * with Gson (its StructureIndexTest fails when the two shapes drift).
  *
  * <p>For every loop it records, in map order, the property name / xid / kind /
  * cardinality of each child (segment or nested loop); for every segment and
@@ -32,8 +32,6 @@ public final class StructureIndex {
     public String transactionXid;
     /** Classpath resource the index was generated from ({@code mapping/835.5010.X221.A1.xml}). */
     public String mapFile;
-    /** The canonical GS08 when this index is an alias copy (e.g. 005010X223A1 -> 005010X223A2). */
-    public String aliasOf;
     /** Loop xid whose subtree is the transaction-set atom (ST..SE). */
     public String transactionLoop;
     /** {@code schema:table:x12.<GS08>.<TS>} — the collection schema of this guide's atoms. */
@@ -119,7 +117,7 @@ public final class StructureIndex {
         public Integer repeat;
         /** Composite data element ({@code C003}) when this slot is a composite; else null. */
         public String composite;
-        /** Data element whose {@code schema:enum:x12.codes.<dataEle>} applies; else null. */
+        /** Key of the {@code schema:enum:x12.codes.<key>} that applies (data element or codes.xml codeset id); else null. */
         public String codes;
         /** Merged IG usage: {@code R} when required in every use, else {@code S}; {@code N} when never used. */
         public String usage;

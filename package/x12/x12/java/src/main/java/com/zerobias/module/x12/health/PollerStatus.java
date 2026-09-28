@@ -4,12 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * What the inbox poller reports into {@code /healthz} and {@code /stats} (DESIGN §9).
- * Implemented by the poller (the {@code inbox} package); the foundation ships only
- * {@link #DOWN}, which reports {@code up=false} so a build without a poller wired in
- * is visibly degraded (503) rather than silently healthy.
- */
+/** What the inbox pollers report into {@code /healthz} and {@code /stats} (DESIGN §9). */
 public interface PollerStatus {
 
     /**
@@ -49,32 +44,4 @@ public interface PollerStatus {
 
     /** Per-source state, in configuration order. */
     List<SourceStatus> sources();
-
-    /** No poller wired in: down, nothing scanned, no sources. */
-    PollerStatus DOWN = new PollerStatus() {
-        @Override
-        public boolean up() {
-            return false;
-        }
-
-        @Override
-        public Optional<Instant> lastScan() {
-            return Optional.empty();
-        }
-
-        @Override
-        public Optional<Instant> lastConsumed() {
-            return Optional.empty();
-        }
-
-        @Override
-        public boolean backpressure() {
-            return false;
-        }
-
-        @Override
-        public List<SourceStatus> sources() {
-            return List.of();
-        }
-    };
 }

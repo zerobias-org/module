@@ -42,10 +42,17 @@ class HealthCheckTest {
     }
 
     @Test
-    void emptyBufferWithNoPollerIsDegradedAndOmitsOptionalFields(@TempDir Path dir) throws Exception {
+    void emptyBufferWithADownPollerIsDegradedAndOmitsOptionalFields(@TempDir Path dir) throws Exception {
         try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            HealthCheck h = new HealthCheck(b, PollerStatus.DOWN);
-            assertFalse(h.healthy(), "no poller wired in → 503");
+            PollerStatus down = new PollerStatus() {
+                public boolean up() { return false; }
+                public Optional<Instant> lastScan() { return Optional.empty(); }
+                public Optional<Instant> lastConsumed() { return Optional.empty(); }
+                public boolean backpressure() { return false; }
+                public List<SourceStatus> sources() { return List.of(); }
+            };
+            HealthCheck h = new HealthCheck(b, down);
+            assertFalse(h.healthy(), "poller down → 503");
             Map<String, Object> p = poller(h.status());
             assertEquals(false, p.get("up"));
             assertEquals(0L, ((Number) p.get("bufferDepth")).longValue());
@@ -58,7 +65,25 @@ class HealthCheckTest {
             Map<String, Object> db = (Map<String, Object>) h.status().get("db");
             assertTrue(((Number) db.get("walBytes")).longValue() >= 0);
             assertTrue(((Number) db.get("sizeBytes")).longValue() > 0);
-            assertFalse(new HealthCheck(b, null).healthy(), "null poller behaves as DOWN");
+            assertThrows(NullPointerException.class, () -> new HealthCheck(b, null),
+                "a missing poller is a wiring bug, not a degraded-but-running receiver");
+        }
+    }
+
+    @Test
+    void bufferDepthIsTheUnackedBacklog(@TempDir Path dir) throws Exception {
+        // Acked rows only wait for retention: counting them made a fully drained receiver look
+        // backed up on /healthz, while /stats said 0.
+        try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
+            b.consumeFile(TestRows.file(FILE_A, "inbox", "c1", FileStatus.CONSUMED, 3),
+                List.of(TestRows.tx("1", "0001", 0), TestRows.tx("1", "0002", 10), TestRows.tx("1", "0003", 20)));
+            com.zerobias.module.x12.buffer.Lease two = b.take(null, 2, java.time.Duration.ofMinutes(5));
+            b.ack(two.leaseId(), List.of(two.transactions().get(0).elementKey()));
+            // 3 rows: 1 acked, 1 in_flight, 1 new
+            HealthCheck h = new HealthCheck(b, poller(true, false, List.of()));
+            assertEquals(2L, ((Number) poller(h.status()).get("bufferDepth")).longValue());
+            assertEquals(2L, b.unackedCount());
+            assertEquals(3L, b.count(), "the acked row is still buffered");
         }
     }
 

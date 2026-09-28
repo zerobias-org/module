@@ -5,6 +5,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /** The committed synthetic fixtures ({@code src/test/resources/fixtures}, see its README). */
 public final class Fixtures {
@@ -17,6 +18,9 @@ public final class Fixtures {
     public static final String F837I = "837I-005010X223A2.x12";
     public static final String F277CA = "277CA-005010X214.x12";
     public static final String F999 = "999-005010X231A1.x12";
+
+    /** Every committed well-formed fixture, one per guide that has one. */
+    public static final List<String> WELL_FORMED = List.of(F835, F837P, F837I, F277CA, F999);
 
     private Fixtures() {
     }

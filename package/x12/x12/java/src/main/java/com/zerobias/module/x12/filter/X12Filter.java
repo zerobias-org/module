@@ -1,6 +1,7 @@
 package com.zerobias.module.x12.filter;
 
 import com.zerobias.litefilter.Expression;
+import com.zerobias.module.x12.producer.ProducerException;
 
 /**
  * Thin facade over lite-filter for the buffer's search path: parse an RFC4515
@@ -9,13 +10,18 @@ import com.zerobias.litefilter.Expression;
  *
  * <p>The adapter is registered once under {@link X12SqlAdapter#KEY} so the normal
  * lite-filter call site ({@code expression.as("SQL")}) works too.
+ *
+ * <p>A filter or sort the caller got wrong is raised here, and in the adapter, as the
+ * {@code illegalArgumentError} {@link ProducerException} — never as a bare
+ * {@link IllegalArgumentException} for the HTTP layer to guess about: that one is a bug, and
+ * is a 500.
  */
 public final class X12Filter {
 
     static {
         Expression.addAdapter(
             X12SqlAdapter.KEY,
-            "X12 buffer SQLite adapter (envelope columns + json_extract over mapped_json)",
+            "X12 buffer SQLite adapter (envelope columns + object-graph lookups)",
             new X12SqlAdapter());
     }
 
@@ -27,9 +33,14 @@ public final class X12Filter {
         // no-op; the static initializer does the work
     }
 
-    /** Parse an RFC4515 filter string. */
+    /** Parse an RFC4515 filter string; a malformed one is a 400. */
     public static Expression parse(String filter) {
-        return Expression.parse(filter);
+        try {
+            return Expression.parse(filter);
+        } catch (IllegalArgumentException malformed) {
+            // lite-filter reports every syntax error this way; its message describes the filter.
+            throw ProducerException.illegalArgument("Malformed filter: " + malformed.getMessage());
+        }
     }
 
     /** Render a parsed expression to a SQLite WHERE-clause fragment. */
@@ -47,7 +58,7 @@ public final class X12Filter {
      * <p>NULLs sort last in both directions, so a page is never led by rows missing the very
      * field they were sorted on.
      *
-     * @throws IllegalArgumentException for an unusable property path or an unknown direction
+     * @throws ProducerException (400) for an unusable property path or an unknown direction
      */
     public static String orderBy(String sortBy, String sortDir) {
         if (sortBy == null || sortBy.trim().isEmpty()) {
@@ -65,7 +76,8 @@ public final class X12Filter {
         }
         final String d = sortDir.trim().toUpperCase(java.util.Locale.ROOT);
         if (!"ASC".equals(d) && !"DESC".equals(d)) {
-            throw new IllegalArgumentException("sortDir must be asc or desc, got '" + sortDir + "'");
+            throw ProducerException.illegalArgument("Malformed sort: sortDir must be asc or desc, got '"
+                + sortDir + "'");
         }
         return d;
     }

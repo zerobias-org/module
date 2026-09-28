@@ -19,11 +19,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OperationRouterTest {
 
     private static final Gson GSON = new Gson();
+    private static final SchemaRegistry SCHEMAS = SchemaRegistry.fromClasspath();
+
+    private static X12ProducerFacade facade(Path dir, BufferStore b, boolean fileManagement) {
+        ProducerFixture.StubPoller poller = new ProducerFixture.StubPoller(dir);
+        return new X12ProducerFacade(b, ProducerFixture.tree(b, SCHEMAS, poller), SCHEMAS,
+            ProducerFixture.ops(b, poller, SCHEMAS), fileManagement);
+    }
 
     @Test
     void dispatchesObjectsSchemasAndRejectsWrites(@TempDir Path dir) throws Exception {
         try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            X12ProducerFacade f = X12ProducerFacade.skeleton(b);
+            X12ProducerFacade f = facade(dir, b, false);
             JsonObject root = GSON.fromJson(OperationRouter.executeOperation(f, "ObjectsApi.getRootObject", Map.of()),
                 JsonObject.class);
             assertEquals("/", root.get("id").getAsString());
@@ -34,7 +41,7 @@ class OperationRouterTest {
             assertTrue(kids.has("items"));
 
             assertEquals(404, assertThrows(ProducerException.class, () -> OperationRouter.executeOperation(f,
-                "SchemasApi.getSchema", Map.of("schemaId", "schema:shared:x12.file"))).httpStatus());
+                "SchemasApi.getSchema", Map.of("schemaId", "schema:shared:x12.nope"))).httpStatus());
             assertEquals(400, assertThrows(ProducerException.class, () -> OperationRouter.executeOperation(f,
                 "ObjectsApi.createChildObject", Map.of())).httpStatus());
             assertEquals(400, assertThrows(ProducerException.class, () -> OperationRouter.executeOperation(f,
@@ -62,7 +69,7 @@ class OperationRouterTest {
         assertTrue(OperationRouter.isBinaryUpload("BinaryApi.uploadBinaryContent"));
         assertFalse(OperationRouter.isBinaryUpload("BinaryApi.uploadBinary"), "no aliases");
         try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            X12ProducerFacade f = X12ProducerFacade.skeleton(b);
+            X12ProducerFacade f = facade(dir, b, false);
             assertEquals(400, assertThrows(ProducerException.class, () -> OperationRouter.executeOperation(f,
                 "BinaryApi.downloadBinary", Map.of("objectId", "/"))).httpStatus());
         }
@@ -71,8 +78,7 @@ class OperationRouterTest {
     @Test
     void onlyExactInterfaceNamesAndParameterNamesAreRouted(@TempDir Path dir) throws Exception {
         try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            X12ProducerFacade f = new X12ProducerFacade(b, ObjectTreeApi.ROOT_ONLY, SchemaRegistry.functionsOnly(),
-                OperationsApi.NONE, true);
+            X12ProducerFacade f = facade(dir, b, true);
             // DocumentsApi.getDocument was an alias of getDocumentData
             ProducerException alias = assertThrows(ProducerException.class, () -> OperationRouter.executeOperation(f,
                 "DocumentsApi.getDocument", Map.of("objectId", "/")));
@@ -93,7 +99,7 @@ class OperationRouterTest {
                 assertEquals("err.illegal.argument", e.key(), args.toString());
                 assertTrue(e.getMessage().contains("createObjectRequest"), e.getMessage());
             }
-            // the real body name reaches the tree (which refuses: ROOT_ONLY is not a live directory)
+            // the real body name reaches the tree (which refuses: "/" is not a live directory)
             assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,
                 () -> OperationRouter.executeOperation(f, "ObjectsApi.createChildObject",
                     Map.of("objectId", "/", "createObjectRequest", Map.of("name", "x")))).key());
@@ -123,7 +129,7 @@ class OperationRouterTest {
     @Test
     void unhonouredParametersAreRejectedNeverDropped(@TempDir Path dir) throws Exception {
         try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            X12ProducerFacade f = X12ProducerFacade.skeleton(b);
+            X12ProducerFacade f = facade(dir, b, false);
             // getChildren: fixed order, no facets, no cursor
             for (Map.Entry<String, Object> p : List.<Map.Entry<String, Object>>of(
                     Map.entry("sortBy", List.of("name")), Map.entry("sortDir", List.of("desc")),
@@ -165,7 +171,7 @@ class OperationRouterTest {
     @Test
     void pagingBoundsAreEnforced(@TempDir Path dir) throws Exception {
         try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            X12ProducerFacade f = X12ProducerFacade.skeleton(b);
+            X12ProducerFacade f = facade(dir, b, false);
             for (Map<String, Object> bad : List.<Map<String, Object>>of(
                     Map.of("pageNumber", 0), Map.of("pageNumber", -1), Map.of("pageSize", 0),
                     Map.of("pageSize", 1001), Map.of("pageSize", "ten"), Map.of("pageNumber", 1.5),

@@ -2,6 +2,12 @@ package com.zerobias.module.x12;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.zerobias.module.x12.buffer.BufferStore;
+import com.zerobias.module.x12.buffer.FileStatus;
+import com.zerobias.module.x12.buffer.Lease;
+import com.zerobias.module.x12.buffer.TestRows;
+import com.zerobias.module.x12.health.HealthCheck;
+import com.zerobias.module.x12.health.PollerStatus;
 import io.javalin.Javalin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -135,6 +141,27 @@ class X12ApiServerTest {
             + java.net.URLEncoder.encode(f.toString(), java.nio.charset.StandardCharsets.UTF_8) + "&size=1&name=a");
         assertEquals(404, gone.statusCode());
         assertEquals("gone", GSON.fromJson(gone.body(), JsonObject.class).get("reason").getAsString());
+    }
+
+    @Test
+    void metadataBufferDepthIsTheUnackedBacklog(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir)
+            throws Exception {
+        try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
+            b.consumeFile(TestRows.file(TestRows.FILE_A, "inbox", "c1", FileStatus.CONSUMED, 2),
+                java.util.List.of(TestRows.tx("1", "0001", 0), TestRows.tx("1", "0002", 10)));
+            Lease lease = b.take(null, 1, java.time.Duration.ofMinutes(5));
+            b.ack(lease.leaseId(), null);
+            PollerStatus up = new PollerStatus() {
+                public boolean up() { return true; }
+                public java.util.Optional<java.time.Instant> lastScan() { return java.util.Optional.empty(); }
+                public java.util.Optional<java.time.Instant> lastConsumed() { return java.util.Optional.empty(); }
+                public boolean backpressure() { return false; }
+                public java.util.List<SourceStatus> sources() { return java.util.List.of(); }
+            };
+            JsonObject md = X12ApiServer.connectionMetadata(new HealthCheck(b, up), b);
+            assertEquals("On", md.get("status").getAsString());
+            assertEquals(1, md.get("bufferDepth").getAsLong(), "the acked row is not backlog");
+        }
     }
 
     @Test

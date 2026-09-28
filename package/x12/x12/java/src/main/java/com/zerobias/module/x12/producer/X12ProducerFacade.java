@@ -2,7 +2,6 @@ package com.zerobias.module.x12.producer;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonObject;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.FileRow;
 import com.zerobias.module.x12.buffer.TransactionRow;
@@ -13,19 +12,16 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Implements the DataProducer operations (DESIGN §2) over the durable buffer. All
  * methods return JSON strings (the HTTP layer passes them through verbatim) and raise
  * {@link ProducerException} for the standard error cases (DESIGN §2.7).
  *
- * <p>Foundation SKELETON: this class owns the two things every later phase depends
- * on — the mandatory {@link #pagedResults PagedResults} envelope and the
- * {@link #toElement envelope overlay} (DESIGN §5) — and delegates the tree, schemas
- * and functions to {@link ObjectTreeApi}, {@link SchemaRegistryApi} and
- * {@link OperationsApi}. The producer phase supplies {@code ObjectTree},
- * {@code SchemaRegistry} and {@code X12Operations}; until then the defaults serve the
- * root and 404 everything else.
+ * <p>This class owns the mandatory {@link #pagedResults PagedResults} envelope, paging
+ * bounds and the {@link #toElement envelope overlay} (DESIGN §5), and delegates the tree to
+ * {@link ObjectTree}, schemas to {@link SchemaRegistry} and functions to {@link X12Operations}.
  *
  * <p>The producer is <b>receive-only for data</b>: transactions arrive as inbox files, so
  * every collection/document mutation is rejected with {@code UnsupportedOperationError},
@@ -44,15 +40,10 @@ public final class X12ProducerFacade {
     public static final int MAX_PAGE_SIZE = 1000;
 
     private final BufferStore buffer;
-    private final ObjectTreeApi tree;
-    private final SchemaRegistryApi schemas;
-    private final OperationsApi ops;
+    private final ObjectTree tree;
+    private final SchemaRegistry schemas;
+    private final X12Operations ops;
     private final boolean allowFileManagement;
-
-    public X12ProducerFacade(BufferStore buffer, ObjectTreeApi tree, SchemaRegistryApi schemas,
-            OperationsApi ops) {
-        this(buffer, tree, schemas, ops, false);
-    }
 
     /**
      * @param allowFileManagement {@code config.allowFileManagement} — the single gate on the
@@ -61,19 +52,13 @@ public final class X12ProducerFacade {
      *                            {@code /inbox}). Default false: production receivers take
      *                            files from the feed, not from API callers (DESIGN §2.9).
      */
-    public X12ProducerFacade(BufferStore buffer, ObjectTreeApi tree, SchemaRegistryApi schemas,
-            OperationsApi ops, boolean allowFileManagement) {
-        this.buffer = buffer;
-        this.tree = tree == null ? ObjectTreeApi.ROOT_ONLY : tree;
-        this.schemas = schemas == null ? SchemaRegistryApi.EMPTY : schemas;
-        this.ops = ops == null ? OperationsApi.NONE : ops;
+    public X12ProducerFacade(BufferStore buffer, ObjectTree tree, SchemaRegistry schemas,
+            X12Operations ops, boolean allowFileManagement) {
+        this.buffer = Objects.requireNonNull(buffer, "buffer");
+        this.tree = Objects.requireNonNull(tree, "tree");
+        this.schemas = Objects.requireNonNull(schemas, "schemas");
+        this.ops = Objects.requireNonNull(ops, "ops");
         this.allowFileManagement = allowFileManagement;
-        X12Filter.register();
-    }
-
-    /** The foundation skeleton: root only, no schemas, no functions. */
-    public static X12ProducerFacade skeleton(BufferStore buffer) {
-        return new X12ProducerFacade(buffer, ObjectTreeApi.ROOT_ONLY, SchemaRegistryApi.EMPTY, OperationsApi.NONE);
     }
 
     /** Whether the file-management write surface is enabled ({@code isSupported} reads this). */
@@ -81,22 +66,10 @@ public final class X12ProducerFacade {
         return allowFileManagement;
     }
 
-    public ObjectTreeApi tree() {
-        return tree;
-    }
-
-    public SchemaRegistryApi schemas() {
-        return schemas;
-    }
-
-    public OperationsApi ops() {
-        return ops;
-    }
-
     // --- Objects -----------------------------------------------------------
 
     public String getRootObject() throws SQLException {
-        return GSON.toJson(tree.object(ObjectTreeApi.ROOT));
+        return GSON.toJson(tree.object(ObjectTree.ROOT));
     }
 
     public String getObject(String objectId) throws SQLException {
@@ -107,17 +80,8 @@ public final class X12ProducerFacade {
     public String getChildren(String objectId, int pageSize, int pageNumber) throws SQLException {
         requireId(objectId);
         int size = checkPaging(pageSize, pageNumber);
-        int from = (int) Math.min(Integer.MAX_VALUE, (long) (pageNumber - 1) * size);
-        ObjectTreeApi.ChildPage paged = tree.childPage(objectId, size, from);
-        if (paged != null) {
-            return pagedResults(paged.items(), paged.total(), size, pageNumber);
-        }
-        List<Map<String, Object>> children = tree.children(objectId);
-        int total = children.size();
-        List<Map<String, Object>> page = from >= total
-            ? List.of()
-            : children.subList(from, Math.min(total, from + size));
-        return pagedResults(page, total, size, pageNumber);
+        ObjectTree.ChildPage paged = tree.childPage(objectId, size, pageOffset(size, pageNumber));
+        return pagedResults(paged.items(), paged.total(), size, pageNumber);
     }
 
     // --- Collections (read-only browse) -----------------------------------
@@ -127,29 +91,22 @@ public final class X12ProducerFacade {
         requireId(objectId);
         // A business collection projects rows out of the object graph (DESIGN §8.5) rather than
         // reading transaction rows, so it resolves before the buffer-backed path.
-        if (tree instanceof ObjectTree) {
-            final BusinessEntities.Scope scope = ((ObjectTree) tree).businessScope(objectId);
-            if (scope != null) {
-                final int size = checkPaging(pageSize, pageNumber);
-                final BusinessEntities.Page page;
-                try {
-                    page = ((ObjectTree) tree).business()
-                        .page(scope, businessFilter(scope, filter), sortBy, sortDir, size, pageNumber);
-                } catch (IllegalArgumentException badSort) {
-                    throw ProducerException.illegalArgument("Malformed sort: " + badSort.getMessage());
-                }
-                // Nulls are kept here: a business collection promises the shape its schema
-                // declares, so a column the transaction lacks is present-and-null rather than
-                // absent. Dropping it would make every row a different shape on the wire.
-                return pagedResultsKeepingNulls(page.rows(), page.total(), size, pageNumber);
-            }
+        final BusinessEntities.Scope scope = tree.businessScope(objectId);
+        if (scope != null) {
+            final int size = checkPaging(pageSize, pageNumber);
+            final BusinessEntities.Page page = tree.business()
+                .page(scope, businessFilter(scope, filter), sortBy, sortDir, size, pageNumber);
+            // Nulls are kept here: a business collection promises the shape its schema
+            // declares, so a column the transaction lacks is present-and-null rather than
+            // absent. Dropping it would make every row a different shape on the wire.
+            return pagedResultsKeepingNulls(page.rows(), page.total(), size, pageNumber);
         }
-        ObjectTreeApi.Collection coll = tree.resolveCollection(objectId);
+        ObjectTree.Collection coll = tree.resolveCollection(objectId);
         int size = checkPaging(pageSize, pageNumber);
-        int offset = (pageNumber - 1) * size;
+        int offset = pageOffset(size, pageNumber);
         String where = composeWhere(coll, filter);
 
-        List<TransactionRow> rows = buffer.search(where, size, offset, orderBy(sortBy, sortDir));
+        List<TransactionRow> rows = buffer.search(where, size, offset, X12Filter.orderBy(sortBy, sortDir));
         // One batched graph read for the page, not one per row (DESIGN §8.4).
         final Map<String, Map<String, Object>> bodies = buffer.documentsFor(
             rows.stream().map(TransactionRow::elementKey).toList());
@@ -166,7 +123,7 @@ public final class X12ProducerFacade {
         if (elementKey == null || elementKey.isBlank()) {
             throw ProducerException.illegalArgument("elementKey is required");
         }
-        ObjectTreeApi.Collection coll = tree.resolveCollection(objectId);
+        ObjectTree.Collection coll = tree.resolveCollection(objectId);
         String where = and(coll.scopeWhere(), "element_key = " + sql(elementKey));
         List<TransactionRow> rows = buffer.search(where, 1, 0);
         if (rows.isEmpty()) {
@@ -198,19 +155,6 @@ public final class X12ProducerFacade {
     }
 
     /**
-     * A validated {@code ORDER BY} for the buffer-backed collections, or null when none was
-     * asked for. Built by the filter adapter from the same property mapping, so sorting and
-     * filtering agree on what a property means, and never from the caller's raw string.
-     */
-    private static String orderBy(String sortBy, String sortDir) {
-        try {
-            return X12Filter.orderBy(sortBy, sortDir);
-        } catch (IllegalArgumentException bad) {
-            throw ProducerException.illegalArgument("Malformed sort: " + bad.getMessage());
-        }
-    }
-
-    /**
      * Compile an RFC4515 filter into a predicate over projected business rows. Business columns
      * can sit behind a qualifier predicate or inside a composite, which the value table cannot
      * express as SQL, so the comparison happens on the projected row — bounded by the segment,
@@ -222,11 +166,7 @@ public final class X12ProducerFacade {
         if (filter == null || filter.isBlank()) {
             return null;
         }
-        try {
-            return BusinessFilter.compile(scope.mapping(), filter);
-        } catch (IllegalArgumentException bad) {
-            throw ProducerException.illegalArgument("Malformed filter: " + bad.getMessage());
-        }
+        return BusinessFilter.compile(scope.mapping(), filter);
     }
 
     // --- File management: gated by config.allowFileManagement (DESIGN §2.9) --
@@ -289,7 +229,7 @@ public final class X12ProducerFacade {
         throw ProducerException.unsupported("Collection is read-only");
     }
 
-    public void deleteCollectionElement(String objectId, String elementKey) {
+    public String deleteCollectionElement(String objectId, String elementKey) {
         throw ProducerException.unsupported("Collection is read-only; use ops/purge to evict acked rows");
     }
 
@@ -396,16 +336,9 @@ public final class X12ProducerFacade {
 
     // --- helpers -----------------------------------------------------------
 
-    private String composeWhere(ObjectTreeApi.Collection coll, String filter) {
-        String userFilter = null;
-        if (filter != null && !filter.isBlank()) {
-            try {
-                userFilter = X12Filter.toWhereClause(filter);
-            } catch (RuntimeException e) {
-                throw ProducerException.illegalArgument("Malformed filter: " + e.getMessage());
-            }
-        }
-        return and(coll.scopeWhere(), userFilter);
+    /** The collection's scope AND the caller's filter; a malformed filter is the filter layer's 400. */
+    private static String composeWhere(ObjectTree.Collection coll, String filter) {
+        return and(coll.scopeWhere(), X12Filter.toWhereClause(filter));
     }
 
     static String and(String a, String b) {
@@ -418,6 +351,12 @@ public final class X12ProducerFacade {
         return "(" + a + ") AND (" + b + ")";
     }
 
+    /** {@link #pagedResults} that keeps null-valued fields (DESIGN §8.5: one row shape). */
+    static String pagedResultsKeepingNulls(List<Map<String, Object>> items, long count,
+            int pageSize, int pageNumber) {
+        return GSON_NULLS.toJson(envelope(items, count, pageSize, pageNumber));
+    }
+
     /**
      * The DataProducer {@code PagedResults} envelope. Paginated operations
      * ({@code getChildren}/{@code searchChildObjects},
@@ -428,12 +367,6 @@ public final class X12ProducerFacade {
      * runtime contract) breaks the data-explorer tree. {@code count} is the total
      * matching rows, not the page; {@code pageNumber} is 1-based on the wire.
      */
-    /** {@link #pagedResults} that keeps null-valued fields (DESIGN §8.5: one row shape). */
-    static String pagedResultsKeepingNulls(List<Map<String, Object>> items, long count,
-            int pageSize, int pageNumber) {
-        return GSON_NULLS.toJson(envelope(items, count, pageSize, pageNumber));
-    }
-
     public static String pagedResults(List<Map<String, Object>> items, long count,
             int pageSize, int pageNumber) {
         return GSON.toJson(envelope(items, count, pageSize, pageNumber));
@@ -462,6 +395,21 @@ public final class X12ProducerFacade {
             throw ProducerException.illegalArgument("pageNumber must be at least 1, got " + pageNumber);
         }
         return pageSize;
+    }
+
+    /**
+     * The row offset of a 1-based page. Computed exactly: {@code (pageNumber - 1) * pageSize}
+     * in int arithmetic wraps negative for a large page number, and SQLite reads a negative
+     * {@code OFFSET} as 0 — the caller would silently get page 1 again. A page past the last
+     * offset an int can address is a 400.
+     */
+    static int pageOffset(int pageSize, int pageNumber) {
+        try {
+            return Math.multiplyExact(Math.max(0, pageNumber - 1), pageSize);
+        } catch (ArithmeticException overflow) {
+            throw ProducerException.illegalArgument("pageNumber " + pageNumber + " with pageSize " + pageSize
+                + " is past the last addressable row");
+        }
     }
 
     private static void requireId(String objectId) {

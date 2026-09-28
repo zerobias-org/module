@@ -6,6 +6,7 @@ import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.RetentionConfig;
 import com.zerobias.module.x12.buffer.TestRows;
 import com.zerobias.module.x12.inbox.FileConsumer;
+import com.zerobias.module.x12.inbox.InboxFixture;
 import com.zerobias.module.x12.materializer.StructureResolver;
 import com.zerobias.module.x12.parser.Fixtures;
 import com.zerobias.module.x12.parser.X12Parse;
@@ -64,7 +65,7 @@ class LegacyBufferUpgradeTest {
                 ".done", ".error", false, RetentionConfig.none(), true, false);
             final FileConsumer consumer = new FileConsumer(buffer, null, cfg, new StructureResolver(), clock);
             final Path f = Files.write(inbox.resolve("claims.837"), Fixtures.bytes(Fixtures.F837P));
-            final FileConsumer.Result r = consumer.consume(cfg.sources().get(0), f, TestRows.BASE);
+            final FileConsumer.Result r = InboxFixture.consume(consumer, cfg.sources().get(0), f, TestRows.BASE);
             assertEquals(FileConsumer.Outcome.CONSUMED, r.outcome(), r.message());
             assertEquals(2, buffer.count());
         }

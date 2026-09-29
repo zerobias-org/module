@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-bundle",
-  "version": "0.0.57",
+  "version": "0.0.58",
   "description": "All installable modules",
   "author": "team@zerobias.com",
   "license": "ISC",
@@ -26,6 +26,7 @@
     "@zerobias-org/module-hl7-v2": "1.2.4",
     "@zerobias-org/module-interface-dataproducer": "2.2.6",
     "@zerobias-org/module-microsoft-azure-azureresourcegraph": "0.0.1",
-    "@zerobias-org/module-readyplayerme-readyplayerme": "2.0.6"
+    "@zerobias-org/module-readyplayerme-readyplayerme": "2.0.6",
+    "@zerobias-org/module-x12-x12": "0.0.0"
   }
 }

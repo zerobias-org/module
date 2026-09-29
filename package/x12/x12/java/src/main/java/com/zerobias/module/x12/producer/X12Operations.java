@@ -1,14 +1,12 @@
 package com.zerobias.module.x12.producer;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonSyntaxException;
 import com.zerobias.module.x12.PollerHandle;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.Lease;
 import com.zerobias.module.x12.buffer.TransactionRow;
 import com.zerobias.module.x12.filter.X12Filter;
 import com.zerobias.module.x12.health.PollerStatus;
+import com.zerobias.module.x12.parser.TransactionTypes;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
@@ -18,10 +16,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
-import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
  * The Function objects under {@code /x12-receiver/ops/*} (DESIGN §2.5), invoked via
@@ -36,46 +33,53 @@ import java.util.function.Supplier;
  *   <li>{@code ack} / {@code release} — finalize / return a lease; optional
  *       {@code elementKeys} subset (partial acks; un-acked rows revert at TTL).</li>
  *   <li>{@code replay} — force in_flight rows back to {@code new}, optionally filtered.</li>
- *   <li>{@code recast} — re-materialize rows from stored raw under current definitions via
- *       the {@link RecastHook} seam; without a materializer nothing is rewritten.</li>
+ *   <li>{@code recast} — re-materialize rows from stored raw under current definitions
+ *       ({@link RecastHook}) and replace the graph of those whose content changed.</li>
  *   <li>{@code purge} — delete acked rows older than a duration (default: all acked).</li>
  *   <li>{@code raw} — the stored ST..SE segments verbatim (+ ISA/GS context) for one row.</li>
- *   <li>{@code validate} — {@code stored} verdict (schema registered, typed JSON parses,
- *       envelope complete) and, through the seam, the {@code rematerialized} verdict.</li>
+ *   <li>{@code validate} — {@code stored} verdict (schema registered, graph present,
+ *       envelope complete), the {@code rematerialized} verdict and whether the two agree.</li>
  *   <li>{@code rescan} — force an immediate poll through the {@link PollerHandle}.</li>
  * </ul>
  *
- * <p>The declared {@code throws} codes ({@code lease_capacity_exceeded}, {@code backpressure},
- * {@code lease_expired}) are on the objects but not raised in v1: there is no outstanding-lease
- * cap, backpressure is applied on the inbox path (files left untouched), and a finalized or
- * expired lease has no {@code in_flight} rows left — {@code ack}/{@code release} report the
- * affected count and 0 is the signal (the buffer clears {@code lease_id} on finalize, so an
- * unknown and an already-finalized lease are indistinguishable).
+ * <p>The only function-specific error is {@code not_found} ({@link #declaredErrors}): an
+ * unknown {@code elementKey} ({@code raw}, {@code validate}) or source ({@code rescan}). There
+ * is no outstanding-lease cap, backpressure is applied on the inbox path (files are left
+ * untouched, {@code take} still drains), and {@code ack}/{@code release} are idempotent: they
+ * report the rows affected, and 0 for a lease that is unknown, already finalized or expired —
+ * the buffer clears {@code lease_id} on finalize, so those three are indistinguishable, and a
+ * retried ack must not fail.
  */
-public final class X12Operations implements OperationsApi {
+public final class X12Operations {
 
-    private static final Gson GSON = new Gson();
+    static final int DEFAULT_MAX = 100;
+    static final int MAX_CAP = 1000;
+    static final Duration DEFAULT_TTL = Duration.ofMinutes(5);
 
     private final BufferStore buffer;
-    private final java.util.function.BiFunction<TransactionRow, Map<String, Object>, Map<String, Object>> elementMapper;
-    private final Supplier<PollerHandle> pollers;
-    private final SchemaRegistryApi schemas;
+    private final PollerHandle pollers;
+    private final SchemaRegistry schemas;
     private final RecastHook recaster;
     /** Lazily read once: the bundled catalog is classpath-immutable for the process's life. */
     private PackCatalog packCatalog;
 
-    public X12Operations(BufferStore buffer, Supplier<PollerHandle> pollers, SchemaRegistryApi schemas) {
-        this(buffer, X12ProducerFacade::toElement, pollers, schemas, RecastHook.NONE);
+    public X12Operations(BufferStore buffer, PollerHandle pollers, SchemaRegistry schemas, RecastHook recaster) {
+        this.buffer = Objects.requireNonNull(buffer, "buffer");
+        this.pollers = Objects.requireNonNull(pollers, "pollers");
+        this.schemas = Objects.requireNonNull(schemas, "schemas");
+        this.recaster = Objects.requireNonNull(recaster, "recaster");
     }
 
-    public X12Operations(BufferStore buffer,
-            java.util.function.BiFunction<TransactionRow, Map<String, Object>, Map<String, Object>> elementMapper,
-            Supplier<PollerHandle> pollers, SchemaRegistryApi schemas, RecastHook recaster) {
-        this.buffer = buffer;
-        this.elementMapper = elementMapper == null ? X12ProducerFacade::toElement : elementMapper;
-        this.pollers = pollers == null ? () -> null : pollers;
-        this.schemas = schemas == null ? SchemaRegistryApi.EMPTY : schemas;
-        this.recaster = recaster == null ? RecastHook.NONE : recaster;
+    /** The {@code throws} map of {@code /ops/<fn>}: error code → schema of the body raised for it. */
+    static Map<String, String> declaredErrors(String fn) {
+        switch (fn) {
+            case "raw":
+            case "validate":
+            case "rescan":
+                return Map.of("not_found", SchemaRegistry.NOT_FOUND_ERROR_SCHEMA);
+            default:
+                return Map.of();
+        }
     }
 
     /**
@@ -85,7 +89,6 @@ public final class X12Operations implements OperationsApi {
      * 400 and nothing runs — {@code purge {"olderthan":"P30D"}} must never fall through to
      * "no olderThan" and purge every acked row.
      */
-    @Override
     public Map<String, Object> invoke(String fn, Map<String, Object> input) throws SQLException {
         requireFunction(fn);
         Map<String, Object> in = input == null ? Map.of() : input;
@@ -117,17 +120,16 @@ public final class X12Operations implements OperationsApi {
             case "packs":
                 return packs(in);
             default:
-                throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/ops/" + fn);
+                throw ProducerException.noSuchObject(ObjectTree.OPS + "/" + fn);
         }
     }
 
     /**
      * {@code validateFunctionInput}: the interface {@code ValidationResult} for {@code input}
      * — the same check {@link #invoke} applies, so {@code valid} means invoke will accept it.
-     * Warnings flag input that runs but is adjusted (a {@code max} above its cap); in
-     * {@code strict} mode they count as errors.
+     * Warnings flag input that runs but is adjusted (a {@code max} or {@code leaseTtl} above
+     * its cap); in {@code strict} mode they count as errors.
      */
-    @Override
     public Map<String, Object> validateInput(String fn, Object input, boolean strict) {
         requireFunction(fn);
         List<Issue> errors = new ArrayList<>();
@@ -153,7 +155,7 @@ public final class X12Operations implements OperationsApi {
 
     private static void requireFunction(String fn) {
         if (fn == null || !SchemaRegistry.OPS_FUNCTIONS.contains(fn)) {
-            throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/ops/" + fn);
+            throw ProducerException.noSuchObject(ObjectTree.OPS + "/" + fn);
         }
     }
 
@@ -252,7 +254,12 @@ public final class X12Operations implements OperationsApi {
                 }
                 break;
             case "leaseTtl":
-                checkDuration(name, (String) v, false, errors);
+                if (checkDuration(name, (String) v, false, errors)
+                        && Duration.parse((String) v).compareTo(BufferStore.MAX_LEASE_TTL) > 0) {
+                    // The buffer cuts a longer lease to the cap: the rows come back to new after
+                    // the cap, not after what the caller asked for.
+                    warnings.add(new Issue(name, "is capped at " + BufferStore.MAX_LEASE_TTL, "capped"));
+                }
                 break;
             case "olderThan":
                 checkDuration(name, (String) v, true, errors);
@@ -268,14 +275,18 @@ public final class X12Operations implements OperationsApi {
         }
     }
 
-    private static void checkDuration(String name, String raw, boolean zeroAllowed, List<Issue> errors) {
+    /** True when {@code raw} is a usable duration; otherwise records why and returns false. */
+    private static boolean checkDuration(String name, String raw, boolean zeroAllowed, List<Issue> errors) {
         try {
             Duration d = Duration.parse(raw);
             if (d.isNegative() || (!zeroAllowed && d.isZero())) {
                 errors.add(new Issue(name, zeroAllowed ? "must not be negative" : "must be positive", "out_of_range"));
+                return false;
             }
+            return true;
         } catch (DateTimeParseException e) {
             errors.add(new Issue(name, "must be an ISO-8601 duration (e.g. PT5M): " + raw, "invalid_duration"));
+            return false;
         }
     }
 
@@ -307,12 +318,14 @@ public final class X12Operations implements OperationsApi {
      *
      * <p>{@code name} / {@code gs08} narrow the report; an unknown value is not an error,
      * it is an empty list, because "is this pack present?" is exactly the question being
-     * asked.
+     * asked. A {@code gs08} is matched in its canonical spelling, like every other GS08 the
+     * receiver handles: {@code 005010X223A1} names the 837I pack keyed {@code 005010X223A2}.
      */
     private Map<String, Object> packs(Map<String, Object> input) {
         final PackCatalog catalog = catalog();
         final String name = strArg(input, "name");
-        final String gs08 = strArg(input, "gs08");
+        final String rawGs08 = strArg(input, "gs08");
+        final String gs08 = rawGs08 == null ? null : TransactionTypes.canonical(rawGs08).orElse(rawGs08.trim());
 
         final List<Map<String, Object>> described = new ArrayList<>();
         for (PackCatalog.Pack p : catalog.packs()) {
@@ -332,7 +345,7 @@ public final class X12Operations implements OperationsApi {
             declared += (Integer) d.get("schemaCount");
         }
         out.put("schemaCount", declared);
-        out.put("registrySize", schemas instanceof SchemaRegistry ? ((SchemaRegistry) schemas).size() : -1);
+        out.put("registrySize", schemas.size());
         out.put("guides", catalog.guides());
         out.put("packs", described);
         return out;
@@ -358,7 +371,7 @@ public final class X12Operations implements OperationsApi {
             lease.transactions().stream().map(TransactionRow::elementKey).toList());
         List<Map<String, Object>> transactions = new ArrayList<>(lease.transactions().size());
         for (TransactionRow r : lease.transactions()) {
-            transactions.add(elementMapper.apply(r, bodies.get(r.elementKey())));
+            transactions.add(X12ProducerFacade.toElement(r, bodies.get(r.elementKey())));
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("leaseId", lease.leaseId());      // null when nothing was drainable (serializeNulls)
@@ -386,10 +399,9 @@ public final class X12Operations implements OperationsApi {
 
     /**
      * Re-materialize stored rows from their raw X12 under the currently-loaded definitions,
-     * rewriting {@code mapped_json}/{@code schema_id} only where the result differs. Leased
+     * replacing the object graph and {@code schema_id} only where the result differs. Leased
      * ({@code in_flight}) rows are excluded; per-row failures are counted, never fatal; at
-     * most {@code max} rows (newest first) per call. Without a materializer behind the
-     * {@link RecastHook} seam every examined row is reported {@code unchanged} plus a {@code note}.
+     * most {@code max} rows (newest first) per call.
      */
     private Map<String, Object> recast(Map<String, Object> input) throws SQLException {
         int max = clampMax(intArg(input, "max", MAX_CAP));
@@ -401,10 +413,10 @@ public final class X12Operations implements OperationsApi {
         int failed = 0;
         for (TransactionRow row : rows) {
             try {
-                Optional<RecastHook.Mapping> m = recaster.recast(row);
-                if (m.isEmpty() || recaster.reproduces(m.get(), row, buffer.documentFor(row.elementKey()))) {
+                RecastHook.Mapping m = recaster.rematerialize(row);
+                if (m.reproduces(row, buffer.documentFor(row.elementKey()))) {
                     unchanged++;   // the current definitions reproduce what is stored
-                } else if (buffer.replaceGraph(row, m.get().schemaId(), m.get().graph())) {
+                } else if (buffer.replaceGraph(row, m.schemaId(), m.graph())) {
                     recast++;
                 } else {
                     unchanged++;   // leased between select and write; never rewritten under a consumer
@@ -418,9 +430,6 @@ public final class X12Operations implements OperationsApi {
         out.put("recast", recast);
         out.put("unchanged", unchanged);
         out.put("failed", failed);
-        if (!recaster.available()) {
-            out.put("note", "recast requires the materializer");
-        }
         return out;
     }
 
@@ -450,12 +459,12 @@ public final class X12Operations implements OperationsApi {
     }
 
     /**
-     * Validate one buffered row. {@code stored} checks what the producer can see without a
-     * materializer: the row's {@code schemaId} is registered, {@code mapped_json} parses as
-     * a JSON object, and the envelope columns are complete. {@code rematerialized} /
-     * {@code repsAgree} come through the {@link RecastHook} seam and are null without one.
-     * {@code parserErrors} are the non-fatal imsweb errors the re-parse reported (empty
-     * without a materializer); {@code parserErrorCount} is the count recorded at ingest.
+     * Validate one buffered row. {@code stored} checks the row as buffered: its
+     * {@code schemaId} is registered, its object graph is present, and the envelope columns are
+     * complete. {@code rematerialized} is the same verdict on what the stored raw re-derives to
+     * under the current definitions, and {@code repsAgree} whether that equals the stored body.
+     * {@code parserErrors} are the non-fatal imsweb errors the re-parse reported;
+     * {@code parserErrorCount} is the count recorded at ingest.
      */
     private Map<String, Object> validate(Map<String, Object> input) throws SQLException {
         TransactionRow row = requireRow(input);
@@ -465,25 +474,19 @@ public final class X12Operations implements OperationsApi {
         final Map<String, Object> storedBody = buffer.documentFor(row.elementKey());
         out.put("stored", storedVerdict(row, storedBody));
         List<String> parserErrors = List.of();
-        if (recaster.available()) {
-            try {
-                RecastHook.Mapping m = recaster.rematerialize(row);
-                Map<String, Object> rv = storedVerdict(row.withSchemaId(m.schemaId()), m.body());
-                rv.put("schemaId", m.schemaId());
-                out.put("rematerialized", rv);
-                out.put("repsAgree", recaster.reproduces(m, row, storedBody));
-                parserErrors = m.parserErrors();
-            } catch (Exception e) {
-                Map<String, Object> rv = new LinkedHashMap<>();
-                rv.put("valid", false);
-                rv.put("errors", List.of("re-materialization failed: " + e.getMessage()));
-                out.put("rematerialized", rv);
-                out.put("repsAgree", false);
-            }
-        } else {
-            // ==== MATERIALIZER SEAM ==== no re-materialization available (RecastHook.NONE)
-            out.put("rematerialized", null);
-            out.put("repsAgree", null);
+        try {
+            RecastHook.Mapping m = recaster.rematerialize(row);
+            Map<String, Object> rv = storedVerdict(row.withSchemaId(m.schemaId()), m.body());
+            rv.put("schemaId", m.schemaId());
+            out.put("rematerialized", rv);
+            out.put("repsAgree", m.reproduces(row, storedBody));
+            parserErrors = m.parserErrors();
+        } catch (Exception e) {
+            Map<String, Object> rv = new LinkedHashMap<>();
+            rv.put("valid", false);
+            rv.put("errors", List.of("re-materialization failed: " + e.getMessage()));
+            out.put("rematerialized", rv);
+            out.put("repsAgree", false);
         }
         out.put("parserErrors", parserErrors);
         out.put("parserErrorCount", row.parserErrorCount());
@@ -529,36 +532,30 @@ public final class X12Operations implements OperationsApi {
 
     /**
      * Force an immediate poll of one source ({@code source} = its configured name) or of
-     * every source. 404 when no poller is running or the named source isn't watched.
+     * every source. 404 when the named source isn't watched.
      */
     private Map<String, Object> rescan(Map<String, Object> input) {
-        PollerHandle handle = pollers.get();
-        if (handle == null) {
-            throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/ops/rescan (no inbox poller running)");
-        }
         String source = strArg(input, "source");
         if (source != null && source.isBlank()) {
             source = null;
         }
         if (source != null) {
             boolean known = false;
-            for (PollerStatus.SourceStatus s : handle.sources()) {
+            for (PollerStatus.SourceStatus s : pollers.sources()) {
                 if (source.equals(s.name())) {
                     known = true;
                     break;
                 }
             }
             if (!known) {
-                throw ProducerException.noSuchObject(ObjectTreeApi.RECEIVER + "/by-source/" + ObjectTree.encodeSegment(source));
+                throw ProducerException.noSuchObject(ObjectTree.BY_SOURCE + "/" + ObjectTree.encodeSegment(source));
             }
         }
         PollerHandle.RescanResult r;
         try {
-            r = handle.rescan(source);
+            r = pollers.rescan(source);
         } catch (ProducerException e) {
             throw e;
-        } catch (IllegalArgumentException e) {
-            throw ProducerException.illegalArgument(e.getMessage());
         } catch (Exception e) {
             throw new IllegalStateException("rescan failed: " + e.getMessage(), e);
         }
@@ -585,15 +582,9 @@ public final class X12Operations implements OperationsApi {
         return row.get();
     }
 
+    /** The filter as SQL; a malformed one is a 400 raised by the filter layer itself. */
     private static String renderFilter(String filter) {
-        if (filter == null || filter.isBlank()) {
-            return null;
-        }
-        try {
-            return X12Filter.toWhereClause(filter);
-        } catch (RuntimeException e) {
-            throw ProducerException.illegalArgument("Malformed filter: " + e.getMessage());
-        }
+        return X12Filter.toWhereClause(filter);
     }
 
     private static String requireLeaseId(Map<String, Object> input) {

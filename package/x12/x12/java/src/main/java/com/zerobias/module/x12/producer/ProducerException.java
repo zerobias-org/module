@@ -68,11 +68,6 @@ public final class ProducerException extends RuntimeException {
             "Schema not found: " + schemaId, typeId("schema", schemaId));
     }
 
-    public static ProducerException noSuchLease(String leaseId) {
-        return new ProducerException("err.no.such.object", 404,
-            "Lease not found: " + leaseId, typeId("lease", leaseId));
-    }
-
     /**
      * {@code noSuchObjectError} for a file whose bytes are gone (removed by inbox
      * hygiene): DESIGN §2.8 — 404 with {@code reason: gone}; the transactions remain.

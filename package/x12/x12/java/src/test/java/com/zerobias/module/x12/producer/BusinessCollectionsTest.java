@@ -7,6 +7,7 @@ import com.zerobias.module.x12.ModuleRuntimeConfig;
 import com.zerobias.module.x12.SourceConfig;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.inbox.FileConsumer;
+import com.zerobias.module.x12.inbox.InboxFixture;
 import com.zerobias.module.x12.materializer.StructureResolver;
 import com.zerobias.module.x12.parser.Fixtures;
 import org.junit.jupiter.api.AfterEach;
@@ -21,7 +22,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,7 +34,7 @@ class BusinessCollectionsTest {
 
     private static final Gson GSON = new Gson();
     private static final SchemaRegistry SCHEMAS = SchemaRegistry.fromClasspath();
-    private static final String R = ObjectTreeApi.RECEIVER;
+    private static final String R = ObjectTree.RECEIVER;
 
     @TempDir
     Path dir;
@@ -53,13 +53,13 @@ class BusinessCollectionsTest {
         Path drop = inbox.resolve("remit.835");
         Files.write(drop, Fixtures.bytes(Fixtures.F835));
         FileConsumer consumer = new FileConsumer(buffer, null, cfg, new StructureResolver(), Clock.systemUTC());
-        FileConsumer.Result result = consumer.consume(source, drop, java.time.Instant.now());
+        FileConsumer.Result result = InboxFixture.consume(consumer, source, drop, java.time.Instant.now());
         assertEquals(FileConsumer.Outcome.CONSUMED, result.outcome(), result.message());
         fileId = result.fileId();
 
-        ObjectTree tree = new ObjectTree(buffer, SCHEMAS, () -> null, ".done", List.of(source), ".error");
-        facade = new X12ProducerFacade(buffer, tree, SCHEMAS,
-            new X12Operations(buffer, X12ProducerFacade::toElement, () -> null, SCHEMAS, RecastHook.NONE));
+        ProducerFixture.StubPoller poller = new ProducerFixture.StubPoller(inbox);
+        ObjectTree tree = new ObjectTree(buffer, SCHEMAS, poller, ".done", List.of(source), ".error");
+        facade = ProducerFixture.facade(buffer, tree, SCHEMAS, poller);
     }
 
     @AfterEach
@@ -266,6 +266,31 @@ class BusinessCollectionsTest {
         // a malformed filter is a 400 too, from the same parser the structural path uses
         assertEquals(400, assertThrows(ProducerException.class, () -> facade.getCollectionElements(
             R + "/claims", "(paidAmount>=", null, null, 10, 1, null)).httpStatus());
+    }
+
+    @Test
+    void businessFilterAndSortMistakesAreRaisedAsThe400WhereTheyAreDetected() throws Exception {
+        // Not a bare IllegalArgumentException for the HTTP layer to map: that handler is gone,
+        // and a bare one is a 500. Each is the illegal-argument ProducerException at its source.
+        com.zerobias.module.x12.producer.mapping.EntityMapping claims = BusinessEntities
+            .mappingsFor(PackCatalog.fromClasspath().guides()).stream()
+            .filter(m -> "claims".equals(m.collection())).findFirst().orElseThrow();
+        for (org.junit.jupiter.api.function.Executable bad : List.<org.junit.jupiter.api.function.Executable>of(
+                () -> BusinessFilter.compile(claims, "(nope=1)"),
+                () -> BusinessFilter.compile(claims, "(paidAmount>="),
+                () -> new BusinessEntities(buffer, List.of(claims)).comparator(claims, "nope", "asc"),
+                () -> new BusinessEntities(buffer, List.of(claims)).comparator(claims, "paidAmount", "sideways"))) {
+            ProducerException e = assertThrows(ProducerException.class, bad);
+            assertEquals("err.illegal.argument", e.key());
+        }
+        // lite-filter can only reject some operands while evaluating a row: still the 400
+        java.util.function.Predicate<java.util.Map<String, Object>> between =
+            BusinessFilter.compile(claims, "(paidAmount:between:many)");
+        ProducerException e = assertThrows(ProducerException.class,
+            () -> between.test(java.util.Map.of("paidAmount", new java.math.BigDecimal("12.50"))));
+        assertEquals(400, e.httpStatus());
+        assertEquals(400, assertThrows(ProducerException.class, () -> facade.getCollectionElements(
+            R + "/claims", "(paidAmount:between:many)", null, null, 10, 1, null)).httpStatus());
     }
 
     @Test

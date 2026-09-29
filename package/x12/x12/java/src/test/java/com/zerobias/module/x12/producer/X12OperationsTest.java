@@ -5,7 +5,6 @@ import com.google.gson.JsonObject;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.Status;
 import com.zerobias.module.x12.buffer.TestRows;
-import com.zerobias.module.x12.buffer.TransactionRow;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,7 +14,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static com.zerobias.module.x12.producer.ProducerFixture.KEY_A1;
 import static com.zerobias.module.x12.producer.ProducerFixture.KEY_A2;
@@ -34,7 +32,7 @@ class X12OperationsTest {
 
     private static final Gson GSON = new Gson();
     private static final SchemaRegistry SCHEMAS = SchemaRegistry.fromClasspath();
-    private static final String OPS = ObjectTreeApi.RECEIVER + "/ops/";
+    private static final String OPS = ObjectTree.RECEIVER + "/ops/";
 
     @TempDir
     Path dir;
@@ -50,8 +48,16 @@ class X12OperationsTest {
         buffer = new BufferStore(dir.resolve("buffer.db").toString(), false, clock);
         ProducerFixture.seed(buffer, dir);
         poller = new ProducerFixture.StubPoller(dir);
-        ops = new X12Operations(buffer, () -> poller, SCHEMAS);
-        facade = new X12ProducerFacade(buffer, new ObjectTree(buffer, SCHEMAS, () -> poller), SCHEMAS, ops);
+        ops = new X12Operations(buffer, poller, SCHEMAS, reproducing());
+        facade = new X12ProducerFacade(buffer, ProducerFixture.tree(buffer, SCHEMAS, poller), SCHEMAS, ops, false);
+    }
+
+    /**
+     * A hook that re-derives exactly what is stored — what the real one does for every row it
+     * ingested. The seeded rows are synthetic (a bare ST..SE raw), so the real hook cannot parse them.
+     */
+    private RecastHook reproducing() {
+        return row -> new RecastHook.Mapping(row.schemaId(), buffer.documentFor(row.elementKey()), List.of(), List.of());
     }
 
     @AfterEach
@@ -166,19 +172,22 @@ class X12OperationsTest {
     }
 
     @Test
-    void validateChecksTheStoredRepAndLeavesTheSeamNull() throws Exception {
+    void validateChecksTheStoredAndTheRematerializedRep() throws Exception {
         Map<String, Object> ok = ops.invoke("validate", Map.of("elementKey", KEY_A1));
         assertEquals(TestRows.SCHEMA_835, ok.get("schemaId"));
         @SuppressWarnings("unchecked")
         Map<String, Object> stored = (Map<String, Object>) ok.get("stored");
         assertEquals(true, stored.get("valid"), String.valueOf(stored.get("errors")));
         assertEquals(List.of(), stored.get("errors"));
-        assertNull(ok.get("rematerialized"));
-        assertNull(ok.get("repsAgree"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> rematerialized = (Map<String, Object>) ok.get("rematerialized");
+        assertEquals(true, rematerialized.get("valid"));
+        assertEquals(TestRows.SCHEMA_835, rematerialized.get("schemaId"));
+        assertEquals(true, ok.get("repsAgree"));
         assertEquals(List.of(), ok.get("parserErrors"));
         assertEquals(0, ok.get("parserErrorCount"));
         String json = facade.invokeFunction(OPS + "validate", "{\"elementKey\":\"" + KEY_A1 + "\"}");
-        assertTrue(json.contains("\"rematerialized\":null"), json);
+        assertTrue(json.contains("\"repsAgree\":true"), json);
 
         // an unbundled guide: stored rep fails on the schema check
         Map<String, Object> bad = ops.invoke("validate", Map.of("elementKey", KEY_B2));
@@ -200,31 +209,27 @@ class X12OperationsTest {
     }
 
     @Test
-    void recastWithoutAMaterializerRewritesNothing() throws Exception {
+    void recastRewritesOnlyRowsWhoseContentChanged() throws Exception {
         ops.invoke("take", Map.of("max", 1));   // one in_flight row is excluded
         Map<String, Object> out = ops.invoke("recast", Map.of());
-        assertEquals(4, out.get("examined"));
-        assertEquals(0, out.get("recast"));
-        assertEquals(4, out.get("unchanged"));
-        assertEquals(0, out.get("failed"));
-        assertEquals("recast requires the materializer", out.get("note"));
+        assertEquals(Map.of("examined", 4, "recast", 0, "unchanged", 4, "failed", 0), out,
+            "definitions that reproduce the store rewrite nothing");
         assertEquals(1, ops.invoke("recast", Map.of("filter", "(transactionType=837P)", "max", 1)).get("examined"));
 
-        // the seam: a hook that rewrites 835 rows and fails on 837P
+        // a hook that re-derives different 835 content and fails on 837P
         RecastHook hook = row -> {
             if ("837P".equals(row.transactionType())) {
                 throw new IllegalStateException("no map");
             }
-            return Optional.of(new RecastHook.Mapping(row.schemaId(), Map.of("note", "recast"),
-                TestRows.graphOf(row.schemaId(), Map.of("note", "recast")), List.of()));
+            return new RecastHook.Mapping(row.schemaId(), Map.of("note", "recast"),
+                TestRows.graphOf(row.schemaId(), Map.of("note", "recast")), List.of());
         };
-        X12Operations withHook = new X12Operations(buffer, null, () -> poller, SCHEMAS, hook);
+        X12Operations withHook = new X12Operations(buffer, poller, SCHEMAS, hook);
         Map<String, Object> r = withHook.invoke("recast", Map.of());
         assertEquals(4, r.get("examined"));
         assertEquals(2, r.get("recast"));
         assertEquals(0, r.get("unchanged"));
         assertEquals(2, r.get("failed"));
-        assertFalse(r.containsKey("note"));
         assertEquals(Map.of("note", "recast"), buffer.documentFor(KEY_A2), "the graph was replaced");
         assertEquals(Map.of("header", Map.of("st", Map.of("st02", "0001"))), buffer.documentFor(KEY_A1),
             "in_flight row untouched");
@@ -252,10 +257,36 @@ class X12OperationsTest {
         assertEquals(404, unknown.httpStatus());
         assertEquals(2, poller.rescans, "unknown source never reaches the poller");
 
-        X12Operations noPoller = new X12Operations(buffer, () -> null, SCHEMAS);
-        assertEquals(404, assertThrows(ProducerException.class, () -> noPoller.invoke("rescan", Map.of())).httpStatus());
-
         assertEquals(404, assertThrows(ProducerException.class, () -> ops.invoke("nope", Map.of())).httpStatus());
+    }
+
+    @Test
+    void functionsDeclareExactlyTheErrorsTheyRaise() throws Exception {
+        // lease_capacity_exceeded, backpressure and lease_expired were declared and never raised:
+        // there is no lease cap, backpressure holds files back rather than failing take, and an
+        // ack is idempotent.
+        for (String fn : SchemaRegistry.OPS_FUNCTIONS) {
+            Map<String, String> expected = List.of("raw", "validate", "rescan").contains(fn)
+                ? Map.of("not_found", SchemaRegistry.NOT_FOUND_ERROR_SCHEMA) : Map.of();
+            assertEquals(expected, X12Operations.declaredErrors(fn), fn);
+            JsonObject node = GSON.fromJson(facade.getObject(OPS + fn), JsonObject.class);
+            assertEquals(GSON.toJsonTree(expected), node.get("throws"), fn + ": the node advertises the same map");
+        }
+        // every declared not_found is raised, in the declared shape
+        List<ProducerException> raised = List.of(
+            assertThrows(ProducerException.class, () -> ops.invoke("raw", Map.of("elementKey", "nope"))),
+            assertThrows(ProducerException.class, () -> ops.invoke("validate", Map.of("elementKey", "nope"))),
+            assertThrows(ProducerException.class, () -> ops.invoke("rescan", Map.of("source", "nope"))));
+        List<String> declaredFields = new java.util.ArrayList<>();
+        GSON.fromJson(SCHEMAS.getSchema(SchemaRegistry.NOT_FOUND_ERROR_SCHEMA), JsonObject.class)
+            .getAsJsonArray("properties").forEach(p -> declaredFields.add(p.getAsJsonObject().get("name").getAsString()));
+        for (ProducerException e : raised) {
+            assertEquals(404, e.httpStatus());
+            assertEquals(declaredFields, List.copyOf(e.toBody().keySet()));
+        }
+        // an unknown or already-finalized lease is not an error: a retried ack must succeed
+        assertEquals(Map.of("acked", 0), ops.invoke("ack", Map.of("leaseId", "no-such-lease")));
+        assertEquals(Map.of("released", 0), ops.invoke("release", Map.of("leaseId", "no-such-lease")));
     }
 
     @SuppressWarnings("unchecked")
@@ -263,7 +294,7 @@ class X12OperationsTest {
     void packsReportsTheBundledContentAndFiltersIt() throws Exception {
         Map<String, Object> all = ops.invoke("packs", Map.of());
         int packCount = (Integer) all.get("packCount");
-        assertTrue(packCount >= 12, "one pack per guide label, plus codes and core; got " + packCount);
+        assertTrue(packCount >= 9, "one pack per canonical guide, plus codes and core; got " + packCount);
         assertTrue((Integer) all.get("schemaCount") > 0);
         assertTrue((Integer) all.get("registrySize") > 0, "the registry the packs resolve against");
         assertTrue(((List<String>) all.get("guides")).contains("005010X221A1"));
@@ -288,6 +319,11 @@ class X12OperationsTest {
         Map<String, Object> core = ((List<Map<String, Object>>) ops.invoke("packs",
             Map.of("name", "x12-core")).get("packs")).get(0);
         assertEquals(Boolean.TRUE, core.get("core"));
+
+        // a wire alias names the canonical guide's pack: 837I is keyed by the A2 errata id
+        Map<String, Object> alias = ops.invoke("packs", Map.of("gs08", "005010X223A1"));
+        assertEquals(1, alias.get("packCount"), "005010X223A1 resolves to 005010X223A2");
+        assertEquals("005010X223A2", ((List<Map<String, Object>>) alias.get("packs")).get(0).get("gs08"));
 
         // an unknown pack is an empty report, not an error: "is it present?" is the question
         assertEquals(0, ops.invoke("packs", Map.of("name", "x12-guide-nope")).get("packCount"));
@@ -357,6 +393,19 @@ class X12OperationsTest {
         JsonObject strict = GSON.fromJson(facade.validateFunctionInput(OPS + "take",
             "{\"input\":{\"max\":5000},\"strict\":true}"), JsonObject.class);
         assertFalse(strict.get("valid").getAsBoolean());
+
+        // a lease longer than the buffer grants is cut to the cap: warn, like max
+        JsonObject longLease = GSON.fromJson(facade.validateFunctionInput(OPS + "take",
+            "{\"input\":{\"leaseTtl\":\"PT2H\"}}"), JsonObject.class);
+        assertTrue(longLease.get("valid").getAsBoolean());
+        JsonObject ttlWarning = longLease.getAsJsonArray("warnings").get(0).getAsJsonObject();
+        assertEquals("leaseTtl", ttlWarning.get("path").getAsString());
+        assertTrue(ttlWarning.get("message").getAsString().contains("PT1H"), ttlWarning.toString());
+        assertFalse(GSON.fromJson(facade.validateFunctionInput(OPS + "take",
+            "{\"input\":{\"leaseTtl\":\"PT2H\"},\"strict\":true}"), JsonObject.class).get("valid").getAsBoolean());
+        assertEquals(0, GSON.fromJson(facade.validateFunctionInput(OPS + "take",
+            "{\"input\":{\"leaseTtl\":\"PT1H\"}}"), JsonObject.class).getAsJsonArray("warnings").size(),
+            "the cap itself is granted as asked");
 
         JsonObject notObject = GSON.fromJson(facade.validateFunctionInput(OPS + "take",
             "{\"input\":[1]}"), JsonObject.class);

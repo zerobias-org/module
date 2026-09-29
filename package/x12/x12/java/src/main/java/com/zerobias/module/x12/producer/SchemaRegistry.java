@@ -45,33 +45,27 @@ import java.util.stream.Stream;
  * relative to schemas/>"}} or {@code [{"id","path"}]}), that index wins over the scan.
  *
  * <p>The {@code schema:function:x12.ops.<fn>:input|output} schemas (DESIGN §2.5) and the
- * two small shared shapes they reference ({@code schema:shared:x12.ops-error},
+ * two small shared shapes they reference ({@code schema:shared:x12.not-found-error},
  * {@code schema:shared:x12.ops-verdict}) are not emitted by the codegen; they are
  * generated here in code (static, in-memory).
  *
  * <p>{@code structure-index/*.json} (no schema id, different tree) is never scanned.
  */
-public final class SchemaRegistry implements SchemaRegistryApi {
+public final class SchemaRegistry {
 
     private static final Gson GSON = new Gson();
     private static final Gson PRETTY = new GsonBuilder().setPrettyPrinting().create();
 
     static final String CATALOG = "x12";
     static final String ENVELOPE_SCHEMA = "schema:shared:" + CATALOG + ".transaction-envelope";
-    static final String OPS_ERROR_SCHEMA = "schema:shared:" + CATALOG + ".ops-error";
+    /** The {@code not_found} body a function raises: the platform {@code noSuchObjectError}. */
+    static final String NOT_FOUND_ERROR_SCHEMA = "schema:shared:" + CATALOG + ".not-found-error";
     static final String OPS_VERDICT_SCHEMA = "schema:shared:" + CATALOG + ".ops-verdict";
 
     /** schemaId → a loader that yields the raw JSON (classpath resource, file, or in-memory). */
     private final Map<String, Supplier<String>> loaders = new LinkedHashMap<>();
 
     private SchemaRegistry() {
-    }
-
-    /** An empty registry plus the in-code function/ops schemas (tests, or a build with no codegen output). */
-    public static SchemaRegistry functionsOnly() {
-        SchemaRegistry r = new SchemaRegistry();
-        r.addBuiltins();
-        return r;
     }
 
     /**
@@ -273,9 +267,9 @@ public final class SchemaRegistry implements SchemaRegistryApi {
         }
     }
 
-    // --- SchemaRegistryApi ---------------------------------------------------
+    // --- lookups (DESIGN §2.2) -------------------------------------------------
 
-    @Override
+    /** Raw schema JSON for {@code schemaId}, or throw {@link ProducerException#noSuchSchema}. */
     public String getSchema(String schemaId) {
         Supplier<String> loader = loaders.get(schemaId);
         if (loader == null) {
@@ -284,12 +278,10 @@ public final class SchemaRegistry implements SchemaRegistryApi {
         return loader.get();
     }
 
-    @Override
     public boolean has(String schemaId) {
         return loaders.containsKey(schemaId);
     }
 
-    @Override
     public int size() {
         return loaders.size();
     }
@@ -331,7 +323,7 @@ public final class SchemaRegistry implements SchemaRegistryApi {
         "take", List.of(
             new Param("filter", "string", false, false, FILTER_DESC),
             new Param("max", "integer", false, false, "Batch size, at least 1; default 100, capped at 1000"),
-            new Param("leaseTtl", "string", false, false, "ISO-8601 duration, positive; default PT5M")),
+            new Param("leaseTtl", "string", false, false, "ISO-8601 duration, positive; default PT5M, capped at PT1H")),
         "ack", leaseInput(),
         "release", leaseInput(),
         "replay", List.of(new Param("filter", "string", false, false, "RFC4515; omitted = every in_flight row")),
@@ -368,12 +360,17 @@ public final class SchemaRegistry implements SchemaRegistryApi {
     /** Every in-code schema, id → JSON. Package-private for tests. */
     static Map<String, String> builtinSchemas() {
         Map<String, String> out = new LinkedHashMap<>();
-        put(out, schema(OPS_ERROR_SCHEMA, List.of(
-            prop("code", "string", true, "Declared error code (see the function's throws)"),
-            prop("message", "string", false, null))));
+        put(out, schema(NOT_FOUND_ERROR_SCHEMA, List.of(
+            prop("key", "string", true, "err.no.such.object"),
+            prop("template", "string", true, "Human-readable message"),
+            prop("timestamp", "date-time", true, null),
+            prop("statusCode", "integer", true, "404"),
+            prop("type", "string", true, "What was not found: object, schema, file"),
+            prop("id", "string", true, "The id that did not resolve"))));
         put(out, schema(OPS_VERDICT_SCHEMA, List.of(
             prop("valid", "boolean", true, null),
-            multi(prop("errors", "string", true, "Validation errors; empty when valid")))));
+            multi(prop("errors", "string", true, "Validation errors; empty when valid")),
+            prop("schemaId", "string", false, "rematerialized only: the schema the re-derived form maps to"))));
 
         // take
         for (String fn : OPS_FUNCTIONS) {
@@ -398,8 +395,7 @@ public final class SchemaRegistry implements SchemaRegistryApi {
             prop("examined", "integer", true, null),
             prop("recast", "integer", true, null),
             prop("unchanged", "integer", true, null),
-            prop("failed", "integer", true, null),
-            prop("note", "string", false, "Present when no materializer is configured"))));
+            prop("failed", "integer", true, null))));
         // purge
         put(out, schema(functionOutputId("purge"), List.of(prop("purged", "integer", true, "Acked rows deleted"))));
         // raw
@@ -413,9 +409,9 @@ public final class SchemaRegistry implements SchemaRegistryApi {
         put(out, schema(functionOutputId("validate"), List.of(
             prop("elementKey", "string", true, null),
             prop("schemaId", "string", true, null),
-            ref(prop("stored", "string", true, "Verdict on the stored typed JSON"), OPS_VERDICT_SCHEMA),
-            ref(prop("rematerialized", "string", false, "Verdict on the re-materialized form; null without a materializer"), OPS_VERDICT_SCHEMA),
-            prop("repsAgree", "boolean", false, "null without a materializer"),
+            ref(prop("stored", "string", true, "Verdict on the row as buffered (schema, object graph, envelope)"), OPS_VERDICT_SCHEMA),
+            ref(prop("rematerialized", "string", true, "Verdict on what the stored raw re-derives to under the current definitions"), OPS_VERDICT_SCHEMA),
+            prop("repsAgree", "boolean", true, "Whether the re-derived body equals the stored one"),
             multi(prop("parserErrors", "string", true, "imsweb getErrors()")),
             prop("parserErrorCount", "integer", false, null))));
         // rescan

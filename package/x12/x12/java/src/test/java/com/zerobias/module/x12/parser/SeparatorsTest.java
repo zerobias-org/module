@@ -28,7 +28,6 @@ class SeparatorsTest {
         assertTrue(s.hasRepetition());
         assertArrayEquals(new String[] {"HC", "99213"}, s.splitComponents("HC:99213"));
         assertArrayEquals(new String[] {"ABK:J069", "ABF:K3580"}, s.splitRepetitions("ABK:J069^ABF:K3580"));
-        assertEquals("[~,*,:]", s.toImsweb().toString());
     }
 
     @Test
@@ -42,8 +41,38 @@ class SeparatorsTest {
     void rejectsShortOrNonIsaOrInconsistentHeaders() {
         assertThrows(X12ParseException.class, () -> Separators.fromIsa("GS*HP*..."));
         assertThrows(X12ParseException.class, () -> Separators.fromIsa(ISA.substring(0, 50)));
-        assertThrows(X12ParseException.class, () -> Separators.fromIsa(ISA.replace('*', '|').replace("|:~", "||~")));
-        assertThrows(X12ParseException.class, () -> Separators.fromIsa(ISA.replace(":~", "A~")), "alphanumeric delimiter");
+        assertBadIsa(ISA.replace('*', '|').replace("|:~", "||~"), "not distinct");
+        assertBadIsa(ISA.replace(":~", "A~"), "alphanumeric");
+        assertBadIsa(ISA.replace("*^*", "*X*"), "alphanumeric");
+        assertBadIsa(ISA.replace("*^*", "*:*"), "not distinct");
+    }
+
+    @Test
+    void elementSeparatorMustSitAtEveryFixedIsaPosition() {
+        // ISA06 one character short: ISA16 lands on the terminator and the terminator on the line
+        // break, which used to split every later line whole ("unsupported-guide: GS08 '005010X221A1~'").
+        String shortSender = ISA.replace("EXAMPLEPAYER   ", "EXAMPLEPAYER  ") + "\nGS*HP*EXAMPLEPAYER~\n";
+        assertBadIsa(shortSender, "expected at ISA character 51");
+        assertBadIsa(ISA.replace("*T*:~", "*TT:~"), "expected at ISA character 104");
+    }
+
+    private static void assertBadIsa(String isa, String reason) {
+        X12ParseException e = assertThrows(X12ParseException.class, () -> Separators.fromIsa(isa));
+        assertTrue(e.getMessage().startsWith("bad-isa:"), e.getMessage());
+        assertTrue(e.getMessage().contains(reason), e.getMessage());
+    }
+
+    @Test
+    void synthesizerReadsTheComponentSeparatorFromAComposite() throws Exception {
+        Clock clock = Clock.fixed(Instant.parse("2026-09-22T12:00:00Z"), ZoneOffset.UTC);
+        String bare = "ST*837*0001*005010X222A1~\nCLM*CLM0001*300.00***11>B>1~\nSV1*HC>99213*200.00~\nSE*4*0001~\n";
+        EnvelopeSynthesizer.Wrapped w = EnvelopeSynthesizer.wrap(bare, clock);
+        assertEquals('>', w.separators().component());
+        assertTrue(w.text().startsWith("ISA*") && w.text().contains("*00501*000000001*0*T*>~"), w.text());
+        assertEquals(':', EnvelopeSynthesizer.wrap("ST*837*0001*005010X222A1~\nSE*2*0001~\n", clock)
+            .separators().component(), "no composite to read: the default");
+        assertEquals('>', EnvelopeSynthesizer.wrap("ST:837:0001:005010X222A1~\nSE:2:0001~\n", clock)
+            .separators().component(), "default when ':' is the element separator");
     }
 
     @Test

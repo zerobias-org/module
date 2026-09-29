@@ -1,6 +1,5 @@
 package com.zerobias.module.x12.inbox;
 
-import com.zerobias.module.x12.InboxPollerFactory;
 import com.zerobias.module.x12.ModuleRuntimeConfig;
 import com.zerobias.module.x12.PollerHandle.RescanResult;
 import com.zerobias.module.x12.SourceConfig;
@@ -26,7 +25,6 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.ServiceLoader;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -84,8 +82,8 @@ class InboxPollerTest {
         MutableClock clock = new MutableClock(T0);
         open(dir, config(inbox, 0, false), clock, null);
         Path f = drop(inbox, "remit.835", Fixtures.bytes(Fixtures.F835));
-        String fileId = FileConsumer.fileId(f, Fixtures.bytes(Fixtures.F835));
-        assertEquals(f + "@" + FileConsumer.sha256(Fixtures.bytes(Fixtures.F835)).substring(0, 12), fileId,
+        String fileId = InboxFixture.fileId(f, Fixtures.bytes(Fixtures.F835));
+        assertEquals(f + "@" + InboxFixture.sha256(Fixtures.bytes(Fixtures.F835)).substring(0, 12), fileId,
             "fileId = <absolute path at discovery>@<first 12 hex of sha256>");
 
         RescanResult r = handle.rescan(null);
@@ -102,7 +100,7 @@ class InboxPollerTest {
         assertEquals("inbox", file.sourceName());
         assertEquals(1, file.isaCount());
         assertEquals(1, file.transactionCount());
-        assertEquals(FileConsumer.sha256(Fixtures.bytes(Fixtures.F835)), file.checksum());
+        assertEquals(InboxFixture.sha256(Fixtures.bytes(Fixtures.F835)), file.checksum());
         assertEquals(T0, file.discoveredAt());
         assertEquals(T0, file.consumedAt());
         assertFalse(file.renameFailed());
@@ -178,7 +176,7 @@ class InboxPollerTest {
         assertEquals(new RescanResult(1, 0, 1, 0), handle.rescan(null), "unchanged for 61s >= 60s");
         assertTrue(Files.exists(inbox.resolve("partial.835.done")));
         assertEquals(1, buffer.count());
-        assertEquals(T0, buffer.fileById(FileConsumer.fileId(f, Fixtures.bytes(Fixtures.F835))).orElseThrow().discoveredAt(),
+        assertEquals(T0, buffer.fileById(InboxFixture.fileId(f, Fixtures.bytes(Fixtures.F835))).orElseThrow().discoveredAt(),
             "discoveredAt = first sighting");
         assertEquals(0, handle.sources().get(0).pending());
     }
@@ -224,7 +222,7 @@ class InboxPollerTest {
         Path dup = drop(inbox, "redelivered.835", Fixtures.bytes(Fixtures.F835));
         assertEquals(new RescanResult(1, 1, 1, 0), handle.rescan(null), "a duplicate is acknowledged (counted as consumed)");
         assertTrue(Files.exists(inbox.resolve("redelivered.835.done")), "duplicate renamed .done");
-        FileRow row = buffer.fileById(FileConsumer.fileId(dup, Fixtures.bytes(Fixtures.F835))).orElseThrow();
+        FileRow row = buffer.fileById(InboxFixture.fileId(dup, Fixtures.bytes(Fixtures.F835))).orElseThrow();
         assertEquals(FileStatus.DUPLICATE, row.status());
         assertEquals(dup.toString(), row.filePath());
         assertEquals(0, row.transactionCount());
@@ -250,18 +248,18 @@ class InboxPollerTest {
         assertEquals(0, buffer.count(), "no transaction rows");
         assertEquals(4, buffer.fileCount(FileStatus.ERROR));
 
-        FileRow u = buffer.fileById(FileConsumer.fileId(unknown, Fixtures.malformed("unknown-guide-gs08.x12"))).orElseThrow();
+        FileRow u = buffer.fileById(InboxFixture.fileId(unknown, Fixtures.malformed("unknown-guide-gs08.x12"))).orElseThrow();
         assertEquals(FileStatus.ERROR, u.status());
         assertEquals("unsupported-guide: GS08 '005010X999' is not a supported implementation guide", u.errorMessage());
         assertEquals(unknown + ".error", u.currentPath());
         assertEquals(1317, u.sizeBytes());
         assertNotNull(u.checksum());
 
-        FileRow t = buffer.fileById(FileConsumer.fileId(truncated, Fixtures.malformed("truncated-no-iea.x12"))).orElseThrow();
+        FileRow t = buffer.fileById(InboxFixture.fileId(truncated, Fixtures.malformed("truncated-no-iea.x12"))).orElseThrow();
         assertTrue(t.errorMessage().startsWith("fatal:"), t.errorMessage());
         assertTrue(t.errorMessage().contains("Unable to find end of transaction"), "imsweb fatal errors included: " + t.errorMessage());
 
-        FileRow e = buffer.fileById(FileConsumer.fileId(empty, Fixtures.malformed("empty.x12"))).orElseThrow();
+        FileRow e = buffer.fileById(InboxFixture.fileId(empty, Fixtures.malformed("empty.x12"))).orElseThrow();
         assertTrue(e.errorMessage().startsWith("empty-file"), e.errorMessage());
         assertEquals(0, e.sizeBytes());
 
@@ -279,7 +277,7 @@ class InboxPollerTest {
         Path refused = drop(inbox, "bare.835", bare);
         assertEquals(new RescanResult(1, 1, 0, 1), handle.rescan(null));
         assertTrue(Files.exists(Path.of(refused + ".error")));
-        FileRow row = buffer.fileById(FileConsumer.fileId(refused, bare)).orElseThrow();
+        FileRow row = buffer.fileById(InboxFixture.fileId(refused, bare)).orElseThrow();
         assertTrue(row.errorMessage().startsWith("bare-transaction-set"), row.errorMessage());
         handle.close();
         buffer.close();
@@ -290,7 +288,7 @@ class InboxPollerTest {
         Path accepted = drop(inbox2, "bare.835", bare);
         assertEquals(new RescanResult(1, 1, 1, 0), handle.rescan(null));
         assertTrue(Files.exists(Path.of(accepted + ".done")));
-        String fileId = FileConsumer.fileId(accepted, bare);
+        String fileId = InboxFixture.fileId(accepted, bare);
         TransactionRow tx = buffer.byElementKey(fileId + ":000000001:1:0001").orElseThrow();
         assertEquals(TransactionRow.ENVELOPE_SYNTHETIC, tx.envelope());
         assertEquals("SYNTHETIC", tx.senderId());
@@ -327,12 +325,12 @@ class InboxPollerTest {
         MutableClock clock = new MutableClock(T0);
         open(dir, config(inbox, 0, false), clock, null);
         Path f = drop(inbox, "remit.835", Fixtures.bytes(Fixtures.F835));
-        String first = FileConsumer.fileId(f, Fixtures.bytes(Fixtures.F835));
+        String first = InboxFixture.fileId(f, Fixtures.bytes(Fixtures.F835));
         assertEquals(new RescanResult(1, 1, 1, 0), handle.rescan(null));
 
         clock.advance(Duration.ofSeconds(5));
         Path again = drop(inbox, "remit.835", Fixtures.bytes(Fixtures.F837P));
-        String second = FileConsumer.fileId(again, Fixtures.bytes(Fixtures.F837P));
+        String second = InboxFixture.fileId(again, Fixtures.bytes(Fixtures.F837P));
         assertNotEquals(first, second);
         assertEquals(new RescanResult(1, 1, 1, 0), handle.rescan(null));
         assertFalse(Files.exists(again), "renamed");
@@ -358,7 +356,7 @@ class InboxPollerTest {
         MutableClock clock = new MutableClock(T0);
         open(dir, config(inbox, 0, false), clock, null);
         Path f = drop(inbox, "remit.835", Fixtures.bytes(Fixtures.F835));
-        String fileId = FileConsumer.fileId(f, Fixtures.bytes(Fixtures.F835));
+        String fileId = InboxFixture.fileId(f, Fixtures.bytes(Fixtures.F835));
         assertEquals(new RescanResult(1, 1, 1, 0), handle.rescan(null));
         assertEquals(1, buffer.count());
 
@@ -392,7 +390,7 @@ class InboxPollerTest {
         open(dir, config(inbox, 0, false), new MutableClock(T0), null);
         byte[] broken = Fixtures.malformed("truncated-no-iea.x12");
         Path f = drop(inbox, "fix.835", broken);
-        String brokenId = FileConsumer.fileId(f, broken);
+        String brokenId = InboxFixture.fileId(f, broken);
         assertEquals(new RescanResult(1, 1, 0, 1), handle.rescan(null));
         Path error = inbox.resolve("fix.835.error");
         assertTrue(Files.exists(error));
@@ -400,7 +398,7 @@ class InboxPollerTest {
         // Operator: rename it back and fix the content.
         Files.move(error, f);
         Files.write(f, Fixtures.bytes(Fixtures.F835));
-        String fixedId = FileConsumer.fileId(f, Fixtures.bytes(Fixtures.F835));
+        String fixedId = InboxFixture.fileId(f, Fixtures.bytes(Fixtures.F835));
         assertEquals(new RescanResult(1, 1, 1, 0), handle.rescan(null));
         assertTrue(Files.exists(inbox.resolve("fix.835.done")));
         assertFalse(Files.exists(error));
@@ -417,7 +415,7 @@ class InboxPollerTest {
         open(dir, config(inbox, 0, false), new MutableClock(T0), null);
         byte[] broken = Fixtures.malformed("truncated-no-iea.x12");
         Path f = drop(inbox, "same.835", broken);
-        String fileId = FileConsumer.fileId(f, broken);
+        String fileId = InboxFixture.fileId(f, broken);
         assertEquals(new RescanResult(1, 1, 0, 1), handle.rescan(null));
         long firstRowId = buffer.fileById(fileId).orElseThrow().id();
         Path error = inbox.resolve("same.835.error");
@@ -442,7 +440,7 @@ class InboxPollerTest {
         Path inbox = inbox(dir);
         open(dir, config(inbox, 0, false), new MutableClock(T0), null);
         Path f = drop(inbox, "stuck.835", Fixtures.bytes(Fixtures.F835));
-        String fileId = FileConsumer.fileId(f, Fixtures.bytes(Fixtures.F835));
+        String fileId = InboxFixture.fileId(f, Fixtures.bytes(Fixtures.F835));
         java.util.Set<java.nio.file.attribute.PosixFilePermission> perms = Files.getPosixFilePermissions(inbox);
         Files.setPosixFilePermissions(inbox, java.util.Set.of(java.nio.file.attribute.PosixFilePermission.OWNER_READ,
             java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE));
@@ -487,7 +485,7 @@ class InboxPollerTest {
         assertEquals(List.of("payer-a", "payer-b"), handle.sources().stream().map(PollerStatus.SourceStatus::name).toList());
         assertEquals(0, handle.sources().get(0).errored());
         assertEquals(1, handle.sources().get(1).errored());
-        assertEquals("payer-b", buffer.byElementKey(FileConsumer.fileId(b.resolve("two.837"), Fixtures.bytes(Fixtures.F837P)) + ":000000102:102:0001")
+        assertEquals("payer-b", buffer.byElementKey(InboxFixture.fileId(b.resolve("two.837"), Fixtures.bytes(Fixtures.F837P)) + ":000000102:102:0001")
             .orElseThrow().sourceName());
         assertEquals(List.of("payer-a", "payer-b"), buffer.distinctValues("source_name"));
     }
@@ -497,10 +495,11 @@ class InboxPollerTest {
         Path inbox = inbox(dir);
         buffer = new BufferStore(dir.resolve("buffer.db").toString(), false);
         drop(inbox, "remit.835", Fixtures.bytes(Fixtures.F835));
-        handle = X12InboxPollerFactory.start(config(inbox, 0, false), buffer, null, null, true);
+        handle = X12InboxPollerFactory.start(config(inbox, 0, false), buffer, null);
         assertTrue(handle.up());
+        // The row commits mid-scan; the rename and the scan's completion come after it.
         long deadline = System.currentTimeMillis() + 10_000;
-        while (buffer.count() == 0 && System.currentTimeMillis() < deadline) {
+        while ((buffer.count() == 0 || handle.lastScan().isEmpty()) && System.currentTimeMillis() < deadline) {
             Thread.sleep(50);
         }
         assertEquals(1, buffer.count(), "scheduled scan consumed the file");
@@ -511,25 +510,15 @@ class InboxPollerTest {
     }
 
     @Test
-    void factoryIsDiscoverableThroughServiceLoader() {
-        InboxPollerFactory found = null;
-        for (InboxPollerFactory f : ServiceLoader.load(InboxPollerFactory.class)) {
-            found = f;
-        }
-        assertNotNull(found, "META-INF/services registration");
-        assertEquals(X12InboxPollerFactory.class, found.getClass());
-    }
-
-    @Test
     void envelopeOnlyDegradeWhenNoIndexExists(@TempDir Path dir) throws Exception {
         // A resolver that never finds an index → rows carry the shared envelope schema and only envelope fields.
         Path inbox = inbox(dir);
         MutableClock clock = new MutableClock(T0);
         buffer = new BufferStore(dir.resolve("buffer.db").toString(), false, clock);
-        StructureResolver none = StructureResolver.none();
+        StructureResolver none = new StructureResolver(gs08 -> java.util.Optional.empty());
         FileConsumer consumer = new FileConsumer(buffer, null, config(inbox, 0, false), none, clock);
         Path f = drop(inbox, "remit.835", Fixtures.bytes(Fixtures.F835));
-        FileConsumer.Result r = consumer.consume(new SourceConfig("inbox", inbox.toString(), "*", 1, 0), f, T0);
+        FileConsumer.Result r = InboxFixture.consume(consumer, new SourceConfig("inbox", inbox.toString(), "*", 1, 0), f, T0);
         assertEquals(FileConsumer.Outcome.CONSUMED, r.outcome());
         TransactionRow row = buffer.byElementKey(r.fileId() + ":000000101:101:0001").orElseThrow();
         assertEquals(StructureResolver.ENVELOPE_SCHEMA, row.schemaId());
@@ -549,6 +538,63 @@ class InboxPollerTest {
     }
 
     @Test
+    void eachSetOfAMixedGuideFileIsStoredUnderItsOwnGuide(@TempDir Path dir) throws Exception {
+        // One ISA carrying an 835 group and an 837P group. The file-level GS08 is the first
+        // group's; reading the 837P set through it typed the row 835, bound it to the 835 table
+        // schema, materialized its graph with the 835 index and resolved no dimensions at all.
+        Path inbox = inbox(dir);
+        open(dir, config(inbox, 0, false), new MutableClock(T0), null);
+        String claims = Fixtures.text(Fixtures.F837P);
+        String claimGroup = claims.substring(claims.indexOf("GS*"), claims.indexOf("IEA*"));
+        byte[] bytes = Fixtures.text(Fixtures.F835).replace("IEA*1*000000101~", claimGroup + "IEA*2*000000101~")
+            .getBytes(StandardCharsets.UTF_8);
+        Path f = drop(inbox, "mixed.x12", bytes);
+        String fileId = InboxFixture.fileId(f, bytes);
+
+        assertEquals(new RescanResult(1, 1, 1, 0), handle.rescan(null));
+        TransactionRow remit = buffer.byElementKey(fileId + ":000000101:101:0001").orElseThrow();
+        TransactionRow claim = buffer.byElementKey(fileId + ":000000101:102:0001").orElseThrow();
+        assertEquals("005010X221A1", remit.gs08());
+        assertEquals("835", remit.transactionType());
+        assertEquals("schema:table:x12.005010X221A1.835", remit.schemaId());
+        assertEquals("005010X222A1", claim.gs08());
+        assertEquals("837P", claim.transactionType());
+        assertEquals("schema:table:x12.005010X222A1.837P", claim.schemaId());
+
+        try (java.sql.Connection c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + dir.resolve("buffer.db"))) {
+            for (TransactionRow row : List.of(remit, claim)) {
+                // every entity of the set's graph is typed by the set's own guide
+                try (java.sql.PreparedStatement ps = c.prepareStatement("SELECT count(*), "
+                        + "sum(schema_id LIKE ? AND gs08 = ?) FROM entities WHERE element_key = ?")) {
+                    ps.setString(1, "schema:%:x12." + row.gs08() + ".%");
+                    ps.setString(2, row.gs08());
+                    ps.setString(3, row.elementKey());
+                    try (java.sql.ResultSet rs = ps.executeQuery()) {
+                        assertTrue(rs.next());
+                        assertTrue(rs.getLong(1) > 10, row.transactionType() + " has a graph");
+                        assertEquals(rs.getLong(1), rs.getLong(2), row.transactionType() + " graph is its own guide's");
+                    }
+                }
+            }
+            // and its dimensions come from its own guide's mapping
+            assertEquals("EXAMPLE HEALTH PLAN", dim(c, remit.elementKey(), "payerName"));
+            assertEquals("EHPID00001", dim(c, claim.elementKey(), "payerId"));
+            assertNotNull(dim(c, claim.elementKey(), "billingProviderNpi"), "an 837P-only dimension");
+        }
+    }
+
+    private static String dim(java.sql.Connection c, String elementKey, String dim) throws Exception {
+        try (java.sql.PreparedStatement ps = c.prepareStatement(
+                "SELECT value_text FROM transaction_dims WHERE element_key = ? AND dim = ?")) {
+            ps.setString(1, elementKey);
+            ps.setString(2, dim);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        }
+    }
+
+    @Test
     void twoInterchangesReusingGroupAndSetNumbersAreBothKept(@TempDir Path dir) throws Exception {
         // Each interchange numbers its own groups and sets: GS06=101/ST02=0001 twice in one file
         // is ordinary. Without ISA13 in the key the second set was silently dropped.
@@ -557,7 +603,7 @@ class InboxPollerTest {
         byte[] bytes = (interchange835("000000101") + "\n" + interchange835("000000201") + "\n")
             .getBytes(StandardCharsets.UTF_8);
         Path f = drop(inbox, "two-isa.835", bytes);
-        String fileId = FileConsumer.fileId(f, bytes);
+        String fileId = InboxFixture.fileId(f, bytes);
 
         assertEquals(new RescanResult(1, 1, 1, 0), handle.rescan(null));
         assertEquals(2, buffer.count(), "one row per transaction set");
@@ -578,7 +624,7 @@ class InboxPollerTest {
         String doubled = x.replace("GE*1*101~", set + "GE*2*101~");
         byte[] bytes = doubled.getBytes(StandardCharsets.UTF_8);
         Path f = drop(inbox, "dup-st.835", bytes);
-        String fileId = FileConsumer.fileId(f, bytes);
+        String fileId = InboxFixture.fileId(f, bytes);
 
         assertEquals(new RescanResult(1, 1, 0, 1), handle.rescan(null));
         assertEquals(0, buffer.count(), "rolled back: no transaction rows");
@@ -588,5 +634,44 @@ class InboxPollerTest {
         assertTrue(row.errorMessage().startsWith("duplicate-element-key"), row.errorMessage());
         assertTrue(Files.exists(inbox.resolve("dup-st.835.error")));
         assertFalse(Files.exists(inbox.resolve("dup-st.835.done")));
+    }
+
+    @Test
+    void anUnreadableFileIsEscalatedOnceThenRetriedQuietlyAndClearedWhenRead(@TempDir Path dir) throws Exception {
+        Path inbox = inbox(dir);
+        open(dir, config(inbox, 0, false), new MutableClock(T0), null);
+        Path f = drop(inbox, "locked.835", Fixtures.bytes(Fixtures.F835));
+        java.util.Set<java.nio.file.attribute.PosixFilePermission> perms = Files.getPosixFilePermissions(f);
+        Files.setPosixFilePermissions(f, java.util.Set.of());
+        String unreadableId = FileRow.unreadableId(f.toString());
+        try {
+            org.junit.jupiter.api.Assumptions.assumeFalse(Files.isReadable(f), "running as root: permissions not enforced");
+            for (int attempt = 1; attempt < InboxPoller.UNREADABLE_ESCALATION; attempt++) {
+                String log = LogCapture.of(() -> handle.rescan(null));
+                assertTrue(log.contains("WARN") && log.contains("cannot read " + f), log);
+                assertTrue(buffer.fileById(unreadableId).isEmpty(), "no row before the threshold (attempt " + attempt + ")");
+            }
+            String escalation = LogCapture.of(() -> handle.rescan(null));
+            assertTrue(escalation.contains("ERROR") && escalation.contains("after " + InboxPoller.UNREADABLE_ESCALATION
+                + " attempts"), escalation);
+            FileRow row = buffer.fileById(unreadableId).orElseThrow();
+            assertEquals(FileStatus.ERROR, row.status());
+            assertTrue(row.errorMessage().startsWith("io: "), row.errorMessage());
+            assertEquals(f.toString(), row.currentPath(), "not renamed: still retried");
+            assertEquals(1, handle.sources().get(0).errored(), "visible in the health errored count");
+            assertEquals(1, buffer.fileRows(null, 10, 0).size(), "and in /files");
+
+            String quiet = LogCapture.of(() -> handle.rescan(null));
+            assertFalse(quiet.contains("cannot read"), "retries past the escalation log at DEBUG only:\n" + quiet);
+            assertEquals(1, buffer.fileCount(), "recorded once");
+            assertTrue(Files.exists(f));
+        } finally {
+            Files.setPosixFilePermissions(f, perms);
+        }
+        assertEquals(new RescanResult(1, 0, 1, 0), handle.rescan(null), "readable again: consumed");
+        assertTrue(buffer.fileById(unreadableId).isEmpty(), "the first successful read clears the error row");
+        assertEquals(0, handle.sources().get(0).errored());
+        assertEquals(FileStatus.CONSUMED,
+            buffer.fileById(InboxFixture.fileId(f, Fixtures.bytes(Fixtures.F835))).orElseThrow().status());
     }
 }

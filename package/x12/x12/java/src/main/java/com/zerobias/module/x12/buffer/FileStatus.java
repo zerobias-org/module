@@ -4,7 +4,7 @@ package com.zerobias.module.x12.buffer;
  * Outcome recorded for a discovered interchange file (DESIGN §8 {@code files.status}):
  * {@code consumed} (parsed + committed, renamed {@code .done}), {@code error} (parse/IO
  * failure, renamed {@code .error}), {@code duplicate} (checksum already consumed;
- * renamed {@code .done} — DESIGN §4.2a).
+ * renamed {@code .done} — DESIGN §4.2 step 3a).
  */
 public enum FileStatus {
     CONSUMED("consumed"),

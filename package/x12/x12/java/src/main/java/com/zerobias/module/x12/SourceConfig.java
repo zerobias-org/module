@@ -5,6 +5,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -49,12 +51,15 @@ public record SourceConfig(String name, String path, String pattern, int pollInt
     }
 
     /**
-     * Boot validation (DESIGN §3): the directory must exist, be a directory, and be
-     * writable — proven by a real rename (create a dot-prefixed temp file, rename it,
-     * delete it; dotfiles are skipped by the poller). Returns a problem description or
-     * null when the source is usable.
+     * Boot validation (DESIGN §3): the directory must exist, be a directory, and take the
+     * renames the poller will make — proven for real: a dot-prefixed temp file (dotfiles are
+     * skipped by the poller) is created, renamed with {@code consumedSuffix}, then with
+     * {@code errorSuffix}, and deleted. Probing a fixed {@code .done} would pass a suffix the
+     * filesystem refuses (a name past its length limit, a character it does not allow), which
+     * then fails on every file instead of at boot. A blank suffix is not probed (the config
+     * check reports it). Returns a problem description or null when the source is usable.
      */
-    public String validate() {
+    public String validate(String consumedSuffix, String errorSuffix) {
         Path dir = dir();
         if (!Files.exists(dir)) {
             return "source '" + name + "': path does not exist: " + path;
@@ -63,20 +68,33 @@ public record SourceConfig(String name, String path, String pattern, int pollInt
             return "source '" + name + "': path is not a directory: " + path;
         }
         Path probe = dir.resolve(".zb-probe-" + UUID.randomUUID() + ".tmp");
-        Path renamed = Path.of(probe + ".done");
+        List<Path> made = new ArrayList<>(List.of(probe));
+        String step = "create a file";
         try {
             Files.writeString(probe, "probe");
-            Files.move(probe, renamed, StandardCopyOption.ATOMIC_MOVE);
-            Files.deleteIfExists(renamed);
+            Path current = probe;
+            for (String suffix : new String[] {consumedSuffix, errorSuffix}) {
+                if (suffix == null || suffix.isBlank()) {
+                    continue;
+                }
+                Path next = Path.of(probe + suffix);
+                made.add(next);
+                step = "rename a file to its '" + suffix + "' name";
+                Files.move(current, next, StandardCopyOption.ATOMIC_MOVE);
+                current = next;
+            }
+            Files.deleteIfExists(current);
             return null;
         } catch (Exception e) {
-            try {
-                Files.deleteIfExists(probe);
-                Files.deleteIfExists(renamed);
-            } catch (Exception ignore) {
-                // best effort
+            for (Path p : made) {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (Exception ignore) {
+                    // best effort
+                }
             }
-            return "source '" + name + "': path is not writable/renameable: " + path + " (" + e + ")";
+            return "source '" + name + "': path is not writable/renameable: " + path
+                + " (cannot " + step + ": " + e + ")";
         }
     }
 }

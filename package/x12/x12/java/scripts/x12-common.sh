@@ -46,6 +46,13 @@ x12_build_image() {   # $1 = tag
   dk build -q -t "$1" "$X12_MOD_DIR" >/dev/null
 }
 
+# Create the dirs bind-mounted into the container, world-writable. The image may run as an
+# unprivileged uid (10001) that does not own a host dir, and the receiver must write and
+# rename in both; 0777 is also what lets the host user clean up afterwards without chown.
+x12_mkmounts() {   # dirs...
+  mkdir -p "$@" && chmod 0777 "$@"
+}
+
 # x12_start NAME IMAGE INBOX_DIR BUFFER_DIR POLL STABLE
 x12_start() {
   local name="$1" image="$2" inbox="$3" buffer="$4" poll="${5:-2}" stable="${6:-1}"
@@ -68,13 +75,27 @@ x12_wait_healthy() {   # $1 = attempts (1s apart)
   return 1
 }
 
-# Give the bind-mounted dirs back to the host user (the container writes as root), then remove.
-x12_stop() {   # $1 = name, rest = dirs to chown
-  local name="$1"; shift
-  if dk inspect "$name" >/dev/null 2>&1; then
-    dk exec "$name" sh -c "chown -R $(id -u):$(id -g) /var/lib/x12/inbox /var/lib/module 2>/dev/null || true" >/dev/null 2>&1 || true
-    dk rm -f "$name" >/dev/null 2>&1 || true
-  fi
+# Stop and remove the container. Nothing is chowned back: the bind-mounted dirs are 0777
+# (x12_mkmounts), and unlinking an entry needs write permission on its directory, not
+# ownership of the file, so the host user can delete what the container created in them.
+x12_stop() {   # $1 = name
+  dk rm -f "$1" >/dev/null 2>&1 || true
+}
+
+# rm -rf a scratch tree the container wrote into; call after x12_stop. A subdirectory the
+# receiver created (mkdir through the API) belongs to the container's uid, and its entries
+# are not the host user's to unlink. Those are removed by a throwaway container running as
+# the image's own user — the uid that created them — never by exec into the module
+# container and never by a user the module did not already run as.
+x12_rm_scratch() {   # $1 = dir, $2 = image
+  local dir="$1" image="$2" sub
+  rm -rf "$dir" 2>/dev/null && return 0
+  for sub in "$dir"/*/; do
+    [ -d "$sub" ] || continue
+    dk run --rm -v "${sub%/}:/x12-scratch" "$image" \
+      sh -c 'rm -rf /x12-scratch/* /x12-scratch/.[!.]* 2>/dev/null; exit 0' >/dev/null 2>&1 || true
+  done
+  rm -rf "$dir" 2>/dev/null || echo "left behind (not removable by $(id -un)): $dir" >&2
 }
 
 x12_connect() {
@@ -86,6 +107,13 @@ x12_connect() {
 x12_rpc() {
   curl -fsS -m10 -X POST "$X12_API/connections/$X12_CONN/$1" -H 'content-type: application/json' \
     -d "{\"argMap\":$2}"
+}
+
+# rpc_code ApiClass.method '<argMap JSON>'  -> the body, then the HTTP status on its own last
+# line. No -f: for a refusal the status and the error body are what is being checked.
+x12_rpc_code() {
+  curl -sS -m10 -X POST "$X12_API/connections/$X12_CONN/$1" -H 'content-type: application/json' \
+    -d "{\"argMap\":$2}" -w '\n%{http_code}'
 }
 
 # rpc_bin ApiClass.downloadBinary '<argMap JSON>' OUTFILE
@@ -132,6 +160,15 @@ x12_urlenc() { python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys
 
 x12_fn() {   # $1 = function name, $2 = requestBody JSON
   x12_rpc "FunctionsApi.invokeFunction" "{\"objectId\":\"$X12_RECEIVER/ops/$1\",\"requestBody\":${2:-{\}}}"
+}
+
+# The 835 fixture as interchange ISA13=$1, GS06/ST02 unchanged — the same renumbering as
+# InboxPollerTest.interchange835, so two of them in one file reuse their group and set numbers.
+x12_interchange835() {   # $1 = ISA13
+  python3 -c 'import sys
+t = open(sys.argv[1]).read().strip()
+print(t.replace("*000000101*0*T*", "*" + sys.argv[2] + "*0*T*").replace("IEA*1*000000101~", "IEA*1*" + sys.argv[2] + "~"))' \
+    "$X12_FIXTURE" "$1"
 }
 
 # JSON helpers (python3 stdlib): jget JSON 'expr' evaluates `expr` against the parsed object `j`.

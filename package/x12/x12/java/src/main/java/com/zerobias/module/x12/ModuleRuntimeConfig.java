@@ -3,11 +3,16 @@ package com.zerobias.module.x12;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonPrimitive;
 import com.zerobias.module.x12.buffer.RetentionConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.math.BigDecimal;
+import java.nio.file.FileSystems;
 import java.time.Duration;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -36,7 +41,7 @@ import java.util.Set;
  * {@value #DEFAULT_MAX_FILE_BYTES}, at most {@value #MAX_MAX_FILE_BYTES}). It is checked from
  * {@code stat} before a byte is read; a bigger file is hashed as a stream (for its identity)
  * and sent to {@code .error} as {@code too-large}, so one oversized drop cannot exhaust the heap
- * and stall every file behind it. A value out of range is clamped with a warning.
+ * and stall every file behind it.
  *
  * <p>{@code allowFileManagement} opens the DataProducer write surface over the mounted
  * volume — {@code uploadBinaryContent}, {@code createChildObject} (mkdir) and
@@ -47,11 +52,16 @@ import java.util.Set;
  *
  * <p>Resolution order ({@link #resolve}): {@code MODULE_CONFIG} env → the {@code config}
  * block of a runtime-config file ({@link RuntimeConfigFile}: node JSON, then the image's
- * {@code runtimeConfig.yml}) → {@link #defaults()}. Absent/blank/malformed input degrades
- * to safe defaults rather than a boot crash; malformed <em>source entries</em> are
- * skipped with a warning. Directory validation is separate ({@link #validateSources()})
- * because it is fatal by design (DESIGN §3: a daemon that cannot mark files consumed
- * must not run).
+ * {@code runtimeConfig.yml}) → {@link #defaults()}. Defaults apply only when no config is
+ * present at all, and a present config's missing keys take their defaults. A config that is
+ * present but wrong — malformed JSON, an unknown key, a wrong-typed or out-of-range value, an
+ * unusable {@code sources[]} entry — throws {@link InvalidConfigException}, and the daemon
+ * exits 1 at boot. Falling back instead hides the mistake: a typo'd {@code retention} silently
+ * disables eviction, a misspelt source watches the default directory, a bad
+ * {@code ackDurability} drops the durability the operator asked for — and nothing shows it but
+ * an unexpected quiet. Directory validation is separate ({@link #validateSources()}) because
+ * it touches the filesystem; it is fatal too (DESIGN §3: a daemon that cannot mark files
+ * consumed must not run).
  */
 public record ModuleRuntimeConfig(
         List<SourceConfig> sources,
@@ -82,13 +92,24 @@ public record ModuleRuntimeConfig(
      */
     public static final long MAX_MAX_FILE_BYTES = 128L * 1024 * 1024;
 
+    /** Every key {@code config} may carry; anything else is a typo, and a typo is fatal. */
+    static final Set<String> KEYS = Set.of("sources", "consumedSuffix", "errorSuffix", "ackDurability",
+        "retention", "allowBareTransactionSets", "allowFileManagement", "maxFileBytes");
+    static final Set<String> SOURCE_KEYS = Set.of("name", "path", "pattern", "pollIntervalSec", "stableForSec");
+    static final Set<String> RETENTION_KEYS = Set.of("maxBytes", "maxAge");
+
+    /** A present-but-unusable module config: fatal at boot (the process exits 1). */
+    public static final class InvalidConfigException extends IllegalArgumentException {
+        public InvalidConfigException(String message) {
+            super("invalid module config: " + message);
+        }
+    }
+
     public ModuleRuntimeConfig {
         sources = List.copyOf(sources);
-        if (maxFileBytes <= 0) {
-            maxFileBytes = DEFAULT_MAX_FILE_BYTES;
-        } else if (maxFileBytes > MAX_MAX_FILE_BYTES) {
-            LOG.warn("maxFileBytes {} is over the {} cap; using the cap", maxFileBytes, MAX_MAX_FILE_BYTES);
-            maxFileBytes = MAX_MAX_FILE_BYTES;
+        if (maxFileBytes <= 0 || maxFileBytes > MAX_MAX_FILE_BYTES) {
+            throw new InvalidConfigException("maxFileBytes must be between 1 and " + MAX_MAX_FILE_BYTES
+                + ", got " + maxFileBytes);
         }
     }
 
@@ -129,58 +150,55 @@ public record ModuleRuntimeConfig(
         return defaults();
     }
 
-    /** Parse the {@code MODULE_CONFIG} JSON text; malformed → defaults. */
+    /** Parse the {@code MODULE_CONFIG} JSON text; null/blank is absent (defaults), anything else must be valid. */
     public static ModuleRuntimeConfig parse(String json) {
         if (json == null || json.isBlank()) {
             return defaults();
         }
+        final JsonElement el;
         try {
-            JsonElement el = GSON.fromJson(json, JsonElement.class);
-            if (el == null || !el.isJsonObject()) {
-                return defaults();
-            }
-            return fromConfigObject(el.getAsJsonObject());
-        } catch (RuntimeException malformed) {
-            // Malformed MODULE_CONFIG → safe defaults rather than crashing the daemon at
-            // boot. A deploy with a typo must not wedge an always-on receiver.
-            LOG.warn("MODULE_CONFIG is malformed ({}); using defaults", malformed.toString());
-            return defaults();
+            el = GSON.fromJson(json, JsonElement.class);
+        } catch (JsonParseException malformed) {
+            // The position only: the parser's message can name what it read, and the value of
+            // MODULE_CONFIG stays out of the log (startup.sh prints only whether it is set).
+            java.util.regex.Matcher at = java.util.regex.Pattern.compile("line \\d+ column \\d+")
+                .matcher(String.valueOf(malformed.getMessage()));
+            throw new InvalidConfigException("MODULE_CONFIG is not valid JSON" + (at.find() ? " (at " + at.group() + ")" : ""));
         }
+        if (el == null || !el.isJsonObject()) {
+            throw new InvalidConfigException("MODULE_CONFIG must be a JSON object, got " + kind(el));
+        }
+        return fromConfigObject(el.getAsJsonObject());
     }
 
-    /** Build from an already-parsed {@code config} object (env JSON or file block). */
+    /**
+     * Build from an already-parsed {@code config} object (env JSON or file block). Every key is
+     * optional and a missing one takes its default; a key that is present must be known and
+     * well-formed, or this throws {@link InvalidConfigException}.
+     */
     public static ModuleRuntimeConfig fromConfigObject(JsonObject obj) {
-        ModuleRuntimeConfig d = defaults();
         if (obj == null) {
-            return d;
+            return defaults();
         }
-        try {
-            List<SourceConfig> sources = parseSources(obj);
-            if (sources.isEmpty()) {
-                sources = d.sources();
-            }
-            String consumed = str(obj, "consumedSuffix", d.consumedSuffix());
-            String error = str(obj, "errorSuffix", d.errorSuffix());
-            // full unless explicitly "normal": the rename is the ack, so a commit that a power
-            // loss can roll back after the .done rename loses the file for good. An unknown
-            // value keeps the safe setting rather than silently weakening it.
-            String durability = str(obj, "ackDurability", "full");
-            boolean full = !"normal".equalsIgnoreCase(durability);
-            if (full && !"full".equalsIgnoreCase(durability)) {
-                LOG.warn("ackDurability '{}' is neither full nor normal; using full", durability);
-            }
-            boolean bare = bool(obj, "allowBareTransactionSets");
-            boolean fileMgmt = bool(obj, "allowFileManagement");
-            long maxFileBytes = longValue(obj, "maxFileBytes", DEFAULT_MAX_FILE_BYTES);
-            if (maxFileBytes <= 0) {
-                LOG.warn("maxFileBytes {} is not positive; using the default {}", maxFileBytes, DEFAULT_MAX_FILE_BYTES);
-            }
-            return new ModuleRuntimeConfig(sources, consumed, error, full, parseRetention(obj), bare, fileMgmt,
-                maxFileBytes);
-        } catch (RuntimeException malformed) {
-            LOG.warn("module config has wrong-typed fields ({}); using defaults", malformed.toString());
-            return d;
-        }
+        rejectUnknownKeys(obj, KEYS, "");
+        final ModuleRuntimeConfig d = defaults();
+        final List<SourceConfig> sources = obj.has("sources") ? parseSources(obj.get("sources")) : d.sources();
+        final String consumed = obj.has("consumedSuffix") ? suffix(obj.get("consumedSuffix"), "consumedSuffix")
+            : d.consumedSuffix();
+        final String error = obj.has("errorSuffix") ? suffix(obj.get("errorSuffix"), "errorSuffix") : d.errorSuffix();
+        // full unless explicitly "normal": the rename is the ack, so a commit that a power loss can
+        // roll back after the .done rename loses the file for good.
+        final boolean full = !obj.has("ackDurability") || durability(obj.get("ackDurability"));
+        final RetentionConfig retention = obj.has("retention") ? parseRetention(obj.get("retention"))
+            : RetentionConfig.none();
+        // Only a literal true opens either: a string, a number or a null is a mistake, not a "no".
+        final boolean bare = obj.has("allowBareTransactionSets")
+            && bool(obj.get("allowBareTransactionSets"), "allowBareTransactionSets");
+        final boolean fileMgmt = obj.has("allowFileManagement")
+            && bool(obj.get("allowFileManagement"), "allowFileManagement");
+        final long maxFileBytes = obj.has("maxFileBytes")
+            ? wholeNumber(obj.get("maxFileBytes"), "maxFileBytes", 1, MAX_MAX_FILE_BYTES) : DEFAULT_MAX_FILE_BYTES;
+        return new ModuleRuntimeConfig(sources, consumed, error, full, retention, bare, fileMgmt, maxFileBytes);
     }
 
     /**
@@ -200,7 +218,7 @@ public record ModuleRuntimeConfig(
             if (!names.add(s.name())) {
                 problems.add("duplicate source name: " + s.name());
             }
-            String p = s.validate();
+            String p = s.validate(consumedSuffix, errorSuffix);
             if (p != null) {
                 problems.add(p);
                 continue;
@@ -227,81 +245,166 @@ public record ModuleRuntimeConfig(
         return problems;
     }
 
-    // --- parsing helpers -------------------------------------------------------
+    // --- parsing helpers (strict: every failure is an InvalidConfigException) --------
 
-    private static List<SourceConfig> parseSources(JsonObject obj) {
-        List<SourceConfig> out = new ArrayList<>();
-        if (!obj.has("sources") || !obj.get("sources").isJsonArray()) {
-            return out;
+    private static List<SourceConfig> parseSources(JsonElement el) {
+        if (el == null || !el.isJsonArray() || el.getAsJsonArray().isEmpty()) {
+            throw new InvalidConfigException("sources must be a non-empty array, got " + kind(el));
         }
-        for (JsonElement el : obj.getAsJsonArray("sources")) {
-            if (!el.isJsonObject()) {
-                LOG.warn("skipping non-object sources[] entry: {}", el);
-                continue;
+        final List<SourceConfig> out = new ArrayList<>();
+        final Set<String> names = new HashSet<>();
+        int i = 0;
+        for (JsonElement entry : el.getAsJsonArray()) {
+            final String at = "sources[" + i++ + "]";
+            if (!entry.isJsonObject()) {
+                throw new InvalidConfigException(at + " must be an object, got " + kind(entry));
             }
-            JsonObject s = el.getAsJsonObject();
-            String name = str(s, "name", null);
-            String path = str(s, "path", null);
-            if (name == null || name.isBlank() || path == null || path.isBlank()) {
-                LOG.warn("skipping sources[] entry with missing name/path: {}", s);
-                continue;
+            final JsonObject s = entry.getAsJsonObject();
+            rejectUnknownKeys(s, SOURCE_KEYS, at + ".");
+            final String name = requiredString(s, "name", at);
+            final String path = requiredString(s, "path", at);
+            String pattern = SourceConfig.DEFAULT_PATTERN;
+            if (s.has("pattern")) {
+                pattern = string(s.get("pattern"), at + ".pattern");
+                if (pattern.isBlank()) {
+                    throw new InvalidConfigException(at + ".pattern must not be blank");
+                }
+                try {
+                    // A glob that does not compile would throw on every scan instead of once here.
+                    FileSystems.getDefault().getPathMatcher("glob:" + pattern.toLowerCase(java.util.Locale.ROOT));
+                } catch (IllegalArgumentException badGlob) {
+                    throw new InvalidConfigException(at + ".pattern is not a valid glob: '" + pattern + "'");
+                }
             }
-            out.add(new SourceConfig(name, path, str(s, "pattern", SourceConfig.DEFAULT_PATTERN),
-                integer(s, "pollIntervalSec", SourceConfig.DEFAULT_POLL_INTERVAL_SEC),
-                integer(s, "stableForSec", SourceConfig.DEFAULT_STABLE_FOR_SEC)));
+            // SourceConfig quietly replaces a non-positive cadence with its default; a config that
+            // asks for one is a mistake to report, not a value to correct.
+            final int poll = s.has("pollIntervalSec")
+                ? (int) wholeNumber(s.get("pollIntervalSec"), at + ".pollIntervalSec", 1, Integer.MAX_VALUE)
+                : SourceConfig.DEFAULT_POLL_INTERVAL_SEC;
+            final int stable = s.has("stableForSec")
+                ? (int) wholeNumber(s.get("stableForSec"), at + ".stableForSec", 0, Integer.MAX_VALUE)
+                : SourceConfig.DEFAULT_STABLE_FOR_SEC;
+            if (!names.add(name)) {
+                throw new InvalidConfigException(at + ": duplicate source name '" + name + "'");
+            }
+            out.add(new SourceConfig(name, path, pattern, poll, stable));
         }
         return out;
     }
 
-    private static RetentionConfig parseRetention(JsonObject obj) {
-        if (!obj.has("retention") || !obj.get("retention").isJsonObject()) {
-            return RetentionConfig.none();
+    private static RetentionConfig parseRetention(JsonElement el) {
+        if (el == null || !el.isJsonObject()) {
+            throw new InvalidConfigException("retention must be an object, got " + kind(el));
         }
-        JsonObject r = obj.getAsJsonObject("retention");
-        Long maxBytes = (r.has("maxBytes") && r.get("maxBytes").isJsonPrimitive()
-                && r.getAsJsonPrimitive("maxBytes").isNumber())
-            ? r.get("maxBytes").getAsLong() : null;
+        final JsonObject r = el.getAsJsonObject();
+        rejectUnknownKeys(r, RETENTION_KEYS, "retention.");
+        final Long maxBytes = r.has("maxBytes")
+            ? wholeNumber(r.get("maxBytes"), "retention.maxBytes", 1, Long.MAX_VALUE) : null;
         Duration maxAge = null;
-        if (r.has("maxAge") && r.get("maxAge").isJsonPrimitive()) {
+        if (r.has("maxAge")) {
+            final String raw = string(r.get("maxAge"), "retention.maxAge");
             try {
-                maxAge = Duration.parse(r.get("maxAge").getAsString());
-            } catch (java.time.format.DateTimeParseException badDuration) {
-                // A bad maxAge disables age-based eviction only; it must not discard
-                // maxBytes or the rest of the config.
-                LOG.warn("retention.maxAge '{}' is not ISO-8601; age-based eviction disabled",
-                    r.get("maxAge").getAsString());
+                maxAge = Duration.parse(raw);
+            } catch (DateTimeParseException bad) {
+                throw new InvalidConfigException("retention.maxAge must be an ISO-8601 duration such as P90D, got '"
+                    + raw + "'");
+            }
+            if (maxAge.isZero() || maxAge.isNegative()) {
+                throw new InvalidConfigException("retention.maxAge must be positive, got '" + raw + "'");
             }
         }
         return new RetentionConfig(maxAge, maxBytes);
     }
 
-    private static String str(JsonObject o, String key, String dflt) {
-        if (o.has(key) && o.get(key).isJsonPrimitive()) {
-            String v = o.get(key).getAsString();
-            return v.isBlank() ? dflt : v;
+    /** {@code full} (true) or {@code normal} (false), any case; anything else is refused, never guessed. */
+    private static boolean durability(JsonElement el) {
+        final String v = string(el, "ackDurability");
+        if ("full".equalsIgnoreCase(v)) {
+            return true;
         }
-        return dflt;
+        if ("normal".equalsIgnoreCase(v)) {
+            return false;
+        }
+        throw new InvalidConfigException("ackDurability must be 'full' or 'normal', got '" + v + "'");
     }
 
-    /** A strict boolean flag: absent, non-boolean or false all mean false (opt-in only). */
-    private static boolean bool(JsonObject o, String key) {
-        return o.has(key)
-            && o.get(key).isJsonPrimitive()
-            && o.getAsJsonPrimitive(key).isBoolean()
-            && o.get(key).getAsBoolean();
+    /** A file-name suffix: a separator in it would rename files out of their directory. */
+    private static String suffix(JsonElement el, String key) {
+        final String v = string(el, key);
+        if (v.isBlank() || v.contains("/") || v.contains("\\")) {
+            throw new InvalidConfigException(key + " must be a non-blank file-name suffix without a path separator, "
+                + "got '" + v + "'");
+        }
+        return v;
     }
 
-    private static long longValue(JsonObject o, String key, long dflt) {
-        if (o.has(key) && o.get(key).isJsonPrimitive() && o.getAsJsonPrimitive(key).isNumber()) {
-            return o.get(key).getAsLong();
+    private static void rejectUnknownKeys(JsonObject obj, Set<String> known, String prefix) {
+        for (String k : obj.keySet()) {
+            if (!known.contains(k)) {
+                throw new InvalidConfigException("unknown key '" + prefix + k + "' (expected one of "
+                    + new java.util.TreeSet<>(known) + ")");
+            }
         }
-        return dflt;
     }
 
-    private static int integer(JsonObject o, String key, int dflt) {
-        if (o.has(key) && o.get(key).isJsonPrimitive() && o.getAsJsonPrimitive(key).isNumber()) {
-            return o.get(key).getAsInt();
+    private static String requiredString(JsonObject o, String key, String at) {
+        if (!o.has(key)) {
+            throw new InvalidConfigException(at + "." + key + " is required");
         }
-        return dflt;
+        final String v = string(o.get(key), at + "." + key);
+        if (v.isBlank()) {
+            throw new InvalidConfigException(at + "." + key + " must not be blank");
+        }
+        return v;
+    }
+
+    private static String string(JsonElement el, String key) {
+        if (el == null || !el.isJsonPrimitive() || !el.getAsJsonPrimitive().isString()) {
+            throw new InvalidConfigException(key + " must be a string, got " + kind(el));
+        }
+        return el.getAsString();
+    }
+
+    private static boolean bool(JsonElement el, String key) {
+        if (el == null || !el.isJsonPrimitive() || !el.getAsJsonPrimitive().isBoolean()) {
+            throw new InvalidConfigException(key + " must be true or false, got " + kind(el));
+        }
+        return el.getAsBoolean();
+    }
+
+    /** A JSON number that is a whole value within {@code [min, max]}. */
+    private static long wholeNumber(JsonElement el, String key, long min, long max) {
+        if (el == null || !el.isJsonPrimitive() || !el.getAsJsonPrimitive().isNumber()) {
+            throw new InvalidConfigException(key + " must be a number, got " + kind(el));
+        }
+        final JsonPrimitive p = el.getAsJsonPrimitive();
+        final long v;
+        try {
+            v = new BigDecimal(p.getAsString()).longValueExact();
+        } catch (ArithmeticException | NumberFormatException notWhole) {
+            throw new InvalidConfigException(key + " must be a whole number, got " + p.getAsString());
+        }
+        if (v < min || v > max) {
+            throw new InvalidConfigException(key + " must be between " + min + " and " + max + ", got " + v);
+        }
+        return v;
+    }
+
+    /**
+     * What a value is, for an error message: a type error names the JSON type, not the value, so
+     * a misplaced value (a path, or whatever a future field carries) is not echoed into the log.
+     */
+    private static String kind(JsonElement el) {
+        if (el == null || el.isJsonNull()) {
+            return "null";
+        }
+        if (el.isJsonObject()) {
+            return "an object";
+        }
+        if (el.isJsonArray()) {
+            return el.getAsJsonArray().isEmpty() ? "an empty array" : "an array";
+        }
+        final JsonPrimitive p = el.getAsJsonPrimitive();
+        return p.isBoolean() ? "a boolean" : p.isNumber() ? "a number" : "a string";
     }
 }

@@ -21,9 +21,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -56,7 +58,9 @@ import java.util.concurrent.TimeUnit;
  * the disk is full, the schema no longer matches) is not the file's fault and would recur for
  * every file, so it ends the scan and is recorded as the scan's error, which {@code /healthz}
  * reports as unhealthy. Errors that leave the JVM itself unreliable (other
- * {@link VirtualMachineError}s) propagate.
+ * {@link VirtualMachineError}s) propagate. A file that cannot be read is retried every scan;
+ * after {@link #UNREADABLE_ESCALATION} failures in a row it gets an {@code error} row and one
+ * ERROR line, and later retries log at DEBUG ({@link #unreadable}).
  */
 public final class InboxPoller implements AutoCloseable {
 
@@ -66,6 +70,9 @@ public final class InboxPoller implements AutoCloseable {
 
     /** Always skipped, whatever the configured suffixes (DESIGN §4.2 step 1). */
     static final List<String> SKIP_SUFFIXES = List.of(".done", ".error", ".tmp", ".part", ".partial");
+
+    /** Consecutive failed reads of one file before it is recorded as an error (see {@link #unreadable}). */
+    static final int UNREADABLE_ESCALATION = 5;
 
     private final SourceConfig source;
     private final FileConsumer consumer;
@@ -77,6 +84,8 @@ public final class InboxPoller implements AutoCloseable {
     private final Set<SeenKey> seen = new HashSet<>();
     /** Symlinks already warned about; pruned when they leave the listing. */
     private final Set<Path> symlinks = new HashSet<>();
+    /** Consecutive failed reads per path; pruned when the path leaves the listing. */
+    private final Map<Path, Integer> readFailures = new HashMap<>();
 
     /** The identity of a listing entry as far as re-hashing is concerned. */
     record SeenKey(Path path, long size, Instant mtime) {
@@ -116,7 +125,7 @@ public final class InboxPoller implements AutoCloseable {
         this.source = source;
         this.consumer = consumer;
         this.buffer = buffer;
-        this.clock = clock == null ? Clock.systemUTC() : clock;
+        this.clock = java.util.Objects.requireNonNull(clock, "clock");
         this.stability = new FileStability(Duration.ofSeconds(source.stableForSec()));
         List<String> suffixes = new ArrayList<>(SKIP_SUFFIXES);
         for (String s : new String[] {consumedSuffix, errorSuffix}) {
@@ -201,6 +210,7 @@ public final class InboxPoller implements AutoCloseable {
         }
         stability.retainOnly(present);
         seen.removeIf(k -> !present.contains(k.path()));
+        readFailures.keySet().retainAll(present);
 
         for (int i = 0; i < candidates.size(); i++) {
             if (closed) {
@@ -234,8 +244,9 @@ public final class InboxPoller implements AutoCloseable {
                 continue;
             }
             FileConsumer.Result r;
+            FileStability.Sighting sighting = stability.sighting(p).orElseThrow();
             try {
-                r = consumer.consume(source, p, stability.sighting(p).orElseThrow());
+                r = consumer.consume(source, p, sighting);
             } catch (SQLException e) {
                 if (!FileConsumer.rejectsThisFile(e)) {
                     // The buffer failed, not this file: every later file would fail the same way.
@@ -268,8 +279,16 @@ public final class InboxPoller implements AutoCloseable {
                     pressure = true;
                     pendingNow++;
                 }
-                // No identity yet / not the file the window saw: stability keeps tracking it.
-                case UNREADABLE, CHANGED -> pendingNow++;
+                // Not the file the window saw: stability keeps tracking it. It was read, though,
+                // so a run of failed reads is broken (and the consumer dropped any error row).
+                case CHANGED -> {
+                    pendingNow++;
+                    readFailures.remove(p);
+                }
+                case UNREADABLE -> {
+                    pendingNow++;
+                    unreadable(p, sighting, r.message());
+                }
             }
         }
         this.pending = pendingNow;
@@ -334,6 +353,27 @@ public final class InboxPoller implements AutoCloseable {
         lastErrorAt = Instant.now(clock);
     }
 
+    /**
+     * A file that cannot be read has no identity yet (nothing was hashed), so it is retried
+     * every scan. Silently retrying forever would hide it — a permission the feed got wrong
+     * never shows up anywhere — and a WARN every poll would bury everything else; so after
+     * {@link #UNREADABLE_ESCALATION} failures in a row it gets an {@code error} row (in
+     * {@code /files} and the health {@code errored} count), one ERROR line, and DEBUG from
+     * then on. The first successful read removes the row ({@link FileConsumer#consume}).
+     */
+    private void unreadable(Path p, FileStability.Sighting sighting, String message) throws SQLException {
+        int n = readFailures.merge(p, 1, Integer::sum);
+        if (n < UNREADABLE_ESCALATION) {
+            LOG.warn("poller '{}': cannot read {} ({}); retrying next scan", source.name(), p, message);
+        } else if (n == UNREADABLE_ESCALATION) {
+            LOG.error("poller '{}': cannot read {} after {} attempts ({}); recorded as an error row, still "
+                + "retried every scan (logged at DEBUG from now on)", source.name(), p, n, message);
+            consumer.recordUnreadable(source, p, sighting, message);
+        } else {
+            LOG.debug("poller '{}': cannot read {} (attempt {}): {}", source.name(), p, n, message);
+        }
+    }
+
     /** Errors that leave the JVM itself unreliable end the scan; a file's OOM or stack overflow does not. */
     private static void rethrowIfFatal(Throwable e) {
         if (e instanceof VirtualMachineError && !(e instanceof OutOfMemoryError) && !(e instanceof StackOverflowError)) {
@@ -347,6 +387,7 @@ public final class InboxPoller implements AutoCloseable {
      */
     private void settle(Path p, SeenKey key) {
         stability.forget(p);
+        readFailures.remove(p);
         if (Files.exists(p, LinkOption.NOFOLLOW_LINKS)) {
             seen.add(key);
         }

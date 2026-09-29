@@ -5,6 +5,7 @@ import com.zerobias.litefilter.Expression;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.Status;
 import com.zerobias.module.x12.buffer.TransactionRow;
+import com.zerobias.module.x12.producer.ProducerException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -180,9 +181,43 @@ class X12SqlAdapterTest {
 
     @Test
     void maliciousPropertyPathIsRejectedNotInjected() {
-        assertThrows(IllegalArgumentException.class, () -> X12Filter.toWhereClause("(loop-2100.clp=1)"));
-        assertThrows(IllegalArgumentException.class,
-            () -> X12Filter.toWhereClause("(x');DROP TABLE transactions;--=X)"));
+        assertBadInput(() -> X12Filter.toWhereClause("(loop-2100.clp=1)"));
+        assertBadInput(() -> X12Filter.toWhereClause("(x');DROP TABLE transactions;--=X)"));
+        assertBadInput(() -> X12Filter.orderBy("loop-2100.clp", "asc"));
+    }
+
+    @Test
+    void everyCallerMistakeIsRaisedAsTheIllegalArgument400() {
+        // Raised where it is detected, as the 400 itself: the HTTP layer maps no bare
+        // IllegalArgumentException to 400 (a bug raising one is a 500, never echoed).
+        assertBadInput(() -> X12Filter.toWhereClause("(unbalanced"));                       // lite-filter syntax
+        assertBadInput(() -> X12Filter.toWhereClause("(a:between:1)"));                     // one bound
+        assertBadInput(() -> X12Filter.toWhereClause("(receivedAt:withinDays:soon)"));      // not a number
+        assertBadInput(() -> X12Filter.toWhereClause("(tags:includes:a)"));                 // no SQL analogue
+        assertBadInput(() -> X12Filter.orderBy("receivedAt", "sideways"));                  // direction
+    }
+
+    private static ProducerException assertBadInput(org.junit.jupiter.api.function.Executable call) {
+        ProducerException e = assertThrows(ProducerException.class, call);
+        assertEquals(400, e.httpStatus());
+        assertEquals("err.illegal.argument", e.key());
+        return e;
+    }
+
+    @Test
+    void betweenBoundsMustBePlainDecimalsNotAnythingJavaParses(@TempDir Path dir) throws Exception {
+        // Double.parseDouble accepts every one of these; emitted unquoted they reached SQLite as
+        // identifiers or syntax errors (a 500). A non-decimal bound is the filter 400.
+        for (String bound : new String[] {"NaN", "Infinity", "-Infinity", "1d", "2f", "0x1p3", "1e3", "+5", "1."}) {
+            String filter = "(loop2100.clp.clp04:between:1," + bound + ")";
+            ProducerException e = assertBadInput(() -> X12Filter.toWhereClause(filter));
+            assertTrue(e.getMessage().contains(":between:"), e.getMessage());
+        }
+        String where = X12Filter.toWhereClause("(loop2100.clp.clp04:between:-1.5,2000)");
+        assertTrue(where.contains("BETWEEN -1.5 AND 2000"), where);
+        try (BufferStore store = load(dir, seed())) {
+            selected(store, where);   // a plain decimal still runs
+        }
     }
 
     @Test

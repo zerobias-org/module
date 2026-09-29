@@ -11,6 +11,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,7 +33,7 @@ class StructureWalkerTest {
         dataElements = loader.loadDataElements();
         codes = new CodeRegistry(loader.loadCodeSets());
         final GuideCatalog.Guide g = GuideCatalog.find("005010X221A1");
-        final StructureWalker w = new StructureWalker(g.gs08(), g.transactionType(), null, g.mapFile(), dataElements, codes);
+        final StructureWalker w = new StructureWalker(g.gs08(), g.transactionType(), g.mapFile(), dataElements, codes);
         w.walk(loader.loadTransaction(g.mapFile()));
         g835 = w.emit();
     }
@@ -140,11 +141,53 @@ class StructureWalkerTest {
     }
 
     @Test
+    void controlNumbersAreStringsNotDecimals() {
+        // GS06 (28) and ISA13 (I12) are N0 on the wire; "000000101" must not become 101.
+        assertEquals("string", g835.segments.get("GS").property("gs06").dataType);
+        assertEquals("string", g835.segments.get("ISA").property("isa13").dataType);
+        assertEquals("string", g835.segments.get("ST").property("st02").dataType);
+        assertEquals("decimal", g835.segments.get("SE").property("se01").dataType, "a count stays a number");
+    }
+
+    @Test
+    void externalCodeSetsOnOneDataElementStayDistinctEnums() {
+        // 277CA STC01-01 and STC01-02 are both data element 1271 but draw on two codes.xml codesets.
+        final MappingLoader loader = new MappingLoader();
+        final CodeRegistry registry = new CodeRegistry(loader.loadCodeSets());
+        final GuideCatalog.Guide g = GuideCatalog.find("005010X214");
+        final StructureWalker w = new StructureWalker(g.gs08(), g.transactionType(), g.mapFile(), dataElements, registry);
+        w.walk(loader.loadTransaction(g.mapFile()));
+        final Schema c043 = w.emit().composites.get("C043");
+        assertEquals(SchemaIds.codes("claim_status_cat"), c043.property("c04301").references.schemaId);
+        assertEquals(SchemaIds.codes("claim_status"), c043.property("c04302").references.schemaId);
+        assertFalse(registry.hasCodes("1271"), "no merged 1271 enum");
+        assertNotEquals(registry.codesOf("claim_status_cat"), registry.codesOf("claim_status"));
+        assertTrue(registry.codesOf("claim_status_cat").contains("A1"));
+        assertTrue(registry.codesOf("claim_status").contains("19"));
+        // C043-03 is inline-coded in some loops and entity_id in others: one enum must accept both.
+        assertEquals(SchemaIds.codes("98"), c043.property("c04303").references.schemaId);
+        assertTrue(registry.codesOf("98").contains("PR"), "inline code");
+        assertTrue(registry.codesOf("98").containsAll(registry.codeSet("entity_id").codes()), "absorbed codeset");
+    }
+
+    @Test
+    void dateTimePeriodDescribesItsNormalizedForm() {
+        final MappingLoader loader = new MappingLoader();
+        final GuideCatalog.Guide g = GuideCatalog.find("005010X222A1");
+        final StructureWalker w = new StructureWalker(g.gs08(), g.transactionType(), g.mapFile(), dataElements, codes);
+        w.walk(loader.loadTransaction(g.mapFile()));
+        final Property dtp03 = w.emit().segments.get("DTP").property("dtp03");
+        assertEquals("string", dtp03.dataType, "shape unchanged: the format varies with DTP02");
+        assertNull(dtp03.format);
+        assertTrue(dtp03.description.contains("D8 (YYYY-MM-DD), RD8 (YYYY-MM-DD/YYYY-MM-DD)"), dtp03.description);
+    }
+
+    @Test
     void duplicateXidsMergeAcrossUses() {
         // 837P nests loop 2300 under both 2000B and 2000C; the walker must merge, not fail or duplicate.
         final MappingLoader loader = new MappingLoader();
         final GuideCatalog.Guide g = GuideCatalog.find("005010X222A1");
-        final StructureWalker w = new StructureWalker(g.gs08(), g.transactionType(), null, g.mapFile(), dataElements, codes);
+        final StructureWalker w = new StructureWalker(g.gs08(), g.transactionType(), g.mapFile(), dataElements, codes);
         w.walk(loader.loadTransaction(g.mapFile()));
         final StructureWalker.Generated gen = w.emit();
         assertEquals(SchemaIds.table("005010X222A1", "837P"), gen.table.id);

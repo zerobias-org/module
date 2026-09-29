@@ -35,9 +35,6 @@ public final class GraphBackfill {
     }
 
     public static Result run(BufferStore buffer, RecastHook recaster) throws SQLException {
-        if (!recaster.available()) {
-            return new Result(0, 0, 0);
-        }
         final Set<String> tried = new HashSet<>();
         int rebuilt = 0;
         int envelopeOnly = 0;

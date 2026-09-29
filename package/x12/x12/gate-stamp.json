@@ -1,8 +1,8 @@
 {
   "version": "0.0.0-uat.0",
-  "branch": "fix/x12-buffer-migration",
-  "sourceHash": "241902eaa3e3dbffa2396ca4aad38bcdd4e41b85fa3b16037ba944742f40751a",
-  "testHash": "0766983da4c5b8d16f384f4082b60b0415896a4dac762437fa5b3a2e843f4160",
+  "branch": "fix/x12-review-followups",
+  "sourceHash": "7670b4828a9a4179eda011e896ce331f051b27dda6bb8a9a01d3912d8c22674e",
+  "testHash": "4c8d6177c0521a999fc78719ec8c8ecce8e7cc14f9cc7cbab56c6ad807618f0f",
   "tasks": {
     "validate": "passed",
     "lint": "passed",
@@ -16,6 +16,6 @@
   "tests": {
       "unit": { "expected": 0, "ran": 0, "status": "skipped" },
       "integration": { "expected": 0, "ran": 0, "status": "skipped" },
-      "e2e": { "expected": 65, "ran": 65, "status": "passed" }
+      "e2e": { "expected": 69, "ran": 69, "status": "passed" }
   }
 }

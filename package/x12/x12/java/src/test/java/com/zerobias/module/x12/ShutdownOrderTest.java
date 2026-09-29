@@ -56,8 +56,9 @@ class ShutdownOrderTest {
     void aFailingStepDoesNotSkipTheRest(@TempDir Path dir) throws Exception {
         BufferStore buffer = new BufferStore(dir.resolve("buffer.db").toString(), false,
             new TestRows.MutableClock(TestRows.BASE));
-        X12ApiServer.shutdown(() -> { throw new IllegalStateException("jetty"); }, InboxPollerFactory.NONE
-            .start(ModuleRuntimeConfig.defaults(), buffer, null), null, buffer);
+        X12ApiServer.shutdown(() -> { throw new IllegalStateException("jetty"); },
+            com.zerobias.module.x12.inbox.X12InboxPollerFactory.start(ModuleRuntimeConfig.defaults(), buffer, null,
+                buffer.clock(), false), null, buffer);
         assertThrows(Exception.class, buffer::count, "buffer still closed");
     }
 }

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.OptionalLong;
 
 /**
@@ -17,7 +18,7 @@ import java.util.OptionalLong;
  * raises a Node alert; it does not feed the platform event system).
  *
  * <pre>
- * { poller: { up, lastScan?, lastConsumed?, bufferDepth, oldestUnackedSec?, backpressure,
+ * { poller: { up, lastScan?, lastConsumed?, bufferDepth (un-acked), oldestUnackedSec?, backpressure,
  *             sources: [ { name, path, writable, pending, errored, failing, stalled,
  *                          lastScan?, lastScanStarted?, lastError?, lastErrorAt? } ] },
  *   db: { walBytes, sizeBytes } }
@@ -45,8 +46,8 @@ public final class HealthCheck {
     private final PollerStatus poller;
 
     public HealthCheck(BufferStore buffer, PollerStatus poller) {
-        this.buffer = buffer;
-        this.poller = poller == null ? PollerStatus.DOWN : poller;
+        this.buffer = Objects.requireNonNull(buffer, "buffer");
+        this.poller = Objects.requireNonNull(poller, "poller");
     }
 
     /** Whether to serve 200 (healthy) or 503 (degraded). */
@@ -104,7 +105,7 @@ public final class HealthCheck {
                 p.put("lastConsumed", Instant.ofEpochMilli(last.getAsLong()).toString());
             }
         }
-        p.put("bufferDepth", buffer.count());
+        p.put("bufferDepth", buffer.unackedCount());
         OptionalLong oldestUnacked = buffer.oldestUnackedSeconds();
         if (oldestUnacked.isPresent()) {
             p.put("oldestUnackedSec", oldestUnacked.getAsLong());

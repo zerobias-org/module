@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InboxFilesTest {
 
     private static final Gson GSON = new Gson();
-    private static final String R = ObjectTreeApi.RECEIVER;
+    private static final String R = ObjectTree.RECEIVER;
     private static final String INBOX = R + "/inbox";
     private static final byte[] EDI = "ISA*00*          *00*          *ZZ*SUB~".getBytes(StandardCharsets.UTF_8);
 
@@ -57,10 +57,11 @@ class InboxFilesTest {
             new TestRows.MutableClock(TestRows.BASE));
         SourceConfig source = new SourceConfig("inbox", inboxDir.toString(), "*.{x12,835}", 1, 0);
         ProducerFixture.StubPoller poller = new ProducerFixture.StubPoller(inboxDir);
-        tree = new ObjectTree(buffer, SchemaRegistryApi.EMPTY, () -> poller, ".done",
-            List.of(source), ".error");
-        readOnly = new X12ProducerFacade(buffer, tree, SchemaRegistryApi.EMPTY, OperationsApi.NONE, false);
-        writable = new X12ProducerFacade(buffer, tree, SchemaRegistryApi.EMPTY, OperationsApi.NONE, true);
+        SchemaRegistry schemas = SchemaRegistry.fromClasspath();
+        tree = new ObjectTree(buffer, schemas, poller, ".done", List.of(source), ".error");
+        X12Operations ops = ProducerFixture.ops(buffer, poller, schemas);
+        readOnly = new X12ProducerFacade(buffer, tree, schemas, ops, false);
+        writable = new X12ProducerFacade(buffer, tree, schemas, ops, true);
     }
 
     @AfterEach

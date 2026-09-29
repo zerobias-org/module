@@ -6,14 +6,13 @@ import com.google.gson.JsonParseException;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.RetentionSweeper;
 import com.zerobias.module.x12.health.HealthCheck;
+import com.zerobias.module.x12.inbox.X12InboxPollerFactory;
 import com.zerobias.module.x12.materializer.StructureResolver;
 import com.zerobias.module.x12.producer.BinaryContent;
 import com.zerobias.module.x12.producer.GraphBackfill;
 import com.zerobias.module.x12.producer.MaterializerRecastHook;
 import com.zerobias.module.x12.producer.ObjectTree;
-import com.zerobias.module.x12.producer.ObjectTreeApi;
 import com.zerobias.module.x12.producer.OperationRouter;
-import com.zerobias.module.x12.producer.OperationsApi;
 import com.zerobias.module.x12.producer.ProducerException;
 import com.zerobias.module.x12.producer.RecastHook;
 import com.zerobias.module.x12.producer.SchemaRegistry;
@@ -33,7 +32,6 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -129,16 +127,8 @@ public final class X12ApiServer {
             LOG.info("Retention: unbounded (no maxAge/maxBytes in module config)");
         }
 
-        // ==== INBOX HOOK ====================================================
-        // The inbox package plugs in via InboxPollerFactory (ServiceLoader provider or
-        // by replacing pollerFactory()). With no provider the daemon boots with NO
-        // pollers and /healthz reports poller.up=false (503) — visibly degraded.
-        InboxPollerFactory factory = pollerFactory();
-        this.pollers = factory.start(mc, buffer, retentionSweeper);
-        LOG.info("Inbox pollers: {} ({} source(s) reporting)",
-            factory == InboxPollerFactory.NONE ? "NONE (no InboxPollerFactory provider)" : factory.getClass().getName(),
-            pollers.sources().size());
-        // ====================================================================
+        this.pollers = X12InboxPollerFactory.start(mc, buffer, retentionSweeper);
+        LOG.info("Inbox pollers started: {} source(s)", pollers.sources().size());
 
         this.health = new HealthCheck(buffer, pollers);
 
@@ -187,45 +177,22 @@ public final class X12ApiServer {
     }
 
     /**
-     * The poller factory: the first {@link ServiceLoader} provider of
-     * {@link InboxPollerFactory}, else {@link InboxPollerFactory#NONE}.
-     */
-    static InboxPollerFactory pollerFactory() {
-        for (InboxPollerFactory f : ServiceLoader.load(InboxPollerFactory.class)) {
-            return f;
-        }
-        return InboxPollerFactory.NONE;
-    }
-
-    /**
-     * ==== PRODUCER HOOK ====
-     * The producer surface (DESIGN §12 step 4): the classpath {@link SchemaRegistry}, the
-     * emergent {@link ObjectTree} over the buffer (with the live poller status feeding
-     * {@code /stats}), and the {@link X12Operations} functions with the
-     * {@link MaterializerRecastHook} behind {@code recast}/{@code validate} (re-parse the
-     * stored raw under the classpath structure indexes).
+     * The producer surface: the classpath {@link SchemaRegistry}, the emergent
+     * {@link ObjectTree} over the buffer (the live poller status feeding {@code /stats}; it
+     * registers the business schemas generated from the mappings, DESIGN §8.5), and the
+     * {@link X12Operations} functions with the {@link MaterializerRecastHook} behind
+     * {@code recast}/{@code validate} (re-parse the stored raw under the classpath structure
+     * indexes).
      */
     static X12ProducerFacade buildFacade(BufferStore buffer, ModuleRuntimeConfig mc, PollerHandle pollers) {
         SchemaRegistry schemas = SchemaRegistry.fromClasspath();
-        String consumedSuffix = mc == null ? ModuleRuntimeConfig.DEFAULT_CONSUMED_SUFFIX : mc.consumedSuffix();
-        String errorSuffix = mc == null ? ModuleRuntimeConfig.DEFAULT_ERROR_SUFFIX : mc.errorSuffix();
-        List<SourceConfig> sources = mc == null ? List.of() : mc.sources();
-        boolean fileManagement = mc != null && mc.allowFileManagement();
-        // Business element schemas are generated from the mappings, so a /claims collection can
-        // advertise a collectionSchema the registry actually serves (DESIGN §8.5).
-        List<com.zerobias.module.x12.producer.mapping.EntityMapping> mappings =
-            com.zerobias.module.x12.producer.BusinessEntities.mappingsFor(
-                com.zerobias.module.x12.producer.PackCatalog.fromClasspath().guides());
-        schemas.addMappingSchemas(mappings);
-        ObjectTreeApi tree = new ObjectTree(buffer, schemas, () -> pollers, consumedSuffix, sources, errorSuffix);
+        ObjectTree tree = new ObjectTree(buffer, schemas, pollers, mc.consumedSuffix(), mc.sources(), mc.errorSuffix());
         RecastHook recaster = new MaterializerRecastHook(new StructureResolver(), Clock.systemUTC());
-        OperationsApi ops = new X12Operations(buffer, X12ProducerFacade::toElement, () -> pollers, schemas, recaster);
-        LOG.info("Business entities: {}", mappings.stream()
-            .map(m -> m.collection() + " (" + m.name() + " @ " + m.anchorSchemaId() + ")").toList());
-        LOG.info("Producer: {} schema(s), tree={}, ops={}, fileManagement={}", schemas.size(),
-            tree.getClass().getSimpleName(), ops.getClass().getSimpleName(),
-            fileManagement ? "ENABLED (uploads/mkdir/delete accepted under /inbox)" : "disabled (receive-only)");
-        return new X12ProducerFacade(buffer, tree, schemas, ops, fileManagement);
+        X12Operations ops = new X12Operations(buffer, pollers, schemas, recaster);
+        LOG.info("Producer: {} schema(s), business collections {}, fileManagement={}", schemas.size(),
+            tree.business().collections(),
+            mc.allowFileManagement() ? "ENABLED (uploads/mkdir/delete accepted under /inbox)" : "disabled (receive-only)");
+        return new X12ProducerFacade(buffer, tree, schemas, ops, mc.allowFileManagement());
     }
 
     void registerRoutes(Javalin app) {
@@ -253,10 +220,7 @@ public final class X12ApiServer {
 
         app.get("/connections/{connectionId}/metadata", ctx -> {
             requireConnection(ctx.pathParam("connectionId"));
-            JsonObject md = new JsonObject();
-            md.addProperty("status", health.healthy() ? "On" : "Error");
-            md.addProperty("bufferDepth", buffer.count());
-            ctx.result(md.toString());
+            ctx.result(connectionMetadata(health, buffer).toString());
         });
 
         app.get("/connections/{connectionId}/isSupported/{operationId}", ctx -> {
@@ -296,6 +260,17 @@ public final class X12ApiServer {
                .contentType("application/json")
                .result(GSON.toJson(health.status()));
         });
+    }
+
+    /**
+     * The connection metadata body: {@code status} follows {@code /healthz}, and
+     * {@code bufferDepth} is the un-acked backlog, as on {@code /healthz} and {@code /stats}.
+     */
+    static JsonObject connectionMetadata(HealthCheck health, BufferStore buffer) throws java.sql.SQLException {
+        JsonObject md = new JsonObject();
+        md.addProperty("status", health.healthy() ? "On" : "Error");
+        md.addProperty("bufferDepth", buffer.unackedCount());
+        return md;
     }
 
     /**
@@ -352,15 +327,14 @@ public final class X12ApiServer {
 
     /**
      * Every error body is the interface's {@code errorModelBase}. A {@link ProducerException}
-     * carries its own status; an {@link IllegalArgumentException} is a caller mistake the
-     * lite-filter / sort code raises with a caller-facing message (400); anything else is a
-     * 500 with a generic message — the cause is logged here, never returned, because an SQLite
-     * or IO message can name buffer and inbox paths inside the container.
+     * carries its own status: a caller mistake is raised as one where it is detected (the
+     * filter, sort and paging code included), with a message written for the caller. Anything
+     * else — a bare {@link IllegalArgumentException} too — is a bug and a 500 with a generic
+     * message: the cause is logged here, never returned, because an SQLite or IO message can
+     * name buffer and inbox paths inside the container.
      */
     static void registerExceptionHandlers(Javalin app) {
         app.exception(ProducerException.class, (e, ctx) -> respond(ctx, e));
-        app.exception(IllegalArgumentException.class, (e, ctx) ->
-            respond(ctx, ProducerException.illegalArgument(e.getMessage())));
         // Javalin's own HTTP errors (a body over maxRequestSize is a 413) keep their status and
         // get the platform envelope, rather than being swallowed by the 500 below.
         app.exception(HttpResponseException.class, (e, ctx) -> {

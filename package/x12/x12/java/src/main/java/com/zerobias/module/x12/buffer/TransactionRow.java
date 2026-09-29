@@ -9,9 +9,10 @@ import java.time.Instant;
  * <p>{@code rawX12} is the ST..SE segments verbatim plus the ISA/GS context lines
  * (audit / {@code ops/raw} / re-materialization). The typed document is NOT a column: it
  * lives as the object graph (DESIGN §8.4) and is reassembled on demand, so there is exactly
- * one representation of a transaction's content and nothing to keep in sync. The typed JSON
- * (DESIGN §5). {@code elementKey} ({@code <fileId>:<ISA13>:<GS06>:<ST02>}) is the natural key —
- * two sets of one file sharing it roll that file back ({@link DuplicateElementKeyException}). {@code leaseId}/{@code inFlightUntil} are set while
+ * one representation of a transaction's content and nothing to keep in sync.
+ * {@code elementKey} ({@link #elementKey(String, String, String, String)}) is the natural key —
+ * two sets of one file sharing it roll that file back ({@link DuplicateElementKeyException}).
+ * {@code leaseId}/{@code inFlightUntil} are set while
  * {@code status == IN_FLIGHT}; {@code ackedAt} when {@code ACKED}. {@code envelope} is
  * {@code file} or {@code synthetic} (DESIGN §4.3).
  */
@@ -37,6 +38,17 @@ public record TransactionRow(
     String leaseId,
     Instant inFlightUntil,
     Instant ackedAt) {
+
+    /**
+     * {@code <fileId>:<ISA13>:<GS06>:<ST02>} — the collection element key (DESIGN §2.1).
+     * ISA13 is part of it because one file may carry several interchanges, and GS06/ST02 are
+     * only unique within their interchange: two ISAs that both number their first group
+     * {@code 1} and their first set {@code 0001} are ordinary, not malformed. The key is
+     * opaque to every reader — nothing parses it back apart.
+     */
+    public static String elementKey(String fileId, String isaControl, String gsControl, String stControl) {
+        return fileId + ":" + isaControl + ":" + gsControl + ":" + stControl;
+    }
 
     public static final String ENVELOPE_FILE = "file";
     public static final String ENVELOPE_SYNTHETIC = "synthetic";
@@ -94,19 +106,6 @@ public record TransactionRow(
         public Builder rawX12(byte[] v) { this.rawX12 = v; return this; }
         public Builder parserErrorCount(int v) { this.parserErrorCount = v; return this; }
         public Builder envelope(String v) { this.envelope = v; return this; }
-
-        /**
-         * Derive {@code elementKey} as {@code <fileId>:<ISA13>:<GS06>:<ST02>} (DESIGN §2.1)
-         * from the fields already set. Requires fileId, isaControl, gsControl and stControl.
-         */
-        public Builder deriveElementKey() {
-            if (fileId == null || isaControl == null || gsControl == null || stControl == null) {
-                throw new IllegalStateException("deriveElementKey needs fileId, isaControl, gsControl, stControl");
-            }
-            this.elementKey = com.zerobias.module.x12.materializer.TransactionJson.elementKey(
-                fileId, isaControl, gsControl, stControl);
-            return this;
-        }
 
         /** A {@code new} (unleased) row with id 0; the store assigns the real id. */
         public TransactionRow build() {

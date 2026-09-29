@@ -67,6 +67,16 @@
     </dependencies>
 
     <build>
+        <!-- The guide table belongs to the receiver's parser (TransactionTypes); generating from
+             the same file keeps the parsed guides and the schema'd guides one list. -->
+        <resources>
+            <resource>
+                <directory>../src/main/resources</directory>
+                <includes>
+                    <include>com/zerobias/module/x12/parser/guides.txt</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

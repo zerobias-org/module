@@ -7,12 +7,14 @@ import com.zerobias.module.x12.buffer.FileStatus;
 import com.zerobias.module.x12.buffer.TestRows;
 import com.zerobias.module.x12.buffer.TransactionRow;
 import com.zerobias.module.x12.health.PollerStatus;
+import com.zerobias.module.x12.materializer.StructureResolver;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +48,23 @@ final class ProducerFixture {
     static final String KEY_B2 = FILE_B + ":000000001:3:0001";
 
     private ProducerFixture() {
+    }
+
+    /** A tree over {@code buffer} with no inbox sources and the default suffixes. */
+    static ObjectTree tree(BufferStore buffer, SchemaRegistry schemas, PollerStatus poller) {
+        return new ObjectTree(buffer, schemas, poller, ".done", List.of(), ".error");
+    }
+
+    /** The functions with the real re-materialization hook behind recast/validate. */
+    static X12Operations ops(BufferStore buffer, PollerHandle poller, SchemaRegistry schemas) {
+        return new X12Operations(buffer, poller, schemas,
+            new MaterializerRecastHook(new StructureResolver(), Clock.systemUTC()));
+    }
+
+    /** A receive-only facade over {@code tree}, with {@link #ops} behind it. */
+    static X12ProducerFacade facade(BufferStore buffer, ObjectTree tree, SchemaRegistry schemas,
+            PollerHandle poller) {
+        return new X12ProducerFacade(buffer, tree, schemas, ops(buffer, poller, schemas), false);
     }
 
     /** Seed {@code buffer}; FILE_A's bytes are written under {@code dir}, FILE_B's point at a missing path. */

@@ -149,6 +149,32 @@ class Entity837MappingTest {
     }
 
     @Test
+    void aDateRangeProjectsEachEndAndADateTimeItsDate() throws Exception {
+        // The fixture's statement period is one day; a real range tells its start from its end.
+        String t = withSegmentCount(Fixtures.text(Fixtures.F837I).replace("DTP*434*RD8*20260905-20260905~",
+            "DTP*434*RD8*20260901-20260905~\nDTP*435*DT*202609011345~"));
+        EntityMapping claim = byName(EntityMapping.forGuide(I), "Claim");
+        List<EntityGraph.Entity> graph = graph(t);
+        Map<String, Object> r = project(graph, claim).get(0);
+        assertEquals("2026-09-01", r.get("statementFromDate"), "start of 2026-09-01/2026-09-05");
+        assertEquals("2026-09-05", r.get("statementToDate"), "end of 2026-09-01/2026-09-05");
+        assertEquals("2026-09-01", r.get("admissionDate"), "a DT admission date and hour: its date");
+
+        // A graph stored before DTP03 was normalized still holds the range as sent.
+        for (EntityGraph.Entity e : graph) {
+            for (int i = 0; i < e.values.size(); i++) {
+                EntityGraph.Value v = e.values.get(i);
+                if ("dtp03".equals(v.property()) && "2026-09-01/2026-09-05".equals(v.text())) {
+                    e.values.set(i, new EntityGraph.Value("dtp03", v.dataType(), "20260901-20260905", null, null));
+                }
+            }
+        }
+        Map<String, Object> legacy = project(graph, claim).get(0);
+        assertEquals("2026-09-01", legacy.get("statementFromDate"));
+        assertEquals("2026-09-05", legacy.get("statementToDate"));
+    }
+
+    @Test
     void institutionalServiceLinesCarryTheRevenueCode() throws Exception {
         List<Map<String, Object>> rows = project(graph(Fixtures.F837I),
             byName(EntityMapping.forGuide(I), "ServiceLine"));

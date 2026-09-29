@@ -13,12 +13,15 @@
 #
 #   connect → isSupported → uploadBinaryContent (the 835 lands on the mounted inbox
 #   THROUGH the API) → watch it get renamed `.done` (rename is the ack) → root →
-#   /files → /by-type/835 → validate → take → ack → purge → downloadBinary (bytes
-#   compared to the fixture) → file management (mkdir → upload into the new folder →
-#   live browse → download → delete, and the refusals that guard it) → /healthz drained.
+#   /files (+ the file node's document) → /by-type/835/<GS08> → validate → take → ack →
+#   purge → downloadBinary (bytes compared to the fixture) → file management (mkdir →
+#   upload into the new folder → live browse → download → delete, and the refusals that
+#   guard it) → /healthz drained → /stats → a symlink in the inbox is never followed →
+#   two interchanges reusing GS06/ST02 in one file both land → a mistyped purge is a 400.
 #
 # The container runs with `allowFileManagement: true` (see x12_module_config); it ships
-# false, so a production deployment has no upload path at all.
+# false, so a production deployment has no upload path at all. The image may run as an
+# unprivileged uid, so the bind-mounted dirs are 0777 and nothing is chowned at teardown.
 #
 # Simulates the Hub Node by hand (docker run with MODULE_CONFIG injected). Every
 # step prints PASS/FAIL; the container is torn down on exit whatever happens.
@@ -26,6 +29,9 @@
 # in the docker group), mvn + GitHub Packages auth (gh), python3, curl, cmp.
 #
 set -uo pipefail
+# No brace expansion: bash 3.2 (macOS /bin/bash) brace-expands the JSON argMaps built
+# inside nested $(...) — {"a":1,"b":2} arrives as two arguments. Nothing here relies on it.
+set +B
 
 # shellcheck source=x12-common.sh
 . "$(dirname "$0")/x12-common.sh"
@@ -42,12 +48,12 @@ check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }   # check "label" 'co
 
 WORK="$(mktemp -d -t x12-e2e.XXXXXX)"
 INBOX="$WORK/inbox"; BUFFER="$WORK/buffer"
-mkdir -p "$INBOX" "$BUFFER"; chmod 777 "$INBOX" "$BUFFER"
+x12_mkmounts "$INBOX" "$BUFFER"
 
 cleanup() {
   step "teardown"
   x12_stop "$NAME"
-  rm -rf "$WORK" 2>/dev/null || true
+  x12_rm_scratch "$WORK" "$IMAGE"
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   [ "$FAIL" -eq 0 ] && echo "E2E PASS" || echo "E2E FAIL"
 }
@@ -86,7 +92,7 @@ check "upload returned the new binary node" "[ \"$(jget "$UP" 'j["id"]')\" = \"$
 UP_CLASS="$(jget "$UP" '",".join(j["objectClass"])')"
 UP_INGEST="$(jget "$UP" 'j["ingest"]')"
 check "node is a live binary with ingest=watched" "[ \"$UP_CLASS\" = binary ] && [ \"$UP_INGEST\" = watched ]"
-check "uploaded size matches the fixture" "[ \"$(jget "$UP" 'j["size"]')\" = $(stat -c%s "$X12_FIXTURE") ]"
+check "uploaded size matches the fixture" "[ \"$(jget "$UP" 'j["size"]')\" = $(wc -c < "$X12_FIXTURE" | tr -d ' ') ]"
 check "bytes really landed on the bind mount" "[ -f \"$INBOX/835-005010X221A1.x12\" ] || [ -f \"$INBOX/835-005010X221A1.x12.done\" ]"
 check "no .part-* temporary left in the inbox" "! ls -A \"$INBOX\" | grep -q '[.]part-'"
 DONE=""
@@ -106,18 +112,29 @@ step "ObjectsApi.getChildren $X12_RECEIVER/files"
 FILES="$(x12_rpc ObjectsApi.getChildren "{\"objectId\":\"$X12_RECEIVER/files\"}")"
 echo "$FILES" | jpretty | head -30
 check "PagedResults count=1" "[ \"$(jget "$FILES" 'j["count"]')\" = 1 ]"
-FILE_ID="$(jget "$FILES" 'j["items"][0]["fileId"]')"
 FILE_NODE="$(jget "$FILES" 'j["items"][0]["id"]')"
 FILE_SUM="$(jget "$FILES" 'j["items"][0]["checksum"]')"
+check "node is container+document+binary, typed by the file schema, tagged status:consumed" "[ \"$(jget "$FILES" 'j["items"][0]["objectClass"]==["container","document","binary"] and j["items"][0]["documentSchema"]=="schema:shared:x12.file" and "status:consumed" in j["items"][0]["tags"]')\" = True ]"
+check "the node carries interface fields only (the files row is its document)" "[ \"$(jget "$FILES" 'not any(k in j["items"][0] for k in ("fileId","filePath","redeliveryCount","binarySchema"))')\" = True ]"
+check "checksum matches the fixture's sha256" "[ \"$FILE_SUM\" = \"$(sha256sum "$X12_FIXTURE" | cut -c1-64)\" ]"
+FILE_DOC="$(x12_rpc DocumentsApi.getDocumentData "{\"objectId\":$(jstr "$FILE_NODE")}")"
+echo "$FILE_DOC" | jpretty | head -24
+FILE_ID="$(jget "$FILE_DOC" 'j["fileId"]')"
 echo "  fileId=$FILE_ID"
 echo "  node=$FILE_NODE"
 check "fileId = /var/lib/x12/inbox/<name>@<12 hex of sha256>" "[ \"$FILE_ID\" = \"/var/lib/x12/inbox/835-005010X221A1.x12@${FILE_SUM:0:12}\" ]"
-check "checksum matches the fixture's sha256" "[ \"$FILE_SUM\" = \"$(sha256sum "$X12_FIXTURE" | cut -c1-64)\" ]"
-check "node is container+binary with status:consumed" "[ \"$(jget "$FILES" '"binary" in j["items"][0]["objectClass"] and "status:consumed" in j["items"][0]["tags"]')\" = True ]"
-check "filePath is the raw discovery path" "[ \"$(jget "$FILES" 'j["items"][0]["filePath"]')\" = /var/lib/x12/inbox/835-005010X221A1.x12 ]"
+check "filePath is the raw discovery path" "[ \"$(jget "$FILE_DOC" 'j["filePath"]')\" = /var/lib/x12/inbox/835-005010X221A1.x12 ]"
+check "the document says consumed, no redelivery" "[ \"$(jget "$FILE_DOC" 'j["status"]=="consumed" and j["redeliveryCount"]==0')\" = True ]"
 
-step "CollectionsApi.getCollectionElements $X12_RECEIVER/by-type/835"
-ELEMS="$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":\"$X12_RECEIVER/by-type/835\",\"pageSize\":10,\"pageNumber\":1}")"
+step "ObjectsApi.getChildren $X12_RECEIVER/by-type/835 (always a container of per-guide collections)"
+T835="$X12_RECEIVER/by-type/835"
+T835_OBJ="$(x12_rpc ObjectsApi.getObject "{\"objectId\":\"$T835\"}")"
+check "/by-type/835 is a container, whatever the number of guides" "[ \"$(jget "$T835_OBJ" 'j["objectClass"]==["container"]')\" = True ]"
+T835_KIDS="$(x12_rpc ObjectsApi.getChildren "{\"objectId\":\"$T835\"}")"
+check "its child is the 005010X221A1 collection on the 835 table schema" "[ \"$(jget "$T835_KIDS" 'j["count"]==1 and j["items"][0]["objectClass"]==["collection"] and j["items"][0]["collectionSchema"]=="schema:table:x12.005010X221A1.835"')\" = True ]"
+
+step "CollectionsApi.getCollectionElements $T835/005010X221A1"
+ELEMS="$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":\"$T835/005010X221A1\",\"pageSize\":10,\"pageNumber\":1}")"
 echo "$ELEMS" | jpretty | head -40
 check "count=1, status new, typed body present" "[ \"$(jget "$ELEMS" 'j["count"]==1 and j["items"][0]["status"]=="new" and "header" in j["items"][0]')\" = True ]"
 KEY="$(jget "$ELEMS" 'j["items"][0]["elementKey"]')"
@@ -258,7 +275,7 @@ PACK_SCHEMAS="$(jget "$PACKS" 'j["schemaCount"]')"
 REGISTRY="$(jget "$PACKS" 'j["registrySize"]')"
 DEGRADED="$(jget "$PACKS" 'len([p for p in j["packs"] if p["status"] != "active"])')"
 NON_BUNDLED="$(jget "$PACKS" 'len([p for p in j["packs"] if p["source"] != "bundled"])')"
-check "packs reported (one per guide label, plus codes and core)" "[ \"$PACK_COUNT\" -ge 12 ]"
+check "packs reported (one per guide, plus codes and core; aliases resolve to their guide)" "[ \"$PACK_COUNT\" -ge 9 ]"
 check "every pack is active (no declared id the registry cannot serve)" "[ \"$DEGRADED\" = 0 ]"
 check "every pack is bundled in a stock deployment" "[ \"$NON_BUNDLED\" = 0 ]"
 check "pack schema count reconciles with the registry" "[ \"$PACK_SCHEMAS\" -le \"$REGISTRY\" ] && [ \"$PACK_SCHEMAS\" -gt 0 ]"
@@ -276,5 +293,57 @@ step "healthz drained"
 H2="$(curl -fsS "$X12_API/healthz")"; echo "  $H2"
 check "bufferDepth back to 0" "[ \"$(jget "$H2" 'j["poller"]["bufferDepth"]')\" = 0 ]"
 check "transactions collection empty but the files row remains" "[ \"$(jget "$(x12_rpc ObjectsApi.getObject "{\"objectId\":\"$X12_RECEIVER/transactions\"}")" 'j["collectionSize"]')\" = 0 ] && [ \"$(jget "$(x12_rpc ObjectsApi.getChildren "{\"objectId\":\"$X12_RECEIVER/files\"}")" 'j["count"]')\" = 1 ]"
+
+stats() { x12_rpc DocumentsApi.getDocumentData "{\"objectId\":\"$X12_RECEIVER/stats\"}"; }
+
+step "DocumentsApi.getDocumentData $X12_RECEIVER/stats"
+ST="$(stats)"; echo "$ST" | jpretty | head -24
+check "/stats reports the database size" "[ \"$(jget "$ST" 'type(j["dbSizeBytes"]) is int and j["dbSizeBytes"] > 0')\" = True ]"
+check "/stats reports bufferDepth (un-acked), 0 once drained" "[ \"$(jget "$ST" 'j.get("bufferDepth")')\" = 0 ]"
+
+# The link targets a readable, never-seen interchange outside the inbox (the buffer mount), so
+# following it would consume new bytes rather than hit the duplicate check.
+step "a symlink in the inbox is skipped, never followed"
+x12_interchange835 000000909 > "$BUFFER/decoy.835"
+chmod 0644 "$BUFFER/decoy.835"
+ln -s /var/lib/module/decoy.835 "$INBOX/linked.835"
+x12_fn rescan '{}' >/dev/null
+sleep 3   # past stableForSec, so a followed link would be read on this scan
+RS="$(x12_fn rescan '{}')"; echo "  $RS"
+check "the rescan consumed and errored nothing" "[ \"$(jget "$RS" 'j["consumed"]==0 and j["errored"]==0')\" = True ]"
+check "the link is still there, not renamed .done/.error" "[ -L \"$INBOX/linked.835\" ] && [ ! -e \"$INBOX/linked.835.done\" ] && [ ! -e \"$INBOX/linked.835.error\" ]"
+check "no files row for the link or its target" "[ \"$(jget "$(x12_rpc ObjectsApi.getChildren "{\"objectId\":\"$X12_RECEIVER/files\",\"pageSize\":50}")" 'j["count"]')\" = 1 ]"
+rm -f "$INBOX/linked.835" "$BUFFER/decoy.835"
+
+step "two interchanges in one file reusing GS06/ST02 both land"
+TWO="$WORK/two-isa.835"
+{ x12_interchange835 000000301; x12_interchange835 000000302; } > "$TWO"
+x12_upload "$SRC" two-isa.835 "$TWO" >/dev/null
+DONE2=""
+for i in $(seq 1 30); do
+  if [ -f "$INBOX/two-isa.835.done" ]; then DONE2=yes; break; fi
+  sleep 1
+done
+check "consumed and renamed .done within 30s (not .error for a key clash)" "[ \"$DONE2\" = yes ]"
+FILES3="$(x12_rpc ObjectsApi.getChildren "{\"objectId\":\"$X12_RECEIVER/files\",\"pageSize\":50}")"
+TWO_NODE="$(jget "$FILES3" '[i["id"] for i in j["items"] if i["name"] == "two-isa.835"][0]')"
+TWO_DOC="$(x12_rpc DocumentsApi.getDocumentData "{\"objectId\":$(jstr "$TWO_NODE")}")"
+TWO_FID="$(jget "$TWO_DOC" 'j["fileId"]')"
+check "the file row counts two interchanges and two sets" "[ \"$(jget "$TWO_DOC" 'j["status"]=="consumed" and j["isaCount"]==2 and j["transactionCount"]==2')\" = True ]"
+TWO_TX="$(x12_rpc CollectionsApi.getCollectionElements "{\"objectId\":$(jstr "$TWO_NODE/transactions"),\"pageSize\":10}")"
+TWO_KEYS="$(jget "$TWO_TX" "sorted(i['elementKey'] for i in j['items']) == [$(jstr "$TWO_FID:000000301:101:0001"), $(jstr "$TWO_FID:000000302:101:0001")]")"
+check "both element keys <fileId>:<ISA13>:101:0001 are buffered" "[ \"$TWO_KEYS\" = True ]"
+
+step "a mistyped purge input is a 400 and purges nothing"
+TAKE2="$(x12_fn take '{"max":10}')"
+LEASE2="$(jget "$TAKE2" 'j["leaseId"]')"
+check "ack the two sets" "[ \"$(jget "$(x12_fn ack "{\"leaseId\":$(jstr "$LEASE2")}")" 'j["acked"]')\" = 2 ]"
+check "/stats: 2 acked, bufferDepth 0 (acked rows are not buffer depth)" "[ \"$(jget "$(stats)" 'j["ackedCount"]==2 and j["bufferDepth"]==0')\" = True ]"
+TYPO="$(x12_rpc_code FunctionsApi.invokeFunction "{\"objectId\":\"$X12_RECEIVER/ops/purge\",\"requestBody\":{\"olderthan\":\"P30D\"}}")"
+TYPO_CODE="${TYPO##*$'\n'}"; TYPO_BODY="${TYPO%$'\n'*}"; echo "  $TYPO_CODE $TYPO_BODY"
+check "purge {\"olderthan\":…} -> 400" "[ \"$TYPO_CODE\" = 400 ]"
+check "the error is err.illegal.argument" "[ \"$(jget "$TYPO_BODY" 'j["key"]')\" = err.illegal.argument ]"
+check "and nothing was purged" "[ \"$(jget "$(stats)" 'j["ackedCount"]')\" = 2 ]"
+check "the correctly spelt purge still works" "[ \"$(jget "$(x12_fn purge '{}')" 'j["purged"]')\" = 2 ]"
 
 exit 0

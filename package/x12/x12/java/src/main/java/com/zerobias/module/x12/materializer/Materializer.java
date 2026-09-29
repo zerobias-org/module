@@ -14,18 +14,21 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntFunction;
 
 /**
  * imsweb {@link Loop} tree → typed JSON (DESIGN §5), walked by the {@link StructureIndex}
  * — never by {@code Loop.toJson()}. For each loop: {@code {"<segXid lower>": {...},
  * "loop<xid>": [...]}} in index order; for each segment: {@code {"<xid lower><nn>": value}}
  * with {@link X12Normalizer} applied per element type; composites nest using the index's
- * composite layout ({@code c00301}, ...); repeated segments/loops are arrays when the index
- * says {@code multi} (or when more than one occurrence is present); {@code ^}-repeated
+ * composite layout ({@code c00301}, ...); a segment or loop is an array exactly when the index
+ * says {@code multi}, so the JSON always has the schema's shape — a second occurrence of a
+ * single-use segment or loop is left out of the JSON (the raw keeps it, and imsweb has already
+ * reported it as a non-fatal "appears too many times" parser error). {@code ^}-repeated
  * elements are split with the file's repetition separator (imsweb does not) and emitted as
- * arrays. Empty elements are omitted. Anything the index does not know (a segment or loop
- * imsweb placed that the merged map lacks, trailing elements beyond the layout) is still
- * emitted under its generic key so nothing is dropped.
+ * arrays. Empty elements are omitted. Anything the index does not know (a segment imsweb placed
+ * that the map lacks, trailing elements beyond the layout) is still emitted under its generic
+ * key so nothing is dropped.
  */
 public final class Materializer {
 
@@ -72,7 +75,7 @@ public final class Materializer {
                         }
                     }
                     placedLoops.add(ref.xid);
-                    put(out, ref.name, instances, ref.multi);
+                    putIndexed(out, ref, instances);
                 } else {
                     List<Object> occ = new ArrayList<>();
                     StructureIndex.SegmentEntry se = index.segment(ref.xid);
@@ -85,11 +88,11 @@ public final class Materializer {
                         }
                     }
                     placedSegments.add(ref.xid);
-                    put(out, ref.name, occ, ref.multi);
+                    putIndexed(out, ref, occ);
                 }
             }
         }
-        // Leftovers: segments/loops the (merged) map does not list under this loop.
+        // Leftovers: segments/loops the map does not list under this loop.
         Map<String, List<Object>> extraSegs = new LinkedHashMap<>();
         for (Segment s : loop.getSegments()) {
             if (!placedSegments.contains(s.getId())) {
@@ -100,32 +103,35 @@ public final class Materializer {
             }
         }
         for (Map.Entry<String, List<Object>> e : extraSegs.entrySet()) {
-            if (!out.containsKey(e.getKey())) {
-                put(out, e.getKey(), e.getValue(), false);
-            }
+            putLeftover(out, e.getKey(), e.getValue());
         }
         Map<String, List<Object>> extraLoops = new LinkedHashMap<>();
         for (Loop l : loop.getLoops()) {
             if (!placedLoops.contains(l.getId())) {
                 Map<String, Object> m = materializeLoop(l, index.loop(l.getId()));
                 if (!m.isEmpty()) {
-                    extraLoops.computeIfAbsent(loopProperty(l.getId()), k -> new ArrayList<>()).add(m);
+                    extraLoops.computeIfAbsent(index.loopProperty(l.getId()), k -> new ArrayList<>()).add(m);
                 }
             }
         }
         for (Map.Entry<String, List<Object>> e : extraLoops.entrySet()) {
-            if (!out.containsKey(e.getKey())) {
-                put(out, e.getKey(), e.getValue(), false);
-            }
+            putLeftover(out, e.getKey(), e.getValue());
         }
         return out;
     }
 
-    private static void put(Map<String, Object> out, String name, List<Object> values, boolean multi) {
-        if (values.isEmpty()) {
-            return;
+    /** The schema's shape: an array when the index says {@code multi}, else the first occurrence. */
+    private static void putIndexed(Map<String, Object> out, StructureIndex.StructureRef ref, List<Object> values) {
+        if (!values.isEmpty()) {
+            out.put(ref.name, ref.multi ? values : values.get(0));
         }
-        out.put(name, (multi || values.size() > 1) ? values : values.get(0));
+    }
+
+    /** No schema to follow: keep every occurrence, as an array when there are several. */
+    private static void putLeftover(Map<String, Object> out, String name, List<Object> values) {
+        if (!values.isEmpty() && !out.containsKey(name)) {
+            out.put(name, values.size() > 1 ? values : values.get(0));
+        }
     }
 
     /** One segment by its index entry ({@code null} entry → every element as a trimmed string). */
@@ -135,13 +141,14 @@ public final class Materializer {
         String prefix = segmentProperty(seg.getId());
         int covered = 0;
         if (entry != null) {
+            String periodFormat = periodFormat(entry.fields, elements.size(), i -> elements.get(i - 1).getValue());
             for (StructureIndex.FieldEntry fe : entry.fields) {
                 covered = Math.max(covered, fe.seq);
                 if (fe.seq < 1 || fe.seq > elements.size()) {
                     continue;
                 }
                 String raw = elements.get(fe.seq - 1).getValue();
-                Object v = materializeField(raw, fe);
+                Object v = materializeField(raw, fe, periodFormat);
                 if (v != null) {
                     out.put(fe.name, v);
                 }
@@ -156,8 +163,21 @@ public final class Materializer {
         return out;
     }
 
+    /**
+     * The value of the Date Time Period Format Qualifier (1250) among {@code fields}, which says
+     * how the 1251 beside it (DTP02/DTP03, DMG01/DMG02, HI0n-03/-04) is written; null when absent.
+     */
+    private static String periodFormat(List<StructureIndex.FieldEntry> fields, int present, IntFunction<String> valueAt) {
+        for (StructureIndex.FieldEntry fe : fields) {
+            if (X12Normalizer.DATE_TIME_FORMAT_QUALIFIER.equals(fe.dataEle) && fe.seq >= 1 && fe.seq <= present) {
+                return valueAt.apply(fe.seq);
+            }
+        }
+        return null;
+    }
+
     /** A field value: composite object, normalized scalar, or an array of either when the element repeats. */
-    private Object materializeField(String raw, StructureIndex.FieldEntry fe) {
+    private Object materializeField(String raw, StructureIndex.FieldEntry fe, String periodFormat) {
         if (raw == null || raw.isEmpty()) {
             return null;
         }
@@ -165,22 +185,29 @@ public final class Materializer {
         if (repeats && separators.hasRepetition() && raw.indexOf(separators.repetition()) >= 0) {
             List<Object> reps = new ArrayList<>();
             for (String piece : separators.splitRepetitions(raw)) {
-                Object v = materializeSingle(piece, fe);
+                Object v = materializeSingle(piece, fe, periodFormat);
                 if (v != null) {
                     reps.add(v);
                 }
             }
             return reps.isEmpty() ? null : reps;
         }
-        Object v = materializeSingle(raw, fe);
+        Object v = materializeSingle(raw, fe, periodFormat);
         return (v != null && repeats) ? List.of(v) : v;
     }
 
-    private Object materializeSingle(String raw, StructureIndex.FieldEntry fe) {
+    private Object materializeSingle(String raw, StructureIndex.FieldEntry fe, String periodFormat) {
         if (fe.composite != null) {
             return materializeComposite(raw, index.composite(fe.composite));
         }
-        return X12Normalizer.normalize(raw, fe.x12Type, fe.impliedDecimals);
+        return scalar(raw, fe, periodFormat);
+    }
+
+    private static Object scalar(String raw, StructureIndex.FieldEntry fe, String periodFormat) {
+        if (X12Normalizer.DATE_TIME_PERIOD.equals(fe.dataEle) && raw != null && !raw.trim().isEmpty()) {
+            return X12Normalizer.dateTimePeriod(raw, periodFormat);
+        }
+        return X12Normalizer.normalize(raw, fe.x12Type, fe.coreType, fe.impliedDecimals);
     }
 
     private Object materializeComposite(String raw, StructureIndex.CompositeEntry ce) {
@@ -188,12 +215,13 @@ public final class Materializer {
         Map<String, Object> out = new LinkedHashMap<>();
         int covered = 0;
         if (ce != null) {
+            String periodFormat = periodFormat(ce.fields, parts.length, i -> parts[i - 1]);
             for (StructureIndex.FieldEntry fe : ce.fields) {
                 covered = Math.max(covered, fe.seq);
                 if (fe.seq < 1 || fe.seq > parts.length) {
                     continue;
                 }
-                Object v = X12Normalizer.normalize(parts[fe.seq - 1], fe.x12Type, fe.impliedDecimals);
+                Object v = scalar(parts[fe.seq - 1], fe, periodFormat);
                 if (v != null) {
                     out.put(fe.name, v);
                 }
@@ -212,33 +240,8 @@ public final class Materializer {
         return out;
     }
 
-    // ---- naming (mirror of the codegen's Names) -------------------------------------
-
+    /** The generic key of a segment the index does not describe; the codegen names segments the same way. */
     static String segmentProperty(String xid) {
         return xid.toLowerCase(Locale.ROOT);
-    }
-
-    static String loopProperty(String xid) {
-        if (xid == null || xid.isEmpty()) {
-            return "loop";
-        }
-        if (Character.isDigit(xid.charAt(0))) {
-            return "loop" + xid;
-        }
-        StringBuilder sb = new StringBuilder();
-        boolean upNext = false;
-        for (char ch : xid.toCharArray()) {
-            if (!Character.isLetterOrDigit(ch)) {
-                upNext = sb.length() > 0;
-                continue;
-            }
-            if (upNext) {
-                sb.append(Character.toUpperCase(ch));
-                upNext = false;
-            } else {
-                sb.append(Character.toLowerCase(ch));
-            }
-        }
-        return sb.toString();
     }
 }

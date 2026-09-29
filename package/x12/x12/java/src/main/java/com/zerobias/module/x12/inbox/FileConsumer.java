@@ -12,7 +12,6 @@ import com.zerobias.module.x12.materializer.EntityGraph;
 import com.zerobias.module.x12.producer.mapping.EntityMapping;
 import com.zerobias.module.x12.materializer.Materializer;
 import com.zerobias.module.x12.materializer.StructureResolver;
-import com.zerobias.module.x12.materializer.TransactionJson;
 import com.zerobias.module.x12.parser.TransactionTypes;
 import com.zerobias.module.x12.parser.X12Parse;
 import com.zerobias.module.x12.parser.X12ParseException;
@@ -39,6 +38,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -71,6 +71,10 @@ import java.util.Optional;
  * the buffer itself (disk full, I/O, corruption, a schema that no longer matches its INSERTs)
  * propagates as {@link SQLException}, leaving the file in place: that is not the file's fault,
  * and the poller surfaces it in {@code /healthz} instead of blaming every file in turn.
+ *
+ * <p>Logs name files and the kind of a failure ({@link #kind}), never file content or a
+ * parser message that can quote it: X12 here is PHI. The full message is kept on the
+ * {@code files} row.
  *
  * <p>Stateless apart from its collaborators; one instance is shared by every poller.
  */
@@ -108,16 +112,17 @@ public final class FileConsumer {
     private final long maxFileBytes;
     private final Clock clock;
 
+    /** {@code sweeper} is null when retention is unbounded: there is no ceiling to press back from. */
     public FileConsumer(BufferStore buffer, RetentionSweeper sweeper, ModuleRuntimeConfig config,
                         StructureResolver resolver, Clock clock) {
-        this.buffer = buffer;
+        this.buffer = Objects.requireNonNull(buffer, "buffer");
         this.sweeper = sweeper;
-        this.resolver = resolver == null ? new StructureResolver() : resolver;
+        this.resolver = Objects.requireNonNull(resolver, "resolver");
         this.consumedSuffix = config.consumedSuffix();
         this.errorSuffix = config.errorSuffix();
         this.allowBareTransactionSets = config.allowBareTransactionSets();
         this.maxFileBytes = config.maxFileBytes();
-        this.clock = clock == null ? Clock.systemUTC() : clock;
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     /** True while the buffer is over its byte ceiling (DESIGN §4.2 step 4). */
@@ -134,24 +139,13 @@ public final class FileConsumer {
     }
 
     /**
-     * Consume a file with no stability sighting to hold it to (tests, tools): it is still
-     * stat'ed before and after the read. See {@link #consume(SourceConfig, Path, FileStability.Sighting)}.
-     */
-    public Result consume(SourceConfig source, Path path, Instant discoveredAt) throws SQLException {
-        return consume(source, path, discoveredAt, null);
-    }
-
-    /**
      * Consume a file the poller found stable; {@code stable} carries the {@code (size, mtime)}
-     * the window saw and the first sighting. Never throws for a bad file (that is the
-     * {@code ERROR} outcome); throws only when the buffer itself is unusable.
+     * the window saw and the first sighting (the file's discovery time). Never throws for a bad
+     * file (that is the {@code ERROR} outcome); throws only when the buffer itself is unusable.
      */
-    public Result consume(SourceConfig source, Path path, FileStability.Sighting stable) throws SQLException {
-        return consume(source, path, stable.firstSeen(), stable);
-    }
-
-    private synchronized Result consume(SourceConfig source, Path path, Instant discoveredAt,
-                                        FileStability.Sighting stable) throws SQLException {
+    public synchronized Result consume(SourceConfig source, Path path, FileStability.Sighting stable)
+            throws SQLException {
+        final Instant discoveredAt = stable.firstSeen();
         final Path abs = path.toAbsolutePath().normalize();
         final String filePath = abs.toString();
         final String fileName = abs.getFileName().toString();
@@ -172,8 +166,8 @@ public final class FileConsumer {
                 content = read(abs, stable, false);
             }
         } catch (IOException e) {
-            // Nothing was hashed, so the file has no identity yet: leave it for the next scan.
-            LOG.warn("unreadable: {}: {}; retrying next scan", filePath, e.toString());
+            // Nothing was hashed, so the file has no identity yet: leave it for the next scan. The
+            // poller logs it, and escalates a file that keeps failing (recordUnreadable).
             return new Result(Outcome.UNREADABLE, filePath, 0, "io: " + e);
         }
         if (content == null) {
@@ -181,6 +175,8 @@ public final class FileConsumer {
                 filePath);
             return new Result(Outcome.CHANGED, filePath, 0, "changed while being read");
         }
+        // Readable now: an error row left by earlier failed reads no longer applies.
+        buffer.deleteFile(FileRow.unreadableId(filePath));
         final long size = content.size();
         final String checksum = content.checksum();
         final Instant mtime = content.mtime();
@@ -218,7 +214,7 @@ public final class FileConsumer {
         if (existing.isPresent()) {
             // Retry: the operator renamed an .error file back (or the same bytes re-landed).
             buffer.deleteFile(fileId);
-            LOG.info("retry: {} previously errored ({}); consuming again", fileId, existing.get().errorMessage());
+            LOG.info("retry: {} previously errored ({}); consuming again", fileId, kind(existing.get().errorMessage()));
         }
 
         if (outOfHeap) {
@@ -240,14 +236,18 @@ public final class FileConsumer {
             Map<String, List<EntityGraph.Entity>> graphs = new LinkedHashMap<>();
             Map<String, Map<String, EntityGraph.Value>> dims = new LinkedHashMap<>();
             for (X12Parse.Transaction tx : parsed.transactions()) {
-                rows.add(toRow(tx, parsed, fileId, fileName, source.name(), now, graphs));
-            }
-            // Resolve the guide's business dimensions once per transaction set: the payer lives
-            // in the header, so segmenting claims by payer must not mean walking up per claim.
-            for (Map.Entry<String, List<EntityGraph.Entity>> e : graphs.entrySet()) {
-                final Map<String, EntityGraph.Value> resolved = EntityMapping.dimensions(parsed.gs08(), e.getValue());
-                if (!resolved.isEmpty()) {
-                    dims.put(e.getKey(), resolved);
+                TransactionRow row = toRow(tx, parsed, fileId, source.name(), now, graphs);
+                rows.add(row);
+                // Resolve the guide's business dimensions once per transaction set: the payer
+                // lives in the header, so segmenting claims by payer must not mean walking up per
+                // claim. Keyed by the set's own guide: one ISA may carry a 999 group and a 277CA
+                // group, and a 277CA graph read with the 999 mapping has no dimensions at all.
+                List<EntityGraph.Entity> graph = graphs.get(row.elementKey());
+                if (graph != null) {
+                    final Map<String, EntityGraph.Value> resolved = EntityMapping.dimensions(tx.gs08(), graph);
+                    if (!resolved.isEmpty()) {
+                        dims.put(row.elementKey(), resolved);
+                    }
                 }
             }
             FileRow file = new FileRow(0, fileId, filePath, fileName, source.name(), donePath.toString(), size, checksum,
@@ -273,7 +273,8 @@ public final class FileConsumer {
                 fileId);
         }
         if (!parsed.errors().isEmpty()) {
-            LOG.info("{}: consumed with {} non-fatal parser error(s): {}", fileId, parsed.errors().size(), parsed.errors());
+            // The count only: the error texts can quote the file's elements.
+            LOG.info("{}: consumed with {} non-fatal parser error(s)", fileId, parsed.errors().size());
         }
         LOG.info("consumed {} ({} bytes, {} transaction(s), {}, envelope={})", fileId, size, transactions,
             parsed.gs08(), parsed.synthetic() ? TransactionRow.ENVELOPE_SYNTHETIC : TransactionRow.ENVELOPE_FILE);
@@ -283,7 +284,7 @@ public final class FileConsumer {
     /**
      * Read and hash the file without following a symlink, or return null when it is not the
      * file the stability window saw: not a regular file, {@code (size, mtime)} different from
-     * {@code stable} (when given) or from the stat taken just before the read, or it grew or
+     * {@code stable} or from the stat taken just before the read, or it grew or
      * shrank while being read. A file over {@code maxFileBytes} (decided from that first stat,
      * before anything is read), or any file when {@code load} is false, is hashed by streaming
      * and its bytes are not kept. The allocation for the bytes throws {@link OutOfMemoryError}
@@ -294,7 +295,7 @@ public final class FileConsumer {
         if (!before.isRegularFile()) {
             return null;   // a symlink (never followed), a directory, a device
         }
-        if (stable != null && !matches(before, stable.size(), stable.mtime())) {
+        if (!matches(before, stable.size(), stable.mtime())) {
             return null;
         }
         final long size = before.size();
@@ -335,8 +336,29 @@ public final class FileConsumer {
             errorPath.toString(), content.size(), content.checksum(), content.mtime(), discoveredAt, null,
             FileStatus.ERROR, null, null, message, false, 0));
         boolean renamed = acknowledge(abs, errorPath, errorSuffix, discoveredAt, fileId);
-        LOG.warn("error: {} -> {}: {}", fileId, renamed ? errorSuffix : "(rename failed)", message);
+        // The kind only; the full message stays on the files row (/files), where the API's own
+        // authorization applies: past its kind it can quote segments, and X12 here is PHI.
+        LOG.warn("error: {} -> {}: {} ({} bytes)", fileId, renamed ? errorSuffix : "(rename failed)", kind(message),
+            content.size());
         return new Result(Outcome.ERROR, fileId, 0, message);
+    }
+
+    /**
+     * Record a file that keeps failing to read as an {@code error} row
+     * ({@link FileRow#unreadableId}) so it shows in {@code /files} and the health
+     * {@code errored} count. The file is not renamed — it stays in place and is retried every
+     * scan; the first successful read removes the row. Idempotent.
+     */
+    public synchronized void recordUnreadable(SourceConfig source, Path path, FileStability.Sighting seen,
+                                              String message) throws SQLException {
+        final Path abs = path.toAbsolutePath().normalize();
+        final String filePath = abs.toString();
+        final String id = FileRow.unreadableId(filePath);
+        if (buffer.fileById(id).isPresent()) {
+            return;
+        }
+        buffer.insertFile(new FileRow(0, id, filePath, abs.getFileName().toString(), source.name(), filePath,
+            seen.size(), "", seen.mtime(), seen.firstSeen(), null, FileStatus.ERROR, null, null, message, false, 0));
     }
 
     /**
@@ -356,22 +378,23 @@ public final class FileConsumer {
         return true;
     }
 
-    /** Envelope overlay + materialized body → one {@link TransactionRow}. */
-    TransactionRow toRow(X12Parse.Transaction tx, X12Parse.ParsedFile parsed, String fileId, String fileName,
-                         String sourceName, Instant receivedAt, Map<String, List<EntityGraph.Entity>> graphs) {
-        String gs08 = parsed.gs08();
+    /**
+     * One {@link TransactionRow} for a transaction set, and its object graph into {@code graphs}.
+     * Everything guide-bound — the display type, the structure index, the schema id, the
+     * {@code gs08} column — comes from the set's own functional group: a file may carry groups
+     * of different guides, and the file-level GS08 is only the first group's.
+     */
+    TransactionRow toRow(X12Parse.Transaction tx, X12Parse.ParsedFile parsed, String fileId, String sourceName,
+                         Instant receivedAt, Map<String, List<EntityGraph.Entity>> graphs) {
+        String gs08 = tx.gs08();
         String transactionType = TransactionTypes.transactionType(gs08, tx.st01());
         Optional<Materializer> materializer = resolver.materializerFor(gs08, parsed.separators());
         String schemaId = materializer.map(m -> m.index().tableSchemaId).orElse(StructureResolver.ENVELOPE_SCHEMA);
         String envelope = parsed.synthetic() ? TransactionRow.ENVELOPE_SYNTHETIC : TransactionRow.ENVELOPE_FILE;
         Instant interchangeAt = tx.interchange().interchangeAt().orElse(null);
-        String elementKey = TransactionJson.elementKey(fileId, tx.interchange().controlNumber(),
+        String elementKey = TransactionRow.elementKey(fileId, tx.interchange().controlNumber(),
             tx.group().controlNumber(), tx.st02());
 
-        TransactionJson.Envelope env = new TransactionJson.Envelope(elementKey, fileId, fileName, sourceName,
-            tx.interchange().controlNumber(), tx.group().controlNumber(), tx.st02(), gs08, transactionType,
-            tx.interchange().senderId(), tx.interchange().receiverId(), interchangeAt, receivedAt, envelope,
-            parsed.errors().size());
         // Flatten the same materialized tree into the queryable object graph. Built from the
         // body alone — the envelope columns live on the transaction row, so duplicating them
         // as entity values would make every filter ambiguous about which copy it hit.
@@ -407,6 +430,20 @@ public final class FileConsumer {
     }
 
     /**
+     * The loggable head of a stored error message: its kebab-case kind ({@code fatal},
+     * {@code bad-gs}, {@code too-large}, ...) or, for an internal error, the exception class.
+     * The rest can quote segments of the file.
+     */
+    static String kind(String message) {
+        if (message == null) {
+            return "unknown";
+        }
+        int from = message.startsWith(INTERNAL) ? INTERNAL.length() : 0;
+        int colon = message.indexOf(':', from);
+        return colon < 0 ? message : message.substring(0, colon);
+    }
+
+    /**
      * Whether SQLite refused this file's rows rather than failed as a store: a value over its
      * length limit ({@code SQLITE_TOOBIG}), or a UNIQUE / PRIMARY KEY clash on one of this
      * file's keys. Everything else — disk full, I/O, locking, corruption, and NOT NULL / CHECK
@@ -422,16 +459,6 @@ public final class FileConsumer {
             code = se.getResultCode().code;
         }
         return code == SQLITE_TOOBIG || code == SQLITE_CONSTRAINT_UNIQUE || code == SQLITE_CONSTRAINT_PRIMARYKEY;
-    }
-
-    /** The absolute, normalized discovery path of a file (the {@code file_path} column). */
-    static String filePath(Path path) {
-        return path.toAbsolutePath().normalize().toString();
-    }
-
-    /** The {@code <path>@<hash12>} identity a file at {@code path} with these bytes gets. */
-    public static String fileId(Path path, byte[] bytes) {
-        return FileRow.fileId(filePath(path), sha256(bytes));
     }
 
     /**
@@ -475,10 +502,6 @@ public final class FileConsumer {
         }
         LOG.error("rename {} failed: every {} target tried was taken", from, suffix);
         return null;
-    }
-
-    public static String sha256(byte[] bytes) {
-        return hex(sha256Digest().digest(bytes));
     }
 
     private static MessageDigest sha256Digest() {

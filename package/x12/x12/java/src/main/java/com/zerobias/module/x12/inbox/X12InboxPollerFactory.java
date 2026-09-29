@@ -1,6 +1,5 @@
 package com.zerobias.module.x12.inbox;
 
-import com.zerobias.module.x12.InboxPollerFactory;
 import com.zerobias.module.x12.ModuleRuntimeConfig;
 import com.zerobias.module.x12.PollerHandle;
 import com.zerobias.module.x12.SourceConfig;
@@ -15,20 +14,27 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The {@link InboxPollerFactory} provider ({@code META-INF/services}) that
- * {@link com.zerobias.module.x12.X12ApiServer#pollerFactory()} discovers: one
- * {@link InboxPoller} per {@code config.sources[]}, all sharing one {@link FileConsumer}
- * and {@link StructureResolver}. {@link #start} returns a {@link PollerHandle} reporting
- * the aggregate {@link com.zerobias.module.x12.health.PollerStatus}.
+ * Starts the inbox: one {@link InboxPoller} per {@code config.sources[]}, all sharing one
+ * {@link FileConsumer} and {@link StructureResolver}. {@link #start} returns a
+ * {@link PollerHandle} reporting the aggregate {@link com.zerobias.module.x12.health.PollerStatus}.
+ * {@link com.zerobias.module.x12.X12ApiServer} calls it directly: a receiver that boots
+ * without pollers ingests nothing, so there is no discovery step that could quietly find none.
  */
-public final class X12InboxPollerFactory implements InboxPollerFactory {
+public final class X12InboxPollerFactory {
 
-    @Override
-    public PollerHandle start(ModuleRuntimeConfig config, BufferStore buffer, RetentionSweeper sweeper) {
+    private X12InboxPollerFactory() {
+    }
+
+    /** Start the pollers on the buffer's clock, each on its own schedule. */
+    public static Handle start(ModuleRuntimeConfig config, BufferStore buffer, RetentionSweeper sweeper) {
         return start(config, buffer, sweeper, buffer.clock(), true);
     }
 
-    /** Testable seam: build the pollers with a clock and optionally without starting the schedule. */
+    /**
+     * Build the pollers with {@code clock}; {@code schedule=false} leaves them unscheduled, so a
+     * caller drives every scan through {@link Handle#rescan}. {@code sweeper} is null when
+     * retention is unbounded (no backpressure).
+     */
     public static Handle start(ModuleRuntimeConfig config, BufferStore buffer, RetentionSweeper sweeper,
                                Clock clock, boolean schedule) {
         FileConsumer consumer = new FileConsumer(buffer, sweeper, config, new StructureResolver(), clock);

@@ -48,12 +48,16 @@ import {
   type Feed,
 } from './helpers.js';
 
-const T835 = `${RECEIVER}/by-type/835`;
+/** `/by-type/<TS>` is always a container; its `/<GS08>` children are the typed collections. */
+const BY_TYPE = `${RECEIVER}/by-type`;
+const T835 = `${BY_TYPE}/835/005010X221A1`;
 const V835 = `${RECEIVER}/by-version/005010X221A1`;
-const T837P = `${RECEIVER}/by-type/837P`;
-const T837I = `${RECEIVER}/by-type/837I`;
+const T837P = `${BY_TYPE}/837P/005010X222A1`;
+const T837I = `${BY_TYPE}/837I/005010X223A2`;
 const ALL_TX = `${RECEIVER}/transactions`;
 const STATS = `${RECEIVER}/stats`;
+const STATS_SCHEMA = 'schema:shared:x12.receiver-stats';
+const FILE_SCHEMA = 'schema:shared:x12.file';
 const OPS = `${RECEIVER}/ops`;
 const SOURCE_INBOX = `${RECEIVER}/inbox/inbox`;
 
@@ -133,10 +137,11 @@ describeReceiver('X12 Receiver Module', (client) => {
         expect(node?.collectionSchema, name).to.equal(schema);
       }
       expect(names(byId.get(STATS)?.objectClass)).to.deep.equal(['document']);
+      expect(byId.get(STATS)?.documentSchema).to.equal(STATS_SCHEMA);
     });
 
     it('every emitted child id round-trips through getObject', async () => {
-      for (const parent of ['/', RECEIVER, OPS, `${RECEIVER}/by-type`, `${RECEIVER}/by-version`,
+      for (const parent of ['/', RECEIVER, OPS, BY_TYPE, `${BY_TYPE}/835`, `${RECEIVER}/by-version`,
         `${RECEIVER}/by-source`, `${RECEIVER}/claims`]) {
         for (const child of await allChildren(client, parent)) {
           const again = await client.getObjectsApi().getObject(child.id);
@@ -153,6 +158,15 @@ describeReceiver('X12 Receiver Module', (client) => {
         expect(names(f.objectClass)).to.deep.equal(['function']);
         expect(f.inputSchema).to.equal(`schema:function:x12.ops.${f.name}:input`);
         expect(f.outputSchema).to.equal(`schema:function:x12.ops.${f.name}:output`);
+      }
+    });
+
+    it('/ops functions declare only the error codes they raise', async () => {
+      // An unknown elementKey (raw, validate) or source (rescan) is the only function-specific
+      // error; ack/release of an unknown lease is an idempotent `0`, not an error.
+      const raising = new Set(['raw', 'validate', 'rescan']);
+      for (const f of await allChildren(client, OPS)) {
+        expect(Object.keys(f.throws ?? {}), `${f.name} throws`).to.deep.equal(raising.has(f.name) ? ['not_found'] : []);
       }
     });
 
@@ -181,20 +195,23 @@ describeReceiver('X12 Receiver Module', (client) => {
   // ── Consumed files and structural collections ─────────────
 
   describe('ObjectsApi — consumed files and structural collections', () => {
-    it('/files lists every dropped file as a consumed [container, binary]', async () => {
+    it('/files lists every dropped file as a consumed [container, document, binary]', async () => {
       const f = fed();
       const files = new Map((await allChildren(client, `${RECEIVER}/files`)).map((o) => [o.id, o]));
       for (const file of [f.f835, f.f837p, f.f837i, f.twoIsa]) {
         const node = files.get(file.nodeId);
         expect(node, `${file.nodeId} listed`).to.not.equal(undefined);
-        expect(names(node?.objectClass)).to.deep.equal(['container', 'binary']);
-        expect(node?.fileId).to.equal(file.fileId);
+        expect(names(node?.objectClass)).to.deep.equal(['container', 'document', 'binary']);
+        expect(node?.documentSchema).to.equal(FILE_SCHEMA);
         expect(node?.fileName).to.equal(file.name);
-        expect(node?.filePath).to.equal(`${f.source.path}/${file.name}`);
         expect(node?.size).to.equal(file.bytes.length);
         expect(node?.checksum).to.equal(file.sha256);
         expect(node?.mimeType).to.equal('application/EDI-X12');
         expect(node?.tags).to.include.members(['status:consumed', `source:${f.source.name}`]);
+        // Only DataProducerObject fields on the node: the files row is its document.
+        for (const field of ['binarySchema', 'fileId', 'filePath', 'redeliveryCount']) {
+          expect((node as unknown as Row)[field], `${file.name} node carries ${field}`).to.equal(undefined);
+        }
       }
     });
 
@@ -208,19 +225,42 @@ describeReceiver('X12 Receiver Module', (client) => {
       expect(children.items[0].collectionSize).to.equal(2);
     });
 
-    it('/by-type/<TS> are collections bound to each guide table schema', async () => {
+    it('/by-type/<TS> is always a container of /<GS08> collections bound to each guide table schema', async () => {
       fed();
-      const expected: Array<[string, string]> = [
-        [T835, 'schema:table:x12.005010X221A1.835'],
-        [T837P, 'schema:table:x12.005010X222A1.837P'],
-        [T837I, 'schema:table:x12.005010X223A2.837I'],
+      const expected: Array<[string, string, string]> = [
+        ['835', T835, 'schema:table:x12.005010X221A1.835'],
+        ['837P', T837P, 'schema:table:x12.005010X222A1.837P'],
+        ['837I', T837I, 'schema:table:x12.005010X223A2.837I'],
       ];
-      for (const [id, schema] of expected) {
+      for (const [ts, id, schema] of expected) {
+        // A container even with one guide, so the id never changes shape when a second lands.
+        const typeNode = await client.getObjectsApi().getObject(`${BY_TYPE}/${ts}`);
+        expect(names(typeNode.objectClass), ts).to.deep.equal(['container']);
+        expect(typeNode.collectionSchema, ts).to.equal(undefined);
+        expect(typeNode.collectionSize, ts).to.equal(undefined);
         const coll = await client.getObjectsApi().getObject(id);
         expect(names(coll.objectClass), id).to.deep.equal(['collection']);
         expect(coll.collectionSchema, id).to.equal(schema);
       }
       expect((await client.getObjectsApi().getObject(T835)).collectionSize).to.be.at.least(3);
+    });
+
+    it('/by-type/835 lists exactly the GS08 guides its transaction sets arrived under', async () => {
+      fed();
+      const colls = client.getCollectionsApi();
+      const kids = await allChildren(client, `${BY_TYPE}/835`);
+      expect(kids.map((k) => k.id)).to.include(T835);
+      let sum = 0;
+      for (const k of kids) {
+        expect(k.id).to.equal(`${BY_TYPE}/835/${k.name}`);
+        expect(names(k.objectClass), k.id).to.deep.equal(['collection']);
+        const n = (await colls.searchCollectionElements(ALL_TX, 1, 1, `(&(transactionType=835)(gs08=${k.name}))`)).count ?? -1;
+        expect(n, `${k.id} is not empty`).to.be.greaterThan(0);
+        expect(k.collectionSize, k.id).to.equal(n);
+        sum += n;
+      }
+      // no guide missing: the children cover every 835 in the buffer
+      expect(sum).to.equal((await colls.searchCollectionElements(ALL_TX, 1, 1, '(transactionType=835)')).count);
     });
 
     it('/by-version/<GS08> is an envelope collection holding this run\'s 835s', async () => {
@@ -544,13 +584,47 @@ describeReceiver('X12 Receiver Module', (client) => {
       expect(stats.fileCount).to.be.at.least(4);
       expect(stats.doneFileCount).to.be.at.least(4);
       expect(stats.dbSizeBytes).to.be.greaterThan(0);
+      expect(stats.bufferDepth, 'bufferDepth is the un-acked backlog').to.equal(stats.newCount + stats.inFlightCount);
       const src = (stats.sources as Row[]).find((s) => s.name === f.source.name);
       expect(src?.path).to.equal(f.source.path);
       expect(src?.writable).to.equal(true);
     });
 
-    it('getDocumentData on a file node (not a document) is an unsupported operation', async () => {
-      expectUnsupported(await rejectionOf(client.getDocumentsApi().getDocumentData(fed().f835.nodeId)));
+    it('/stats carries only fields schema:shared:x12.receiver-stats declares, and every required one', async () => {
+      const stats = await client.getDocumentsApi().getDocumentData(STATS) as Row;
+      const schema = await client.getSchemasApi().getSchema(STATS_SCHEMA);
+      const declared = schema.properties.map((p) => p.name);
+      expect(declared).to.include('dbSizeBytes');
+      expect(declared).to.not.include('lastCheckpoint');
+      expect(declared).to.include.members(Object.keys(stats));
+      for (const p of schema.properties.filter((q) => q.required)) {
+        expect(stats, `required ${p.name}`).to.have.property(p.name);
+      }
+    });
+
+    it('getDocumentData on a file node returns its files row (schema:shared:x12.file)', async () => {
+      const f = fed();
+      const declared = (await client.getSchemasApi().getSchema(FILE_SCHEMA)).properties.map((p) => p.name);
+      for (const file of [f.f835, f.twoIsa]) {
+        const doc = await client.getDocumentsApi().getDocumentData(file.nodeId) as Row;
+        expect(doc.fileId).to.equal(file.fileId);
+        expect(doc.filePath).to.equal(`${f.source.path}/${file.name}`);
+        expect(doc.currentPath).to.equal(`${f.source.path}/${file.name}${f.source.consumedSuffix}`);
+        expect(doc.fileName).to.equal(file.name);
+        expect(doc.sourceName).to.equal(f.source.name);
+        expect(doc.size).to.equal(file.bytes.length);
+        expect(doc.checksum).to.equal(file.sha256);
+        expect(doc.status).to.equal('consumed');
+        expect(doc.renameFailed).to.equal(false);
+        expect(doc.redeliveryCount).to.equal(0);
+        expect(declared, `${file.name} document fields`).to.include.members(Object.keys(doc));
+      }
+      const twoIsa = await client.getDocumentsApi().getDocumentData(f.twoIsa.nodeId) as Row;
+      expect([twoIsa.isaCount, twoIsa.transactionCount]).to.deep.equal([2, 2]);
+    });
+
+    it('getDocumentData on a collection (not a document) is an unsupported operation', async () => {
+      expectUnsupported(await rejectionOf(client.getDocumentsApi().getDocumentData(ALL_TX)));
     });
   });
 
@@ -583,9 +657,9 @@ describeReceiver('X12 Receiver Module', (client) => {
       expect(values.map((v) => v.value)).to.include('1');
     });
 
-    it('every /ops function input and output schema resolves', async () => {
+    it('every /ops function input, output and error schema resolves', async () => {
       for (const fn of await allChildren(client, OPS)) {
-        for (const id of [fn.inputSchema, fn.outputSchema]) {
+        for (const id of [fn.inputSchema, fn.outputSchema, ...Object.values(fn.throws ?? {})]) {
           expect((await client.getSchemasApi().getSchema(id)).id).to.equal(id);
         }
       }

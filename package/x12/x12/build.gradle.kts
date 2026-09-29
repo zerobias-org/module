@@ -6,11 +6,12 @@ plugins {
 // src/, test/) and does NOT add the Java tree — so a Java change would never invalidate a
 // committed gate-stamp.json. Declare the real sources here (git-tracked files only are hashed;
 // the generated schemas/ and structure-index/ trees are git-ignored and correctly excluded).
-// DESIGN.md §11.5.
 project.extra["sourceFiles"] = listOf(
     "api.yml", "tsconfig.json", "connectionProfile.yml", "runtimeConfig.yml",
     "Dockerfile", "startup.sh", "nginx.conf", "nginx-insecure.conf",
     "java/pom.xml", "java/codegen/pom.xml"
 )
 project.extra["sourceDirs"] = listOf("src", "java/src/main", "java/codegen/src/main")
-project.extra["testDirs"]   = listOf("test", "java/src/test", "java/codegen/src/test", "java/scripts")   // test/ = e2e suite (testDocker)
+// java/scripts is not hashed: dev scripts (e2e-local.sh, x12-live.sh) run outside the gate, so
+// editing one must not invalidate a committed gate-stamp.json.
+project.extra["testDirs"]   = listOf("test", "java/src/test", "java/codegen/src/test")   // test/ = e2e suite (testDocker)

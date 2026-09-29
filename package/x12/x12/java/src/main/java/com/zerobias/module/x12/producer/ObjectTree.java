@@ -1,6 +1,5 @@
 package com.zerobias.module.x12.producer;
 
-import com.zerobias.module.x12.ModuleRuntimeConfig;
 import com.zerobias.module.x12.SourceConfig;
 import com.zerobias.module.x12.buffer.BufferStore;
 import com.zerobias.module.x12.buffer.FileRow;
@@ -17,9 +16,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
-import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
@@ -29,15 +28,16 @@ import java.util.stream.Stream;
  * <pre>
  * /                              container (root; id == name == "/")
  * └─ /x12-receiver               container
- *    ├─ /files                   container → /files/&lt;fileId&gt; ["container","binary"] (one per files row)
+ *    ├─ /files                   container → /files/&lt;fileId&gt; ["container","document","binary"]
  *    │                                       → /files/&lt;fileId&gt;/transactions  collection (envelope)
+ *    ├─ /inbox                   container → the live source directories ({@link InboxFiles})
  *    ├─ /transactions            collection (all rows, envelope schema)
- *    ├─ /by-type                 container → /by-type/&lt;TS&gt;  collection while a TS has ONE GS08;
- *    │                             ELSE a container whose /by-type/&lt;TS&gt;/&lt;GS08&gt; leaves are the
- *    │                             collections — the version level is interposed only when needed
+ *    ├─ /by-type                 container → /by-type/&lt;TS&gt; container → /by-type/&lt;TS&gt;/&lt;GS08&gt;
+ *    │                                       collection (the guide's table schema)
  *    ├─ /by-version              container → /by-version/&lt;GS08&gt;     collection (envelope)
  *    ├─ /by-sender               container → /by-sender/&lt;ISA06&gt;     collection (envelope)
  *    ├─ /by-source               container → /by-source/&lt;sourceName&gt; collection (envelope)
+ *    ├─ /&lt;business&gt;             collection per business entity (DESIGN §8.5), e.g. /claims
  *    ├─ /stats                   document (schema:shared:x12.receiver-stats)
  *    └─ /ops                     container → /ops/&lt;fn&gt; function (DESIGN §2.5)
  * </pre>
@@ -46,7 +46,13 @@ import java.util.stream.Stream;
  * {@code <fileId>:<ISA13>:<GS06>:<ST02>}, never a node. Folders are discriminators and their
  * children are <em>emergent</em>: read live from the buffer's DISTINCT values, so a node
  * appears the first time matching data lands. {@code /files/<fileId>} is the one
- * exception: a file is both a folder (its transactions) and a binary (its bytes).
+ * exception: a file is a folder (its transactions), a document (its {@code files} row) and a
+ * binary (its bytes).
+ *
+ * <p><b>Ids are stable.</b> A node's class never depends on what else is in the buffer:
+ * {@code /by-type/<TS>} is a container even while one guide carries that type, so the id a
+ * caller saved as a collection does not turn into a container the day a second GS08 of the
+ * same type arrives.
  *
  * <p><b>Id encoding.</b> {@code fileId} ({@code <absolute path>@<hash>}) contains {@code /},
  * and a sender id or source name may too. Discriminator values are embedded in object ids
@@ -54,7 +60,10 @@ import java.util.stream.Stream;
  * round-trips through {@code getObject}/{@code getChildren}/{@code getCollectionElements}
  * verbatim; an un-encoded value without {@code %} decodes to itself.
  */
-public final class ObjectTree implements ObjectTreeApi {
+public final class ObjectTree {
+
+    public static final String ROOT = "/";
+    public static final String RECEIVER = "/x12-receiver";
 
     static final String FILES = RECEIVER + "/files";
     static final String TRANSACTIONS = RECEIVER + "/transactions";
@@ -69,56 +78,50 @@ public final class ObjectTree implements ObjectTreeApi {
     static final String ENVELOPE_SCHEMA = SchemaRegistry.ENVELOPE_SCHEMA;
     static final String STATS_SCHEMA = "schema:shared:" + SchemaRegistry.CATALOG + ".receiver-stats";
     static final String FILE_SCHEMA = "schema:shared:" + SchemaRegistry.CATALOG + ".file";
+    static final List<String> FILE_CLASSES = List.of("container", "document", "binary");
     static final List<String> OPS_FUNCTIONS = SchemaRegistry.OPS_FUNCTIONS;
 
-    private static final String DEFAULT_CONSUMED_SUFFIX = ".done";
+    /**
+     * A collection's buffer scope (a WHERE fragment over {@code transactions}; null = all
+     * rows) + its element schema id (DESIGN §2.1 homogeneity rule).
+     */
+    public record Collection(String id, String scopeWhere, String schemaId) {
+    }
+
+    /** One page of children plus the total. */
+    public record ChildPage(List<Map<String, Object>> items, long total) {
+    }
 
     private final BufferStore buffer;
-    private final SchemaRegistryApi schemas;
-    private final Supplier<PollerStatus> poller;
+    private final SchemaRegistry schemas;
+    private final PollerStatus poller;
     private final String consumedSuffix;
     private final InboxFiles inbox;
     private final BusinessEntities business;
 
-    /** {@code poller} feeds {@code /stats}; it may yield null (treated as {@link PollerStatus#DOWN}). */
-    public ObjectTree(BufferStore buffer, Supplier<PollerStatus> poller) {
-        this(buffer, SchemaRegistryApi.EMPTY, poller, DEFAULT_CONSUMED_SUFFIX);
-    }
-
-    public ObjectTree(BufferStore buffer, SchemaRegistryApi schemas, Supplier<PollerStatus> poller) {
-        this(buffer, schemas, poller, DEFAULT_CONSUMED_SUFFIX);
-    }
-
     /**
-     * @param schemas        used to pick a guide-bound {@code schema:table} for a homogeneous
-     *                       {@code /by-type} collection (falls back to the envelope when unbundled)
+     * @param schemas        picks a guide-bound {@code schema:table} for a {@code /by-type}
+     *                       collection (the envelope when the guide is unbundled), and receives the
+     *                       business schemas generated from the mappings — a collection may not
+     *                       advertise a schema the registry cannot serve
+     * @param poller         feeds {@code /stats}
      * @param consumedSuffix the {@code .done} suffix, for the {@code /stats} inbox-hygiene counters
+     * @param sources        the configured inbox directories, which become the live
+     *                       {@code /inbox/<source>} branch ({@link InboxFiles})
+     * @param errorSuffix    the {@code .error} suffix, for the {@code ingest} field on live file nodes
      */
-    public ObjectTree(BufferStore buffer, SchemaRegistryApi schemas, Supplier<PollerStatus> poller,
-            String consumedSuffix) {
-        this(buffer, schemas, poller, consumedSuffix, List.of(), ModuleRuntimeConfig.DEFAULT_ERROR_SUFFIX);
-    }
-
-    /**
-     * @param sources     the configured inbox directories, which become the live
-     *                    {@code /inbox/<source>} branch ({@link InboxFiles}); empty means the
-     *                    branch lists nothing
-     * @param errorSuffix the {@code .error} suffix, for the {@code ingest} field on live file nodes
-     */
-    public ObjectTree(BufferStore buffer, SchemaRegistryApi schemas, Supplier<PollerStatus> poller,
+    public ObjectTree(BufferStore buffer, SchemaRegistry schemas, PollerStatus poller,
             String consumedSuffix, List<SourceConfig> sources, String errorSuffix) {
-        this.buffer = buffer;
-        this.schemas = schemas == null ? SchemaRegistryApi.EMPTY : schemas;
-        this.poller = poller == null ? () -> PollerStatus.DOWN : poller;
-        this.consumedSuffix = consumedSuffix == null || consumedSuffix.isBlank() ? DEFAULT_CONSUMED_SUFFIX : consumedSuffix;
-        this.inbox = new InboxFiles(sources, this.consumedSuffix, errorSuffix);
+        this.buffer = Objects.requireNonNull(buffer, "buffer");
+        this.schemas = Objects.requireNonNull(schemas, "schemas");
+        this.poller = Objects.requireNonNull(poller, "poller");
+        this.consumedSuffix = Objects.requireNonNull(consumedSuffix, "consumedSuffix");
+        this.inbox = new InboxFiles(Objects.requireNonNull(sources, "sources"), consumedSuffix,
+            Objects.requireNonNull(errorSuffix, "errorSuffix"));
         final List<EntityMapping> mappings = BusinessEntities.mappingsFor(
             PackCatalog.fromClasspath().guides());
         this.business = new BusinessEntities(buffer, mappings);
-        if (this.schemas instanceof SchemaRegistry) {
-            // A collection may not advertise a schema the registry cannot serve.
-            ((SchemaRegistry) this.schemas).addMappingSchemas(mappings);
-        }
+        this.schemas.addMappingSchemas(mappings);
     }
 
     // --- id encoding ---------------------------------------------------------
@@ -176,10 +179,6 @@ public final class ObjectTree implements ObjectTreeApi {
         return buffer.distinctValues("gs08", "transaction_type = " + sql(ts));
     }
 
-    private static String typeScope(String ts) {
-        return "transaction_type = " + sql(ts);
-    }
-
     private static String typeVersionScope(String ts, String gs08) {
         return "transaction_type = " + sql(ts) + " AND gs08 = " + sql(gs08);
     }
@@ -228,7 +227,11 @@ public final class ObjectTree implements ObjectTreeApi {
 
     // --- collection resolution ---------------------------------------------
 
-    @Override
+    /**
+     * Resolve a collection id to its buffer scope, or throw: {@code noSuchObjectError} for an
+     * unknown discriminator value, {@code UnsupportedOperationError} if the id is not a
+     * collection. (§2.1, §2.6)
+     */
     public Collection resolveCollection(String id) throws SQLException {
         if (TRANSACTIONS.equals(id)) {
             return new Collection(id, null, ENVELOPE_SCHEMA);
@@ -245,20 +248,14 @@ public final class ObjectTree implements ObjectTreeApi {
             String rem = id.substring((BY_TYPE + "/").length());
             int slash = rem.indexOf('/');
             if (slash < 0) {
-                String ts = decodeSegment(rem);
-                List<String> vers = versionsForType(ts);
-                if (vers.isEmpty()) {
+                if (versionsForType(decodeSegment(rem)).isEmpty()) {
                     throw ProducerException.noSuchObject(id);
-                }
-                if (vers.size() == 1) {
-                    return new Collection(id, typeScope(ts), tableSchema(vers.get(0), ts));
                 }
                 throw ProducerException.unsupported("Object is not a collection (drill into a version): " + id);
             }
             String ts = decodeSegment(rem.substring(0, slash));
             String gs08 = decodeSegment(rem.substring(slash + 1));
-            List<String> vers = versionsForType(ts);
-            if (!vers.contains(gs08) || vers.size() == 1) {   // version node exists only when required
+            if (!versionsForType(ts).contains(gs08)) {
                 throw ProducerException.noSuchObject(id);
             }
             return new Collection(id, typeVersionScope(ts, gs08), tableSchema(gs08, ts));
@@ -291,7 +288,7 @@ public final class ObjectTree implements ObjectTreeApi {
 
     // --- object metadata ----------------------------------------------------
 
-    @Override
+    /** Object metadata for {@code id}, or throw {@code noSuchObjectError}. (§2.1) */
     public Map<String, Object> object(String id) throws SQLException {
         switch (id) {
             case ROOT:
@@ -340,20 +337,14 @@ public final class ObjectTree implements ObjectTreeApi {
             int slash = rem.indexOf('/');
             if (slash < 0) {
                 String ts = decodeSegment(rem);
-                List<String> vers = versionsForType(ts);
-                if (vers.isEmpty()) {
+                if (versionsForType(ts).isEmpty()) {
                     throw ProducerException.noSuchObject(id);
                 }
-                if (vers.size() == 1) {
-                    // homogeneous by type alone — no version discriminator needed
-                    return collection(id, ts, tableSchema(vers.get(0), ts), buffer.countWhere(typeScope(ts)));
-                }
-                return container(id, ts);   // spans guides: drill in
+                return container(id, ts);
             }
             String ts = decodeSegment(rem.substring(0, slash));
             String gs08 = decodeSegment(rem.substring(slash + 1));
-            List<String> vers = versionsForType(ts);
-            if (!vers.contains(gs08) || vers.size() == 1) {
+            if (!versionsForType(ts).contains(gs08)) {
                 throw ProducerException.noSuchObject(id);
             }
             return collection(id, gs08, tableSchema(gs08, ts), buffer.countWhere(typeVersionScope(ts, gs08)));
@@ -377,7 +368,7 @@ public final class ObjectTree implements ObjectTreeApi {
 
     // --- children -----------------------------------------------------------
 
-    @Override
+    /** Direct children of {@code id} (emergent from the buffer's DISTINCT values), or throw {@code noSuchObjectError}. (§2.1) */
     public List<Map<String, Object>> children(String id) throws SQLException {
         List<Map<String, Object>> out = new ArrayList<>();
         switch (id) {
@@ -399,13 +390,7 @@ public final class ObjectTree implements ObjectTreeApi {
                 out.add(object(OPS));
                 return out;
             case FILES:
-                // Every files row (they are never evicted — the audit trail), newest discovery
-                // first. The paged read is childPage(); this unpaged form is kept for callers
-                // that genuinely want the whole branch.
-                for (FileRow f : buffer.fileRows(null, Integer.MAX_VALUE, 0)) {
-                    out.add(fileNode(f));
-                }
-                return out;
+                return childPage(FILES, Integer.MAX_VALUE, 0).items();
             case BY_TYPE:
                 for (String ts : types()) {
                     out.add(object(BY_TYPE + "/" + encodeSegment(ts)));
@@ -437,25 +422,30 @@ public final class ObjectTree implements ObjectTreeApi {
     }
 
     /**
-     * {@code /files} paged in SQL ({@code LIMIT/OFFSET} + {@code count(*)}), same order as
-     * {@link #children}: the branch is every files row ever recorded, so it is never read
-     * whole to serve one page. Every other id pages in memory (null).
+     * One page of {@code id}'s children and the total. {@code /files} is paged in SQL
+     * ({@code LIMIT/OFFSET} + {@code count(*)}, newest discovery first): it is every files row
+     * ever recorded — never evicted, the audit trail — so reading it whole to serve one page
+     * would grow without limit. Every other branch is bounded (a fixed list, DISTINCT values,
+     * one readdir) and is paged in memory.
      */
-    @Override
     public ChildPage childPage(String id, int limit, int offset) throws SQLException {
-        if (!FILES.equals(id)) {
-            return null;
+        if (FILES.equals(id)) {
+            List<Map<String, Object>> items = new ArrayList<>();
+            for (FileRow f : buffer.fileRows(null, limit, offset)) {
+                items.add(fileNode(f));
+            }
+            return new ChildPage(items, buffer.countFilesWhere(null));
         }
-        List<Map<String, Object>> items = new ArrayList<>();
-        for (FileRow f : buffer.fileRows(null, limit, offset)) {
-            items.add(fileNode(f));
-        }
-        return new ChildPage(items, buffer.countFilesWhere(null));
+        List<Map<String, Object>> all = children(id);
+        List<Map<String, Object>> page = offset >= all.size()
+            ? List.of()
+            : all.subList(offset, (int) Math.min(all.size(), (long) offset + limit));
+        return new ChildPage(page, all.size());
     }
 
     /**
      * Children of a dynamic container: a {@code /files/<fileId>} node lists its
-     * {@code transactions} collection; a multi-guide {@code /by-type/<TS>} lists its versions.
+     * {@code transactions} collection; a {@code /by-type/<TS>} lists one collection per GS08.
      */
     private List<Map<String, Object>> dynamicChildren(String id) throws SQLException {
         if (InboxFiles.owns(id)) {
@@ -476,11 +466,10 @@ public final class ObjectTree implements ObjectTreeApi {
             String rem = id.substring((BY_TYPE + "/").length());
             if (rem.indexOf('/') < 0) {
                 String ts = decodeSegment(rem);
-                List<String> vers = versionsForType(ts);
-                if (vers.size() > 1) {   // only a multi-guide type is a container
-                    for (String v : vers) {
-                        out.add(object(BY_TYPE + "/" + encodeSegment(ts) + "/" + encodeSegment(v)));
-                    }
+                for (String v : versionsForType(ts)) {
+                    out.add(object(BY_TYPE + "/" + encodeSegment(ts) + "/" + encodeSegment(v)));
+                }
+                if (!out.isEmpty()) {
                     return out;
                 }
             }
@@ -493,20 +482,29 @@ public final class ObjectTree implements ObjectTreeApi {
     // --- documents ----------------------------------------------------------
 
     /**
+     * The body of a document node: {@code /stats}, or a {@code /files/<fileId>} node's
+     * {@code files} row ({@code schema:shared:x12.file}). Throws {@code noSuchObjectError} for
+     * an unknown id and {@code UnsupportedOperationError} for a node that is not a document.
+     */
+    public Map<String, Object> documentData(String id) throws SQLException {
+        if (STATS.equals(id)) {
+            return stats();
+        }
+        String[] file = parseFileId(id);
+        if (file != null && file[1] == null) {
+            return fileDocument(requireFile(file[0], id));
+        }
+        object(id);
+        throw ProducerException.unsupported("Object is not a document: " + id);
+    }
+
+    /**
      * The {@code /stats} body ({@code schema:shared:x12.receiver-stats}): poller state from
      * the live {@link PollerStatus} + buffer counters + inbox hygiene ({@code .done} files
-     * still in the watched dirs, DESIGN §11.2).
+     * still in the watched dirs, DESIGN §9).
      */
-    @Override
-    public Map<String, Object> documentData(String id) throws SQLException {
-        if (!STATS.equals(id)) {
-            object(id);
-            throw ProducerException.unsupported("Object is not a document: " + id);
-        }
-        PollerStatus p = poller.get();
-        if (p == null) {
-            p = PollerStatus.DOWN;
-        }
+    private Map<String, Object> stats() throws SQLException {
+        PollerStatus p = poller;
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("up", p.up());
         p.lastScan().ifPresent(t -> out.put("lastScan", t.toString()));
@@ -521,7 +519,7 @@ public final class ObjectTree implements ObjectTreeApi {
         long newCount = buffer.count(Status.NEW);
         long inFlight = buffer.count(Status.IN_FLIGHT);
         long acked = buffer.count(Status.ACKED);
-        out.put("bufferDepth", newCount + inFlight);   // un-acked, per the schema's description
+        out.put("bufferDepth", newCount + inFlight);   // un-acked, as on /healthz and the metadata
         OptionalLong oldest = buffer.oldestUnackedSeconds();
         if (oldest.isPresent()) {
             out.put("oldestUnackedSec", oldest.getAsLong());
@@ -587,6 +585,36 @@ public final class ObjectTree implements ObjectTreeApi {
         return new long[] {count, age};
     }
 
+    /** A {@code files} row as the {@code schema:shared:x12.file} document. */
+    private static Map<String, Object> fileDocument(FileRow f) {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("fileId", f.fileId());
+        d.put("filePath", f.filePath() == null ? FileRow.pathOf(f.fileId()) : f.filePath());
+        d.put("fileName", f.fileName());
+        d.put("sourceName", f.sourceName());
+        putIfPresent(d, "currentPath", f.currentPath());
+        d.put("size", f.sizeBytes());
+        d.put("mimeType", BinaryContent.MIME_X12);
+        d.put("checksum", f.checksum());
+        putIfPresent(d, "modified", f.fileMtime());
+        putIfPresent(d, "created", f.discoveredAt());
+        putIfPresent(d, "consumedAt", f.consumedAt());
+        d.put("status", f.status().wire());
+        d.put("tags", fileTags(f));
+        putIfPresent(d, "isaCount", f.isaCount());
+        putIfPresent(d, "transactionCount", f.transactionCount());
+        putIfPresent(d, "errorMessage", f.errorMessage());
+        d.put("renameFailed", f.renameFailed());
+        d.put("redeliveryCount", f.redeliveryCount());
+        return d;
+    }
+
+    private static void putIfPresent(Map<String, Object> m, String key, Object value) {
+        if (value != null) {
+            m.put(key, value instanceof Instant ? value.toString() : value);
+        }
+    }
+
     // --- binary -------------------------------------------------------------
 
     /**
@@ -594,7 +622,6 @@ public final class ObjectTree implements ObjectTreeApi {
      * (the post-rename location, so download works after consumption). 404 {@code gone}
      * when inbox hygiene has removed the file; the transactions remain (DESIGN §2.8).
      */
-    @Override
     public BinaryContent downloadBinary(String id) throws SQLException {
         if (InboxFiles.owns(id)) {
             return inbox.downloadBinary(id);   // read straight off the volume, ingested or not
@@ -723,7 +750,7 @@ public final class ObjectTree implements ObjectTreeApi {
         return scopeOf(m, b);
     }
 
-    BusinessEntities business() {
+    public BusinessEntities business() {
         return business;
     }
 
@@ -734,7 +761,6 @@ public final class ObjectTree implements ObjectTreeApi {
      * emergent branches reject it — {@code /files} is a projection of the buffer, so
      * "uploading" into it would mean inventing a consumed file that never arrived.
      */
-    @Override
     public Map<String, Object> uploadBinary(String id, String fileName, byte[] bytes) throws SQLException {
         if (InboxFiles.owns(id)) {
             return inbox.upload(id, fileName, bytes);
@@ -745,7 +771,6 @@ public final class ObjectTree implements ObjectTreeApi {
     }
 
     /** {@code createChildObject}: mkdir under a live {@code /inbox} container. */
-    @Override
     public Map<String, Object> createChildContainer(String id, String name) throws SQLException {
         if (InboxFiles.owns(id)) {
             return inbox.mkdir(id, name);
@@ -755,8 +780,11 @@ public final class ObjectTree implements ObjectTreeApi {
             "Directories can only be created under " + InboxFiles.INBOX + ", not " + id);
     }
 
-    /** {@code deleteObject}: unlink a live file or remove an empty live directory. */
-    @Override
+    /**
+     * {@code deleteObject}: unlink a live file or remove an empty live directory. The emergent
+     * branches cannot be deleted — they are projections of the buffer, and {@code ops/purge} is
+     * how buffer rows leave.
+     */
     public void deleteObject(String id) throws SQLException {
         if (InboxFiles.owns(id)) {
             inbox.delete(id);
@@ -791,32 +819,28 @@ public final class ObjectTree implements ObjectTreeApi {
     }
 
     /**
-     * The {@code /files/<fileId>} node: a container (its transactions) AND a binary (its
-     * bytes) with the DESIGN §2.1 binary fields; {@code fileId} is {@code <path>@<hash>},
-     * {@code filePath} the raw discovery path.
+     * The {@code /files/<fileId>} node: a container (its transactions), a document (its
+     * {@code files} row, {@link #fileDocument}) and a binary (its bytes). It carries only
+     * {@code DataProducerObject} fields: the interface has no {@code binarySchema}, so the
+     * row's own fields — fileId, paths, status, counts — are the document, read with
+     * {@code getDocumentData}.
      */
-    private Map<String, Object> fileNode(FileRow f) {
+    private static Map<String, Object> fileNode(FileRow f) {
         Map<String, Object> o = base(fileObjectId(f.fileId()), f.fileName());
-        o.put("objectClass", List.of("container", "binary"));
-        o.put("binarySchema", FILE_SCHEMA);
-        o.put("fileId", f.fileId());
-        o.put("filePath", f.filePath() == null ? FileRow.pathOf(f.fileId()) : f.filePath());
+        o.put("objectClass", FILE_CLASSES);
+        o.put("documentSchema", FILE_SCHEMA);
         o.put("fileName", f.fileName());
         o.put("size", f.sizeBytes());
         o.put("mimeType", BinaryContent.MIME_X12);
         o.put("checksum", f.checksum());
-        if (f.fileMtime() != null) {
-            o.put("modified", f.fileMtime().toString());
-        }
-        if (f.discoveredAt() != null) {
-            o.put("created", f.discoveredAt().toString());
-        }
-        List<String> tags = new ArrayList<>(2);
-        tags.add("source:" + f.sourceName());
-        tags.add("status:" + f.status().wire());
-        o.put("tags", tags);
-        o.put("redeliveryCount", f.redeliveryCount());
+        putIfPresent(o, "modified", f.fileMtime());
+        putIfPresent(o, "created", f.discoveredAt());
+        o.put("tags", fileTags(f));
         return o;
+    }
+
+    private static List<String> fileTags(FileRow f) {
+        return List.of("source:" + f.sourceName(), "status:" + f.status().wire());
     }
 
     private Map<String, Object> function(String id, String fn) {
@@ -824,32 +848,8 @@ public final class ObjectTree implements ObjectTreeApi {
         o.put("objectClass", List.of("function"));
         o.put("inputSchema", SchemaRegistry.functionInputId(fn));
         o.put("outputSchema", SchemaRegistry.functionOutputId(fn));
-        o.put("throws", throwsFor(fn));
+        o.put("throws", X12Operations.declaredErrors(fn));
         return o;
-    }
-
-    /** Declared error codes per function (DESIGN §2.5), all shaped {@code schema:shared:x12.ops-error}. */
-    private static Map<String, Object> throwsFor(String fn) {
-        Map<String, Object> t = new LinkedHashMap<>();
-        switch (fn) {
-            case "take":
-                t.put("lease_capacity_exceeded", SchemaRegistry.OPS_ERROR_SCHEMA);
-                t.put("backpressure", SchemaRegistry.OPS_ERROR_SCHEMA);
-                break;
-            case "ack":
-            case "release":
-                t.put("lease_expired", SchemaRegistry.OPS_ERROR_SCHEMA);
-                t.put("not_found", SchemaRegistry.OPS_ERROR_SCHEMA);
-                break;
-            case "raw":
-            case "validate":
-            case "rescan":
-                t.put("not_found", SchemaRegistry.OPS_ERROR_SCHEMA);
-                break;
-            default:
-                break;
-        }
-        return t;
     }
 
     private static Map<String, Object> base(String id, String name) {

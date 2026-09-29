@@ -19,7 +19,7 @@ class StructureIndexTest {
     private static StructureIndex index835() {
         final MappingLoader loader = new MappingLoader();
         final GuideCatalog.Guide g = GuideCatalog.find("005010X221A1");
-        final StructureWalker w = new StructureWalker(g.gs08(), g.transactionType(), null, g.mapFile(),
+        final StructureWalker w = new StructureWalker(g.gs08(), g.transactionType(), g.mapFile(),
             loader.loadDataElements(), new CodeRegistry(loader.loadCodeSets()));
         w.walk(loader.loadTransaction(g.mapFile()));
         return w.emit().index;
@@ -32,7 +32,6 @@ class StructureIndexTest {
         assertEquals("835", idx.transactionType);
         assertEquals("835W1", idx.transactionXid);
         assertEquals("mapping/835.5010.X221.A1.xml", idx.mapFile);
-        assertNull(idx.aliasOf);
         assertEquals("ST_LOOP", idx.transactionLoop);
         assertEquals(SchemaIds.table("005010X221A1", "835"), idx.tableSchemaId);
 
@@ -83,12 +82,19 @@ class StructureIndexTest {
         assertNull(clp03.codes);
         assertEquals("N", clp.fields.get(9).usage, "CLP10 is not used in the 835");
 
-        // Implied decimals: GS06 Group Control Number is N0; ISA13 is N0 too.
+        // Implied decimals: SE01 Number of Included Segments is N0.
+        final StructureIndex.FieldEntry se01 = idx.segments.get("SE").fields.get(0);
+        assertEquals("96", se01.dataEle);
+        assertEquals("N0", se01.x12Type);
+        assertEquals("decimal", se01.coreType);
+        assertEquals(Integer.valueOf(0), se01.impliedDecimals);
+        // Control numbers are N0 on the wire but identifiers: GS06 (28) and ISA13 (I12) stay strings.
         final StructureIndex.FieldEntry gs06 = idx.segments.get("GS").fields.get(5);
         assertEquals("28", gs06.dataEle);
         assertEquals("N0", gs06.x12Type);
-        assertEquals("decimal", gs06.coreType);
-        assertEquals(Integer.valueOf(0), gs06.impliedDecimals);
+        assertEquals("string", gs06.coreType);
+        assertNull(gs06.impliedDecimals);
+        assertEquals("string", idx.segments.get("ISA").fields.get(12).coreType);
         // Dates and times.
         final StructureIndex.FieldEntry dtm02 = idx.segments.get("DTM").fields.get(1);
         assertEquals("DT", dtm02.x12Type);
@@ -122,7 +128,7 @@ class StructureIndexTest {
             back.loops.get("2100").structures.get(1).name,
             back.loops.get("2100").structures.get(2).name));
         assertEquals("1029", back.segments.get("CLP").fields.get(1).codes);
-        assertEquals(Integer.valueOf(0), back.segments.get("GS").fields.get(5).impliedDecimals);
+        assertEquals(Integer.valueOf(0), back.segments.get("SE").fields.get(0).impliedDecimals);
         assertEquals(json, gson.toJson(back), "stable serialization");
     }
 }

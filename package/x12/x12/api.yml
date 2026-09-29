@@ -54,9 +54,11 @@ paths:
       tags: [connection]
       summary: Establish a receiver session
       description: >-
-        Validates the connection profile and binds the producer session. The
-        inbox poller and buffer are daemon-owned and already running; connect
-        is the DataProducer handshake the pipeline uses before browse/drain.
+        Binds a producer session for the given connection. The profile is
+        informational and is not validated — there are no credentials: the inbox
+        poller and buffer are daemon-owned, configured by runtimeConfig, and already
+        running; connect is the DataProducer handshake the pipeline uses before
+        browse/drain.
       operationId: connect
       requestBody:
         required: true
@@ -75,18 +77,18 @@ paths:
                   status:
                     type: string
                     example: connected
-        '401':
-          description: Invalid credentials
+        '400':
+          description: Malformed request (no connection id, body not a JSON object)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/illegalArgumentError'
         '500':
-          description: Connection failed
+          description: Unexpected failure; the cause is logged by the module, never returned
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/X12UnexpectedError'
   /disconnect:
     post:
       tags: [connection]
@@ -118,13 +120,16 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [status, bufferDepth]
                 properties:
                   status:
                     type: string
-                    enum: [On, Off, Error]
-                  connected:
-                    type: string
-                    format: date-time
+                    enum: [On, Error]
+                    description: On while /healthz is healthy, Error while it is degraded
+                  bufferDepth:
+                    type: integer
+                    format: int64
+                    description: Un-acked transactions (new + in_flight)
   /healthz:
     get:
       tags: [health]
@@ -132,7 +137,8 @@ paths:
       description: >-
         Liveness/health for the always-on daemon. Hub Node polls this every 30s
         for daemon-mode deployments (DESIGN §9). Returns poller state per source,
-        buffer depth, and WAL stats.
+        buffer depth, and database file sizes. 503 when the poller is down, under
+        backpressure, or any source is unwritable, failing its scans or stalled.
       operationId: getHealth
       responses:
         '200':
@@ -151,43 +157,77 @@ components:
   schemas:
     ConnectionProfile:
       $ref: './connectionProfile.yml'
-    ErrorResponse:
-      type: object
-      required: [error, message]
-      properties:
-        error:
-          type: string
-          description: Error type
-        message:
-          type: string
-          description: Error message
-        details:
-          type: object
-          additionalProperties: true
-          description: Additional error details
+    X12UnexpectedError:
+      description: >-
+        The platform unexpectedError body — errorModelBase plus a msg that is always
+        the same generic text (the cause can name paths inside the container).
+      allOf:
+        - $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/errorModelBase'
+        - type: object
+          required: [msg]
+          properties:
+            msg:
+              type: string
     HealthStatus:
       type: object
+      required: [poller, db]
       properties:
         poller:
           type: object
+          required: [up, bufferDepth, backpressure, sources]
           properties:
-            up: { type: boolean }
+            up:
+              type: boolean
+              description: Every poller thread alive
             lastScan: { type: string, format: date-time }
             lastConsumed: { type: string, format: date-time }
-            bufferDepth: { type: integer }
-            oldestUnackedSec: { type: integer }
+            bufferDepth:
+              type: integer
+              format: int64
+              description: Un-acked transactions (new + in_flight)
+            oldestUnackedSec:
+              type: integer
+              format: int64
+              description: Age of the oldest un-acked transaction; absent when there is none
+            backpressure:
+              type: boolean
+              description: Buffer over its byte ceiling; new files are left untouched
             sources:
               type: array
               items:
                 type: object
+                required: [name, path, writable, pending, errored, failing, stalled]
                 properties:
                   name: { type: string }
                   path: { type: string }
                   writable: { type: boolean }
-                  pending: { type: integer }
-                  errored: { type: integer }
+                  pending:
+                    type: integer
+                    description: Candidate files not yet consumed
+                  errored:
+                    type: integer
+                    description: The source's files rows with status error
+                  failing:
+                    type: boolean
+                    description: The most recent scan failed (the buffer rejected the work, or the directory could not be listed)
+                  stalled:
+                    type: boolean
+                    description: No scan completed and no file finished for 3 poll intervals (at least 120s)
+                  lastScan: { type: string, format: date-time }
+                  lastScanStarted: { type: string, format: date-time }
+                  lastError:
+                    type: string
+                    description: The last scan failure
+                  lastErrorAt: { type: string, format: date-time }
         db:
           type: object
+          required: [walBytes, sizeBytes]
           properties:
-            walBytes: { type: integer }
-            lastCheckpoint: { type: string, format: date-time }
+            walBytes:
+              type: integer
+              format: int64
+              description: Size of the WAL file
+            sizeBytes:
+              type: integer
+              format: int64
+              description: Size of the database file, free pages included

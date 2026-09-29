@@ -4,6 +4,7 @@ import com.zerobias.litefilter.Adapter;
 import com.zerobias.litefilter.ComparisonOperator;
 import com.zerobias.litefilter.Expression;
 import com.zerobias.litefilter.LogicalOperator;
+import com.zerobias.module.x12.producer.ProducerException;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -24,8 +25,7 @@ import java.util.Set;
  *       stControlNumber, interchangeDate, envelope, parserErrorCount, schemaId}).</li>
  *   <li>Everything else is a dotted path into the transaction body and resolves into the
  *       OBJECT GRAPH (DESIGN §8.4) — {@code (loop2100.clp.clp02=1)} becomes a scalar
- *       subquery for the {@code clp02} of a {@code clp} instance in that transaction set.
- *       There is no stored document to {@code json_extract} from.</li>
+ *       subquery for the {@code clp02} of a {@code clp} instance in that transaction set.</li>
  * </ul>
  *
  * <p>Two deliberate deviations from the SQL generic module's adapter:
@@ -43,13 +43,18 @@ import java.util.Set;
  * <p>String equality is emitted {@code COLLATE NOCASE} to match lite-filter's in-memory
  * evaluator (case-insensitive by default); {@code LIKE} is already case-insensitive
  * for ASCII in SQLite.
+ *
+ * <p>What the caller wrote wrong — an illegal path segment, an operator SQL cannot express, a
+ * non-numeric bound — is a {@link ProducerException#illegalArgument} (400). What the parser
+ * cannot produce (an unknown node or logical operator) is an {@link IllegalStateException}: a
+ * bug, served as a generic 500.
  */
 public class X12SqlAdapter implements Adapter {
 
     /** lite-filter adapter-registry key. */
     public static final String KEY = "SQL";
 
-    /** Envelope properties → real (denormalized) columns instead of json_extract. */
+    /** Envelope properties → real (denormalized) columns instead of a graph lookup. */
     private static final Map<String, String> ENVELOPE_COLUMNS = Map.ofEntries(
         Map.entry("elementKey", "element_key"),
         Map.entry("fileId", "file_id"),
@@ -86,7 +91,7 @@ public class X12SqlAdapter implements Adapter {
             case "Grouping":
                 return grouping(expression);
             default:
-                throw new IllegalArgumentException("Unknown expression type: " + kind);
+                throw new IllegalStateException("Unknown expression type: " + kind);
         }
     }
 
@@ -115,11 +120,11 @@ public class X12SqlAdapter implements Adapter {
                 return sb.toString();
             case NOT:
                 if (children.size() != 1) {
-                    throw new IllegalArgumentException("NOT requires exactly one expression");
+                    throw ProducerException.illegalArgument("Malformed filter: NOT takes exactly one expression");
                 }
                 return "NOT (" + fromExpression(children.get(0)) + ")";
             default:
-                throw new IllegalArgumentException("Unsupported logical operator: " + op);
+                throw new IllegalStateException("Unsupported logical operator: " + op);
         }
     }
 
@@ -132,7 +137,7 @@ public class X12SqlAdapter implements Adapter {
 
         String col = column(property);
         boolean epoch = isEpochColumn(property);
-        boolean json = !ENVELOPE_COLUMNS.containsKey(property);
+        boolean bodyPath = !ENVELOPE_COLUMNS.containsKey(property);
 
         switch (op) {
             case IS_NULL:
@@ -149,18 +154,18 @@ public class X12SqlAdapter implements Adapter {
                         .replace("*", "%");
                     return col + " LIKE " + lit(glob) + " ESCAPE '\\'";
                 }
-                return equality(col, "=", value, epoch, json);
+                return equality(col, "=", value, epoch, bodyPath);
             case NOT_EQUALS:
-                return equality(col, "!=", value, epoch, json);
+                return equality(col, "!=", value, epoch, bodyPath);
 
             case GREATER_THAN:
-                return compare(col, ">", value, epoch, json);
+                return compare(col, ">", value, epoch, bodyPath);
             case GREATER_THAN_OR_EQUAL:
-                return compare(col, ">=", value, epoch, json);
+                return compare(col, ">=", value, epoch, bodyPath);
             case LESS_THAN:
-                return compare(col, "<", value, epoch, json);
+                return compare(col, "<", value, epoch, bodyPath);
             case LESS_THAN_OR_EQUAL:
-                return compare(col, "<=", value, epoch, json);
+                return compare(col, "<=", value, epoch, bodyPath);
 
             case APPROX_MATCH:   // no fuzzy in SQL; degrade to substring
             case REGEX:          // SQLite has no REGEXP by default; degrade to substring
@@ -174,7 +179,7 @@ public class X12SqlAdapter implements Adapter {
             case BETWEEN: {
                 String[] parts = String.valueOf(value).split(",");
                 if (parts.length != 2) {
-                    throw new IllegalArgumentException(":between: requires two values: min,max");
+                    throw ProducerException.illegalArgument("Malformed filter: :between: takes two values, min,max");
                 }
                 return col + " BETWEEN " + numeric(parts[0].trim()) + " AND " + numeric(parts[1].trim());
             }
@@ -186,11 +191,11 @@ public class X12SqlAdapter implements Adapter {
 
             case INCLUDES:
             case INCLUDES_ANY:
-                throw new UnsupportedOperationException(
-                    "Array operators (:includes:/:includesAny:) are not supported by the SQL adapter");
+                throw ProducerException.illegalArgument(
+                    "Malformed filter: array operators (:includes:/:includesAny:) are not supported here");
 
             default:
-                throw new IllegalArgumentException("Unsupported operator: " + op);
+                throw ProducerException.illegalArgument("Malformed filter: unsupported operator " + op);
         }
     }
 
@@ -201,7 +206,7 @@ public class X12SqlAdapter implements Adapter {
      * compare it: an envelope column, or the graph lookup a body path resolves to. Shared with
      * the filter path deliberately — a sort and a filter must agree on what a property means.
      *
-     * @throws IllegalArgumentException for an illegal path segment (never interpolate a
+     * @throws ProducerException (400) for an illegal path segment (never interpolate a
      *     caller's string into SQL without this)
      */
     public static String orderExpression(String property) {
@@ -217,13 +222,12 @@ public class X12SqlAdapter implements Adapter {
     }
 
     /**
-     * A body property resolves into the object graph (DESIGN §8.4). There is no stored
-     * document to {@code json_extract} from any more: the last path segment is the element and
+     * A body property resolves into the object graph (DESIGN §8.4): the last path segment is the element and
      * the one before it names the structure that carries it, so {@code loop2100.clp.clp04}
      * becomes "the {@code clp04} of a {@code clp} instance in this transaction set".
      *
-     * <p>A scalar subquery, ordered by instance id and limited to one, so the semantics match
-     * what {@code json_extract} gave: the FIRST matching instance, not "any". A filter that
+     * <p>A scalar subquery, ordered by instance id and limited to one: the FIRST matching
+     * instance in wire order, not "any". A filter that
      * needs per-instance semantics — every claim over 1000 rather than a transaction whose
      * first claim is — belongs on a business collection, where the grain is the row
      * (DESIGN §8.5).
@@ -235,7 +239,8 @@ public class X12SqlAdapter implements Adapter {
     private String graphValue(String property) {
         for (String part : property.split("\\.")) {
             if (part.isEmpty() || !part.matches("[A-Za-z0-9_]+")) {
-                throw new IllegalArgumentException("Illegal property path segment: '" + part + "'");
+                throw ProducerException.illegalArgument("Illegal property path segment '" + part + "' in '"
+                    + property + "'");
             }
         }
         final int dot = property.lastIndexOf('.');
@@ -264,20 +269,20 @@ public class X12SqlAdapter implements Adapter {
     /**
      * Equality with case-insensitive collation for strings (matches the evaluator).
      *
-     * <p>lite-filter delivers every literal as a String, but v1 materializes {@code N*}/
-     * {@code R} elements as JSON <em>numbers</em> (DESIGN §5) and SQLite never equates
-     * {@code 1} with {@code '1'}. So a numeric-looking literal against a JSON path is
-     * emitted as {@code (col = '1' COLLATE NOCASE OR col = 1)} — DESIGN §2.6's own
-     * example {@code (loop2100.clp.clp02=1)} depends on this. Real columns are TEXT
-     * (affinity converts) and need no such alternative.
+     * <p>lite-filter delivers every literal as a String, but {@code N*}/{@code R} elements are
+     * numbers (DESIGN §5) and the graph lookup yields them as SQLite numbers, which never equal
+     * {@code '1'}. So a numeric-looking literal against a body path is emitted as
+     * {@code (col = '1' COLLATE NOCASE OR col = 1)} — DESIGN §2.6's own example
+     * {@code (loop2100.clp.clp02=1)} depends on this. Real columns are TEXT (affinity
+     * converts) and need no such alternative.
      */
-    private String equality(String col, String sqlOp, Object value, boolean epoch, boolean json) {
+    private String equality(String col, String sqlOp, Object value, boolean epoch, boolean bodyPath) {
         String core;
         if (epoch && value instanceof String && looksTemporal((String) value)) {
             core = col + " " + sqlOp + " " + epochLiteral((String) value);
         } else if (value instanceof String) {
             core = col + " " + sqlOp + " " + lit((String) value) + " COLLATE NOCASE";
-            if (json && looksNumeric((String) value)) {
+            if (bodyPath && looksNumeric((String) value)) {
                 String num = col + " " + sqlOp + " " + (String) value;
                 core = "=".equals(sqlOp) ? "(" + core + " OR " + num + ")" : "(" + core + " AND " + num + ")";
             }
@@ -290,15 +295,15 @@ public class X12SqlAdapter implements Adapter {
     }
 
     /**
-     * Ordered comparison. A numeric-looking literal against a JSON path is emitted
-     * unquoted: SQLite orders every INTEGER/REAL below every TEXT, so
-     * {@code json_extract(...) > '1000'} would be false for the number 1500.
+     * Ordered comparison. A numeric-looking literal against a body path is emitted
+     * unquoted: SQLite orders every INTEGER/REAL below every TEXT, so a graph value
+     * {@code > '1000'} would be false for the number 1500.
      */
-    private String compare(String col, String sqlOp, Object value, boolean epoch, boolean json) {
+    private String compare(String col, String sqlOp, Object value, boolean epoch, boolean bodyPath) {
         if (epoch && value instanceof String && looksTemporal((String) value)) {
             return col + " " + sqlOp + " " + epochLiteral((String) value);
         }
-        if (json && value instanceof String && looksNumeric((String) value)) {
+        if (bodyPath && value instanceof String && looksNumeric((String) value)) {
             return col + " " + sqlOp + " " + (String) value;
         }
         return col + " " + sqlOp + " " + format(value);
@@ -320,16 +325,6 @@ public class X12SqlAdapter implements Adapter {
         return "strftime('%Y', " + col + ") = '" + y + "'";
     }
 
-    /** SQLite JSON path: {@code '$.a.b.c'}, with the path-string single-quote-escaped. */
-    private String jsonPath(String property) {
-        for (String part : property.split("\\.")) {
-            if (part.isEmpty() || !part.matches("[A-Za-z0-9_]+")) {
-                throw new IllegalArgumentException("Illegal property path segment: '" + part + "'");
-            }
-        }
-        return lit("$." + property);
-    }
-
     private String likeLit(String pre, Object value, String post) {
         String v = String.valueOf(value).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
         return lit(pre + v + post) + " ESCAPE '\\'";
@@ -345,8 +340,16 @@ public class X12SqlAdapter implements Adapter {
         return lit(value.toString());
     }
 
+    /**
+     * A {@code :between:} bound, emitted unquoted — so only a plain decimal literal may pass.
+     * {@code Double.parseDouble} also accepts {@code NaN}, {@code Infinity}, {@code 1d} and hex
+     * floats, which SQLite reads as identifiers or syntax errors: a 500 for a caller mistake.
+     */
     private String numeric(String s) {
-        Double.parseDouble(s); // validate; emit unquoted
+        if (!looksNumeric(s)) {
+            throw ProducerException.illegalArgument("Malformed filter: :between: bounds must be plain decimal "
+                + "numbers, got: " + s);
+        }
         return s;
     }
 
@@ -370,7 +373,7 @@ public class X12SqlAdapter implements Adapter {
         try {
             return Integer.valueOf(String.valueOf(value));
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException(op + " requires a numeric value, got: " + value);
+            throw ProducerException.illegalArgument("Malformed filter: " + op + " takes an integer, got: " + value);
         }
     }
 

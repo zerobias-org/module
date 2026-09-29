@@ -1,6 +1,10 @@
 package com.zerobias.module.x12;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -9,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Extracting the opaque {@code config} block from a runtime-config file, whether the
  * node's JSON {@code DeploymentRuntimeConfig} or the image's {@code runtimeConfig.yml}.
- * Only {@code config} is read — there are no listener ports in this module.
+ * Only {@code config} is read — there are no listener ports in this module. A missing file is
+ * absent (the next channel is tried); a present one that cannot be used is fatal.
  */
 class RuntimeConfigFileTest {
 
@@ -41,12 +46,25 @@ class RuntimeConfigFileTest {
     }
 
     @Test
-    void toleratesMissingConfigAndJunk() {
+    void aMissingConfigBlockIsEmptyAndAMissingFileIsAbsent() {
         assertEquals(0, RuntimeConfigFile.parse("{}").config().size());
-        assertEquals(0, RuntimeConfigFile.parse("{\"config\":\"nope\"}").config().size());
+        assertEquals(0, RuntimeConfigFile.parse("{\"config\":null}").config().size());
         assertEquals(0, RuntimeConfigFile.parse("daemonMode: true\n").config().size());
         assertEquals(0, RuntimeConfigFile.parse("").config().size());
-        assertThrows(RuntimeException.class, () -> RuntimeConfigFile.parse("{\"config\":"));
         assertTrue(RuntimeConfigFile.loadPath(java.nio.file.Path.of("/definitely/missing.yml")).isEmpty());
+    }
+
+    @Test
+    void aFileThatIsPresentButBrokenFailsInsteadOfBeingIgnored(@TempDir Path dir) throws Exception {
+        // Ignoring it ran the daemon on defaults nobody wrote, with nothing to show for it.
+        assertThrows(ModuleRuntimeConfig.InvalidConfigException.class, () -> RuntimeConfigFile.parse("{\"config\":\"nope\"}"));
+        assertThrows(ModuleRuntimeConfig.InvalidConfigException.class, () -> RuntimeConfigFile.parse("[1,2]"));
+        assertThrows(RuntimeException.class, () -> RuntimeConfigFile.parse("{\"config\":"));
+        for (String junk : new String[] {"{\"config\":", "config: [unclosed\n", "config: 7\n"}) {
+            Path f = Files.writeString(dir.resolve("runtime-" + junk.length() + ".json"), junk);
+            ModuleRuntimeConfig.InvalidConfigException e = assertThrows(ModuleRuntimeConfig.InvalidConfigException.class,
+                () -> RuntimeConfigFile.loadPath(f), junk);
+            assertTrue(e.getMessage().contains(f.toString()), "names the file: " + e.getMessage());
+        }
     }
 }

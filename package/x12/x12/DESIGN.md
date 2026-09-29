@@ -23,7 +23,7 @@ consumed files marked with a **`.done` suffix** · one X12 file = one node with 
 | Unit received | one HL7 message | one interchange **file** (ISA…IEA) holding N transaction sets |
 | Atom (buffer row / collection element) | message (MSH-10) | **transaction set** (ST…SE) |
 | Ack | `MSA\|AA` after SQLite commit | **rename `<file>` → `<file>.done` after SQLite commit** |
-| Parser | HAPI generic + structure index | imsweb `X12Reader` (definition selected by GS08) + mapping index |
+| Parser | HAPI generic + structure index | imsweb `X12Reader`, one definition per functional group (selected by its GS08) + mapping index |
 | Listener ports | required | **none** — `runtimeConfig.listenerPorts` absent |
 | Raw access | `er7` function | `er7`-equivalent `raw` function **and** `downloadBinary` on the file node |
 | Discriminators | by-type / by-version / by-sender / by-port | by-type / by-version / by-sender / **by-source** (watched dir) + **/files** |
@@ -40,11 +40,11 @@ build time, JUnit test surface, `zb.java-module` build — is inherited unchange
 "/"                                   container (root, mandatory; id == name == "/")
 └─ "/x12-receiver"                    container — the receiver instance
    ├─ /files                          container → one child per interchange file (emergent)
-   │    └─ /files/<fileId>            ["container","binary"]  raw EDI downloadable
+   │    └─ /files/<fileId>            ["container","document","binary"]  files row as document, raw EDI downloadable
    │         └─ /files/<fileId>/transactions   collection — that file's ST..SE atoms (envelope schema)
    ├─ /transactions                   collection (heterogeneous, envelope schema) — everything
-   ├─ /by-type                        container → /by-type/<TS>            collections, e.g. 835, 837P, 837I, 277CA, 999
-   │                                   (version-interposed: /by-type/<TS>/<GS08> when a TS spans versions)
+   ├─ /by-type                        container → /by-type/<TS>            containers, e.g. 835, 837P, 837I, 277CA, 999
+   │    └─ /by-type/<TS>/<GS08>       collection — that type under one guide (the guide's table schema)
    ├─ /by-version                     container → /by-version/<GS08>       collections, e.g. 005010X221A1
    ├─ /by-sender                      container → /by-sender/<ISA06>       collections
    ├─ /by-source                      container → /by-source/<sourceName>  collections — one per watched dir
@@ -52,8 +52,9 @@ build time, JUnit test surface, `zb.java-module` build — is inherited unchange
    │    └─ /inbox/<source>            container — that source's directory
    │         ├─ /inbox/<source>/<dir>   container — a real subdirectory
    │         └─ /inbox/<source>/<file>  ["binary"] — a real file, ingested or not
-   ├─ /stats                          document — poller + buffer metrics
-   └─ /ops                            container → take · ack · release · replay · recast · purge · raw · validate · rescan
+   ├─ /claims, /payers, …             business collections projected out of the object graph (§8.5)
+   ├─ /stats                          document — poller + buffer metrics (§9)
+   └─ /ops                            container → take · ack · release · replay · recast · purge · raw · validate · rescan · packs
 ```
 
 Rules (from hl7/v2 `ObjectTree` javadoc, restated):
@@ -64,22 +65,29 @@ Rules (from hl7/v2 `ObjectTree` javadoc, restated):
   it, so its shape can change without a migration (older rows keep the key they were stored under).
 - **Folders are discriminators and their children are emergent**: read live from the buffer's
   `DISTINCT` values, so a node appears the first time matching data lands.
-- **`/files/<fileId>` is the one exception**: a file is both a folder (its transactions) and a
-  binary (its bytes). `fileId` = `<absolute path inside the container at discovery time>@<first
-  12 hex of the sha256 of the bytes>` (the path is the one before the `.done` rename) — the same
-  bytes re-landing at the same path share an id (a *redelivery*, counted), new bytes under a
-  reused name get a new id, so a path is never a skip key. The raw path stays available as
-  `filePath`. Binary fields: `fileName`, `filePath`, `size`, `mimeType: application/EDI-X12`,
-  `checksum` (sha256 of the bytes, hex), `modified` (file mtime), `created` (discovery time),
-  `tags: [source:<name>, status:<consumed|error|duplicate>]`, `redeliveryCount`.
-- **Homogeneity**: a collection has exactly one `collectionSchema`. `/by-type/835` is itself
-  the collection while every 835 in the buffer carries one GS08; it becomes a container with
-  `/by-type/835/005010X221A1` leaves once it spans versions. Coarse facets (`/by-version`,
+- **`/files/<fileId>` is the one exception**: a file is a folder (its transactions), a
+  document (its `files` row) and a binary (its bytes) — `objectClass: [container, document,
+  binary]`. `fileId` = `<absolute path inside the container at discovery time>@<first 12 hex of
+  the sha256 of the bytes>` (the path is the one before the `.done` rename) — the same bytes
+  re-landing at the same path share an id (a *redelivery*, counted), new bytes under a reused
+  name get a new id, so a path is never a skip key. The node carries only interface
+  `DataProducerObject` fields: `documentSchema: schema:shared:x12.file`, `fileName`, `size`,
+  `mimeType: application/EDI-X12`, `checksum` (sha256 of the bytes, hex), `modified` (file
+  mtime), `created` (discovery time), `tags: [source:<name>, status:<consumed|error|duplicate>]`.
+  The interface has no `binarySchema`, so the row's own fields — `fileId`, `filePath`,
+  `currentPath`, `status`, counts, `errorMessage`, `renameFailed`, `redeliveryCount` — are the
+  node's document, read with `getDocumentData`, and never extra keys on the node.
+- **Ids are stable.** A node's class never depends on what else is in the buffer:
+  `/by-type/<TS>` is always a container of one `/by-type/<TS>/<GS08>` collection per guide
+  present, even while a single guide carries that type. An id a caller saved as a collection
+  must not turn into a container the day a second GS08 of the same type arrives.
+- **Homogeneity**: a collection has exactly one `collectionSchema`. `/by-type/<TS>/<GS08>` is
+  bound to that guide's `schema:table:x12.<GS08>.<TS>`. Coarse facets (`/by-version`,
   `/by-sender`, `/by-source`, `/transactions`, `/files/<id>/transactions`) are heterogeneous →
   `schema:shared:x12.transaction-envelope`.
-- `<TS>` display names: `835`, `837P` (X222), `837I` (X223), `837D` (X224), `277CA` (X214), `277`
-  (X212), `999`, `834`, `820`, `270`, `271`, `276` — derived from GS08 via a fixed table in
-  `TransactionTypes.java`; unknown GS08 → the bare `ST01` value.
+- `<TS>` display names come from the guide table (`guides.txt`, §6): `835` (X221A1), `837P`
+  (X222A1), `837I` (X223A2), `277CA` (X214), `277` (X212), `999` (X231A1), `834` (X220A1). A GS08
+  outside the table never reaches the buffer: the file goes to `.error` as `unsupported-guide`.
 
 ### 2.2 Schema-ID namespace
 
@@ -93,13 +101,23 @@ guide-bound content, `codes` for the data-element code sets, `ops` for functions
 | Loop | `schema:type:x12.<GS08>.<loopXid>` | `schema:type:x12.005010X221A1.2100` |
 | Segment | `schema:type:x12.<GS08>.<segXid>` | `schema:type:x12.005010X221A1.CLP` |
 | Composite | `schema:type:x12.<GS08>.<compositeXid>` | `schema:type:x12.005010X221A1.C022` |
-| Code set (per data element with `valid_codes` / `codes.xml`) | `schema:enum:x12.codes.<dataEle>` | `schema:enum:x12.codes.1029` (CLP02 claim status; 1032 is CLP06 filing indicator) |
+| Code set coded inline (`valid_codes`) | `schema:enum:x12.codes.<dataEle>` | `schema:enum:x12.codes.1029` (CLP02 claim status; 1032 is CLP06 filing indicator) |
+| Code set from imsweb `codes.xml` | `schema:enum:x12.codes.<codeset>` | `claim_status_cat`, `claim_status`, `adjustment_reason` (CARC), `remark_code` (RARC), `states`, `country`, `currency`, `pos` |
+| Receiver enums | `schema:enum:x12.ops.<Name>` | `TransactionStatus`, `EnvelopeOrigin`, `FileStatus` |
 | Transaction envelope (shared) | `schema:shared:x12.transaction-envelope` | — |
-| File (binary node metadata) | `schema:shared:x12.file` | — |
-| Receiver stats document | `schema:shared:x12.receiver-stats` | — |
+| File document (a `/files/<fileId>` node's row) | `schema:shared:x12.file` | — |
+| Receiver stats document | `schema:shared:x12.receiver-stats` (+ `receiver-stats-source`) | — |
 | Functions | `schema:function:x12.ops.<fn>:input\|output` | `schema:function:x12.ops.take:input` |
+| Function error / verdict shapes | `schema:shared:x12.not-found-error`, `schema:shared:x12.ops-verdict` | — |
 
 These are module-internal addressing served by `getSchema` (hl7/v2 §2.2 scope note applies).
+
+A coded position references the codeset its uses take their values from: when every use of it
+points at one `codes.xml` codeset, the enum is that codeset (so 277CA STC01-01 and STC01-02, both
+data element 1271, stay two enums — `claim_status_cat` and `claim_status`); when it is coded
+inline, or its uses mix sources, the enum is its data element and absorbs every list involved.
+A codeset is deliberately not keyed by its own declared data element: `remark_code` declares
+127, the generic Reference Identification, and only the positions the guide marks reference it.
 
 ### 2.3 Composition
 
@@ -122,13 +140,18 @@ keys — the generated schema is the contract (hl7/v2 trap #2).
 | `N0` … `N9` (implied decimal) | `decimal` | value / 10^n; **never float** — money |
 | `R` (decimal) | `decimal` | |
 | `DT` (`CCYYMMDD` or `YYMMDD`) | `date` | normalized to ISO `YYYY-MM-DD`; 2-digit years per ISA rule (`YYMMDD` → 20YY) |
-| `TM` (`HHMM[SS[dd]]`) | `string` + `format: time` | no core time-only type; normalized `HH:MM[:SS[.dd]]` |
+| `TM` (`HHMM[SS[dd]]`) | `string` | no core time-only type; normalized `HH:MM:SS[.d[d]]`, seconds always present |
+| Date Time Period (element 1251) | `string` | by its format qualifier (1250): `D8` → `YYYY-MM-DD`, `RD8` → the ISO 8601 interval `YYYY-MM-DD/YYYY-MM-DD`, `DT` → `YYYY-MM-DDTHH:MM:SS` |
+| control numbers (I12 ISA13, 28 GS06 / AK102, 329 ST02 / AK202) | `string` | `N0` on the wire, but leading zeros are identity (`000000101`) and a 999 joins AK102 to the acknowledged GS06 by text |
 | `B` (binary) | `byte` | rare; base64 |
 | composite (`C0nn`) | composition ref → `schema:type:x12.<GS08>.<compositeXid>` | sub-elements are its properties |
 | repeated element (`^`) | parent property + `multi: true` | |
 
 Materialization normalizes on the way in (like `Hl7Normalizer`): trimmed `AN`, decimal-shifted
-`N*`, ISO dates, the ISA fixed-width padding stripped. Consumers never see wire formats.
+`N*`, ISO dates, times and date periods, the ISA fixed-width padding stripped. Consumers never see
+wire formats. A value that does not fit its declared type — a date that does not exist such as
+`20261345`, an unknown 1250 qualifier — is kept trimmed-but-unchanged rather than dropped or
+coerced: no silent data loss on a dirty feed.
 
 ### 2.5 Function objects
 
@@ -138,13 +161,29 @@ Inherited from hl7/v2 with the same I/O and constants (`DEFAULT_MAX=100`, `MAX_C
 | fn | input | output |
 |---|---|---|
 | `take` | `{filter?, max?, leaseTtl?}` | `{leaseId, transactions[], remaining}` |
-| `ack` / `release` | `{leaseId, elementKeys?}` | `{acked\|released: n}` |
+| `ack` / `release` | `{leaseId, elementKeys?}` | `{acked\|released: n}` — idempotent: `0` for a lease that is unknown, already finalized or expired, never a 404 |
 | `replay` | `{filter?}` | `{replayed: n}` |
-| `recast` | `{filter?, max?}` | `{examined, recast, unchanged, failed}` — re-materialize from stored raw under current definitions |
+| `recast` | `{filter?, max?}` | `{examined, recast, unchanged, failed}` — re-materialize from stored raw under current definitions and replace the graph only where it changed |
 | `purge` | `{olderThan?}` | `{purged: n}` — acked rows only |
-| `raw` | `{elementKey}` | `{elementKey, fileId, gs08, transactionType, raw}` — the ST..SE segments verbatim, plus the ISA/GS lines for context |
+| `raw` | `{elementKey}` | `{elementKey, fileId, gs08, transactionType, raw}` — the stored single-transaction interchange: ISA/GS lines, the ST..SE segments verbatim, GE/IEA trailers counting this one set (§4.2 step 3c) |
 | `validate` | `{elementKey}` | `{elementKey, schemaId, stored:{valid,errors[]}, rematerialized:{valid,errors[],schemaId}, repsAgree, parserErrors[], parserErrorCount}` — `rematerialized` re-parses the stored raw under the current definitions (`MaterializerRecastHook`); `parserErrors` are imsweb's non-fatal `getErrors()` from that re-parse |
 | **`rescan`** (new) | `{source?}` | `{scanned, discovered, consumed, errored}` — trigger an immediate poll; the only way to force a pickup between intervals |
+| **`packs`** (new) | `{name?, gs08?}` | the bundled content packs and whether the registry serves them (§7.3) |
+
+The re-materialization behind `recast` and `validate` is always present: the module ships the
+structure indexes it re-parses with, so `rematerialized` and `repsAgree` are never null, and a
+row that cannot be re-derived counts as `failed` (`validate`: `rematerialized.valid=false`,
+`repsAgree=false`) rather than stopping the call. `RecastHook` is an interface only so a test can
+substitute a hook whose output differs from the store — the real one reproduces every row it
+ingested, which would leave the rewrite path of `recast` unexercised.
+
+Each function node declares in `throws` exactly the codes it raises: `raw`, `validate` and
+`rescan` raise `not_found` (an unknown `elementKey` or source), shaped
+`schema:shared:x12.not-found-error` — the platform `noSuchObjectError` body. Nothing else is
+declared, because nothing else is raised: there is no outstanding-lease cap, backpressure holds
+files back on the inbox side rather than failing `take`, and `ack`/`release` are idempotent (the
+buffer clears `lease_id` on finalize, so an unknown, a finalized and an expired lease are
+indistinguishable, and a retried ack must not fail).
 
 Every function input is checked against its declared `schema:function:x12.ops.<fn>:input`
 (one in-code table in `SchemaRegistry` drives both the served schema and the check) before
@@ -153,16 +192,20 @@ filter/duration, `max < 1` or an empty `elementKeys` is a 400 `illegalArgumentEr
 silently dropped argument (`purge {"olderthan":"P30D"}` must not purge every acked row).
 `FunctionsApi.validateFunctionInput` (body `validateFunctionInputRequest: {input, strict}`)
 runs the same check without executing and returns the interface `ValidationResult`
-(`{valid, errors[{path,message,code}], warnings[{path,message}]}`); a `max` above the cap is a
-warning, an error under `strict`.
+(`{valid, errors[{path,message,code}], warnings[{path,message}]}`). Input that runs but is
+adjusted is a warning, an error under `strict`: a `max` above 1000, and a `leaseTtl` above
+`PT1H` — the buffer grants at most an hour (`BufferStore.MAX_LEASE_TTL`), so a longer lease
+returns its rows to `new` after the hour, not after what the caller asked for.
 
 ### 2.6 Filter semantics
 
-RFC4515 over **schema property names**, translated to SQLite by an `X12SqlAdapter` cloned from
-`Hl7SqlAdapter` (reflect public getters; switch on public enums; date extensions over epoch-millis;
-`json_extract` for everything not an envelope column; `COLLATE NOCASE` string equality). Envelope
-columns that resolve to real columns: `elementKey`, `fileId`, `sourceName`, `transactionType`,
-`gs08`, `senderId`, `receiverId`, `receivedAt`, `status`, `leaseId`. Examples:
+RFC4515 over **schema property names**, parsed by lite-filter and translated to SQLite by an
+`X12SqlAdapter` cloned from `Hl7SqlAdapter` (reflect public getters; switch on public enums; date
+extensions over epoch-millis; `COLLATE NOCASE` string equality). Envelope properties resolve to
+real columns — `elementKey`, `fileId`, `sourceName`, `transactionType`, `gs08`, `senderId`,
+`receiverId`, `receivedAt`, `status`, `leaseId`, plus `isaControlNumber`, `gsControlNumber`,
+`stControlNumber`, `interchangeDate`, `envelope`, `parserErrorCount`, `schemaId`; every other
+property is a dotted body path resolved into the object graph (§8.5.1). Examples:
 
 ```
 (&(transactionType=835)(senderId=ABCPAYER)(receivedAt>=2026-09-01)(status=new))
@@ -172,6 +215,9 @@ columns that resolve to real columns: `elementKey`, `fileId`, `sourceName`, `tra
 ```
 
 Same lite-filter constraints as hl7/v2 §2.6 (date-only literals; absolute-date `>=` is SQL-only).
+A filter the caller got wrong — a syntax error, an illegal path segment, a `:between:` bound that
+is not a plain decimal, an array operator SQL cannot express — is a 400 `illegalArgumentError`
+raised where it is detected (§2.7).
 
 ### 2.7 Errors
 
@@ -192,15 +238,31 @@ the collection ops honour `filter` and `sortBy`/`sortDir` (one key; a bare value
 and reject `pageToken`/`properties`; `deleteObject` rejects `recursive=true`; `createChildObject`
 rejects `CreateObjectRequest` fields other than `id`/`name`/`objectClass` (all 400
 `UnsupportedOperationError`). Paging is `pageNumber >= 1`, `1 <= pageSize <= 1000` (default 100); out
-of range or not an integer is a 400 `illegalArgumentError`, not a silent default.
+of range or not an integer is a 400 `illegalArgumentError`, not a silent default. The row offset
+`(pageNumber - 1) × pageSize` is computed exactly (`X12ProducerFacade.pageOffset`): in int
+arithmetic it wraps negative for a large page number, SQLite reads a negative `OFFSET` as 0, and
+the caller would silently get page 1 again — a page past the last addressable offset is a 400.
 
 Identical to hl7/v2 §2.7: wire body is the OpenAPI `errorModelBase` (`{key, template, timestamp,
-statusCode}` + subtype fields). 404 for unknown object/schema/lease/file, 400
+statusCode}` + subtype fields). 404 for unknown object/schema/file, 400
 `UnsupportedOperationError` for every write op (`createChildObject`, `addCollectionElement`,
-`uploadBinaryContent`, `updateDocumentData`, …), 400 `illegalArgumentError` for bad filters, bad
-function input and a request body that is not valid JSON (or not an object). Anything unexpected is a
-500 `err.unexpected` with a fixed generic message: the cause (SQLite, IO) can name buffer and inbox
-paths inside the container, so it is logged server-side and never returned.
+`uploadBinaryContent`, `updateDocumentData`, …), 400 `illegalArgumentError` for bad filters, sorts,
+paging, function input and a request body that is not valid JSON (or not an object). Anything
+unexpected is a 500 `err.unexpected` with a fixed generic message: the cause (SQLite, IO) can name
+buffer and inbox paths inside the container, so it is logged server-side and never returned.
+
+**A caller mistake is raised as the 400 where it is detected**, as a `ProducerException`
+carrying a message written for the caller: lite-filter syntax (`X12Filter.parse`), the SQL
+compile (`X12SqlAdapter`), sort direction and property (`X12Filter.orderBy`,
+`BusinessEntities.comparator`), business filters — attribute validation and the operands
+lite-filter can only reject while evaluating a row (`BusinessFilter`) — and paging. There is no
+`IllegalArgumentException` → 400 handler: it turned bugs into 400s that echoed internal messages.
+A bare `IllegalArgumentException` that reaches the HTTP layer is a bug and gets the generic 500.
+
+The module's own paths in `api.yml` declare what the server returns: `/connect` answers 200, 400
+(`illegalArgumentError` from the interface) or 500 (`UnexpectedError`: the interface's
+`errorModelBase` + `msg`) — there are no credentials, so there is no 401; `/metadata` is
+`{status: On|Error, bufferDepth}`; `HealthStatus` is exactly the `/healthz` body (§9).
 
 ### 2.8 Binary download
 
@@ -294,14 +356,33 @@ Env contract from Hub Node: `INTERNAL_PORT`, `MODULE_CONFIG` (JSON of `runtimeCo
 `RUNTIME_CONFIG_FILE` (optional), `HUB_NODE_INSECURE`, `JAVA_OPTS`. **No `LISTENER_PORT_*`.** When
 `MODULE_CONFIG` is absent (bare `docker run`), the module parses the `config:` block of the
 `runtimeConfig.yml` copied into the image — that is the dev/e2e fallback; production always gets
-`MODULE_CONFIG`. Boot validates every `sources[].path`: must exist, be a directory, be writable
-(rename test with a temp file); any failure → log + exit 1 (a daemon that cannot mark files
-consumed must not run).
+`MODULE_CONFIG`.
+
+**The module config is fail-fast.** Defaults apply only when no config is present at all, and a
+present config's missing keys take their defaults. A config that is present but wrong — malformed
+JSON or YAML, an unknown key (at any level), a value of the wrong type, a number out of range
+(`maxFileBytes` above 128 MiB, a non-positive `pollIntervalSec`, …), a bad glob, duration or
+suffix, duplicate source names — throws `InvalidConfigException` and the process exits 1. Nothing
+is clamped or ignored: a typo'd `retention` would silently disable eviction, a misspelt source
+would watch the default directory, a bad `ackDurability` would drop the durability the operator
+asked for — and nothing would show it but an unexpected quiet. The keys, defaults and ranges are
+the README's configuration table. Boot then validates every `sources[].path`: must exist, be a
+directory, be writable (rename test with a temp file), and no two sources may resolve to the same
+real directory; any failure → log + exit 1 (a daemon that cannot mark files consumed must not run).
+
+Boot order (`X12ApiServer.start`): config → source validation → buffer (open + `migrate`, §8.1) →
+`GraphBackfill` (§8.1) → retention sweeper → pollers → producer surface → Javalin. The pollers are
+started by constructing `X12InboxPollerFactory` directly: there is no discovery step that could
+quietly find no provider and boot a receiver that ingests nothing. Every collaborator is required
+— constructors reject null rather than swapping in a stub that answers 404 to everything, which
+would look like an empty receiver rather than a broken one. Shutdown runs routes, then pollers
+(each finishes the file in hand), then the sweeper, then the buffer.
 
 `runtimeConfig.yml` declares `daemonMode: true`, two `durability` mounts (`x12-buffer` →
 `/var/lib/module`, `x12-inbox` → `/var/lib/x12/inbox`), `resources.memoryMb: 1024`, and the
-opaque `config` (see the file). `connectionProfile.yml` exists for the publish pipeline and is
-never read by the daemon.
+opaque `config` (see the file). The heap is `-XX:MaxRAMPercentage=70` of the container, so raising
+`memoryMb` raises the heap. `connectionProfile.yml` exists for the publish pipeline, has no
+required field and is never read by the daemon; it documents `ackDurability` only.
 
 ## 4. Inbox poller
 
@@ -329,8 +410,8 @@ nested inside another is allowed — each poller scans its own directory flat. `
    are logged at debug and retried next poll.
 3. Consume a stable file — one **transaction per file**. The file is `stat`ed (no-follow)
    before a byte is read: if its `(size, mtime)` is not what the stability window saw, it is
-   left for the next scan; if its size is over `config.maxFileBytes` (default 64 MiB, capped at
-   128 MiB) it is hashed as a stream (constant memory, so it still gets a `fileId`) and goes
+   left for the next scan; if its size is over `config.maxFileBytes` (default 64 MiB; at most
+   128 MiB, a larger value is a boot failure) it is hashed as a stream (constant memory, so it still gets a `fileId`) and goes
    straight to 3e as `too-large` — one oversized drop must not exhaust the heap and stall every
    file behind it (a file whose bytes do not fit in the heap goes the same way as
    `too-large-for-heap`). The hash is computed while reading, and the file is `stat`ed again
@@ -348,12 +429,33 @@ nested inside another is allowed — each poller scans its own directory flat. `
       deleted (`BufferStore.deleteFile`) and the file is consumed normally from 3b, so the
       row is replaced rather than duplicated; an `error` row for the same bytes at a *different*
       path is left as its own audit record. Unknown checksum → consume normally.
-   b. Parse with imsweb: detect separators from ISA; read GS08 of the first GS; select
-      `X12Reader.FileType` via `TransactionTypes.fileTypeFor(gs08)`; unknown GS08 → parse fails
-      with `unsupported-guide`.
+   b. Parse (`X12Parse`, the imsweb wrapper). The bytes are decoded as UTF-8 when they are
+      valid UTF-8, else ISO-8859-1. The delimiters come from the **fixed-width ISA**: it must be
+      106 characters with the element separator at every one of its sixteen positions (a padded
+      field one character short shifts ISA16 and the terminator, and every later segment would
+      split wrongly), and the delimiters must be distinct and not letters, digits or blanks —
+      otherwise `bad-isa`. Every further ISA in the file must declare the same delimiters. Then
+      **each functional group is parsed with its own guide**: its GS08 resolves through the guide
+      table (`TransactionTypes.guide`, §6) — an alias to its canonical id, which is what the text
+      handed to imsweb carries, since imsweb compares GS08 exactly — and the group is fed to its
+      own `X12Reader` as ISA + GS..GE + IEA, with the results stitched back in document order. So
+      one ISA may carry a 999 group and a 277CA group. A GS08 outside the table fails the file
+      as `unsupported-guide`; an ST01 its guide has no map for (a 276 under `005010X212`) as
+      `unsupported-transaction`. **Envelope integrity**, which imsweb does not check, is checked
+      here: SE01 against the segment count and SE02 against ST02, GE01/GE02 against the group,
+      IEA01/IEA02 against the interchange, an ST with no SE before the next ST/GE/IEA
+      (`missing-se`), a GS with no GE. These are non-fatal — the set still holds every segment
+      it was sent with — and are reported as parser errors counted into `parserErrorCount`; an
+      ISA without IEA is reported too, though imsweb then fails the file.
    c. For every `ST_LOOP` in every `GS_LOOP` of every `ISA_LOOP`: materialize (§5), build the
       envelope, insert into `transactions` (+ its graph and dimensions); insert the `files` row
-      (`status='consumed'`, counts). Every set must land: the `fileId` is new at this point
+      (`status='consumed'`, counts). Everything guide-bound — `gs08`, `transactionType`, the
+      structure index and `schema_id`, the graph, the dimensions — comes from the set's **own**
+      functional group, never the file's first. `raw_x12` is a complete, re-parseable
+      single-transaction interchange: the ISA and GS lines, the ST..SE segments verbatim, then
+      GE and IEA trailers counting exactly this one set and group (the file's own trailers count
+      the whole original group and interchange, so copied verbatim they would make every slice
+      of a multi-set file invalid). Every set must land: the `fileId` is new at this point
       (3a resolved redelivery and duplicates by checksum), so an element key that is already
       taken can only be two sets of *this* file sharing ISA13/GS06/ST02. That rolls the whole
       file back and sends it down 3e as `duplicate-element-key` — acknowledging it `.done` would
@@ -398,25 +500,35 @@ nested inside another is allowed — each poller scans its own directory flat. `
   tests): the poller synthesizes an ISA/GS envelope from the ST03 / first-segment values and
   stamps `envelope: synthetic` on the rows.
 - Multiple ISA in one file (rare, some clearinghouses concatenate): each `ISA_LOOP` is walked;
-  `fileId` is shared, `isaControlNumber` distinguishes.
+  `fileId` is shared, `isaControlNumber` distinguishes — which is why ISA13 is part of the element
+  key (§2.1): two interchanges that both number their first group `1` and first set `0001` are
+  ordinary, and both land. Every ISA must declare the first one's delimiters (§4.2 step 3b).
+- Functional groups of different guides in one interchange: each group is parsed with its own
+  guide (§4.2 step 3b), and each set is stored under it.
 
 ## 5. Materializer — imsweb Loop tree → typed JSON
 
-- Walk the parsed `Loop` tree against the **mapping index** (generated at build time from the
-  same `mapping/*.xml` imsweb ships — §6) rather than trusting `Loop.toJson()` (XStream output is
-  shaped for XStream, not for consumers). For each loop: `{ "<segXid lower>": {...}, "loop<xid>":
-  [...] }`; for each segment: `{ "<xid lower><nn>": value }` with §2.4 normalization; composites
-  nest; repeated elements/segments/loops are arrays.
-- Envelope overlay (authoritative, top level): `elementKey, fileId, fileName, sourceName,
-  isaControlNumber, gsControlNumber, stControlNumber, gs08, transactionType, senderId (ISA06 or
-  GS02 per discriminator), receiverId (ISA08), interchangeDate (ISA09+ISA10 → date-time),
-  receivedAt, status, leaseId, envelope (file|synthetic), parserErrorCount`.
+- Walk the parsed `Loop` tree against the **structure index** of the set's own guide
+  (generated at build time from the same `mapping/*.xml` imsweb ships — §6) rather than trusting
+  `Loop.toJson()` (XStream output is shaped for XStream, not for consumers). For each loop:
+  `{ "<segXid lower>": {...}, "loop<xid>": [...] }`; for each segment: `{ "<xid lower><nn>":
+  value }` with §2.4 normalization; composites nest; repeated elements/segments/loops are arrays.
+  A guide with no index takes the envelope-only degrade: the row is stored under
+  `schema:shared:x12.transaction-envelope` with no graph, still drainable and browsable.
+- The materialized tree is flattened into the object graph (§8.4); it is never stored as a
+  document.
+- Envelope overlay (authoritative, top level, applied at read time by
+  `X12ProducerFacade.toElement` from the row's columns): `elementKey, fileId, fileName,
+  sourceName, isaControlNumber, gsControlNumber, stControlNumber, gs08, transactionType, senderId
+  (ISA06), receiverId (ISA08), interchangeDate (ISA09+ISA10 → date-time), receivedAt, status,
+  leaseId, envelope (file|synthetic), parserErrorCount`. Control numbers are strings.
 - Numeric typing is **on** in v1 (imsweb gives the `data_type`; hl7/v2 deferred it because HAPI
-  did not) — `N*`/`R` become JSON numbers via `BigDecimal.toPlainString()` semantics.
+  did not) — `N*`/`R` become JSON numbers via `BigDecimal.toPlainString()` semantics, except the
+  control-number elements (§2.4).
 
 ## 6. Schema content — build-time generation
 
-`java/codegen/` (build-time-only Maven project, mirrors hl7/v2's) reads
+`java/codegen/` (build-time-only Maven project, mirrors hl7/v2's) reads the guide table and
 `com.imsweb:x12-parser`'s `mapping/<TS>.<ver>.<guide>.xml`, `dataele.xml`, `codes.xml`,
 `x12.control.00501.xml` and emits:
 
@@ -425,13 +537,29 @@ java/src/main/resources/schemas/<GS08>/{transactions,loops,segments,composites}/
 java/src/main/resources/schemas/codes/*.json                   (enums)
 java/src/main/resources/schemas/shared/*.json                  (envelope, file, receiver-stats)
 java/src/main/resources/structure-index/<GS08>.json            (materializer index)
+java/src/main/resources/schemas/index.json, packs.json         (§7.1)
 ```
 
-Guides in v1 (all present in imsweb 1.16): `005010X221A1` (835), `005010X222A1` (837P),
-`005010X223A2` (837I; imsweb maps X223.A1 — emitted under the A2 id the wire carries, with A1 as
-alias), `005010X214` (277CA), `005010X212` (277), `005010X231A1` (999), `005010X220A1` (834),
-`005010X218` (820). **Not in v1**: 270/271 at 005010 (imsweb has only 4010 X092) and 837D X224 —
-recorded as gaps; a custom mapping XML (schema `map.v2.xsd`) adds them later.
+**One guide table.** `java/src/main/resources/com/zerobias/module/x12/parser/guides.txt` lists
+the guides the receiver ingests, one row each — canonical GS08, display type, imsweb
+`X12Reader.FileType`, the pyx12 map under imsweb's `mapping/`, and the wire aliases.
+`parser.TransactionTypes` reads it at runtime and the codegen reads the same file at build time,
+so a guide is parsed *and* has schemas, or neither. Aliases resolve to the canonical id before any
+lookup, so they have no schemas, packs or mappings of their own.
+
+| GS08 | Type | Wire aliases | Note |
+|---|---|---|---|
+| `005010X221A1` | 835 | `005010X221` | |
+| `005010X222A1` | 837P | `005010X222` | |
+| `005010X223A2` | 837I | `005010X223`, `005010X223A1` | imsweb maps X223.A1 but checks GS08 against the A2 errata id |
+| `005010X214` | 277CA | | |
+| `005010X212` | 277 | | |
+| `005010X231A1` | 999 | `005010X231` | imsweb keys the map as `005010X231` |
+| `005010X220A1` | 834 | `005010X220` | |
+
+**Not ingested**: a guide imsweb 1.16 has no 005010 `FileType` for — 820 X218, 270/271 X279
+(imsweb has only 4010 X092), 837D X224. Its files go to `.error` as `unsupported-guide`; a custom
+mapping XML (schema `map.v2.xsd`) and a row in the table add one later.
 
 Output is **git-ignored and regenerated on every build** (`generate-resources`, never a profile);
 runtime serves from the classpath. The pyx12 mapping files are BSD-licensed (John Holland) and
@@ -461,8 +589,8 @@ The generator emits two manifests alongside the schema trees:
 falls back to walking the classpath only when it is absent). Emitting it makes enumeration
 explicit: a schema that failed to emit is a missing key, not a silently absent file.
 
-A pack manifest carries `name`, `namespace`, `source`, `gs08`/`aliasOf`/`transactionType`
-(guide packs only), `structureIndex`, `idScope`, `schemaCount` and `schemaIds`.
+A pack manifest carries `name`, `namespace`, `source`, `gs08`/`transactionType` (guide packs
+only; `aliasOf` is reserved for a pack that relabels another and is absent on the bundled set), `structureIndex`, `idScope`, `schemaCount` and `schemaIds`.
 **`schemaIds` is the authoritative ownership record** — `idScope` is a human-readable
 summary, because a guide pack owns both `schema:type:x12.<gs08>.<xid>` and its
 `schema:table:x12.<gs08>.<TS>` id, which share no prefix. `version` is absent for bundled
@@ -471,8 +599,8 @@ keep in sync.
 
 ### 7.2 The bundled set
 
-One pack per guide **label** — alias labels (e.g. `005010X231` for `005010X231A1`) get their
-own pack pointing back at the canonical guide via `aliasOf`. That way a customer
+One pack per canonical guide (`x12-guide-<GS08>`, seven today). Aliases have no pack: they
+resolve to the canonical guide before any lookup (§6). One pack per guide means a customer
 companion-guide pack can later supersede exactly one guide instead of shadowing the whole
 core. Plus:
 
@@ -485,8 +613,10 @@ core. Plus:
 ### 7.3 `ops/packs`
 
 Read-only: what content this deployment has and where it came from. Optional `name` / `gs08`
-narrow the report; an unknown value yields an empty list rather than an error, since "is
-this pack present?" is exactly the question being asked. Each pack reports
+narrow the report — a `gs08` in its canonical spelling, like every other GS08 the receiver
+handles, so `005010X223A1` names the 837I pack keyed `005010X223A2`; an unknown value yields an
+empty list rather than an error, since "is this pack present?" is exactly the question being
+asked. Each pack reports
 `status: active | degraded` — degraded meaning it declares schema ids the registry cannot
 serve, which is the failure this op exists to surface. Absent or malformed `packs.json`
 degrades to an empty catalog with a warning, never a boot failure: an always-on receiver
@@ -512,7 +642,11 @@ plus the `parserErrorCount` envelope field.
 
 ## 8. Buffer
 
-Same engine as hl7/v2 (SQLite, WAL, epoch-millis, single writer, lease manager, sweeper). DDL:
+Same engine as hl7/v2 (SQLite, WAL, epoch-millis, single writer, lease manager, sweeper).
+
+### 8.1 Tables, durability and migration
+
+DDL (`buffer/schema.sql`; the graph tables are §8.4):
 
 ```sql
 CREATE TABLE IF NOT EXISTS files (
@@ -559,16 +693,37 @@ PRAGMA journal_mode = WAL;
 Indexes are additive: `CREATE INDEX IF NOT EXISTS` builds a new one on an existing buffer at the
 next open, so adding an index needs no `BufferStore.migrate` step (a column change still does).
 A partial index is only used when a query repeats its WHERE term, which is why `oldestUnacked`
-says `status <> 'acked'` verbatim.
+and the un-acked count behind `bufferDepth` say `status <> 'acked'` verbatim.
 
-Durability (`ackDurability`), drain/lease SQL, retention sweeper (acked rows only; `files` rows
-are never evicted — they are the audit trail), and backpressure are as in hl7/v2 §8, with these
-x12 specifics:
+**`ackDurability` defaults to `full`** (`PRAGMA synchronous=FULL`, fsync per commit). The `.done`
+rename is the ack, so under `normal` a power loss can roll back a commit whose file was already
+renamed — that file is lost with nothing left to retry. Only an explicit `normal` weakens it; any
+other value is a boot failure (§3).
 
-- **`ackDurability` defaults to `full`** (`PRAGMA synchronous=FULL`, fsync per commit). The
-  `.done` rename is the ack, so under `normal` a power loss can roll back a commit whose file was
-  already renamed — that file is lost with nothing left to retry. Only an explicit `normal`
-  weakens it; an unknown value keeps `full`.
+**`schema.sql` is not a migration.** The `x12-buffer` volume outlives every image, and
+`CREATE TABLE IF NOT EXISTS` never alters a table that is already there. `BufferStore.migrate`
+brings an existing buffer to `SCHEMA_VERSION` by probing the table's real shape (not trusting
+`PRAGMA user_version` alone): a buffer from before the object graph still has a
+`transactions.mapped_json NOT NULL` column, which failed every ingest INSERT, so it is dropped.
+Rows that predate the graph have no body; `GraphBackfill` rebuilds their graph **and** dimensions
+from `raw_x12` at startup, before the pollers and routes open, so `take` never drains a row whose
+content is missing. A row that still has no graph afterwards (a guide with no structure index) is
+legitimately envelope-only; one whose raw fails to parse is logged and skipped.
+
+### 8.2 Leases and drain
+
+Drain/lease SQL is as in hl7/v2 §8: `take` atomically marks a batch `in_flight` under a lease with
+a TTL (default `PT5M`, at most `PT1H` — `BufferStore.MAX_LEASE_TTL`), `ack` finalizes all or a
+subset of it, `release` returns it early, and an expired lease reverts to `new`. The buffer
+forgets a lease once its rows leave `in_flight`, so `ack`/`release` report the rows affected and
+0 is the answer for an unknown, finalized or expired lease (§2.5).
+
+### 8.3 Retention, backpressure and deletes
+
+The retention sweeper evicts acked rows only, past `retention.maxAge` and/or `retention.maxBytes`
+(either axis omitted = unbounded on it); `files` rows are never evicted — they are the audit
+trail. Backpressure is as in hl7/v2 §8 (§4.2 step 4), with these x12 specifics:
+
 - **Deletes are batched and atomic with the graph.** `purge` and both retention axes delete
   in batches of 500 acked rows (oldest `acked_at` first); each batch is ONE SQL transaction
   that removes the rows *and* their `entities`, `entity_values` and `transaction_dims`, so a
@@ -616,7 +771,7 @@ Three rules the tests pin down:
   pragma is on.
 
 `EntityGraph.assemble` walks the rows back into the nested form, and **every read goes through
-it**: the structural collections, `ops/take`, `ops/validate` and `download`. `BufferStore`
+it**: the structural collections, `ops/take`, `ops/validate` and the business projection. `BufferStore`
 exposes `documentFor(elementKey)` and a batched `documentsFor(keys)` that reads a whole page in
 two queries rather than two per row. The round-trip equality test against the materializer is
 what licenses this: if it ever fails, the rows are no longer a faithful substitute.
@@ -717,11 +872,10 @@ values offered under a collection are narrowed to those that scope at least one 
 rows — a payer that only ever sent 837s is not a segment of the 835's `/claims`. An unknown
 segment value is a 404, not an empty page.
 
-A **structural** filter (`/transactions`, `/by-type/<TS>`, `ops/take`) still compiles to SQL
-through `X12SqlAdapter`, but a body path now resolves into the graph rather than
-`json_extract`: `(loop2100.clp.clp04>1000)` becomes a scalar subquery for the `clp04` of a
-`clp` instance in that transaction set — the FIRST matching instance, which is the semantics
-`json_extract` had. A filter that needs per-instance semantics ("every claim over 1000", not
+A **structural** filter (`/transactions`, `/by-type/<TS>/<GS08>`, `ops/take`) compiles to SQL
+through `X12SqlAdapter`, and a body path resolves into the graph: `(loop2100.clp.clp04>1000)`
+becomes a scalar subquery for the `clp04` of a `clp` instance in that transaction set — the
+FIRST matching instance in wire order, not "any". A filter that needs per-instance semantics ("every claim over 1000", not
 "a transaction whose first claim is") belongs on a business collection, where the grain IS the
 row. Numeric comparisons read `value_num / 1000000.0`; the exact value stays in `value_text`.
 
@@ -732,7 +886,9 @@ row, so the two surfaces cannot drift in what they accept; the extensions
 (`:contains:`, `:startsWith:`, `:endsWith:`) work on a claims collection exactly as on
 `/transactions`. The only thing layered on top is attribute validation, because the library
 cannot know which columns a business entity has: an unknown name is a 400 that lists what IS
-filterable, rather than an empty page that looks like "no matches".
+filterable, rather than an empty page that looks like "no matches". lite-filter rejects some
+operands only while evaluating a row (a `:between:` without two numeric bounds); the predicate
+raises that as the same 400, so it never surfaces as a 500 halfway through a page.
 
 The structural path compiles that expression to SQL; the business path evaluates it in memory,
 because a business column can sit behind a qualifier predicate or inside a composite, which SQL
@@ -788,6 +944,10 @@ paged in memory, which is bounded by the number of distinct parties, not transac
 
 ## 9. Health
 
+`bufferDepth` means one thing everywhere — `/healthz`, `/stats` and the connection metadata: the
+**un-acked** backlog, `new` + `in_flight` (`BufferStore.unackedCount`). Acked rows are only
+waiting for retention; counting them made a fully drained receiver look backed up.
+
 `/healthz` → `{poller: {up, lastScan, lastConsumed, bufferDepth, oldestUnackedSec, backpressure,
 sources[]: {name, path, writable, pending, errored, failing, stalled, lastScan?, lastScanStarted?,
 lastError?, lastErrorAt?}}, db: {walBytes, sizeBytes}}`; 503 when the poller thread is dead,
@@ -804,7 +964,17 @@ under backpressure, or when any source is:
 
 A live thread is not proof of ingestion: a buffer whose every INSERT failed (the
 `mapped_json NOT NULL` upgrade bug) kept `up=true` and a green probe while nothing moved.
-`lastScan` is the last scan that *completed*, never merely started.
+`lastScan` is the last scan that *completed*, never merely started. `api.yml`'s `HealthStatus`
+declares exactly these fields, the always-emitted ones required.
+
+`/stats` (document, `schema:shared:x12.receiver-stats`) → `{up, lastScan?, lastConsumed?,
+bufferDepth, oldestUnackedSec?, backpressure, newCount, inFlightCount, ackedCount, fileCount,
+doneFileCount, oldestDoneFileAgeSec?, walBytes, dbSizeBytes, sources[]: {name, path, writable,
+pending, errored}}`. The schema declares exactly what is emitted: the always-emitted fields are
+required, the `?` ones are omitted when there is nothing to report. `doneFileCount` and the age
+of the oldest `.done` file make inbox hygiene visible (§11, question 2). The connection metadata
+(`GET /connections/{id}/metadata`) is `{status: On|Error, bufferDepth}` — `On` while `/healthz`
+is healthy.
 
 ## 10. Out of scope (v1)
 
@@ -820,27 +990,14 @@ the ops port beyond the self-signed default · HA / multi-instance.
    the feed. `/stats` reports `.done` count and age so it is visible.
 3. **`MODULE_CONFIG` size** — many sources/partners could grow it; hl7/v2 flagged the same.
 4. **Shared SQL filter adapter** — second copy of `Hl7SqlAdapter`; promote into `lite-filter`.
-5. **Gate stamp does not hash `java/`** (`zb.java-module` gap) — set `project.extra["sourceDirs"]`
-   in this module's `build.gradle.kts` to include `java/src` so Java changes invalidate the stamp.
 
-## 12. Implementation order
-
-1. Foundation (port of hl7/v2 minus HAPI): `pom.xml`, config, buffer, lease, sweeper, filter
-   adapter, RPC server + router + facade skeleton, health.
-2. Codegen from imsweb mappings → schemas + structure index; `SchemaRegistry`.
-3. Poller + parser + materializer; `files`/`transactions` write path; `.done`/`.error`.
-4. `ObjectTree`, `X12Operations`, `X12ProducerFacade` (tree, collections, functions, download).
-5. Tests: JUnit unit (`*Test`) + integration (`*IT`) on synthetic fixtures; `e2e-local.sh` (real container, real file drop, take/ack/purge).
-6. `zbb gate` → `gate-stamp.json` → PR to `dev`.
-
-## 13. Test fixtures and the x12.org examples
+## 12. Test fixtures and the x12.org examples
 
 x12.org's examples are ASC X12 intellectual property — reproduction requires their consent;
 linking is permitted (`https://x12.org/examples/disclaimers`). Therefore:
-- We do not fetch, store or test against them. An earlier local scraper
-  (`fetch-x12org-examples.py`) and its conformance IT were removed: bulk-copying the examples to
-  disk and CI is itself reproduction, and the synthetic fixtures cover the same guides. Cite an
-  example by link when one explains a structure.
+- We do not fetch, store, commit or test against them — no scraper, no conformance run over
+  them: bulk-copying the examples to disk and CI is itself reproduction, and the synthetic
+  fixtures cover the same guides. Cite an example by link when one explains a structure.
 - Committed fixtures under `java/src/test/resources/fixtures/` are **synthetic** (fictional
-  payer/provider, `TEST-NET` style identifiers), one per guide, authored by the test agent, plus
+  payer/provider, `TEST-NET` style identifiers), one per guide, authored from scratch, plus
   deliberately malformed files for the `.error` path.

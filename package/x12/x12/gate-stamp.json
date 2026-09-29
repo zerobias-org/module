@@ -1,0 +1,21 @@
+{
+  "version": "0.0.0-uat.0",
+  "branch": "fix/x12-buffer-migration",
+  "sourceHash": "241902eaa3e3dbffa2396ca4aad38bcdd4e41b85fa3b16037ba944742f40751a",
+  "testHash": "0766983da4c5b8d16f384f4082b60b0415896a4dac762437fa5b3a2e843f4160",
+  "tasks": {
+    "validate": "passed",
+    "lint": "passed",
+    "compile": "passed",
+    "test": "passed",
+    "testDirect": "passed",
+    "testDocker": "passed",
+    "testDataloader": "passed",
+    "buildArtifacts": "passed"
+  },
+  "tests": {
+      "unit": { "expected": 0, "ran": 0, "status": "skipped" },
+      "integration": { "expected": 0, "ran": 0, "status": "skipped" },
+      "e2e": { "expected": 65, "ran": 65, "status": "passed" }
+  }
+}

@@ -1,0 +1,35 @@
+node_modules/
+dist/
+generated/
+docs/
+
+# Java build output
+java/target/
+java/codegen/target/
+java/dependency-reduced-pom.xml
+
+# Generated X12 schema content — build artifact produced by java/codegen from the
+# imsweb mapping definitions at build time / by CI (not committed).
+java/src/main/resources/schemas/
+java/src/main/resources/structure-index/
+java/src/main/resources/packs.json
+
+# x12.org example transmissions are ASC X12 IP (reproduction requires their consent; linking is
+# permitted). We no longer fetch them; this stays ignored so a stray local copy is never committed.
+java/src/test/resources/x12org/
+
+# Ephemeral build artifacts
+eslint.config.js
+eslint.config.mjs
+module-*.yml
+test-results.json
+
+# Local buffer / runtime artifacts (should never be committed)
+*.db
+*.db-wal
+*.db-shm
+
+# Editor / OS
+*.swp
+.DS_Store
+

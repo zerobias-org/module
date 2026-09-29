@@ -1,0 +1,26 @@
+type: object
+description: >-
+  Connection profile for the X12 receiver. Unlike demand-driven modules, there is
+  no remote system to dial — X12 files arrive on a volume mounted into the
+  container (daily clearinghouse / payer drops) and the daemon polls it. The
+  watched source directories, poll cadence and buffer knobs are daemon-level and
+  live in runtimeConfig.config (delivered as MODULE_CONFIG at container boot); the
+  always-on daemon never reads this per-connection profile. It exists because the
+  platform's publish pipeline requires one and to document the defaults.
+properties:
+  ackDurability:
+    type: string
+    description: >-
+      SQLite durability for the consume path. 'full' (the default; synchronous=FULL,
+      fsync per commit) closes the WAL-window gap between "committed" and "renamed
+      .done"; 'normal' (synchronous=NORMAL) is faster but can lose a file on power loss. Daemon-level; the EFFECTIVE
+      value comes from runtimeConfig.config.ackDurability. (DESIGN §8.1)
+    enum: [normal, full]
+    default: full
+  senderDiscriminator:
+    type: string
+    description: >-
+      Which envelope field keys the /by-sender views. ISA06 (interchange sender
+      ID, default) or GS02 (application sender code). (DESIGN §11.4)
+    enum: [ISA06, GS02]
+    default: ISA06

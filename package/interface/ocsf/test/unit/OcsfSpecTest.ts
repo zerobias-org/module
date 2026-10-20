@@ -4,7 +4,7 @@ import yaml from 'js-yaml';
 
 type Schema = {
   $ref?: string; allOf?: Schema[]; items?: Schema; properties?: Record<string, Schema>;
-  'x-ocsf-class-uid'?: number;
+  'x-ocsf-class-uid'?: number; 'x-ocsf-name'?: string;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -18,7 +18,6 @@ const modelName = (s: Schema): string | undefined => {
   return r?.split('/').pop();
 };
 const classModel = (uid: number) => Object.keys(models).find((n) => models[n]['x-ocsf-class-uid'] === uid);
-const snake = (n: string) => n.replace(/[A-Z]/g, (c, i) => (i ? '_' : '') + c.toLowerCase());
 
 // Every field of an event must be declared by its model, recursively through objects.
 // Array-ness is not checked: the ocsf-server sample generator randomly emits a single value
@@ -28,7 +27,7 @@ function undeclared(value: Record<string, unknown>, model: string, path: string,
   for (const [key, v] of Object.entries(value)) {
     const p = props[key];
     if (!p) {
-      if (!extensionAttributes.includes(`${snake(model)}.${key}`)) out.push(`${path}.${key}`);
+      if (!extensionAttributes.includes(`${models[model]['x-ocsf-name']}.${key}`)) out.push(`${path}.${key}`);
       continue;
     }
     const target = modelName(p);

@@ -166,9 +166,16 @@ async function generateApi() {
       },
     },
   };
-  for (const o of objects) schemas[modelOf.get(o.name)] = model(o, modelOf);
+  for (const o of objects) schemas[modelOf.get(o.name)] = { ...model(o, modelOf), 'x-ocsf-name': o.name };
   for (const c of classes) {
-    schemas[classModel.get(c.name)] = { ...model(c, modelOf), 'x-ocsf-class-uid': c.uid, 'x-ocsf-category': c.category ?? null };
+    schemas[classModel.get(c.name)] = {
+      ...model(c, modelOf),
+      'x-ocsf-name': c.name,
+      'x-ocsf-caption': c.caption,
+      'x-ocsf-class-uid': c.uid,
+      'x-ocsf-category': c.category ?? null,
+      'x-ocsf-category-uid': c.category_uid ?? null,
+    };
   }
 
   const pageHeaders = {

@@ -12,6 +12,8 @@ val fetchOcsfFixtures by tasks.registering(Exec::class) {
     outputs.dir("fixtures/generated")
 }
 tasks.matching { it.name == "testUnitExec" }.configureEach { dependsOn(fetchOcsfFixtures) }
+// The dataloader step reads the whole package dir, which holds the fixtures; it never uses them.
+tasks.matching { it.name == "dataloaderExec" }.configureEach { mustRunAfter(fetchOcsfFixtures) }
 
 // Gate-stamp inputs: the default set (api.yml, src/, …) plus the generator.
 project.extra["sourceDirs"] = listOf("src", "scripts")

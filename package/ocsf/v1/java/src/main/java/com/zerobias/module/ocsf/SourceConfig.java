@@ -18,7 +18,8 @@ import java.util.UUID;
  */
 public record SourceConfig(String name, String path, String pattern, int pollIntervalSec, int stableForSec) {
 
-    public static final String DEFAULT_PATTERN = "*";
+    /** Event files only: a README or CSV dropped next to them is left alone, not sent to {@code .error}. */
+    public static final String DEFAULT_PATTERN = "*.{json,ndjson,jsonl,gz}";
     public static final int DEFAULT_POLL_INTERVAL_SEC = 30;
     public static final int DEFAULT_STABLE_FOR_SEC = 60;
 

@@ -84,7 +84,7 @@ public record ModuleRuntimeConfig(
     public static final String DEFAULT_ERROR_SUFFIX = ".error";
     public static final String DEFAULT_SOURCE_NAME = "inbox";
     public static final String DEFAULT_SOURCE_PATH = "/var/lib/ocsf/inbox";
-    public static final String DEFAULT_SOURCE_PATTERN = "*.{json,ndjson,jsonl,gz}";
+    public static final String DEFAULT_SOURCE_PATTERN = SourceConfig.DEFAULT_PATTERN;
 
     /** 64 MiB: the same ceiling as the other receivers. */
     public static final long DEFAULT_MAX_FILE_BYTES = 64L * 1024 * 1024;

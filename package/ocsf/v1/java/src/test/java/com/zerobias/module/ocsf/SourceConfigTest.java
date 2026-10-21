@@ -21,7 +21,8 @@ class SourceConfigTest {
     @Test
     void appliesDefaultsForBlankOrNonPositiveValues() {
         SourceConfig s = new SourceConfig("a", "/a", " ", 0, -1);
-        assertEquals("*", s.pattern());
+        assertEquals(SourceConfig.DEFAULT_PATTERN, s.pattern());
+        assertFalse(s.matchesFileName("notes.txt"), "a non-event file is not picked up");
         assertEquals(30, s.pollIntervalSec());
         assertEquals(60, s.stableForSec());
         assertEquals(0, new SourceConfig("a", "/a", "*", 1, 0).stableForSec(), "zero stability is allowed (tests)");

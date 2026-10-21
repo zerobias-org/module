@@ -59,7 +59,7 @@ class ModuleRuntimeConfigTest {
         ModuleRuntimeConfig c = ModuleRuntimeConfig.parse(FULL);
         assertEquals(List.of(
             new SourceConfig("payer-a", "/in/a", "*.835", 5, 2),
-            new SourceConfig("payer-b", "/in/b", "*", 30, 60)), c.sources(), "per-source defaults applied");
+            new SourceConfig("payer-b", "/in/b", SourceConfig.DEFAULT_PATTERN, 30, 60)), c.sources(), "per-source defaults applied");
         assertEquals(".ok", c.consumedSuffix());
         assertEquals(".bad", c.errorSuffix());
         assertTrue(c.fullDurability());

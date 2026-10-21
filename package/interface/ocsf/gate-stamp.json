@@ -1,8 +1,8 @@
 {
   "version": "1.0.0-uat.0",
   "branch": "task/dev/contextDev-12",
-  "sourceHash": "14c61c4b035c9d658c03b0d3c4740cf504f0d845eb74c67281338c1479c9b553",
-  "testHash": "5094c7f034ffe10818eeca15529bc328f834b3d29fb74232ade3d57c8a055364",
+  "sourceHash": "be1682450a8ad70976543ecfa9d5f5313a7f472cd6cd7f0b965b01081e9888cc",
+  "testHash": "8b0eae1da38e184cb9ca38cf8a226e8a74b2d626edc12bb02533be5177d6b83f",
   "tasks": {
     "validate": "passed",
     "lint": "passed",
@@ -14,7 +14,7 @@
     "buildArtifacts": "passed"
   },
   "tests": {
-      "unit": { "expected": 5, "ran": 5, "status": "passed" },
+      "unit": { "expected": 6, "ran": 6, "status": "passed" },
       "integration": { "expected": 0, "ran": 0, "status": "skipped" },
       "e2e": { "expected": 0, "ran": 0, "status": "skipped" }
   }

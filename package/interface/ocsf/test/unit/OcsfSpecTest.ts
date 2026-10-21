@@ -3,8 +3,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 
 type Schema = {
-  $ref?: string; allOf?: Schema[]; items?: Schema; properties?: Record<string, Schema>;
-  'x-ocsf-class-uid'?: number; 'x-ocsf-name'?: string;
+  $ref?: string; items?: Schema; properties?: Record<string, Schema>;
+  'x-ocsf-class-uid'?: number; 'x-ocsf-name'?: string; 'x-ocsf-object'?: string;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -13,10 +13,8 @@ const models: Record<string, Schema> = spec.components.schemas;
 const extensionAttributes: string[] = spec.info['x-ocsf-extension-attributes'];
 const FIXTURES = new URL('../../fixtures/generated/', import.meta.url);
 
-const modelName = (s: Schema): string | undefined => {
-  const r = s.$ref ?? s.allOf?.[0]?.$ref ?? s.items?.$ref ?? s.items?.allOf?.[0]?.$ref;
-  return r?.split('/').pop();
-};
+// A nested object names its model (`x-ocsf-object`); it is never a $ref (see generate.mjs).
+const modelName = (s: Schema): string | undefined => s['x-ocsf-object'] ?? s.items?.['x-ocsf-object'];
 const classModel = (uid: number) => Object.keys(models).find((n) => models[n]['x-ocsf-class-uid'] === uid);
 
 // Every field of an event must be declared by its model, recursively through objects.
@@ -66,6 +64,15 @@ describe('OCSF interface spec', function () {
     expect(props.filter((p) => !p['x-ocsf-profiles'])).to.have.length(50);
     expect((models.Authentication.properties!.api as Record<string, unknown>)['x-ocsf-profiles']).to.deep.equal(['cloud']);
     expect((models.Authentication as Record<string, unknown>)['x-ocsf-profiles']).to.include('cloud');
+  });
+
+  it('links models by name only, so the dereferenced spec stays small and acyclic', function () {
+    const refs = Object.entries(models).flatMap(([m, s]) => Object.entries(s.properties ?? {})
+      .filter(([, p]) => JSON.stringify(p).includes('$ref')).map(([k]) => `${m}.${k}`));
+    expect(refs).to.deep.equal([]);
+    const dangling = Object.entries(models).flatMap(([m, s]) => Object.entries(s.properties ?? {})
+      .filter(([, p]) => modelName(p) && !models[modelName(p)!]).map(([k]) => `${m}.${k}`));
+    expect(dangling).to.deep.equal([]);
   });
 
   for (const version of readdirSync(FIXTURES)) {

@@ -24,6 +24,10 @@ Rules for working on this package. What implementers do lives in
    real events break each of them and the generated client would reject the whole event.
    Requirement levels and enum values go in descriptions. Changing this is a design decision,
    not a cleanup.
+7. **Models link by name, never `$ref`.** A nested object is `{type: object, x-ocsf-object:
+   User}`. The dataloader stores the fully dereferenced spec; with `$ref`s OCSF's nesting
+   (and cycles like `process.parent_process`) dereferenced past V8's string limit
+   (`RangeError: Invalid string length`). Operations still `$ref` their class model.
 
 ## Gotchas
 

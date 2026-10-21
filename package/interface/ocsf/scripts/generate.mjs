@@ -100,13 +100,14 @@ function property(owner, name, a, modelOf) {
   if (a.type === 'object_t') {
     const target = modelOf.get(a.object_type);
     if (!target) throw new Error(`${owner}.${name}: unknown object ${a.object_type}`);
-    schema = ref(target);
+    // By name, not $ref: the dataloader stores the fully dereferenced spec, and OCSF's nesting
+    // (objects in objects, process.parent_process, …) dereferences past V8's string limit.
+    schema = { type: 'object', 'x-ocsf-object': target };
   } else {
     schema = SCALARS[a.type] ?? { type: 'string' };
   }
   if (a.is_array) schema = { type: 'array', items: schema };
-  // A $ref cannot carry siblings in OpenAPI 3.0: wrap it to keep the description.
-  const out = schema.$ref ? { allOf: [schema], description } : { ...schema, description };
+  const out = { ...schema, description };
   if (a['@deprecated']) out.deprecated = true;
   // Present only when the event declares one of these in metadata.profiles; absent = base attribute.
   const profiles = coreProfiles(a.profiles);

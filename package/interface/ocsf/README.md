@@ -14,7 +14,8 @@ page.items.filter((e) => e.statusId === 2);   // typed Authentication; wire JSON
 
 - `api.yml` — 79 event classes and 190 objects as models; `list<Class>` / `get<Class>` per
   class, tagged by category; `listClasses`. OCSF metadata rides along as extensions:
-  `x-ocsf-class-uid` / `x-ocsf-category` on class models, `x-ocsf-profiles` on profile
+  `x-ocsf-class-uid` / `x-ocsf-category` on class models, `x-ocsf-object` naming the model of a
+  nested object (models link by name, not `$ref`), `x-ocsf-profiles` on profile
   attributes and models, `info.x-ocsf-extension-attributes` for what is left out.
 - `documentation/Implementing.md` — what an implementer does, and how the models map OCSF
   (no `required`, enums and requirement levels in descriptions, profiles).

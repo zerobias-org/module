@@ -1,12 +1,12 @@
 #!/bin/sh
 set -e
 
-# The module's unprivileged identity (Dockerfile: user x12). nginx and java only ever run as it.
+# The module's unprivileged identity (Dockerfile: user ocsf). nginx and java only ever run as it.
 MODULE_UID=10001
 MODULE_GID=10001
 # The two volumes the image declares (runtimeConfig.yml durability).
 BUFFER_VOLUME=/var/lib/module
-INBOX_DIR=/var/lib/x12/inbox
+INBOX_DIR=/var/lib/ocsf/inbox
 BUFFER_DB=${BUFFER_DB:-$BUFFER_VOLUME/buffer.db}
 BUFFER_DIR=$(dirname "$BUFFER_DB")
 
@@ -29,8 +29,8 @@ as_module_user() {
 }
 
 # --- Started as root: repair volume ownership, then drop to 10001 for good ---
-# The images before this one ran as root, so the named volumes they created (x12-buffer,
-# x12-inbox) are root-owned and stay so across the upgrade. Rather than refuse to boot until
+# The images before this one ran as root, so the named volumes they created (ocsf-buffer,
+# ocsf-inbox) are root-owned and stay so across the upgrade. Rather than refuse to boot until
 # someone chowns them by hand, the entrypoint starts as root, fixes only what 10001 cannot
 # write, and re-executes itself as 10001:10001; nginx and java never run as root. A volume
 # 10001 can already write (a fresh one takes the image's ownership) is not touched, so after
@@ -64,12 +64,12 @@ if [ "$(id -u)" = 0 ]; then
             && as_module_user test -w "$INBOX_DIR"; } \
             || echo "WARNING: $INBOX_DIR is still not writable by uid $MODULE_UID; give group $MODULE_GID write on it (chgrp $MODULE_GID + chmod g+rwx)" >&2
     fi
-    # What USER 10001 would have set (the x12 user's home); root's HOME is not writable by 10001.
+    # What USER 10001 would have set (the ocsf user's home); root's HOME is not writable by 10001.
     export HOME=/opt/module
     exec setpriv --reuid="$MODULE_UID" --regid="$MODULE_GID" --init-groups -- "$0" "$@"
 fi
 
-echo "Starting X12 Receiver Module..."
+echo "Starting OCSF Receiver Module..."
 
 # --- Daemon precondition: the inbox directory must exist and be writable ---
 # The module renames consumed files in place (.done / .error); a read-only or
@@ -118,7 +118,7 @@ else
         if ! openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
             -keyout /opt/module/ssl/key.pem \
             -out /opt/module/ssl/cert.pem \
-            -subj "/CN=localhost/O=Auditmation/OU=X12 Module" \
+            -subj "/CN=localhost/O=ZeroBias/OU=OCSF Receiver Module" \
             2>/dev/null; then
             echo "ERROR: cannot write the self-signed certificate to /opt/module/ssl as uid $(id -u)" >&2
             exit 1
@@ -160,11 +160,11 @@ trap shutdown TERM INT
 # Start the Java process (HTTP ops on $INTERNAL_PORT + inbox poller) in the background so
 # this shell stays free to take the signal; the heap is sized from the container limit by
 # JAVA_OPTS (-XX:MaxRAMPercentage, Dockerfile), not a fixed -Xmx.
-echo "Starting X12 receiver on operations port $INTERNAL_PORT..."
-java $JAVA_OPTS -jar /opt/module/x12-receiver.jar &
+echo "Starting OCSF receiver on operations port $INTERNAL_PORT..."
+java $JAVA_OPTS -jar /opt/module/ocsf-receiver.jar &
 JAVA_PID=$!
-echo "X12 receiver started (PID: $JAVA_PID)"
-echo "X12 Receiver Module ready (operations on 8888)"
+echo "OCSF receiver started (PID: $JAVA_PID)"
+echo "OCSF Receiver Module ready (operations on 8888)"
 
 # Java exiting on its own (a boot failure, a crash) ends the container with its status;
 # nginx is stopped first so nothing is left answering for a dead receiver.

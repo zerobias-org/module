@@ -10,20 +10,20 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# The module runs unprivileged: it reads PHI from the inbox and needs root for nothing
+# The module runs unprivileged: it reads security events from the inbox and needs root for nothing
 # (nginx listens on 8888). A fixed uid/gid keeps volume ownership predictable: a host-path
 # inbox or buffer bound into the container must be readable, writable and renameable by
 # 10001, or the boot check refuses to start. Named volumes take the ownership set below
 # when first created; one created by an older, root-running image keeps root ownership,
 # which startup.sh repairs on its way to 10001 (see the note above CMD).
-RUN groupadd --system --gid 10001 x12 && \
+RUN groupadd --system --gid 10001 ocsf && \
     useradd --system --uid 10001 --gid 10001 --no-create-home --home-dir /opt/module \
-        --shell /usr/sbin/nologin x12
+        --shell /usr/sbin/nologin ocsf
 
 WORKDIR /opt/module
 
-# Copy the uber JAR (poller + parser/materializer + buffer + producer)
-COPY java/target/x12-receiver-1.0.0.jar /opt/module/x12-receiver.jar
+# Copy the uber JAR (poller + buffer + OCSF/DataProducer operations; bundles the interface api.yml)
+COPY java/target/ocsf-receiver-1.0.0.jar /opt/module/ocsf-receiver.jar
 
 # Copy OpenAPI specification and connection profile
 COPY *.yml /opt/module/
@@ -42,12 +42,12 @@ RUN chmod +x /opt/module/startup.sh
 RUN mkdir -p /opt/module/ssl /var/log/nginx && \
     chown -R 10001:10001 /opt/module/ssl /var/log/nginx
 
-# Durable buffer (buffer.db) and the X12 inbox; Hub Node mounts named volumes or
+# Durable buffer (buffer.db) and the OCSF inbox; Hub Node mounts named volumes or
 # host paths per runtimeConfig.durability. Both must exist even when empty.
-RUN mkdir -p /var/lib/module /var/lib/x12/inbox && \
-    chown 10001:10001 /var/lib/module /var/lib/x12/inbox
+RUN mkdir -p /var/lib/module /var/lib/ocsf/inbox && \
+    chown 10001:10001 /var/lib/module /var/lib/ocsf/inbox
 VOLUME /var/lib/module
-VOLUME /var/lib/x12/inbox
+VOLUME /var/lib/ocsf/inbox
 
 # Operations port (Hub-facing, fronted by nginx). There are no listener ports.
 EXPOSE 8888
@@ -56,7 +56,7 @@ EXPOSE 8888
 ENV INTERNAL_PORT=8889
 # Heap follows the container limit (runtimeConfig.yml resources.memoryMb) instead of a fixed
 # -Xmx that silently stops tracking it: 70% leaves room for metaspace, threads, SQLite's
-# page cache and the parser's off-heap buffers.
+# page cache and Gson's parse buffers.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=70"
 ENV HUB_NODE_INSECURE=false
 # MODULE_CONFIG (runtimeConfig.config as JSON) is injected by Hub Node. Without it

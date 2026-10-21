@@ -11,26 +11,25 @@
 # Always-on: start at node boot, ignore idle timeouts, never passivate. (DESIGN §1)
 daemonMode: true
 
-# NO listener ports. This receiver has no sockets — X12 files arrive on the
-# mounted `x12-inbox` volume below and are discovered by polling. That is the one
-# structural difference from hl7/v2 (which binds MLLP ports). (DESIGN §3)
+# NO listener ports. This receiver has no sockets — OCSF event files arrive on the
+# mounted `ocsf-inbox` volume below and are discovered by polling. (DESIGN §4)
 
 # Two durable volumes:
-#   x12-buffer — the SQLite buffer (buffer.db). Survives passivation/re-deploy.
-#   x12-inbox  — the drop directory the clearinghouse / payer feed (or an operator's
-#                SFTP landing job) writes X12 files into. The module polls it, reads
-#                stable files, and renames consumed ones to `<file>.done` (parse
-#                failures to `<file>.error`). Operators typically bind this to a host
+#   ocsf-buffer — the SQLite buffer (buffer.db). Survives passivation/re-deploy.
+#   ocsf-inbox  — the drop directory a SIEM export, an S3/SFTP sync job or an operator
+#                 writes OCSF event files into. The module polls it, reads stable
+#                 files, and renames consumed ones to `<file>.done` (unusable ones
+#                 to `<file>.error`). Operators typically bind this to a host
 #                path instead of a named volume; either way the module only needs a
 #                readable + renameable directory. (DESIGN §4)
 # The node provisions/mounts volumes but does NOT cap their size, so buffer
 # TRIMMING is module-owned (`config.retention`) and inbox hygiene is the feed's job.
 durability:
-  - volumeName: x12-buffer
+  - volumeName: ocsf-buffer
     mountPath: /var/lib/module
     access: rw
-  - volumeName: x12-inbox
-    mountPath: /var/lib/x12/inbox
+  - volumeName: ocsf-inbox
+    mountPath: /var/lib/ocsf/inbox
     access: rw
 
 # Container memory cap. The JVM heap is sized from it (-XX:MaxRAMPercentage=70,
@@ -42,21 +41,22 @@ resources:
 # Opaque, module-defined config. Transported verbatim (runtimeConfig.config →
 # MODULE_CONFIG env) and NEVER parsed by the platform. Read by the module at boot.
 config:
-  # Watched source directories. Each becomes a `/by-source/<name>` node and stamps
-  # `sourceName` on every transaction it yields (provenance). `path` is INSIDE the
+  # Watched source directories. Each becomes a `/inbox/<name>` node and stamps its name
+  # on every file and event it yields (provenance). `path` is INSIDE the
   # container (a durability mountPath or a subdirectory of one). (DESIGN §4.1)
   sources:
     - name: inbox
-      path: /var/lib/x12/inbox
+      path: /var/lib/ocsf/inbox
       # Glob of files to consider; everything else in the directory is ignored.
-      pattern: "*.{x12,edi,txt,835,837,277,999,dat}"
+      # NDJSON/JSONL = one event per line; JSON = one event or an array; .gz of either.
+      pattern: "*.{json,ndjson,jsonl,gz}"
       # Poll cadence.
       pollIntervalSec: 30
       # A file is only read once its size has been unchanged for this long —
       # daily drops land as partial writes more often than people expect.
       stableForSec: 60
   # Suffix conventions (renamed in place, same directory): consumed → .done,
-  # unparseable → .error. Never delete. (DESIGN §4.3)
+  # unusable (unreadable, empty, every event rejected) → .error. Never delete. (DESIGN §4.3)
   consumedSuffix: ".done"
   errorSuffix: ".error"
   # SQLite durability for the consume path, applied at buffer open. (DESIGN §8.1)
@@ -66,21 +66,24 @@ config:
   # measured a need for.
   ackDurability: full
   # File management over the mounted volume (DESIGN §2.9): uploadBinaryContent,
-  # createChildObject (mkdir) and deleteObject under the live /x12-receiver/inbox
-  # branch. DEFAULT false, and deliberately so — this is a revenue-cycle feed, and an
-  # open upload path lets any Hub-authenticated caller inject claims. Turn it on per
+  # createChildObject (mkdir) and deleteObject under the live /ocsf-receiver/inbox
+  # branch. DEFAULT false, and deliberately so — this is a security-evidence feed, and an
+  # open upload path lets any Hub-authenticated caller inject events. Turn it on per
   # deployment (e2e runs, operator-driven replay, a staging box); isSupported then
   # reports these ops as supported, so a caller can discover the difference. Browsing
   # /inbox is always available and always live: every listing is a fresh readdir, never
   # a cache, so an uploaded file is visible before the poller has looked at it.
   allowFileManagement: false
-  # Largest inbox file read into memory for parsing (at most 134217728, 128 MiB). Checked
+  # Largest inbox file read into memory (and the most a .gz may inflate to) (at most 134217728, 128 MiB). Checked
   # from the file's size before it is read: a bigger file is hashed as a stream and renamed
   # .error as too-large, so one oversized drop cannot exhaust the heap. Raise it together with
   # resources.memoryMb. (DESIGN §4.2)
   maxFileBytes: 67108864   # 64 MiB
-  # Buffer trimming — evicts ACKED transaction rows past these ceilings (un-acked
-  # rows are never evicted). Omit either field to disable that axis. (DESIGN §8.3)
+  # Largest single event; a bigger one is rejected (counted on the file), the rest stored.
+  maxEventBytes: 1048576   # 1 MiB
+  # Buffer trimming — evicts events by when they were RECEIVED (never by their own
+  # `time`), oldest first, past these ceilings. Files rows (the audit trail) are never
+  # evicted. Omit either field to disable that axis.
   retention:
     maxBytes: 10737418240   # 10 GiB
     maxAge: P90D

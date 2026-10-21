@@ -1,0 +1,22 @@
+type: object
+description: A module ConnectionProfile to use to interact with Hub server
+required:
+  - server
+  - targetId
+properties:
+  server:
+    type: string
+    format: url
+    description: The URL for the Hub Server instance
+  apiKey:
+    type: string
+    format: password
+    description: The API key to use to execute operations against the Hub Server
+  targetId:
+    type: string
+    format: uuid
+    description: The target against which to execute
+  orgId:
+    type: string
+    format: uuid
+    description: ID for the Org. Optional. If provided, it must match the Org of the Target.

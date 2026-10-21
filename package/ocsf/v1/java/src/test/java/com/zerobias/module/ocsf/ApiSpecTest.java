@@ -73,11 +73,10 @@ class ApiSpecTest {
     }
 
     @Test
-    void metadataDeclaresTheUnackedBufferDepth() throws IOException {
+    void metadataDeclaresTheEventCount() throws IOException {
         Map<String, Object> schema = at(spec(), "paths", "/metadata", "get", "responses", "200", "content",
             "application/json", "schema");
-        assertEquals(List.of("status", "bufferDepth"), schema.get("required"));
-        assertTrue(String.valueOf(at(schema, "properties", "bufferDepth").get("description")).contains("Un-acked"));
+        assertEquals(List.of("status", "eventCount"), schema.get("required"));
     }
 
     @Test

@@ -7,16 +7,10 @@ import com.zerobias.module.ocsf.buffer.BufferStore;
 import com.zerobias.module.ocsf.buffer.RetentionSweeper;
 import com.zerobias.module.ocsf.health.HealthCheck;
 import com.zerobias.module.ocsf.inbox.InboxPollerFactory;
-import com.zerobias.module.ocsf.materializer.StructureResolver;
 import com.zerobias.module.ocsf.producer.BinaryContent;
-import com.zerobias.module.ocsf.producer.GraphBackfill;
-import com.zerobias.module.ocsf.producer.MaterializerRecastHook;
 import com.zerobias.module.ocsf.producer.ObjectTree;
 import com.zerobias.module.ocsf.producer.OperationRouter;
 import com.zerobias.module.ocsf.producer.ProducerException;
-import com.zerobias.module.ocsf.producer.RecastHook;
-import com.zerobias.module.ocsf.producer.SchemaRegistry;
-import com.zerobias.module.ocsf.producer.X12Operations;
 import com.zerobias.module.ocsf.producer.ProducerFacade;
 import io.javalin.Javalin;
 import io.javalin.http.HttpResponseException;
@@ -36,10 +30,10 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Entry point for the X12 EDI file receiver module (DESIGN §3).
+ * Entry point for the OCSF Receiver module (DESIGN §1).
  *
  * <p>Boots the always-on daemon — SQLite buffer, retention sweeper, one inbox poller
- * per configured source — and the DataProducer operations HTTP server on
+ * per configured source — and the OCSF + DataProducer operations HTTP server on
  * {@code INTERNAL_PORT} (nginx fronts it on 8888). The HTTP surface mirrors the SQL
  * generic module's RPC contract so the Hub Node's java-http invoker drives it unchanged:
  * <ul>
@@ -55,7 +49,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  *
  * <p>Boot order: env config → module config (MODULE_CONFIG / runtimeConfig.yml) →
- * source validation (fatal) → buffer → sweeper → pollers → producer facade → Javalin.
+ * source validation (fatal) → OCSF class table → buffer → sweeper → pollers → producer facade → Javalin.
  * No listener ports: the inbox is a volume, not a socket.
  */
 public final class OcsfApiServer {
@@ -65,7 +59,7 @@ public final class OcsfApiServer {
 
     /**
      * Largest accepted request body: 64 MiB, the receiver's {@code maxFileBytes} default, so a
-     * real 835 batch can be uploaded raw (Javalin's own default is 1 MiB). Must match
+     * full event file can be uploaded raw (Javalin's own default is 1 MiB). Must match
      * {@code client_max_body_size 64m} in both committed nginx confs, which default to 1 MiB
      * too; a base64 JSON upload inflates by a third, so that intake tops out near 48 MiB.
      */
@@ -91,13 +85,13 @@ public final class OcsfApiServer {
             new OcsfApiServer().start(config, mc);
         } catch (Exception fatal) {
             // DESIGN §3: a daemon that cannot mark files consumed must not run.
-            LOG.error("X12 receiver failed to start: {}", fatal.getMessage(), fatal);
+            LOG.error("OCSF receiver failed to start: {}", fatal.getMessage(), fatal);
             System.exit(1);
         }
     }
 
     void start(ModuleConfig config, ModuleRuntimeConfig mc) throws Exception {
-        LOG.info("X12 receiver starting: ops port {}, {} source(s) {}, buffer {}",
+        LOG.info("OCSF receiver starting: ops port {}, {} source(s) {}, buffer {}",
             config.internalPort(), mc.sources().size(), mc.sources(), config.bufferDbPath());
 
         // --- boot validation (DESIGN §3): every source must exist, be a directory, be renameable ---
@@ -110,14 +104,14 @@ public final class OcsfApiServer {
                 + " source configuration problem(s): " + problems);
         }
 
+        // The class table is the interface spec bundled in the jar: no table, no ingest and no reads.
+        OcsfClasses classes = OcsfClasses.fromClasspath();
+        LOG.info("OCSF {}: {} event class(es)", classes.ocsfVersion(), classes.all().size());
+
         // --- daemon: buffer + sweeper + pollers (DESIGN §4, §8) ---
         this.buffer = new BufferStore(config.bufferDbPath(), mc.fullDurability());
         LOG.info("Buffer open at {} (ackDurability={})", config.bufferDbPath(),
             mc.fullDurability() ? "full" : "normal");
-        // Rows buffered before the object graph existed have no body: rebuild it from raw_x12
-        // before anything can drain or browse them (and before the pollers add new rows).
-        GraphBackfill.run(buffer, new MaterializerRecastHook(new StructureResolver(), Clock.systemUTC()));
-
         if (mc.retention().isBounded()) {
             this.retentionSweeper = new RetentionSweeper(buffer, mc.retention(), Clock.systemUTC());
             this.retentionSweeper.start(Duration.ofMinutes(10));
@@ -127,13 +121,13 @@ public final class OcsfApiServer {
             LOG.info("Retention: unbounded (no maxAge/maxBytes in module config)");
         }
 
-        this.pollers = InboxPollerFactory.start(mc, buffer, retentionSweeper);
+        this.pollers = InboxPollerFactory.start(mc, classes, buffer, retentionSweeper);
         LOG.info("Inbox pollers started: {} source(s)", pollers.sources().size());
 
         this.health = new HealthCheck(buffer, pollers);
 
         // --- producer surface ---
-        this.facade = buildFacade(buffer, mc, pollers);
+        this.facade = buildFacade(buffer, mc, pollers, classes);
 
         Javalin app = Javalin.create(cfg -> {
             cfg.http.defaultContentType = "application/json";
@@ -146,7 +140,7 @@ public final class OcsfApiServer {
         LOG.info("Operations server listening on {}", config.internalPort());
 
         Runtime.getRuntime().addShutdownHook(new Thread(
-            () -> shutdown(app::stop, pollers, retentionSweeper, buffer), "x12-shutdown"));
+            () -> shutdown(app::stop, pollers, retentionSweeper, buffer), "ocsf-shutdown"));
     }
 
     /**
@@ -176,23 +170,12 @@ public final class OcsfApiServer {
         }
     }
 
-    /**
-     * The producer surface: the classpath {@link SchemaRegistry}, the emergent
-     * {@link ObjectTree} over the buffer (the live poller status feeding {@code /stats}; it
-     * registers the business schemas generated from the mappings, DESIGN §8.5), and the
-     * {@link X12Operations} functions with the {@link MaterializerRecastHook} behind
-     * {@code recast}/{@code validate} (re-parse the stored raw under the classpath structure
-     * indexes).
-     */
-    static ProducerFacade buildFacade(BufferStore buffer, ModuleRuntimeConfig mc, PollerHandle pollers) {
-        SchemaRegistry schemas = SchemaRegistry.fromClasspath();
-        ObjectTree tree = new ObjectTree(buffer, schemas, pollers, mc.consumedSuffix(), mc.sources(), mc.errorSuffix());
-        RecastHook recaster = new MaterializerRecastHook(new StructureResolver(), Clock.systemUTC());
-        X12Operations ops = new X12Operations(buffer, pollers, schemas, recaster);
-        LOG.info("Producer: {} schema(s), business collections {}, fileManagement={}", schemas.size(),
-            tree.business().collections(),
+    /** The operations surface: the files tree over the buffer (live poller status feeding {@code /stats}) + the class table. */
+    static ProducerFacade buildFacade(BufferStore buffer, ModuleRuntimeConfig mc, PollerHandle pollers, OcsfClasses classes) {
+        ObjectTree tree = new ObjectTree(buffer, pollers, mc.consumedSuffix(), mc.sources(), mc.errorSuffix());
+        LOG.info("Producer: fileManagement={}",
             mc.allowFileManagement() ? "ENABLED (uploads/mkdir/delete accepted under /inbox)" : "disabled (receive-only)");
-        return new ProducerFacade(buffer, tree, schemas, ops, mc.allowFileManagement());
+        return new ProducerFacade(buffer, tree, classes, mc.allowFileManagement());
     }
 
     void registerRoutes(Javalin app) {
@@ -262,19 +245,16 @@ public final class OcsfApiServer {
         });
     }
 
-    /**
-     * The connection metadata body: {@code status} follows {@code /healthz}, and
-     * {@code bufferDepth} is the un-acked backlog, as on {@code /healthz} and {@code /stats}.
-     */
+    /** The connection metadata body: {@code status} follows {@code /healthz}; {@code eventCount} is what the buffer holds. */
     static JsonObject connectionMetadata(HealthCheck health, BufferStore buffer) throws java.sql.SQLException {
         JsonObject md = new JsonObject();
         md.addProperty("status", health.healthy() ? "On" : "Error");
-        md.addProperty("bufferDepth", buffer.unackedCount());
+        md.addProperty("eventCount", buffer.eventCount());
         return md;
     }
 
     /**
-     * DESIGN §2.8: full-content 200 with the raw EDI bytes, streamed from disk with a
+     * Full-content 200 with the raw file bytes, streamed from disk with a
      * {@code Content-Length} rather than read onto the heap. Compression stays off — Javalin
      * would gzip the stream after the length was set — and Javalin closes the stream once it
      * is written.
@@ -289,7 +269,7 @@ public final class OcsfApiServer {
             throw ProducerException.fileGone(bin.objectId());
         }
         ctx.minSizeForCompression(Integer.MAX_VALUE);
-        ctx.contentType(bin.mimeType() == null ? BinaryContent.MIME_X12 : bin.mimeType());
+        ctx.contentType(bin.mimeType() == null ? BinaryContent.MIME_DEFAULT : bin.mimeType());
         ctx.res().setCharacterEncoding(null);   // bytes, not text: no charset on the Content-Type
         ctx.header("Content-Length", Long.toString(bin.size()));
         ctx.header("Content-Disposition", contentDisposition(bin.fileName()));
@@ -419,7 +399,7 @@ public final class OcsfApiServer {
      * from the outside whether this deployment accepts uploads.
      */
     boolean supported(String operationId) {
-        return OperationRouter.isSupported(operationId, facade != null && facade.fileManagementEnabled());
+        return facade != null && OperationRouter.isSupported(operationId, facade);
     }
 
     private static String asString(Object o) {

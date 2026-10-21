@@ -84,6 +84,20 @@
 
     <build>
         <finalName>ocsf-receiver-1.0.0</finalName>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- The interface spec is the class table (OcsfClasses reads classpath /ocsf/api.yml);
+                 it comes from the npm dependency, so `npm install` runs before the jar build. -->
+            <resource>
+                <directory>${project.basedir}/../node_modules/@zerobias-org/module-interface-ocsf</directory>
+                <includes>
+                    <include>api.yml</include>
+                </includes>
+                <targetPath>ocsf</targetPath>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

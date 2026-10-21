@@ -2,7 +2,7 @@ package com.zerobias.module.ocsf.health;
 
 import com.zerobias.module.ocsf.buffer.BufferStore;
 import com.zerobias.module.ocsf.buffer.FileStatus;
-import com.zerobias.module.ocsf.buffer.TestRows;
+import com.zerobias.module.ocsf.TestSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.zerobias.module.ocsf.buffer.TestRows.FILE_A;
+import static com.zerobias.module.ocsf.TestSupport.FILE_A;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -29,7 +29,7 @@ class HealthCheckTest {
     private static PollerStatus poller(boolean up, boolean backpressure, List<PollerStatus.SourceStatus> sources) {
         return new PollerStatus() {
             public boolean up() { return up; }
-            public Optional<Instant> lastScan() { return Optional.of(TestRows.BASE.plusSeconds(5)); }
+            public Optional<Instant> lastScan() { return Optional.of(TestSupport.BASE.plusSeconds(5)); }
             public Optional<Instant> lastConsumed() { return Optional.empty(); }
             public boolean backpressure() { return backpressure; }
             public List<SourceStatus> sources() { return sources; }
@@ -55,7 +55,7 @@ class HealthCheckTest {
             assertFalse(h.healthy(), "poller down → 503");
             Map<String, Object> p = poller(h.status());
             assertEquals(false, p.get("up"));
-            assertEquals(0L, ((Number) p.get("bufferDepth")).longValue());
+            assertEquals(0L, ((Number) p.get("eventCount")).longValue());
             assertEquals(false, p.get("backpressure"));
             assertFalse(p.containsKey("lastScan"));
             assertFalse(p.containsKey("lastConsumed"));
@@ -71,41 +71,23 @@ class HealthCheckTest {
     }
 
     @Test
-    void bufferDepthIsTheUnackedBacklog(@TempDir Path dir) throws Exception {
-        // Acked rows only wait for retention: counting them made a fully drained receiver look
-        // backed up on /healthz, while /stats said 0.
+    void populatedBufferReportsEventCountAndSources(@TempDir Path dir) throws Exception {
         try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            b.consumeFile(TestRows.file(FILE_A, "inbox", "c1", FileStatus.CONSUMED, 3),
-                List.of(TestRows.tx("1", "0001", 0), TestRows.tx("1", "0002", 10), TestRows.tx("1", "0003", 20)));
-            com.zerobias.module.ocsf.buffer.Lease two = b.take(null, 2, java.time.Duration.ofMinutes(5));
-            b.ack(two.leaseId(), List.of(two.transactions().get(0).elementKey()));
-            // 3 rows: 1 acked, 1 in_flight, 1 new
-            HealthCheck h = new HealthCheck(b, poller(true, false, List.of()));
-            assertEquals(2L, ((Number) poller(h.status()).get("bufferDepth")).longValue());
-            assertEquals(2L, b.unackedCount());
-            assertEquals(3L, b.count(), "the acked row is still buffered");
-        }
-    }
-
-    @Test
-    void populatedBufferReportsDepthAgesAndSources(@TempDir Path dir) throws Exception {
-        try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false)) {
-            b.consumeFile(TestRows.file(FILE_A, "inbox", "c1", FileStatus.CONSUMED, 2),
-                List.of(TestRows.tx("1", "0001", 0), TestRows.tx("1", "0002", 10)));
+            b.consumeFile(TestSupport.file(FILE_A, "c1", FileStatus.CONSUMED),
+                List.of(TestSupport.eventRow(FILE_A, "e1", 1000), TestSupport.eventRow(FILE_A, "e2", 2000)));
             HealthCheck h = new HealthCheck(b, poller(true, false,
-                List.of(new PollerStatus.SourceStatus("inbox", "/var/lib/x12/inbox", true, 3, 1))));
+                List.of(new PollerStatus.SourceStatus("inbox", "/var/lib/ocsf/inbox", true, 3, 1))));
             assertTrue(h.healthy());
             Map<String, Object> p = poller(h.status());
             assertEquals(true, p.get("up"));
-            assertEquals(2L, ((Number) p.get("bufferDepth")).longValue());
-            assertEquals(TestRows.BASE.plusSeconds(5).toString(), p.get("lastScan"));
-            assertEquals(TestRows.BASE.toString(), p.get("lastConsumed"), "falls back to files.consumed_at");
-            assertTrue(((Number) p.get("oldestUnackedSec")).longValue() >= 0);
+            assertEquals(2L, ((Number) p.get("eventCount")).longValue());
+            assertEquals(TestSupport.BASE.plusSeconds(5).toString(), p.get("lastScan"));
+            assertEquals(TestSupport.BASE.toString(), p.get("lastConsumed"), "falls back to files.consumed_at");
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> sources = (List<Map<String, Object>>) p.get("sources");
             assertEquals(1, sources.size());
             assertEquals("inbox", sources.get(0).get("name"));
-            assertEquals("/var/lib/x12/inbox", sources.get(0).get("path"));
+            assertEquals("/var/lib/ocsf/inbox", sources.get(0).get("path"));
             assertEquals(true, sources.get(0).get("writable"));
             assertEquals(3, ((Number) sources.get(0).get("pending")).intValue());
             assertEquals(1, ((Number) sources.get(0).get("errored")).intValue());
@@ -141,16 +123,16 @@ class HealthCheckTest {
 
     @Test
     void aSourceWhoseLastScanFailedIs503(@TempDir Path dir) throws Exception {
-        TestRows.MutableClock clock = new TestRows.MutableClock(TestRows.BASE);
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.BASE);
         try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false, clock)) {
-            Instant t = TestRows.BASE;
+            Instant t = TestSupport.BASE;
             PollerStatus.SourceStatus failing = scanned(t.minusSeconds(60), t.minusSeconds(30), null,
-                "java.sql.SQLException: NOT NULL constraint failed: transactions.mapped_json", t.minusSeconds(1));
+                "java.sql.SQLException: disk I/O error", t.minusSeconds(1));
             HealthCheck h = new HealthCheck(b, poller(true, false, List.of(failing)));
             assertFalse(h.healthy(), "scans are failing while the thread is alive");
             Map<String, Object> m = source0(h.status());
             assertEquals(true, m.get("failing"));
-            assertTrue(String.valueOf(m.get("lastError")).contains("mapped_json"), m.toString());
+            assertTrue(String.valueOf(m.get("lastError")).contains("disk I/O error"), m.toString());
             assertEquals(t.minusSeconds(1).toString(), m.get("lastErrorAt"));
             assertEquals(t.minusSeconds(30).toString(), m.get("lastScan"));
 
@@ -164,9 +146,9 @@ class HealthCheckTest {
 
     @Test
     void aSourceWithNoRecentScanIsStalled(@TempDir Path dir) throws Exception {
-        TestRows.MutableClock clock = new TestRows.MutableClock(TestRows.BASE);
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.BASE);
         try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false, clock)) {
-            Instant t = TestRows.BASE;
+            Instant t = TestSupport.BASE;
             // 30s cadence: window = max(3 x 30s, 120s floor) = 120s.
             PollerStatus.SourceStatus recent = scanned(t.minusSeconds(3600), t.minusSeconds(100), null, null, null);
             assertTrue(new HealthCheck(b, poller(true, false, List.of(recent))).healthy(), "inside the window");
@@ -196,14 +178,14 @@ class HealthCheckTest {
 
     @Test
     void aBufferThatRejectsEveryInsertTurnsTheProbeRed(@TempDir Path dir) throws Exception {
-        // The mapped_json NOT NULL upgrade bug: every scan threw, the thread lived, /healthz said 200.
-        TestRows.MutableClock clock = new TestRows.MutableClock(TestRows.BASE);
+        // A buffer whose INSERTs all fail: every scan throws, the thread lives — the probe must not say 200.
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.BASE);
         Path inbox = Files.createDirectories(dir.resolve("inbox"));
         try (BufferStore b = new BufferStore(dir.resolve("buffer.db").toString(), false, clock)) {
             com.zerobias.module.ocsf.ModuleRuntimeConfig cfg = new com.zerobias.module.ocsf.ModuleRuntimeConfig(
                 List.of(new com.zerobias.module.ocsf.SourceConfig("inbox", inbox.toString(), "*", 30, 0)),
-                ".done", ".error", false, com.zerobias.module.ocsf.buffer.RetentionConfig.none(), false, false);
-            var handle = com.zerobias.module.ocsf.inbox.InboxPollerFactory.start(cfg, b, null, clock, false);
+                ".done", ".error", false, com.zerobias.module.ocsf.buffer.RetentionConfig.none(), false);
+            var handle = com.zerobias.module.ocsf.inbox.InboxPollerFactory.start(cfg, com.zerobias.module.ocsf.TestSupport.classes(), b, null, clock, false);
             PollerStatus wrapped = new PollerStatus() {
                 public boolean up() { return true; }
                 public Optional<Instant> lastScan() { return handle.lastScan(); }
@@ -213,18 +195,18 @@ class HealthCheckTest {
             };
             try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + dir.resolve("buffer.db"));
                  Statement st = c.createStatement()) {
-                st.execute("CREATE TRIGGER broken BEFORE INSERT ON transactions "
-                    + "BEGIN SELECT RAISE(ABORT, 'NOT NULL constraint failed: transactions.mapped_json'); END");
+                st.execute("CREATE TRIGGER broken BEFORE INSERT ON events "
+                    + "BEGIN SELECT RAISE(ABORT, 'disk I/O error: events'); END");
             }
-            Files.write(inbox.resolve("remit.835"),
-                com.zerobias.module.ocsf.parser.Fixtures.bytes(com.zerobias.module.ocsf.parser.Fixtures.F835));
+            Files.writeString(inbox.resolve("auth.ndjson"),
+                com.zerobias.module.ocsf.TestSupport.event(com.zerobias.module.ocsf.TestSupport.AUTHENTICATION, "e1", 1000) + "\n");
             assertThrows(SQLException.class, () -> handle.rescan(null));
 
             HealthCheck h = new HealthCheck(b, wrapped);
             assertFalse(h.healthy(), "the scan failed: 503");
             Map<String, Object> m = source0(h.status());
             assertEquals(true, m.get("failing"));
-            assertTrue(String.valueOf(m.get("lastError")).contains("mapped_json"), m.toString());
+            assertTrue(String.valueOf(m.get("lastError")).contains("disk I/O error"), m.toString());
             assertFalse(poller(h.status()).containsKey("lastScan"), "no scan has completed");
             handle.close();
         }

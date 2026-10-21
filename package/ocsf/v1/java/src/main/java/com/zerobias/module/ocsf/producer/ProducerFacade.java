@@ -1,11 +1,8 @@
 package com.zerobias.module.ocsf.producer;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import com.zerobias.module.ocsf.OcsfClasses;
 import com.zerobias.module.ocsf.buffer.BufferStore;
-import com.zerobias.module.ocsf.buffer.FileRow;
-import com.zerobias.module.ocsf.buffer.TransactionRow;
-import com.zerobias.module.ocsf.filter.X12Filter;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -15,49 +12,34 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Implements the DataProducer operations (DESIGN §2) over the durable buffer. All
- * methods return JSON strings (the HTTP layer passes them through verbatim) and raise
- * {@link ProducerException} for the standard error cases (DESIGN §2.7).
+ * The receiver's operations. All methods return JSON strings (the HTTP layer passes them
+ * through verbatim) and raise {@link ProducerException} for caller errors.
  *
- * <p>This class owns the mandatory {@link #pagedResults PagedResults} envelope, paging
- * bounds and the {@link #toElement envelope overlay} (DESIGN §5), and delegates the tree to
- * {@link ObjectTree}, schemas to {@link SchemaRegistry} and functions to {@link X12Operations}.
- *
- * <p>The producer is <b>receive-only for data</b>: transactions arrive as inbox files, so
- * every collection/document mutation is rejected with {@code UnsupportedOperationError},
- * and draining is {@code ops/take}, not element mutation. The one exception is file
- * management over the volume itself — {@code uploadBinaryContent},
- * {@code createChildObject} (mkdir) and {@code deleteObject} under the live
- * {@code /inbox} branch — which is off unless the deployment sets
- * {@code config.allowFileManagement=true} (DESIGN §2.9).
+ * <ul>
+ *   <li><b>OCSF interface</b> (DESIGN §2): {@link #listClasses}, {@link #listEvents},
+ *       {@link #getEvent}. Event bodies are returned exactly as the source wrote them —
+ *       spliced into the response as stored text, never re-serialized.</li>
+ *   <li><b>DataProducer, files only</b> (DESIGN §3): browse {@code /inbox}, {@code /files},
+ *       {@code /stats} through {@link ObjectTree}. File management ({@code uploadBinaryContent},
+ *       {@code createChildObject}, {@code deleteObject} under {@code /inbox}) is off unless the
+ *       deployment sets {@code config.allowFileManagement=true}.</li>
+ * </ul>
  */
 public final class ProducerFacade {
 
     private static final Gson GSON = new Gson();
-    /** Function output keeps null-valued required fields (e.g. take's leaseId on an empty lease). */
-    private static final Gson GSON_NULLS = new GsonBuilder().serializeNulls().create();
     public static final int DEFAULT_PAGE_SIZE = 100;
     public static final int MAX_PAGE_SIZE = 1000;
 
     private final BufferStore buffer;
     private final ObjectTree tree;
-    private final SchemaRegistry schemas;
-    private final X12Operations ops;
+    private final OcsfClasses classes;
     private final boolean allowFileManagement;
 
-    /**
-     * @param allowFileManagement {@code config.allowFileManagement} — the single gate on the
-     *                            file-management write surface ({@code uploadBinaryContent},
-     *                            {@code createChildObject}, {@code deleteObject} under
-     *                            {@code /inbox}). Default false: production receivers take
-     *                            files from the feed, not from API callers (DESIGN §2.9).
-     */
-    public ProducerFacade(BufferStore buffer, ObjectTree tree, SchemaRegistry schemas,
-            X12Operations ops, boolean allowFileManagement) {
+    public ProducerFacade(BufferStore buffer, ObjectTree tree, OcsfClasses classes, boolean allowFileManagement) {
         this.buffer = Objects.requireNonNull(buffer, "buffer");
         this.tree = Objects.requireNonNull(tree, "tree");
-        this.schemas = Objects.requireNonNull(schemas, "schemas");
-        this.ops = Objects.requireNonNull(ops, "ops");
+        this.classes = Objects.requireNonNull(classes, "classes");
         this.allowFileManagement = allowFileManagement;
     }
 
@@ -66,7 +48,56 @@ public final class ProducerFacade {
         return allowFileManagement;
     }
 
-    // --- Objects -----------------------------------------------------------
+    public OcsfClasses classes() {
+        return classes;
+    }
+
+    // --- OCSF interface (DESIGN §2) --------------------------------------------
+
+    /** {@code listClasses}: the classes with at least one stored event, as {@code OcsfClass}. */
+    public String listClasses() throws SQLException {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (int uid : buffer.distinctClassUids()) {
+            classes.byUid(uid).ifPresent(c -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("uid", c.uid());
+                m.put("name", c.name());
+                m.put("caption", c.caption());
+                m.put("categoryUid", c.categoryUid());
+                m.put("category", c.category());
+                out.add(m);
+            });
+        }
+        return GSON.toJson(out);
+    }
+
+    /**
+     * {@code list<Model>}: one page of the class's events with {@code startTime <= time < endTime},
+     * newest first, in the {@code PagedResults} envelope ({@code items, count, pageSize,
+     * pageNumber}) the Hub's java-http invoker expects for a paged operation.
+     */
+    public String listEvents(OcsfClasses.OcsfClass c, Long startTime, Long endTime, int pageSize, int pageNumber)
+            throws SQLException {
+        checkPaging(pageSize, pageNumber);
+        if (startTime != null && endTime != null && startTime >= endTime) {
+            throw ProducerException.illegalArgument("startTime must be before endTime");
+        }
+        List<String> bodies = buffer.eventBodies(c.uid(), startTime, endTime, pageSize, pageOffset(pageSize, pageNumber));
+        long count = buffer.countEvents(c.uid(), startTime, endTime);
+        return "{\"items\":[" + String.join(",", bodies) + "],\"count\":" + count
+            + ",\"pageSize\":" + pageSize + ",\"pageNumber\":" + pageNumber + "}";
+    }
+
+    /** {@code get<Model>}: one event of this class by its key; 404 otherwise, including a key held by another class. */
+    public String getEvent(OcsfClasses.OcsfClass c, String uid) throws SQLException {
+        if (uid == null || uid.isBlank()) {
+            throw ProducerException.illegalArgument("uid is required");
+        }
+        return buffer.eventBody(c.uid(), uid)
+            .orElseThrow(() -> ProducerException.noSuchObject(c.model() + "/" + uid));
+    }
+
+    // --- DataProducer: objects ---------------------------------------------------
 
     public String getRootObject() throws SQLException {
         return GSON.toJson(tree.object(ObjectTree.ROOT));
@@ -79,116 +110,37 @@ public final class ProducerFacade {
 
     public String getChildren(String objectId, int pageSize, int pageNumber) throws SQLException {
         requireId(objectId);
-        int size = checkPaging(pageSize, pageNumber);
-        ObjectTree.ChildPage paged = tree.childPage(objectId, size, pageOffset(size, pageNumber));
-        return pagedResults(paged.items(), paged.total(), size, pageNumber);
+        checkPaging(pageSize, pageNumber);
+        ObjectTree.ChildPage paged = tree.childPage(objectId, pageSize, pageOffset(pageSize, pageNumber));
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("items", paged.items());
+        envelope.put("count", paged.total());
+        envelope.put("pageSize", pageSize);
+        envelope.put("pageNumber", pageNumber);
+        return GSON.toJson(envelope);
     }
-
-    // --- Collections (read-only browse) -----------------------------------
-
-    public String getCollectionElements(String objectId, String filter, String sortBy,
-            String sortDir, int pageSize, int pageNumber, String pageToken) throws SQLException {
-        requireId(objectId);
-        // A business collection projects rows out of the object graph (DESIGN §8.5) rather than
-        // reading transaction rows, so it resolves before the buffer-backed path.
-        final BusinessEntities.Scope scope = tree.businessScope(objectId);
-        if (scope != null) {
-            final int size = checkPaging(pageSize, pageNumber);
-            final BusinessEntities.Page page = tree.business()
-                .page(scope, businessFilter(scope, filter), sortBy, sortDir, size, pageNumber);
-            // Nulls are kept here: a business collection promises the shape its schema
-            // declares, so a column the transaction lacks is present-and-null rather than
-            // absent. Dropping it would make every row a different shape on the wire.
-            return pagedResultsKeepingNulls(page.rows(), page.total(), size, pageNumber);
-        }
-        ObjectTree.Collection coll = tree.resolveCollection(objectId);
-        int size = checkPaging(pageSize, pageNumber);
-        int offset = pageOffset(size, pageNumber);
-        String where = composeWhere(coll, filter);
-
-        List<TransactionRow> rows = buffer.search(where, size, offset, X12Filter.orderBy(sortBy, sortDir));
-        // One batched graph read for the page, not one per row (DESIGN §8.4).
-        final Map<String, Map<String, Object>> bodies = buffer.documentsFor(
-            rows.stream().map(TransactionRow::elementKey).toList());
-        List<Map<String, Object>> elements = new ArrayList<>(rows.size());
-        for (TransactionRow r : rows) {
-            elements.add(toElement(r, bodies.get(r.elementKey())));
-        }
-        long total = buffer.countWhere(where);
-        return pagedResults(elements, total, size, pageNumber);
-    }
-
-    public String getCollectionElement(String objectId, String elementKey) throws SQLException {
-        requireId(objectId);
-        if (elementKey == null || elementKey.isBlank()) {
-            throw ProducerException.illegalArgument("elementKey is required");
-        }
-        ObjectTree.Collection coll = tree.resolveCollection(objectId);
-        String where = and(coll.scopeWhere(), "element_key = " + sql(elementKey));
-        List<TransactionRow> rows = buffer.search(where, 1, 0);
-        if (rows.isEmpty()) {
-            throw ProducerException.noSuchObject(objectId + " / " + elementKey);
-        }
-        return GSON.toJson(toElement(rows.get(0), buffer.documentFor(rows.get(0).elementKey())));
-    }
-
-    // --- Schemas -----------------------------------------------------------
-
-    public String getSchema(String schemaId) {
-        if (schemaId == null || schemaId.isBlank()) {
-            throw ProducerException.illegalArgument("schemaId is required");
-        }
-        return schemas.getSchema(schemaId);
-    }
-
-    // --- Documents / binary ------------------------------------------------
 
     public String getDocumentData(String objectId) throws SQLException {
         requireId(objectId);
         return GSON.toJson(tree.documentData(objectId));
     }
 
-    /** The bytes of a {@code /files/<fileId>} node (DESIGN §2.8); served raw by the HTTP layer. */
+    /** The bytes of a {@code /files/<fileId>} or live {@code /inbox} file; served raw by the HTTP layer. */
     public BinaryContent downloadBinary(String objectId) throws SQLException {
         requireId(objectId);
         return tree.downloadBinary(objectId);
     }
 
-    /**
-     * Compile an RFC4515 filter into a predicate over projected business rows. Business columns
-     * can sit behind a qualifier predicate or inside a composite, which the value table cannot
-     * express as SQL, so the comparison happens on the projected row — bounded by the segment,
-     * never the whole buffer (DESIGN §8.5.1). Unknown column names are a 400, not an empty page:
-     * a typo in a filter should say so.
-     */
-    private java.util.function.Predicate<Map<String, Object>> businessFilter(
-            BusinessEntities.Scope scope, String filter) {
-        if (filter == null || filter.isBlank()) {
-            return null;
-        }
-        return BusinessFilter.compile(scope.mapping(), filter);
-    }
+    // --- DataProducer: file management, gated by config.allowFileManagement ------
 
-    // --- File management: gated by config.allowFileManagement (DESIGN §2.9) --
-
-    /**
-     * {@code uploadBinaryContent} — write {@code bytes} as {@code fileName} into the live
-     * {@code /inbox} container {@code objectId}. Returns the new file's object metadata
-     * (the interface's {@code 201} body).
-     */
     public String uploadBinary(String objectId, String fileName, byte[] bytes) throws SQLException {
         requireId(objectId);
         requireFileManagement("uploadBinaryContent");
         return GSON.toJson(tree.uploadBinary(objectId, fileName, bytes));
     }
 
-    /**
-     * {@code createChildObject} — mkdir under a live {@code /inbox} container. Only
-     * containers can be created: there is no way to conjure a file without bytes, and
-     * bytes arrive through {@code uploadBinaryContent}.
-     */
-    public String createChildObject(String objectId, String name, List<String> objectClass)
-            throws SQLException {
+    /** {@code createChildObject}: only containers (a directory); bytes arrive through {@code uploadBinaryContent}. */
+    public String createChildObject(String objectId, String name, List<String> objectClass) throws SQLException {
         requireId(objectId);
         requireFileManagement("createChildObject");
         if (objectClass != null && !objectClass.isEmpty() && !objectClass.contains("container")) {
@@ -198,7 +150,6 @@ public final class ProducerFacade {
         return GSON.toJson(tree.createChildContainer(objectId, name));
     }
 
-    /** {@code deleteObject} — unlink a live file or remove an empty live directory. */
     public String deleteObject(String objectId) throws SQLException {
         requireId(objectId);
         requireFileManagement("deleteObject");
@@ -218,194 +169,25 @@ public final class ProducerFacade {
         }
     }
 
-    // --- Write surface: rejected (receive-only) ---------------------------
+    // --- helpers -------------------------------------------------------------------
 
-    public String createCollectionElement(String objectId, String elementJson) {
-        throw ProducerException.unsupported(
-            "Collection is receive-only; transactions arrive as inbox files, not via addCollectionElement");
-    }
-
-    public String updateCollectionElement(String objectId, String elementKey, String elementJson) {
-        throw ProducerException.unsupported("Collection is read-only");
-    }
-
-    public String deleteCollectionElement(String objectId, String elementKey) {
-        throw ProducerException.unsupported("Collection is read-only; use ops/purge to evict acked rows");
-    }
-
-    // --- Functions: ops/* (DESIGN §2.5) ------------------------------------
-
-    public String invokeFunction(String objectId, String inputJson) throws SQLException {
-        String fn = requireFunction(objectId);
-        return GSON_NULLS.toJson(ops.invoke(fn, parseObject(inputJson, "Function input")));
-    }
-
-    /**
-     * {@code validateFunctionInput}: check {@code requestJson} (the interface's
-     * {@code ValidateFunctionInputRequest}, {@code {input, strict}}) against the function's
-     * declared input without running it. The verdict is the 200 body; only a malformed
-     * request (not an object, unknown fields, wrong types) or an unknown function is an error.
-     */
-    public String validateFunctionInput(String objectId, String requestJson) throws SQLException {
-        String fn = requireFunction(objectId);
-        Map<String, Object> request = parseObject(requestJson, "validateFunctionInputRequest");
-        for (String key : request.keySet()) {
-            if (!"input".equals(key) && !"strict".equals(key)) {
-                throw ProducerException.illegalArgument(
-                    "validateFunctionInputRequest: unknown property " + key + " (expected input, strict)");
-            }
-        }
-        Object strict = request.get("strict");
-        if (strict != null && !(strict instanceof Boolean)) {
-            throw ProducerException.illegalArgument("validateFunctionInputRequest.strict must be a boolean");
-        }
-        return GSON_NULLS.toJson(ops.validateInput(fn, request.get("input"), Boolean.TRUE.equals(strict)));
-    }
-
-    /** The function name of a {@code /ops/<fn>} function object; 404 unknown, 400 not a function. */
-    private String requireFunction(String objectId) throws SQLException {
-        requireId(objectId);
-        Map<String, Object> obj = tree.object(objectId); // 404 if unknown
-        @SuppressWarnings("unchecked")
-        List<String> classes = (List<String>) obj.get("objectClass");
-        if (classes == null || !classes.contains("function")) {
-            throw ProducerException.unsupported("Object is not a function: " + objectId);
-        }
-        return objectId.substring(objectId.lastIndexOf('/') + 1);
-    }
-
-    /** A JSON object body; null/blank = empty; anything that is not an object is a 400. */
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> parseObject(String json, String what) {
-        if (json == null || json.isBlank()) {
-            return Map.of();
-        }
-        Object parsed;
-        try {
-            parsed = GSON.fromJson(json, Object.class);
-        } catch (com.google.gson.JsonParseException e) {
-            throw ProducerException.illegalArgument(what + " is not valid JSON");
-        }
-        if (parsed == null) {
-            return Map.of();
-        }
-        if (!(parsed instanceof Map)) {
-            throw ProducerException.illegalArgument(what + " must be a JSON object");
-        }
-        return (Map<String, Object>) parsed;
-    }
-
-    // --- element mapping (DESIGN §5 envelope overlay) ----------------------
-
-    /**
-     * Build a collection element from a row and the document reassembled from its object graph
-     * overlaid with the authoritative envelope (DESIGN §5): {@code elementKey, fileId,
-     * fileName, sourceName, isaControlNumber, gsControlNumber, stControlNumber, gs08,
-     * transactionType, senderId, receiverId, interchangeDate, receivedAt, status, leaseId,
-     * envelope, parserErrorCount}. Static so {@code X12Operations} can use it as its
-     * element mapper without a facade reference.
-     */
-    public static Map<String, Object> toElement(TransactionRow r, Map<String, Object> body) {
-        Map<String, Object> element = new LinkedHashMap<>();
-        if (body != null) {
-            element.putAll(body);
-        }
-        element.put("elementKey", r.elementKey());
-        element.put("fileId", r.fileId());
-        element.put("fileName", fileName(r.fileId()));
-        element.put("sourceName", r.sourceName());
-        element.put("isaControlNumber", r.isaControl());
-        element.put("gsControlNumber", r.gsControl());
-        element.put("stControlNumber", r.stControl());
-        element.put("gs08", r.gs08());
-        element.put("transactionType", r.transactionType());
-        element.put("senderId", r.senderId());
-        element.put("receiverId", r.receiverId());
-        element.put("interchangeDate", r.interchangeAt() == null ? null : r.interchangeAt().toString());
-        element.put("receivedAt", r.receivedAt() == null ? null : r.receivedAt().toString());
-        element.put("status", r.status() == null ? null : r.status().wire());
-        element.put("leaseId", r.leaseId());
-        element.put("envelope", r.envelope());
-        element.put("parserErrorCount", r.parserErrorCount());
-        return element;
-    }
-
-    private static String fileName(String fileId) {
-        return FileRow.fileNameOf(fileId);
-    }
-
-    // --- helpers -----------------------------------------------------------
-
-    /** The collection's scope AND the caller's filter; a malformed filter is the filter layer's 400. */
-    private static String composeWhere(ObjectTree.Collection coll, String filter) {
-        return and(coll.scopeWhere(), X12Filter.toWhereClause(filter));
-    }
-
-    static String and(String a, String b) {
-        if (a == null || a.isBlank()) {
-            return b;
-        }
-        if (b == null || b.isBlank()) {
-            return a;
-        }
-        return "(" + a + ") AND (" + b + ")";
-    }
-
-    /** {@link #pagedResults} that keeps null-valued fields (DESIGN §8.5: one row shape). */
-    static String pagedResultsKeepingNulls(List<Map<String, Object>> items, long count,
-            int pageSize, int pageNumber) {
-        return GSON_NULLS.toJson(envelope(items, count, pageSize, pageNumber));
-    }
-
-    /**
-     * The DataProducer {@code PagedResults} envelope. Paginated operations
-     * ({@code getChildren}/{@code searchChildObjects},
-     * {@code getCollectionElements}/{@code searchCollectionElements}) MUST return this
-     * shape — the platform's generated producer client deserializes the RPC body into a
-     * paged bag and raises "Producers must return 'items' for PagedResults queries" when
-     * {@code items} is absent. A bare array (the OpenAPI response schema, but not the
-     * runtime contract) breaks the data-explorer tree. {@code count} is the total
-     * matching rows, not the page; {@code pageNumber} is 1-based on the wire.
-     */
-    public static String pagedResults(List<Map<String, Object>> items, long count,
-            int pageSize, int pageNumber) {
-        return GSON.toJson(envelope(items, count, pageSize, pageNumber));
-    }
-
-    private static Map<String, Object> envelope(List<Map<String, Object>> items, long count,
-            int pageSize, int pageNumber) {
-        Map<String, Object> envelope = new LinkedHashMap<>();
-        envelope.put("items", items);
-        envelope.put("count", count);
-        envelope.put("pageSize", pageSize);
-        envelope.put("pageNumber", pageNumber);
-        return envelope;
-    }
-
-    /**
-     * Paging bounds (both paginated paths): {@code 1 <= pageSize <= 1000}, {@code pageNumber >= 1}.
-     * Out of range is a 400, never a silent default — a caller asking for page 0 or size 0 has
-     * a bug worth hearing about.
-     */
-    private static int checkPaging(int pageSize, int pageNumber) {
+    /** {@code 1 <= pageSize <= 1000}, {@code pageNumber >= 1}; out of range is a 400, never a silent default. */
+    private static void checkPaging(int pageSize, int pageNumber) {
         if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
             throw ProducerException.illegalArgument("pageSize must be between 1 and " + MAX_PAGE_SIZE + ", got " + pageSize);
         }
         if (pageNumber < 1) {
             throw ProducerException.illegalArgument("pageNumber must be at least 1, got " + pageNumber);
         }
-        return pageSize;
     }
 
     /**
-     * The row offset of a 1-based page. Computed exactly: {@code (pageNumber - 1) * pageSize}
-     * in int arithmetic wraps negative for a large page number, and SQLite reads a negative
-     * {@code OFFSET} as 0 — the caller would silently get page 1 again. A page past the last
-     * offset an int can address is a 400.
+     * The row offset of a 1-based page, computed exactly: int arithmetic wraps negative for a
+     * large page number, and SQLite reads a negative {@code OFFSET} as 0 (page 1 again).
      */
     static int pageOffset(int pageSize, int pageNumber) {
         try {
-            return Math.multiplyExact(Math.max(0, pageNumber - 1), pageSize);
+            return Math.multiplyExact(pageNumber - 1, pageSize);
         } catch (ArithmeticException overflow) {
             throw ProducerException.illegalArgument("pageNumber " + pageNumber + " with pageSize " + pageSize
                 + " is past the last addressable row");
@@ -416,9 +198,5 @@ public final class ProducerFacade {
         if (objectId == null || objectId.isBlank()) {
             throw ProducerException.illegalArgument("objectId is required");
         }
-    }
-
-    private static String sql(String value) {
-        return "'" + value.replace("'", "''") + "'";
     }
 }

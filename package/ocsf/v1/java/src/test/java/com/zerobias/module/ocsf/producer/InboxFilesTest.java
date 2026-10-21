@@ -5,7 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.zerobias.module.ocsf.SourceConfig;
 import com.zerobias.module.ocsf.buffer.BufferStore;
-import com.zerobias.module.ocsf.buffer.TestRows;
+import com.zerobias.module.ocsf.TestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,14 +54,12 @@ class InboxFilesTest {
     void setUp() throws Exception {
         inboxDir = Files.createDirectories(dir.resolve("inbox"));
         buffer = new BufferStore(dir.resolve("buffer.db").toString(), false,
-            new TestRows.MutableClock(TestRows.BASE));
+            new TestSupport.MutableClock(TestSupport.BASE));
         SourceConfig source = new SourceConfig("inbox", inboxDir.toString(), "*.{x12,835}", 1, 0);
-        ProducerFixture.StubPoller poller = new ProducerFixture.StubPoller(inboxDir);
-        SchemaRegistry schemas = SchemaRegistry.fromClasspath();
-        tree = new ObjectTree(buffer, schemas, poller, ".done", List.of(source), ".error");
-        X12Operations ops = ProducerFixture.ops(buffer, poller, schemas);
-        readOnly = new ProducerFacade(buffer, tree, schemas, ops, false);
-        writable = new ProducerFacade(buffer, tree, schemas, ops, true);
+        TestSupport.StubPoller poller = new TestSupport.StubPoller(inboxDir);
+        tree = new ObjectTree(buffer, poller, ".done", List.of(source), ".error");
+        readOnly = new ProducerFacade(buffer, tree, TestSupport.classes(), false);
+        writable = new ProducerFacade(buffer, tree, TestSupport.classes(), true);
     }
 
     @AfterEach
@@ -320,7 +318,7 @@ class InboxFilesTest {
 
     @Test
     void writesRejectTheEmergentBranches() {
-        for (String id : List.of(R + "/files", R + "/transactions", R + "/stats", R)) {
+        for (String id : List.of(R + "/files", R + "/stats", R)) {
             assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,
                 () -> writable.uploadBinary(id, "x.835", EDI)).key(), id);
             assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,

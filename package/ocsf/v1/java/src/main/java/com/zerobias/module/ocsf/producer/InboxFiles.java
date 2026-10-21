@@ -26,7 +26,7 @@ import java.util.UUID;
  * surface over it (DESIGN §2.9):
  *
  * <pre>
- * /x12-receiver/inbox                      container — one child per configured source
+ * /ocsf-receiver/inbox                      container — one child per configured source
  * └─ /inbox/&lt;source&gt;                       container — that source's directory
  *    ├─ /inbox/&lt;source&gt;/&lt;dir&gt;              container — a real subdirectory
  *    └─ /inbox/&lt;source&gt;/&lt;file&gt;             ["binary"] — a real file
@@ -152,7 +152,7 @@ final class InboxFiles {
         if (!attrs.isRegularFile()) {
             throw ProducerException.noSuchObject(id);
         }
-        return new BinaryContent(id, n.path(), attrs.size(), BinaryContent.MIME_X12,
+        return new BinaryContent(id, n.path(), attrs.size(), BinaryContent.mimeOf(n.path().getFileName().toString()),
             n.path().getFileName().toString());
     }
 
@@ -366,7 +366,7 @@ final class InboxFiles {
         o.put("fileName", fileName);
         o.put("path", n.path().toString());
         o.put("sourceName", n.source().name());
-        o.put("mimeType", BinaryContent.MIME_X12);
+        o.put("mimeType", BinaryContent.mimeOf(fileName));
         try {
             BasicFileAttributes a = Files.readAttributes(n.path(), BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
             o.put("size", a.size());

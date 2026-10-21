@@ -5,24 +5,36 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.Locale;
 
 /**
- * What {@code downloadBinary} serves (DESIGN §2.8): where the raw EDI lives and how big it
- * is, never the bytes themselves — an 835 batch can run to the {@code maxFileBytes} ceiling,
- * and the HTTP layer streams it with a {@code Content-Length} instead of holding it on the
- * heap. v1 always serves full content.
+ * What {@code downloadBinary} serves: where an event file lives and how big it is, never the
+ * bytes themselves — a file can run to the {@code maxFileBytes} ceiling, and the HTTP layer
+ * streams it with a {@code Content-Length} instead of holding it on the heap.
  *
  * @param objectId the node's id, for the 404 when the bytes vanish between resolve and open
  * @param path     the file's current location, already stat'ed (without following links) as
  *                 a regular file
  * @param size     bytes on disk at resolve time
- * @param mimeType always {@link #MIME_X12}
+ * @param mimeType {@link #mimeOf} the file name
  * @param fileName the name for {@code Content-Disposition} — sender-controlled, so the HTTP
  *                 layer encodes it rather than quoting it raw
  */
 public record BinaryContent(String objectId, Path path, long size, String mimeType, String fileName) {
 
-    public static final String MIME_X12 = "application/EDI-X12";
+    public static final String MIME_DEFAULT = "application/octet-stream";
+
+    /** By extension, ignoring the {@code .done}/{@code .error} suffix the consumer adds. */
+    public static String mimeOf(String fileName) {
+        String n = fileName == null ? "" : fileName.toLowerCase(Locale.ROOT).replaceAll("\\.(done|error)$", "");
+        if (n.endsWith(".gz")) {
+            return "application/gzip";
+        }
+        if (n.endsWith(".ndjson") || n.endsWith(".jsonl")) {
+            return "application/x-ndjson";
+        }
+        return n.endsWith(".json") ? "application/json" : MIME_DEFAULT;
+    }
 
     /**
      * Open the bytes for streaming. {@code NOFOLLOW_LINKS} (O_NOFOLLOW) closes the window

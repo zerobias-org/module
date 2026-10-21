@@ -1,7 +1,7 @@
 package com.zerobias.module.ocsf;
 
 import com.zerobias.module.ocsf.buffer.BufferStore;
-import com.zerobias.module.ocsf.buffer.TestRows;
+import com.zerobias.module.ocsf.TestSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,7 +20,7 @@ class ShutdownOrderTest {
     @Test
     void routesThenPollersThenBuffer(@TempDir Path dir) throws Exception {
         BufferStore buffer = new BufferStore(dir.resolve("buffer.db").toString(), false,
-            new TestRows.MutableClock(TestRows.BASE));
+            new TestSupport.MutableClock(TestSupport.BASE));
         List<String> order = new ArrayList<>();
         PollerHandle pollers = new PollerHandle() {
             public RescanResult rescan(String source) { return new RescanResult(0, 0, 0, 0); }
@@ -31,7 +31,7 @@ class ShutdownOrderTest {
             public List<SourceStatus> sources() { return List.of(); }
             public void close() {
                 try {
-                    buffer.count();   // a scan finishing its file still needs the buffer
+                    buffer.eventCount();   // a scan finishing its file still needs the buffer
                 } catch (Exception e) {
                     throw new AssertionError("buffer closed before the pollers", e);
                 }
@@ -40,7 +40,7 @@ class ShutdownOrderTest {
         };
         Runnable routes = () -> {
             try {
-                buffer.count();   // an in-flight take/ack still needs the buffer
+                buffer.eventCount();   // an in-flight read still needs the buffer
             } catch (Exception e) {
                 throw new AssertionError("buffer closed before the routes", e);
             }
@@ -49,16 +49,16 @@ class ShutdownOrderTest {
 
         OcsfApiServer.shutdown(routes, pollers, null, buffer);
         assertEquals(List.of("routes", "pollers"), order);
-        assertThrows(Exception.class, buffer::count, "the buffer is closed last");
+        assertThrows(Exception.class, buffer::eventCount, "the buffer is closed last");
     }
 
     @Test
     void aFailingStepDoesNotSkipTheRest(@TempDir Path dir) throws Exception {
         BufferStore buffer = new BufferStore(dir.resolve("buffer.db").toString(), false,
-            new TestRows.MutableClock(TestRows.BASE));
+            new TestSupport.MutableClock(TestSupport.BASE));
         OcsfApiServer.shutdown(() -> { throw new IllegalStateException("jetty"); },
-            com.zerobias.module.ocsf.inbox.InboxPollerFactory.start(ModuleRuntimeConfig.defaults(), buffer, null,
+            com.zerobias.module.ocsf.inbox.InboxPollerFactory.start(ModuleRuntimeConfig.defaults(), TestSupport.classes(), buffer, null,
                 buffer.clock(), false), null, buffer);
-        assertThrows(Exception.class, buffer::count, "buffer still closed");
+        assertThrows(Exception.class, buffer::eventCount, "buffer still closed");
     }
 }

@@ -51,7 +51,7 @@ class SourceConfigTest {
         }
         // and it is what the boot validation runs, with the config's own suffixes
         ModuleRuntimeConfig c = new ModuleRuntimeConfig(List.of(s), ".done", tooLong, true, RetentionConfig.none(),
-            false, false);
+            false);
         assertEquals(1, c.validateSources().size(), c.validateSources().toString());
     }
 

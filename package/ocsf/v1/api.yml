@@ -120,16 +120,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, bufferDepth]
+                required: [status, eventCount]
                 properties:
                   status:
                     type: string
                     enum: [On, Error]
                     description: On while /healthz is healthy, Error while it is degraded
-                  bufferDepth:
+                  eventCount:
                     type: integer
                     format: int64
-                    description: Un-acked transactions (new + in_flight)
+                    description: OCSF events held in the buffer
   /healthz:
     get:
       tags: [health]
@@ -137,7 +137,7 @@ paths:
       description: >-
         Liveness/health for the always-on daemon. Hub Node polls this every 30s
         for daemon-mode deployments (DESIGN §9). Returns poller state per source,
-        buffer depth, and database file sizes. 503 when the poller is down, under
+        the event count, and database file sizes. 503 when the poller is down, under
         backpressure, or any source is unwritable, failing its scans or stalled.
       operationId: getHealth
       responses:
@@ -174,21 +174,17 @@ components:
       properties:
         poller:
           type: object
-          required: [up, bufferDepth, backpressure, sources]
+          required: [up, eventCount, backpressure, sources]
           properties:
             up:
               type: boolean
               description: Every poller thread alive
             lastScan: { type: string, format: date-time }
             lastConsumed: { type: string, format: date-time }
-            bufferDepth:
+            eventCount:
               type: integer
               format: int64
-              description: Un-acked transactions (new + in_flight)
-            oldestUnackedSec:
-              type: integer
-              format: int64
-              description: Age of the oldest un-acked transaction; absent when there is none
+              description: OCSF events held in the buffer
             backpressure:
               type: boolean
               description: Buffer over its byte ceiling; new files are left untouched

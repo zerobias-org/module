@@ -31,7 +31,7 @@ class ModuleRuntimeConfigTest {
         + "\"consumedSuffix\":\".ok\",\"errorSuffix\":\".bad\","
         + "\"ackDurability\":\"full\","
         + "\"retention\":{\"maxBytes\":10737418240,\"maxAge\":\"P90D\"},"
-        + "\"allowBareTransactionSets\":true,"
+        + "\"maxEventBytes\":4096,"
         + "\"allowFileManagement\":true,"
         + "\"maxFileBytes\":1048576}";
 
@@ -41,14 +41,14 @@ class ModuleRuntimeConfigTest {
             ModuleRuntimeConfig c = ModuleRuntimeConfig.parse(s);
             assertEquals(1, c.sources().size(), "default source for input: " + s);
             assertEquals("inbox", c.sources().get(0).name());
-            assertEquals("/var/lib/x12/inbox", c.sources().get(0).path());
+            assertEquals("/var/lib/ocsf/inbox", c.sources().get(0).path());
             assertEquals(30, c.sources().get(0).pollIntervalSec());
             assertEquals(60, c.sources().get(0).stableForSec());
             assertEquals(".done", c.consumedSuffix());
             assertEquals(".error", c.errorSuffix());
             assertTrue(c.fullDurability(), "ackDurability defaults to full (fsync per commit)");
             assertFalse(c.retention().isBounded());
-            assertFalse(c.allowBareTransactionSets());
+            assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_EVENT_BYTES, c.maxEventBytes());
             assertFalse(c.allowFileManagement(), "file management is opt-in, never a default");
             assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES, c.maxFileBytes());
         }
@@ -65,7 +65,7 @@ class ModuleRuntimeConfigTest {
         assertTrue(c.fullDurability());
         assertEquals(10737418240L, c.retention().maxBytes());
         assertEquals(Duration.ofDays(90), c.retention().maxAge());
-        assertTrue(c.allowBareTransactionSets());
+        assertEquals(4096L, c.maxEventBytes());
         assertTrue(c.allowFileManagement());
         assertEquals(1048576L, c.maxFileBytes());
     }
@@ -122,7 +122,7 @@ class ModuleRuntimeConfigTest {
             "{\"consumedSuffix\":7}",
             "{\"errorSuffix\":\"\"}",
             "{\"consumedSuffix\":\"/../x\"}",
-            "{\"allowBareTransactionSets\":\"yes\"}",
+            "{\"maxEventBytes\":\"1MB\"}",
             "{\"maxFileBytes\":0}",
             "{\"maxFileBytes\":\"64MB\"}",
             "{\"maxFileBytes\":" + Long.MAX_VALUE + "}",
@@ -175,12 +175,12 @@ class ModuleRuntimeConfigTest {
     void maxFileBytesIsBounded() {
         List<SourceConfig> one = List.of(new SourceConfig("a", "/a", "*", 1, 0));
         assertEquals(ModuleRuntimeConfig.DEFAULT_MAX_FILE_BYTES,
-            new ModuleRuntimeConfig(one, ".done", ".error", true, RetentionConfig.none(), false, false).maxFileBytes());
+            new ModuleRuntimeConfig(one, ".done", ".error", true, RetentionConfig.none(), false).maxFileBytes());
         assertEquals(ModuleRuntimeConfig.MAX_MAX_FILE_BYTES, ModuleRuntimeConfig.parse(
             "{\"maxFileBytes\":" + ModuleRuntimeConfig.MAX_MAX_FILE_BYTES + "}").maxFileBytes(), "the cap itself is allowed");
         for (long bad : new long[] {0, -1, ModuleRuntimeConfig.MAX_MAX_FILE_BYTES + 1}) {
             assertThrows(InvalidConfigException.class, () -> new ModuleRuntimeConfig(one, ".done", ".error", true,
-                RetentionConfig.none(), false, false, bad), "constructed with " + bad);
+                RetentionConfig.none(), false, bad, 1), "constructed with " + bad);
             assertThrows(InvalidConfigException.class, () -> ModuleRuntimeConfig.parse("{\"maxFileBytes\":" + bad + "}"),
                 "parsed " + bad);
         }
@@ -257,14 +257,14 @@ class ModuleRuntimeConfigTest {
         Path file = Files.writeString(dir.resolve("notadir"), "x");
         ModuleRuntimeConfig ok = new ModuleRuntimeConfig(
             List.of(new SourceConfig("a", good.toString(), "*", 1, 0)), ".done", ".error", false,
-            com.zerobias.module.ocsf.buffer.RetentionConfig.none(), false, false);
+            com.zerobias.module.ocsf.buffer.RetentionConfig.none(), false);
         assertEquals(List.of(), ok.validateSources());
 
         ModuleRuntimeConfig bad = new ModuleRuntimeConfig(
             List.of(new SourceConfig("a", good.toString(), "*", 1, 0),
                     new SourceConfig("a", dir.resolve("missing").toString(), "*", 1, 0),
                     new SourceConfig("b", file.toString(), "*", 1, 0)),
-            ".same", ".same", false, com.zerobias.module.ocsf.buffer.RetentionConfig.none(), false, false);
+            ".same", ".same", false, com.zerobias.module.ocsf.buffer.RetentionConfig.none(), false);
         List<String> problems = bad.validateSources();
         assertTrue(problems.stream().anyMatch(p -> p.contains("duplicate source name: a")), problems.toString());
         assertTrue(problems.stream().anyMatch(p -> p.contains("does not exist")), problems.toString());
@@ -284,14 +284,14 @@ class ModuleRuntimeConfigTest {
         for (String other : new String[] {link.toString(), in + "/", in + "/nested/.."}) {
             ModuleRuntimeConfig c = new ModuleRuntimeConfig(
                 List.of(new SourceConfig("a", in.toString(), "*", 1, 0), new SourceConfig("b", other, "*", 1, 0)),
-                ".done", ".error", false, com.zerobias.module.ocsf.buffer.RetentionConfig.none(), false, false);
+                ".done", ".error", false, com.zerobias.module.ocsf.buffer.RetentionConfig.none(), false);
             List<String> problems = c.validateSources();
             assertTrue(problems.stream().anyMatch(p -> p.contains("'a' and 'b' point at the same directory")),
                 other + " -> " + problems);
         }
         ModuleRuntimeConfig nestedOk = new ModuleRuntimeConfig(
             List.of(new SourceConfig("a", in.toString(), "*", 1, 0), new SourceConfig("b", nested.toString(), "*", 1, 0)),
-            ".done", ".error", false, com.zerobias.module.ocsf.buffer.RetentionConfig.none(), false, false);
+            ".done", ".error", false, com.zerobias.module.ocsf.buffer.RetentionConfig.none(), false);
         assertEquals(List.of(), nestedOk.validateSources(), "nested is fine: each poller scans flat");
     }
 }

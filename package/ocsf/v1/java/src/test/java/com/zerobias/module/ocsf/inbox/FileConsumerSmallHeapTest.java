@@ -7,7 +7,8 @@ import com.zerobias.module.ocsf.buffer.BufferStore;
 import com.zerobias.module.ocsf.buffer.FileRow;
 import com.zerobias.module.ocsf.buffer.FileStatus;
 import com.zerobias.module.ocsf.buffer.RetentionConfig;
-import com.zerobias.module.ocsf.buffer.TestRows.MutableClock;
+import com.zerobias.module.ocsf.TestSupport;
+import com.zerobias.module.ocsf.TestSupport.MutableClock;
 import com.zerobias.module.ocsf.health.PollerStatus;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,17 +46,18 @@ class FileConsumerSmallHeapTest {
         assumeTrue(Runtime.getRuntime().maxMemory() < FILE_BYTES,
             "needs a heap smaller than the file: runs in the small-heap surefire execution");
         Path inbox = Files.createDirectories(dir.resolve("inbox"));
-        Path big = inbox.resolve("big.835");
+        Path big = inbox.resolve("big.ndjson");
         try (RandomAccessFile f = new RandomAccessFile(big.toFile(), "rw")) {
             f.setLength(FILE_BYTES);   // sparse: no disk, but a real FILE_BYTES-long read
         }
         String checksum = streamedSha256(big);
         ModuleRuntimeConfig cfg = new ModuleRuntimeConfig(
             List.of(new SourceConfig("inbox", inbox.toString(), "*", 1, 0)),
-            ".done", ".error", false, RetentionConfig.none(), false, false, ModuleRuntimeConfig.MAX_MAX_FILE_BYTES);
+            ".done", ".error", false, RetentionConfig.none(), false,
+            ModuleRuntimeConfig.MAX_MAX_FILE_BYTES, ModuleRuntimeConfig.DEFAULT_MAX_EVENT_BYTES);
         MutableClock clock = new MutableClock(Instant.parse("2026-09-22T12:00:00Z"));
         try (BufferStore buffer = new BufferStore(dir.resolve("buffer.db").toString(), false, clock)) {
-            InboxPollerFactory.Handle handle = InboxPollerFactory.start(cfg, buffer, null, clock, false);
+            InboxPollerFactory.Handle handle = InboxPollerFactory.start(cfg, TestSupport.classes(), buffer, null, clock, false);
             try {
                 assertEquals(new RescanResult(1, 1, 0, 1), handle.rescan(null));
                 assertTrue(Files.exists(Path.of(big + ".error")), "sent to .error, not left to fail again");

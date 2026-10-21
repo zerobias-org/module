@@ -18,7 +18,7 @@ import java.util.OptionalLong;
  * raises a Node alert; it does not feed the platform event system).
  *
  * <pre>
- * { poller: { up, lastScan?, lastConsumed?, bufferDepth (un-acked), oldestUnackedSec?, backpressure,
+ * { poller: { up, lastScan?, lastConsumed?, eventCount, backpressure,
  *             sources: [ { name, path, writable, pending, errored, failing, stalled,
  *                          lastScan?, lastScanStarted?, lastError?, lastErrorAt? } ] },
  *   db: { walBytes, sizeBytes } }
@@ -105,11 +105,7 @@ public final class HealthCheck {
                 p.put("lastConsumed", Instant.ofEpochMilli(last.getAsLong()).toString());
             }
         }
-        p.put("bufferDepth", buffer.unackedCount());
-        OptionalLong oldestUnacked = buffer.oldestUnackedSeconds();
-        if (oldestUnacked.isPresent()) {
-            p.put("oldestUnackedSec", oldestUnacked.getAsLong());
-        }
+        p.put("eventCount", buffer.eventCount());
         p.put("backpressure", poller.backpressure());
 
         final Instant now = Instant.now(buffer.clock());

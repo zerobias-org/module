@@ -24,3 +24,8 @@ test-results.json
 
 # Test sample events: `npm run generate:fixtures` (gradle fetches them before unit tests)
 fixtures/generated/
+
+# IDE project files (Eclipse Buildship / VS Code Java)
+.settings/
+.project
+.classpath

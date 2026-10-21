@@ -21,7 +21,7 @@ class RuntimeConfigFileTest {
     @Test
     void readsConfigFromNodeJson() {
         RuntimeConfigFile f = RuntimeConfigFile.parse(
-            "{\"daemonMode\":true,\"durability\":[{\"volumeName\":\"x12-buffer\"}],"
+            "{\"daemonMode\":true,\"durability\":[{\"volumeName\":\"ocsf-buffer\"}],"
             + "\"config\":{\"consumedSuffix\":\".done\",\"sources\":[{\"name\":\"a\",\"path\":\"/a\"}]}}");
         assertEquals(".done", f.config().get("consumedSuffix").getAsString());
         assertEquals(1, f.config().getAsJsonArray("sources").size());
@@ -30,12 +30,12 @@ class RuntimeConfigFileTest {
     @Test
     void readsConfigFromRuntimeConfigYml() {
         String yml = "# comment\ndaemonMode: true\nresources:\n  memoryMb: 1024\n"
-            + "config:\n  sources:\n    - name: inbox\n      path: /var/lib/x12/inbox\n"
-            + "      pattern: \"*.{x12,edi,txt,835,837,277,999,dat}\"\n      pollIntervalSec: 30\n"
+            + "config:\n  sources:\n    - name: inbox\n      path: /var/lib/ocsf/inbox\n"
+            + "      pattern: \"*.{json,ndjson,jsonl,gz}\"\n      pollIntervalSec: 30\n"
             + "      stableForSec: 60\n  consumedSuffix: \".done\"\n  errorSuffix: \".error\"\n"
             + "  ackDurability: normal\n  retention:\n    maxBytes: 10737418240   # 10 GiB\n    maxAge: P90D\n";
         RuntimeConfigFile f = RuntimeConfigFile.parse(yml);
-        assertEquals("*.{x12,edi,txt,835,837,277,999,dat}",
+        assertEquals("*.{json,ndjson,jsonl,gz}",
             f.config().getAsJsonArray("sources").get(0).getAsJsonObject().get("pattern").getAsString());
         assertEquals(10737418240L, f.config().getAsJsonObject("retention").get("maxBytes").getAsLong());
         assertEquals("P90D", f.config().getAsJsonObject("retention").get("maxAge").getAsString());

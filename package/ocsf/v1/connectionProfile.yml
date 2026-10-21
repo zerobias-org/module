@@ -1,8 +1,8 @@
 type: object
 description: >-
-  Connection profile for the X12 receiver. Unlike demand-driven modules, there is
-  no remote system to dial — X12 files arrive on a volume mounted into the
-  container (daily clearinghouse / payer drops) and the daemon polls it. The
+  Connection profile for the OCSF Receiver. Unlike demand-driven modules, there is
+  no remote system to dial — OCSF event files arrive on a volume mounted into the
+  container (a SIEM export, an S3/SFTP sync job, an operator) and the daemon polls it. The
   watched source directories, poll cadence and buffer knobs are daemon-level and
   live in runtimeConfig.config (delivered as MODULE_CONFIG at container boot); the
   always-on daemon never reads this per-connection profile. It exists because the

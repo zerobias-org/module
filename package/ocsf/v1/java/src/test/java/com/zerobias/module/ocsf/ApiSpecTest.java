@@ -34,15 +34,34 @@ class ApiSpecTest {
             + "#/components/schemas/";
 
     @Test
+    void everyOcsfInterfacePathIsReferenced() throws IOException {
+        LoaderOptions big = new LoaderOptions();
+        big.setCodePointLimit(64 * 1024 * 1024);   // the interface spec is a few MB
+        Map<String, Object> iface = cast(new Yaml(new SafeConstructor(big)).load(Files.readString(
+            Path.of("../node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml"))));
+        Set<String> expected = at(iface, "paths").keySet();
+        Set<String> referenced = new java.util.TreeSet<>();
+        for (Map.Entry<String, Object> e : at(spec(), "paths").entrySet()) {
+            Object ref = ((Map<?, ?>) e.getValue()).get("$ref");
+            if (ref instanceof String r && r.contains("module-interface-ocsf")) {
+                assertEquals("#/paths/" + e.getKey().replace("~", "~0").replace("/", "~1"), r.substring(r.indexOf('#')),
+                    e.getKey() + " points at another path");
+                referenced.add(e.getKey());
+            }
+        }
+        assertEquals(new java.util.TreeSet<>(expected), referenced, "api.yml must $ref exactly the interface's paths");
+    }
+
+    @Test
     void connectDeclaresOnlyWhatTheServerReturns() throws IOException {
         Map<String, Object> responses = at(spec(), "paths", "/connect", "post", "responses");
         // there are no credentials, so there is no 401
         assertEquals(Set.of("200", "400", "500"), responses.keySet());
         assertEquals(INTERFACE_ERRORS + "illegalArgumentError", ref(at(responses, "400")));
-        assertEquals("#/components/schemas/X12UnexpectedError", ref(at(responses, "500")));
+        assertEquals("#/components/schemas/OcsfUnexpectedError", ref(at(responses, "500")));
         Map<String, Object> schemas = at(spec(), "components", "schemas");
         assertFalse(schemas.containsKey("ErrorResponse"), "the {error,message} shape is never emitted");
-        List<Map<String, Object>> unexpected = cast(at(schemas, "X12UnexpectedError").get("allOf"));
+        List<Map<String, Object>> unexpected = cast(at(schemas, "OcsfUnexpectedError").get("allOf"));
         assertEquals(INTERFACE_ERRORS + "errorModelBase", unexpected.get(0).get("$ref"));
     }
 
@@ -81,7 +100,7 @@ class ApiSpecTest {
 
     @Test
     void theConnectionProfileDeclaresNothingTheDaemonIgnoresBeyondItsDocumentedDefault() throws IOException {
-        // senderDiscriminator was read by nothing (like x12Version before it): /by-sender is ISA06
+        // The daemon reads MODULE_CONFIG, never the profile: only the documented ackDurability default.
         Map<String, Object> profile = load(Path.of("../connectionProfile.yml"));
         assertEquals(Set.of("ackDurability"), at(profile, "properties").keySet());
         assertFalse(profile.containsKey("required"), "no required field: there is nothing to supply");

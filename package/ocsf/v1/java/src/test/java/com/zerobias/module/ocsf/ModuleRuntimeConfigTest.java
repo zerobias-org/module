@@ -26,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ModuleRuntimeConfigTest {
 
     private static final String FULL = "{"
-        + "\"sources\":[{\"name\":\"payer-a\",\"path\":\"/in/a\",\"pattern\":\"*.835\",\"pollIntervalSec\":5,\"stableForSec\":2},"
-        + "             {\"name\":\"payer-b\",\"path\":\"/in/b\"}],"
+        + "\"sources\":[{\"name\":\"siem-a\",\"path\":\"/in/a\",\"pattern\":\"*.ndjson\",\"pollIntervalSec\":5,\"stableForSec\":2},"
+        + "             {\"name\":\"siem-b\",\"path\":\"/in/b\"}],"
         + "\"consumedSuffix\":\".ok\",\"errorSuffix\":\".bad\","
         + "\"ackDurability\":\"full\","
         + "\"retention\":{\"maxBytes\":10737418240,\"maxAge\":\"P90D\"},"
@@ -58,8 +58,8 @@ class ModuleRuntimeConfigTest {
     void parsesEveryField() {
         ModuleRuntimeConfig c = ModuleRuntimeConfig.parse(FULL);
         assertEquals(List.of(
-            new SourceConfig("payer-a", "/in/a", "*.835", 5, 2),
-            new SourceConfig("payer-b", "/in/b", SourceConfig.DEFAULT_PATTERN, 30, 60)), c.sources(), "per-source defaults applied");
+            new SourceConfig("siem-a", "/in/a", "*.ndjson", 5, 2),
+            new SourceConfig("siem-b", "/in/b", SourceConfig.DEFAULT_PATTERN, 30, 60)), c.sources(), "per-source defaults applied");
         assertEquals(".ok", c.consumedSuffix());
         assertEquals(".bad", c.errorSuffix());
         assertTrue(c.fullDurability());
@@ -116,7 +116,7 @@ class ModuleRuntimeConfigTest {
             "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pollIntervalSec\":1.5}]}",
             "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pollIntervalSec\":4294967296}]}",
             "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"stableForSec\":-1}]}",
-            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pattern\":\"*.{x12\"}]}",
+            "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pattern\":\"*.{json\"}]}",
             "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"pattern\":\"\"}]}",
             "{\"sources\":[{\"name\":\"a\",\"path\":\"/a\",\"patern\":\"*\"}]}",
             "{\"consumedSuffix\":7}",
@@ -208,7 +208,7 @@ class ModuleRuntimeConfigTest {
     void resolveOrderIsEnvThenFileThenDefaults(@TempDir Path dir) throws Exception {
         Path yml = dir.resolve("runtimeConfig.yml");
         Files.writeString(yml, "daemonMode: true\nconfig:\n  consumedSuffix: \".yml-done\"\n"
-            + "  sources:\n    - name: yml\n      path: /from/yml\n      pattern: \"*.{x12,edi}\"\n"
+            + "  sources:\n    - name: yml\n      path: /from/yml\n      pattern: \"*.{json,ndjson}\"\n"
             + "      pollIntervalSec: 7\n      stableForSec: 3\n  retention:\n    maxAge: P7D\n");
         Path json = dir.resolve("runtime.json");
         Files.writeString(json, "{\"listenerPorts\":[],\"config\":{\"consumedSuffix\":\".json-done\"}}");
@@ -227,7 +227,7 @@ class ModuleRuntimeConfigTest {
         // 3. The image's runtimeConfig.yml `config:` block (dev fallback).
         ModuleRuntimeConfig fromYml = ModuleRuntimeConfig.resolve(Map.of(), yml.toString());
         assertEquals(".yml-done", fromYml.consumedSuffix());
-        assertEquals(List.of(new SourceConfig("yml", "/from/yml", "*.{x12,edi}", 7, 3)), fromYml.sources());
+        assertEquals(List.of(new SourceConfig("yml", "/from/yml", "*.{json,ndjson}", 7, 3)), fromYml.sources());
         assertEquals(Duration.ofDays(7), fromYml.retention().maxAge());
 
         // 4. Nothing present → defaults.

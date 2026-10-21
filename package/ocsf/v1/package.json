@@ -1,9 +1,9 @@
 {
-  "name": "@zerobias-org/module-x12-x12",
+  "name": "@zerobias-org/module-ocsf-v1",
   "version": "0.0.0",
-  "description": "X12 EDI file receiver (DataProducer) \u2014 polls a mounted volume, parses 005010 interchanges with imsweb x12-parser",
+  "description": "OCSF Receiver — polls a mounted volume for OCSF event files (NDJSON/JSON/gz), buffers the events and serves them through the OCSF interface; the files are browsable through DataProducer",
   "type": "module",
-  "moduleId": "5521a4bd-1bac-40b1-9d63-1c8fad475168",
+  "moduleId": "bd029b66-47ee-4bba-b90b-c1480c4c1256",
   "implementationType": "java-http",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -16,7 +16,7 @@
   "repository": {
     "type": "git",
     "url": "git@github.com:zerobias-org/module.git",
-    "directory": "package/x12/x12"
+    "directory": "package/ocsf/v1"
   },
   "publishConfig": {
     "registry": "https://pkg.zerobias.org/"
@@ -30,14 +30,15 @@
     "Dockerfile"
   ],
   "zerobias": {
-    "package": "x12.x12.module",
+    "package": "ocsf.v1.module",
     "dataloader-version": "1.0.0",
     "import-artifact": "module"
   },
   "dependencies": {
     "@zerobias-org/module-interface-dataproducer": "2.2.6",
+    "@zerobias-org/module-interface-ocsf": "^1.0.0-dev.0",
     "@zerobias-org/product-auditmation-generic-dataproducer": "latest",
-    "@zerobias-org/product-x12-x12": "latest",
+    "@zerobias-org/product-zerobias-zerobias": "latest",
     "@zerobias-org/util-connector": "^1.0.31",
     "axios": "^1.13.2"
   },

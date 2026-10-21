@@ -58,11 +58,11 @@ class SourceConfigTest {
 
     @Test
     void globIsCaseInsensitiveAndSupportsAlternation() {
-        SourceConfig s = new SourceConfig("a", "/a", "*.{x12,edi,835}", 1, 1);
-        assertTrue(s.matchesFileName("remit.835"));
-        assertTrue(s.matchesFileName("REMIT.X12"));
-        assertTrue(s.matchesFileName("claims.Edi"));
-        assertFalse(s.matchesFileName("remit.835.done"));
+        SourceConfig s = new SourceConfig("a", "/a", "*.{json,ndjson,gz}", 1, 1);
+        assertTrue(s.matchesFileName("auth.ndjson"));
+        assertTrue(s.matchesFileName("AUTH.JSON"));
+        assertTrue(s.matchesFileName("Events.NDJson.Gz"));
+        assertFalse(s.matchesFileName("auth.ndjson.done"));
         assertFalse(s.matchesFileName("notes.txt"));
     }
 }

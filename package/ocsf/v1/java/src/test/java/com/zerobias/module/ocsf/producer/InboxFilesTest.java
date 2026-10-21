@@ -40,7 +40,7 @@ class InboxFilesTest {
     private static final Gson GSON = new Gson();
     private static final String R = ObjectTree.RECEIVER;
     private static final String INBOX = R + "/inbox";
-    private static final byte[] EDI = "ISA*00*          *00*          *ZZ*SUB~".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] EVENT = "{\"class_uid\":3002,\"time\":1}\n".getBytes(StandardCharsets.UTF_8);
 
     @TempDir
     Path dir;
@@ -55,7 +55,7 @@ class InboxFilesTest {
         inboxDir = Files.createDirectories(dir.resolve("inbox"));
         buffer = new BufferStore(dir.resolve("buffer.db").toString(), false,
             new TestSupport.MutableClock(TestSupport.BASE));
-        SourceConfig source = new SourceConfig("inbox", inboxDir.toString(), "*.{x12,835}", 1, 0);
+        SourceConfig source = new SourceConfig("inbox", inboxDir.toString(), "*.{json,ndjson}", 1, 0);
         TestSupport.StubPoller poller = new TestSupport.StubPoller(inboxDir);
         tree = new ObjectTree(buffer, poller, ".done", List.of(source), ".error");
         readOnly = new ProducerFacade(buffer, tree, TestSupport.classes(), false);
@@ -82,43 +82,43 @@ class InboxFilesTest {
         assertEquals(0, page(readOnly.getChildren(sourceId, 100, 1)).get("count").getAsInt());
 
         // Land a file the way a feed would — no API involved, no poller running.
-        Files.write(inboxDir.resolve("remit.835"), EDI);
+        Files.write(inboxDir.resolve("auth.ndjson"), EVENT);
         JsonObject after = page(readOnly.getChildren(sourceId, 100, 1));
         assertEquals(1, after.get("count").getAsInt(), "a fresh readdir, not a cached listing");
         JsonObject file = item(after, 0);
-        assertEquals("remit.835", file.get("name").getAsString());
+        assertEquals("auth.ndjson", file.get("name").getAsString());
         assertEquals(List.of("binary"), classes(file));
-        assertEquals(EDI.length, file.get("size").getAsLong());
+        assertEquals(EVENT.length, file.get("size").getAsLong());
         assertEquals("watched", file.get("ingest").getAsString());
         assertEquals(0, buffer.fileCount(), "still nothing in the buffer — this view is the volume");
 
         // ...and it goes away again the moment the bytes do.
-        Files.delete(inboxDir.resolve("remit.835"));
+        Files.delete(inboxDir.resolve("auth.ndjson"));
         assertEquals(0, page(readOnly.getChildren(sourceId, 100, 1)).get("count").getAsInt());
     }
 
     @Test
     void ingestFieldSaysWhatThePollerWillDo() throws Exception {
-        Files.write(inboxDir.resolve("good.835"), EDI);
-        Files.write(inboxDir.resolve("notes.txt"), EDI);
-        Files.write(inboxDir.resolve("old.835.done"), EDI);
-        Path sub = Files.createDirectory(inboxDir.resolve("payer-a"));
-        Files.write(sub.resolve("nested.835"), EDI);
+        Files.write(inboxDir.resolve("good.ndjson"), EVENT);
+        Files.write(inboxDir.resolve("notes.txt"), EVENT);
+        Files.write(inboxDir.resolve("old.ndjson.done"), EVENT);
+        Path sub = Files.createDirectory(inboxDir.resolve("siem-a"));
+        Files.write(sub.resolve("nested.ndjson"), EVENT);
 
-        assertEquals("watched", ingest(INBOX + "/inbox/good.835"));
-        assertEquals("ignored:pattern", ingest(INBOX + "/inbox/notes.txt"), "*.{x12,835} does not match");
-        assertEquals("ignored:suffix", ingest(INBOX + "/inbox/old.835.done"), "already consumed");
-        assertEquals("ignored:subdirectory", ingest(INBOX + "/inbox/payer-a/nested.835"),
+        assertEquals("watched", ingest(INBOX + "/inbox/good.ndjson"));
+        assertEquals("ignored:pattern", ingest(INBOX + "/inbox/notes.txt"), "*.{json,ndjson} does not match");
+        assertEquals("ignored:suffix", ingest(INBOX + "/inbox/old.ndjson.done"), "already consumed");
+        assertEquals("ignored:subdirectory", ingest(INBOX + "/inbox/siem-a/nested.ndjson"),
             "the poller scans each source flat");
     }
 
     @Test
     void listingsHideDotfilesAndPutDirectoriesFirst() throws Exception {
         Files.createDirectory(inboxDir.resolve("zzz-dir"));
-        Files.write(inboxDir.resolve("aaa.835"), EDI);
-        Files.write(inboxDir.resolve(".hidden.835"), EDI);
+        Files.write(inboxDir.resolve("aaa.ndjson"), EVENT);
+        Files.write(inboxDir.resolve(".hidden.ndjson"), EVENT);
 
-        assertEquals(List.of("zzz-dir", "aaa.835"),
+        assertEquals(List.of("zzz-dir", "aaa.ndjson"),
             names(page(readOnly.getChildren(INBOX + "/inbox", 100, 1))),
             "directories first, then files; dotfiles invisible exactly as the poller sees them");
     }
@@ -126,7 +126,7 @@ class InboxFilesTest {
     @Test
     void traversalAndUnknownSourcesAre404() {
         for (String id : List.of(INBOX + "/inbox/../../etc", INBOX + "/inbox/%2E%2E/x",
-                INBOX + "/nope", INBOX + "/inbox/missing.835")) {
+                INBOX + "/nope", INBOX + "/inbox/missing.ndjson")) {
             assertEquals(404, assertThrows(ProducerException.class,
                 () -> readOnly.getObject(id)).httpStatus(), id);
         }
@@ -134,13 +134,13 @@ class InboxFilesTest {
 
     @Test
     void downloadServesBytesThatWereNeverIngested() throws Exception {
-        Files.write(inboxDir.resolve("raw.835"), EDI);
-        BinaryContent bin = readOnly.downloadBinary(INBOX + "/inbox/raw.835");
-        assertEquals("raw.835", bin.fileName());
+        Files.write(inboxDir.resolve("raw.ndjson"), EVENT);
+        BinaryContent bin = readOnly.downloadBinary(INBOX + "/inbox/raw.ndjson");
+        assertEquals("raw.ndjson", bin.fileName());
         try (java.io.InputStream in = bin.open()) {
-            assertEquals(new String(EDI, StandardCharsets.UTF_8), new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            assertEquals(new String(EVENT, StandardCharsets.UTF_8), new String(in.readAllBytes(), StandardCharsets.UTF_8));
         }
-        assertEquals(EDI.length, bin.size());
+        assertEquals(EVENT.length, bin.size());
     }
 
     @Test
@@ -164,15 +164,15 @@ class InboxFilesTest {
     @Test
     void symlinksCannotEscapeTheSourceRoot() throws Exception {
         Path outside = Files.createDirectories(dir.resolve("outside"));
-        Files.write(outside.resolve("secret.835"), EDI);
+        Files.write(outside.resolve("secret.ndjson"), EVENT);
         Files.createSymbolicLink(inboxDir.resolve("escape"), outside);               // a directory link
-        Files.createSymbolicLink(inboxDir.resolve("leak.835"), outside.resolve("secret.835")); // a leaf link
+        Files.createSymbolicLink(inboxDir.resolve("leak.ndjson"), outside.resolve("secret.ndjson")); // a leaf link
         Files.createDirectories(inboxDir.resolve("real"));
         Files.createSymbolicLink(inboxDir.resolve("real").resolve("up"), outside);  // a link below a real dir
-        Files.write(inboxDir.resolve("ok.835"), EDI);
+        Files.write(inboxDir.resolve("ok.ndjson"), EVENT);
 
-        for (String id : List.of(INBOX + "/inbox/escape", INBOX + "/inbox/escape/secret.835",
-                INBOX + "/inbox/leak.835", INBOX + "/inbox/real/up/secret.835")) {
+        for (String id : List.of(INBOX + "/inbox/escape", INBOX + "/inbox/escape/secret.ndjson",
+                INBOX + "/inbox/leak.ndjson", INBOX + "/inbox/real/up/secret.ndjson")) {
             assertEquals(404, assertThrows(ProducerException.class, () -> readOnly.getObject(id)).httpStatus(), id);
             assertEquals(404, assertThrows(ProducerException.class, () -> readOnly.downloadBinary(id)).httpStatus(), id);
         }
@@ -180,15 +180,15 @@ class InboxFilesTest {
             () -> readOnly.getChildren(INBOX + "/inbox/escape", 100, 1)).httpStatus());
         // writes through a link are refused and nothing lands outside
         assertEquals(404, assertThrows(ProducerException.class,
-            () -> writable.uploadBinary(INBOX + "/inbox/escape", "planted.835", EDI)).httpStatus());
+            () -> writable.uploadBinary(INBOX + "/inbox/escape", "planted.ndjson", EVENT)).httpStatus());
         assertEquals(404, assertThrows(ProducerException.class,
             () -> writable.createChildObject(INBOX + "/inbox/real/up", "d", List.of("container"))).httpStatus());
         assertEquals(404, assertThrows(ProducerException.class,
-            () -> writable.deleteObject(INBOX + "/inbox/escape/secret.835")).httpStatus());
-        assertFalse(Files.exists(outside.resolve("planted.835")));
-        assertTrue(Files.exists(outside.resolve("secret.835")));
+            () -> writable.deleteObject(INBOX + "/inbox/escape/secret.ndjson")).httpStatus());
+        assertFalse(Files.exists(outside.resolve("planted.ndjson")));
+        assertTrue(Files.exists(outside.resolve("secret.ndjson")));
         // the listing still works and simply does not show links
-        assertEquals(List.of("real", "ok.835"), names(page(readOnly.getChildren(INBOX + "/inbox", 100, 1))));
+        assertEquals(List.of("real", "ok.ndjson"), names(page(readOnly.getChildren(INBOX + "/inbox", 100, 1))));
         assertEquals(List.of(), names(page(readOnly.getChildren(INBOX + "/inbox/real", 100, 1))));
     }
 
@@ -196,21 +196,21 @@ class InboxFilesTest {
 
     @Test
     void everyWriteIsRefusedWhileTheFlagIsOff() throws Exception {
-        Files.write(inboxDir.resolve("remit.835"), EDI);
+        Files.write(inboxDir.resolve("auth.ndjson"), EVENT);
         assertFalse(readOnly.fileManagementEnabled());
 
         ProducerException upload = assertThrows(ProducerException.class,
-            () -> readOnly.uploadBinary(INBOX + "/inbox", "new.835", EDI));
+            () -> readOnly.uploadBinary(INBOX + "/inbox", "new.ndjson", EVENT));
         assertEquals(400, upload.httpStatus());
         assertEquals("err.unsupported.operation", upload.key());
         assertTrue(upload.getMessage().contains("allowFileManagement"), "the message names the flag");
 
         assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,
-            () -> readOnly.createChildObject(INBOX + "/inbox", "payer-a", List.of("container"))).key());
+            () -> readOnly.createChildObject(INBOX + "/inbox", "siem-a", List.of("container"))).key());
         assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,
-            () -> readOnly.deleteObject(INBOX + "/inbox/remit.835")).key());
+            () -> readOnly.deleteObject(INBOX + "/inbox/auth.ndjson")).key());
 
-        assertTrue(Files.exists(inboxDir.resolve("remit.835")), "a refused delete touches nothing");
+        assertTrue(Files.exists(inboxDir.resolve("auth.ndjson")), "a refused delete touches nothing");
         // Reading the same branch stays available with the flag off.
         assertEquals(1, page(readOnly.getChildren(INBOX + "/inbox", 100, 1)).get("count").getAsInt());
     }
@@ -220,17 +220,17 @@ class InboxFilesTest {
     @Test
     void uploadLandsAtomicallyAndIsImmediatelyBrowsable() throws Exception {
         JsonObject created = GSON.fromJson(
-            writable.uploadBinary(INBOX + "/inbox", "remit.835", EDI), JsonObject.class);
+            writable.uploadBinary(INBOX + "/inbox", "auth.ndjson", EVENT), JsonObject.class);
 
-        assertEquals(INBOX + "/inbox/remit.835", created.get("id").getAsString());
+        assertEquals(INBOX + "/inbox/auth.ndjson", created.get("id").getAsString());
         assertEquals(List.of("binary"), classes(created));
         assertEquals("watched", created.get("ingest").getAsString(), "it will be picked up");
-        assertArrayEqualsBytes(EDI, Files.readAllBytes(inboxDir.resolve("remit.835")));
+        assertArrayEqualsBytes(EVENT, Files.readAllBytes(inboxDir.resolve("auth.ndjson")));
 
         try (var entries = Files.list(inboxDir)) {
             List<String> left = new ArrayList<>();
             entries.forEach(p -> left.add(p.getFileName().toString()));
-            assertEquals(List.of("remit.835"), left, "no .part-* temporary left behind");
+            assertEquals(List.of("auth.ndjson"), left, "no .part-* temporary left behind");
         }
         assertEquals(1, page(readOnly.getChildren(INBOX + "/inbox", 100, 1)).get("count").getAsInt());
         assertEquals(0, buffer.fileCount(), "upload does not fabricate a consumed-file row");
@@ -238,39 +238,39 @@ class InboxFilesTest {
 
     @Test
     void uploadNeverReplacesAndValidatesTheName() throws Exception {
-        writable.uploadBinary(INBOX + "/inbox", "remit.835", EDI);
+        writable.uploadBinary(INBOX + "/inbox", "auth.ndjson", EVENT);
 
         assertEquals("err.illegal.argument", assertThrows(ProducerException.class,
-            () -> writable.uploadBinary(INBOX + "/inbox", "remit.835", EDI)).key(),
+            () -> writable.uploadBinary(INBOX + "/inbox", "auth.ndjson", EVENT)).key(),
             "replacing bytes at a path would fork its fileId");
 
-        for (String bad : List.of("../escape.835", "sub/child.835", ".hidden.835", "  ")) {
+        for (String bad : List.of("../escape.ndjson", "sub/child.ndjson", ".hidden.ndjson", "  ")) {
             assertEquals(400, assertThrows(ProducerException.class,
-                () -> writable.uploadBinary(INBOX + "/inbox", bad, EDI)).httpStatus(), bad);
+                () -> writable.uploadBinary(INBOX + "/inbox", bad, EVENT)).httpStatus(), bad);
         }
         assertEquals(400, assertThrows(ProducerException.class,
-            () -> writable.uploadBinary(INBOX, "remit.835", EDI)).httpStatus(),
+            () -> writable.uploadBinary(INBOX, "auth.ndjson", EVENT)).httpStatus(),
             "the branch root is not a directory");
     }
 
     @Test
     void uploadTargetsAnyDirectoryUnderTheSource() throws Exception {
-        writable.createChildObject(INBOX + "/inbox", "payer-a", List.of("container"));
+        writable.createChildObject(INBOX + "/inbox", "siem-a", List.of("container"));
         JsonObject created = GSON.fromJson(
-            writable.uploadBinary(INBOX + "/inbox/payer-a", "nested.835", EDI), JsonObject.class);
+            writable.uploadBinary(INBOX + "/inbox/siem-a", "nested.ndjson", EVENT), JsonObject.class);
 
-        assertEquals(INBOX + "/inbox/payer-a/nested.835", created.get("id").getAsString());
+        assertEquals(INBOX + "/inbox/siem-a/nested.ndjson", created.get("id").getAsString());
         assertEquals("ignored:subdirectory", created.get("ingest").getAsString(),
             "visible and downloadable, but the flat poller will not consume it");
-        assertTrue(Files.isRegularFile(inboxDir.resolve("payer-a").resolve("nested.835")));
+        assertTrue(Files.isRegularFile(inboxDir.resolve("siem-a").resolve("nested.ndjson")));
     }
 
     @Test
     void base64UploadThroughTheJsonEnvelopeIsEquivalent() throws Exception {
         // The shape OcsfApiServer.upload() decodes for a JSON-only invoker.
-        byte[] decoded = Base64.getDecoder().decode(Base64.getEncoder().encodeToString(EDI));
-        writable.uploadBinary(INBOX + "/inbox", "encoded.835", decoded);
-        assertArrayEqualsBytes(EDI, Files.readAllBytes(inboxDir.resolve("encoded.835")));
+        byte[] decoded = Base64.getDecoder().decode(Base64.getEncoder().encodeToString(EVENT));
+        writable.uploadBinary(INBOX + "/inbox", "encoded.ndjson", decoded);
+        assertArrayEqualsBytes(EVENT, Files.readAllBytes(inboxDir.resolve("encoded.ndjson")));
     }
 
     // --- mkdir / delete -----------------------------------------------------
@@ -278,49 +278,49 @@ class InboxFilesTest {
     @Test
     void mkdirAndDeleteRoundTrip() throws Exception {
         JsonObject made = GSON.fromJson(
-            writable.createChildObject(INBOX + "/inbox", "payer-a", List.of("container")), JsonObject.class);
-        assertEquals(INBOX + "/inbox/payer-a", made.get("id").getAsString());
+            writable.createChildObject(INBOX + "/inbox", "siem-a", List.of("container")), JsonObject.class);
+        assertEquals(INBOX + "/inbox/siem-a", made.get("id").getAsString());
         assertEquals(List.of("container"), classes(made));
-        assertTrue(Files.isDirectory(inboxDir.resolve("payer-a")));
+        assertTrue(Files.isDirectory(inboxDir.resolve("siem-a")));
 
         assertEquals("err.illegal.argument", assertThrows(ProducerException.class,
-            () -> writable.createChildObject(INBOX + "/inbox", "payer-a", List.of("container"))).key(),
+            () -> writable.createChildObject(INBOX + "/inbox", "siem-a", List.of("container"))).key(),
             "creating it twice");
         assertEquals("err.illegal.argument", assertThrows(ProducerException.class,
-            () -> writable.createChildObject(INBOX + "/inbox", "payer-b", List.of("collection"))).key(),
+            () -> writable.createChildObject(INBOX + "/inbox", "siem-b", List.of("collection"))).key(),
             "only containers can be created");
 
-        JsonObject deleted = GSON.fromJson(writable.deleteObject(INBOX + "/inbox/payer-a"), JsonObject.class);
+        JsonObject deleted = GSON.fromJson(writable.deleteObject(INBOX + "/inbox/siem-a"), JsonObject.class);
         assertEquals("deleted", deleted.get("status").getAsString());
-        assertFalse(Files.exists(inboxDir.resolve("payer-a")));
+        assertFalse(Files.exists(inboxDir.resolve("siem-a")));
     }
 
     @Test
     void deleteRefusesNonEmptyDirectoriesAndMountPoints() throws Exception {
-        writable.createChildObject(INBOX + "/inbox", "payer-a", List.of("container"));
-        writable.uploadBinary(INBOX + "/inbox/payer-a", "nested.835", EDI);
+        writable.createChildObject(INBOX + "/inbox", "siem-a", List.of("container"));
+        writable.uploadBinary(INBOX + "/inbox/siem-a", "nested.ndjson", EVENT);
 
         assertEquals("err.illegal.argument", assertThrows(ProducerException.class,
-            () -> writable.deleteObject(INBOX + "/inbox/payer-a")).key(),
-            "a recursive delete over a live feed directory loses un-ingested claims");
+            () -> writable.deleteObject(INBOX + "/inbox/siem-a")).key(),
+            "a recursive delete over a live feed directory loses un-ingested events");
         assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,
             () -> writable.deleteObject(INBOX + "/inbox")).key(), "a configured source is a mount point");
         assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,
             () -> writable.deleteObject(INBOX)).key(), "the branch root");
         assertEquals(404, assertThrows(ProducerException.class,
-            () -> writable.deleteObject(INBOX + "/inbox/gone.835")).httpStatus());
+            () -> writable.deleteObject(INBOX + "/inbox/gone.ndjson")).httpStatus());
 
         // Child first, then the directory — the order the API forces.
-        writable.deleteObject(INBOX + "/inbox/payer-a/nested.835");
-        writable.deleteObject(INBOX + "/inbox/payer-a");
-        assertFalse(Files.exists(inboxDir.resolve("payer-a")));
+        writable.deleteObject(INBOX + "/inbox/siem-a/nested.ndjson");
+        writable.deleteObject(INBOX + "/inbox/siem-a");
+        assertFalse(Files.exists(inboxDir.resolve("siem-a")));
     }
 
     @Test
     void writesRejectTheEmergentBranches() {
         for (String id : List.of(R + "/files", R + "/stats", R)) {
             assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,
-                () -> writable.uploadBinary(id, "x.835", EDI)).key(), id);
+                () -> writable.uploadBinary(id, "x.ndjson", EVENT)).key(), id);
             assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,
                 () -> writable.createChildObject(id, "sub", List.of("container"))).key(), id);
             assertEquals("err.unsupported.operation", assertThrows(ProducerException.class,

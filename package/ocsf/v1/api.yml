@@ -1,27 +1,22 @@
 openapi: 3.0.3
 info:
   version: "0.0.0"
-  description: "X12 EDI file receiver (DataProducer)"
-  title: '@zerobias-org/module-x12-x12'
-  x-impl-name: x12
+  description: "OCSF Receiver: OCSF event files dropped on a volume, served through the OCSF interface"
+  title: '@zerobias-org/module-ocsf-v1'
+  x-impl-name: ocsf
   x-product-infos:
     - $ref: './node_modules/@zerobias-org/product-auditmation-generic-dataproducer/catalog.yml#/Product'
-    - $ref: './node_modules/@zerobias-org/product-x12-x12/catalog.yml#/Product'
-# This module implements the DataProducer interface defined in
-# @zerobias-org/module-interface-dataproducer. Interface paths are referenced
-# directly from the interface module; the implementation is Java (see java/).
-# Adds /objects/{objectId}/download (binary) over hl7/v2: each X12 file node is
-# also a binary object whose raw EDI bytes are downloadable.
-# Adds /objects/{objectId}/upload for file management over the mounted volume
-# (DESIGN §2.9). createChildObject (mkdir) and deleteObject need no extra entry —
-# they are the POST/DELETE of the /objects/{objectId}[/children] path items above.
-# All three are refused unless the deployment sets config.allowFileManagement=true,
-# and isSupported reports that per deployment.
-# /objects/{objectId}/search (objectSearch) is deliberately NOT referenced: it is not
-# implemented (keyword/filter search across a subtree would enumerate the never-evicted
-# /files audit trail), so it is not advertised and isSupported answers false for it.
+    - $ref: './node_modules/@zerobias-org/product-zerobias-zerobias/catalog.yml#/Product'
+# Two interfaces, both referenced path by path from their modules; the implementation is Java (java/).
+#  - @zerobias-org/module-interface-ocsf: EVERY path (listClasses, list<Class>/get<Class> per class).
+#    A class with no events answers an empty page / 404. ApiSpecTest fails when an interface
+#    upgrade adds or drops a path here: refresh this list from the interface's dist yml.
+#  - @zerobias-org/module-interface-dataproducer: only the files side (DESIGN §3): browse /inbox,
+#    /files, /stats; documents; download; and upload/mkdir/delete under /inbox, which are refused
+#    unless the deployment sets config.allowFileManagement=true (isSupported reports it). Events
+#    are not DataProducer objects, so collections, functions and schemas are not referenced.
 paths:
-  # ---- DataProducer interface paths ----
+  # ---- DataProducer interface paths (files only) ----
   /objects:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects'
   /objects/{objectId}:
@@ -30,24 +25,331 @@ paths:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1children'
   /objects/{objectId}/searchChildren:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1searchChildren'
-  /objects/{objectId}/collection/elements:
-    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1elements'
-  /objects/{objectId}/collection/elements/{elementKey}:
-    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1elements~1{elementKey}'
-  /objects/{objectId}/collection/search:
-    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1search'
-  /objects/{objectId}/invoke:
-    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1invoke'
-  /objects/{objectId}/validate:
-    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1validate'
   /objects/{objectId}/document:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1document'
   /objects/{objectId}/download:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1download'
   /objects/{objectId}/upload:
     $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1upload'
-  /schemas/{schemaId}:
-    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1schemas~1{schemaId}'
+  # ---- OCSF interface paths (all of them) ----
+  /classes:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1classes'
+  /system/file_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1file_activity'
+  /system/file_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1file_activity~1{uid}'
+  /system/kernel_extension_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1kernel_extension_activity'
+  /system/kernel_extension_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1kernel_extension_activity~1{uid}'
+  /system/kernel_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1kernel_activity'
+  /system/kernel_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1kernel_activity~1{uid}'
+  /system/memory_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1memory_activity'
+  /system/memory_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1memory_activity~1{uid}'
+  /system/module_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1module_activity'
+  /system/module_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1module_activity~1{uid}'
+  /system/scheduled_job_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1scheduled_job_activity'
+  /system/scheduled_job_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1scheduled_job_activity~1{uid}'
+  /system/process_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1process_activity'
+  /system/process_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1process_activity~1{uid}'
+  /system/event_log_actvity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1event_log_actvity'
+  /system/event_log_actvity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1event_log_actvity~1{uid}'
+  /system/script_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1script_activity'
+  /system/script_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1script_activity~1{uid}'
+  /system/peripheral_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1peripheral_activity'
+  /system/peripheral_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1peripheral_activity~1{uid}'
+  /system/device_power_state_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1device_power_state_activity'
+  /system/device_power_state_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1device_power_state_activity~1{uid}'
+  /system/clipboard_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1clipboard_activity'
+  /system/clipboard_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1system~1clipboard_activity~1{uid}'
+  /findings/security_finding:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1security_finding'
+  /findings/security_finding/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1security_finding~1{uid}'
+  /findings/vulnerability_finding:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1vulnerability_finding'
+  /findings/vulnerability_finding/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1vulnerability_finding~1{uid}'
+  /findings/compliance_finding:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1compliance_finding'
+  /findings/compliance_finding/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1compliance_finding~1{uid}'
+  /findings/detection_finding:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1detection_finding'
+  /findings/detection_finding/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1detection_finding~1{uid}'
+  /findings/incident_finding:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1incident_finding'
+  /findings/incident_finding/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1incident_finding~1{uid}'
+  /findings/data_security_finding:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1data_security_finding'
+  /findings/data_security_finding/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1data_security_finding~1{uid}'
+  /findings/application_security_posture_finding:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1application_security_posture_finding'
+  /findings/application_security_posture_finding/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1application_security_posture_finding~1{uid}'
+  /findings/iam_analysis_finding:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1iam_analysis_finding'
+  /findings/iam_analysis_finding/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1findings~1iam_analysis_finding~1{uid}'
+  /iam/account_change:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1account_change'
+  /iam/account_change/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1account_change~1{uid}'
+  /iam/authentication:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1authentication'
+  /iam/authentication/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1authentication~1{uid}'
+  /iam/authorize_session:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1authorize_session'
+  /iam/authorize_session/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1authorize_session~1{uid}'
+  /iam/entity_management:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1entity_management'
+  /iam/entity_management/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1entity_management~1{uid}'
+  /iam/user_access:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1user_access'
+  /iam/user_access/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1user_access~1{uid}'
+  /iam/group_management:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1group_management'
+  /iam/group_management/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1group_management~1{uid}'
+  /iam/user_management:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1user_management'
+  /iam/user_management/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1user_management~1{uid}'
+  /iam/role_management:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1role_management'
+  /iam/role_management/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1iam~1role_management~1{uid}'
+  /network/network_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1network_activity'
+  /network/network_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1network_activity~1{uid}'
+  /network/http_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1http_activity'
+  /network/http_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1http_activity~1{uid}'
+  /network/dns_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1dns_activity'
+  /network/dns_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1dns_activity~1{uid}'
+  /network/dhcp_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1dhcp_activity'
+  /network/dhcp_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1dhcp_activity~1{uid}'
+  /network/rdp_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1rdp_activity'
+  /network/rdp_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1rdp_activity~1{uid}'
+  /network/smb_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1smb_activity'
+  /network/smb_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1smb_activity~1{uid}'
+  /network/ssh_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1ssh_activity'
+  /network/ssh_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1ssh_activity~1{uid}'
+  /network/ftp_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1ftp_activity'
+  /network/ftp_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1ftp_activity~1{uid}'
+  /network/email_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1email_activity'
+  /network/email_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1email_activity~1{uid}'
+  /network/network_file_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1network_file_activity'
+  /network/network_file_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1network_file_activity~1{uid}'
+  /network/email_file_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1email_file_activity'
+  /network/email_file_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1email_file_activity~1{uid}'
+  /network/email_url_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1email_url_activity'
+  /network/email_url_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1email_url_activity~1{uid}'
+  /network/ntp_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1ntp_activity'
+  /network/ntp_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1ntp_activity~1{uid}'
+  /network/tunnel_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1tunnel_activity'
+  /network/tunnel_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1network~1tunnel_activity~1{uid}'
+  /discovery/inventory_info:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1inventory_info'
+  /discovery/inventory_info/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1inventory_info~1{uid}'
+  /discovery/config_state:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1config_state'
+  /discovery/config_state/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1config_state~1{uid}'
+  /discovery/user_inventory:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1user_inventory'
+  /discovery/user_inventory/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1user_inventory~1{uid}'
+  /discovery/patch_state:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1patch_state'
+  /discovery/patch_state/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1patch_state~1{uid}'
+  /discovery/kernel_object_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1kernel_object_query'
+  /discovery/kernel_object_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1kernel_object_query~1{uid}'
+  /discovery/file_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1file_query'
+  /discovery/file_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1file_query~1{uid}'
+  /discovery/folder_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1folder_query'
+  /discovery/folder_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1folder_query~1{uid}'
+  /discovery/admin_group_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1admin_group_query'
+  /discovery/admin_group_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1admin_group_query~1{uid}'
+  /discovery/job_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1job_query'
+  /discovery/job_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1job_query~1{uid}'
+  /discovery/module_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1module_query'
+  /discovery/module_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1module_query~1{uid}'
+  /discovery/network_connection_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1network_connection_query'
+  /discovery/network_connection_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1network_connection_query~1{uid}'
+  /discovery/networks_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1networks_query'
+  /discovery/networks_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1networks_query~1{uid}'
+  /discovery/peripheral_device_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1peripheral_device_query'
+  /discovery/peripheral_device_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1peripheral_device_query~1{uid}'
+  /discovery/process_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1process_query'
+  /discovery/process_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1process_query~1{uid}'
+  /discovery/service_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1service_query'
+  /discovery/service_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1service_query~1{uid}'
+  /discovery/session_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1session_query'
+  /discovery/session_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1session_query~1{uid}'
+  /discovery/user_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1user_query'
+  /discovery/user_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1user_query~1{uid}'
+  /discovery/device_config_state_change:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1device_config_state_change'
+  /discovery/device_config_state_change/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1device_config_state_change~1{uid}'
+  /discovery/software_info:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1software_info'
+  /discovery/software_info/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1software_info~1{uid}'
+  /discovery/osint_inventory_info:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1osint_inventory_info'
+  /discovery/osint_inventory_info/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1osint_inventory_info~1{uid}'
+  /discovery/startup_item_query:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1startup_item_query'
+  /discovery/startup_item_query/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1startup_item_query~1{uid}'
+  /discovery/cloud_resources_inventory_info:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1cloud_resources_inventory_info'
+  /discovery/cloud_resources_inventory_info/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1cloud_resources_inventory_info~1{uid}'
+  /discovery/evidence_info:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1evidence_info'
+  /discovery/evidence_info/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1discovery~1evidence_info~1{uid}'
+  /application/web_resources_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1web_resources_activity'
+  /application/web_resources_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1web_resources_activity~1{uid}'
+  /application/application_lifecycle:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1application_lifecycle'
+  /application/application_lifecycle/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1application_lifecycle~1{uid}'
+  /application/api_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1api_activity'
+  /application/api_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1api_activity~1{uid}'
+  /application/web_resource_access_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1web_resource_access_activity'
+  /application/web_resource_access_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1web_resource_access_activity~1{uid}'
+  /application/datastore_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1datastore_activity'
+  /application/datastore_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1datastore_activity~1{uid}'
+  /application/file_hosting:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1file_hosting'
+  /application/file_hosting/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1file_hosting~1{uid}'
+  /application/scan_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1scan_activity'
+  /application/scan_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1scan_activity~1{uid}'
+  /application/application_error:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1application_error'
+  /application/application_error/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1application~1application_error~1{uid}'
+  /remediation/remediation_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1remediation~1remediation_activity'
+  /remediation/remediation_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1remediation~1remediation_activity~1{uid}'
+  /remediation/file_remediation_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1remediation~1file_remediation_activity'
+  /remediation/file_remediation_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1remediation~1file_remediation_activity~1{uid}'
+  /remediation/process_remediation_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1remediation~1process_remediation_activity'
+  /remediation/process_remediation_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1remediation~1process_remediation_activity~1{uid}'
+  /remediation/network_remediation_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1remediation~1network_remediation_activity'
+  /remediation/network_remediation_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1remediation~1network_remediation_activity~1{uid}'
+  /unmanned_systems/drone_flights_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1unmanned_systems~1drone_flights_activity'
+  /unmanned_systems/drone_flights_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1unmanned_systems~1drone_flights_activity~1{uid}'
+  /unmanned_systems/airborne_broadcast_activity:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1unmanned_systems~1airborne_broadcast_activity'
+  /unmanned_systems/airborne_broadcast_activity/{uid}:
+    $ref: './node_modules/@zerobias-org/module-interface-ocsf/dist/module-interface-ocsf.yml#/paths/~1unmanned_systems~1airborne_broadcast_activity~1{uid}'
   # ---- Connection lifecycle (required for Docker-based modules) ----
   /connect:
     post:
@@ -88,7 +390,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/X12UnexpectedError'
+                $ref: '#/components/schemas/OcsfUnexpectedError'
   /disconnect:
     post:
       tags: [connection]
@@ -157,7 +459,7 @@ components:
   schemas:
     ConnectionProfile:
       $ref: './connectionProfile.yml'
-    X12UnexpectedError:
+    OcsfUnexpectedError:
       description: >-
         The platform unexpectedError body — errorModelBase plus a msg that is always
         the same generic text (the cause can name paths inside the container).

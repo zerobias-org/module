@@ -1,5 +1,5 @@
 /**
- * Environment for the X12 receiver e2e suite — the only file in this module that reads
+ * Environment for the OCSF Receiver e2e suite — the only file in this module that reads
  * process.env. Gradle's testDocker task sets TEST_MODE / MODULE_DIR / CONTAINER_URL
  * (describeReceiver in helpers.ts connects to CONTAINER_URL; no slot secret is involved).
  */
@@ -20,4 +20,4 @@ export const CONTAINER_URL = process.env.CONTAINER_URL ?? '';
  * there is no local container to feed, so this must be set to the module's container on the
  * node (the suite fails, rather than skips, without one).
  */
-export const X12_CONTAINER = process.env.X12_CONTAINER ?? '';
+export const OCSF_CONTAINER = process.env.OCSF_CONTAINER ?? '';

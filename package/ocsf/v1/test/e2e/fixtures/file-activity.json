@@ -1,0 +1,44 @@
+[
+  {
+    "class_uid": 1001,
+    "category_uid": 1,
+    "activity_id": 1,
+    "type_uid": 100101,
+    "severity_id": 1,
+    "time": 1760000000000,
+    "file": {
+      "name": "passwd",
+      "path": "/etc/passwd",
+      "type_id": 1
+    },
+    "metadata": {
+      "uid": "file-1",
+      "version": "1.1.0",
+      "product": {
+        "name": "e2e",
+        "vendor_name": "ZeroBias"
+      }
+    }
+  },
+  {
+    "class_uid": 1001,
+    "category_uid": 1,
+    "activity_id": 1,
+    "type_uid": 100101,
+    "severity_id": 1,
+    "time": 1760000030000,
+    "file": {
+      "name": "shadow",
+      "path": "/etc/shadow",
+      "type_id": 1
+    },
+    "metadata": {
+      "uid": "file-2",
+      "version": "1.1.0",
+      "product": {
+        "name": "e2e",
+        "vendor_name": "ZeroBias"
+      }
+    }
+  }
+]

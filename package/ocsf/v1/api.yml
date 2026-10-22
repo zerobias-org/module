@@ -6,7 +6,7 @@ info:
   x-impl-name: ocsf
   x-product-infos:
     - $ref: './node_modules/@zerobias-org/product-auditmation-generic-dataproducer/catalog.yml#/Product'
-    - $ref: './node_modules/@zerobias-org/product-zerobias-zerobias/catalog.yml#/Product'
+    - $ref: './node_modules/@zerobias-org/product-ocsf-ocsf/catalog.yml#/Product'
 # Two interfaces, both referenced path by path from their modules; the implementation is Java (java/).
 #  - @zerobias-org/module-interface-ocsf: EVERY path (listClasses, list<Class>/get<Class> per class).
 #    A class with no events answers an empty page / 404. ApiSpecTest fails when an interface

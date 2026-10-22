@@ -153,7 +153,7 @@ Fail-fast exactly as x12 §3: unknown keys, wrong types, bad globs or durations 
 |---|---|
 | Path / npm | `package/ocsf/v1` → `@zerobias-org/module-ocsf-v1`, `zerobias.package: ocsf.v1.module` |
 | Build | `zb.java-module`; `java/` Maven project (Javalin, SQLite JDBC, Gson, SnakeYAML); the pom copies the interface's `api.yml` into the jar |
-| Dependencies | `@zerobias-org/module-interface-ocsf`, `@zerobias-org/module-interface-dataproducer`, `@zerobias-org/product-auditmation-generic-dataproducer`, `@zerobias-org/product-zerobias-zerobias` (stand-in until an OCSF product exists, §10) |
+| Dependencies | `@zerobias-org/module-interface-ocsf`, `@zerobias-org/module-interface-dataproducer`, `@zerobias-org/product-auditmation-generic-dataproducer`, `@zerobias-org/product-ocsf-ocsf` |
 | Files | `api.yml` (`$ref`s all 159 interface paths + the DataProducer files paths; `ApiSpecTest` fails when the interface's path set changes), `runtimeConfig.yml`, `connectionProfile.yml` (no required field), `Dockerfile`, `nginx*.conf`, `startup.sh`, `DESIGN.md`, `README.md`, `CLAUDE.md` |
 
 ## 8. Tests
@@ -184,10 +184,9 @@ Fail-fast exactly as x12 §3: unknown keys, wrong types, bad globs or durations 
 
 ## 10. Open questions
 
-1. **Product package.** hl7/v2 and x12/x12 each depend on their own product
-   (`product-hl7-hl7`, `product-x12-x12`). `org/product` has no `ocsf` product (vendor `ocsf`
-   exists; no suite): until a productDev ticket creates `ocsf/ocsf`, `api.yml` names the generic
-   DataProducer and ZeroBias products.
+1. ~~**Product package.**~~ Resolved: `ocsf/ocsf` (`@zerobias-org/product-ocsf-ocsf`,
+   productDev-1), parented by the `ocsf` vendor with no suite, as hl7/v2 and x12/x12 depend on
+   their own products. `api.yml` names it next to the generic DataProducer product.
 2. **Duplicate policy** (§2): conflicts are stored under a suffixed key — or keep only the first?
 3. **`get<Class>` key** when `metadata.uid` is absent: `<fileId>#<line>` changes if the same
    event arrives in a different file — acceptable for v1?

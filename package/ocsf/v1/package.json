@@ -38,7 +38,7 @@
     "@zerobias-org/module-interface-dataproducer": "2.2.6",
     "@zerobias-org/module-interface-ocsf": "^1.0.0-dev.0",
     "@zerobias-org/product-auditmation-generic-dataproducer": "latest",
-    "@zerobias-org/product-zerobias-zerobias": "latest",
+    "@zerobias-org/product-ocsf-ocsf": "latest",
     "@zerobias-org/util-connector": "^1.0.31",
     "axios": "^1.13.2"
   },

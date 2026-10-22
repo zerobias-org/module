@@ -82,8 +82,8 @@ java/scripts/e2e-local.sh                     # the real image, uploads on, ~1 m
   scanned flat, no listener ports — all inherited from x12/x12 and unchanged.
 - **Nested objects are untyped in the client.** The interface links models by `x-ocsf-object`
   (not `$ref`), so `event.user` is `object` in TypeScript: read nested fields as records.
-- **No OCSF product package yet.** `api.yml` names the generic DataProducer and ZeroBias
-  products until an `ocsf/ocsf` product exists (DESIGN §10).
+- **Two products.** `api.yml` names `product-ocsf-ocsf` (the events) and the generic
+  DataProducer product (the files side); both are npm dependencies the `$ref`s resolve against.
 
 ## Conventions
 

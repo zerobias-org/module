@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { URL, UnexpectedError } from '@zerobias-org/types-core-js';
+import { DateFormat, DateTime, URL, UnexpectedError } from '@zerobias-org/types-core-js';
 import { Certificate, CertificateSummary, CmvpModuleType, CmvpModuleTypeDef, CmvpStandard, CmvpStandardDef, CmvpStatus, CmvpStatusDef } from '../generated/model/index.js';
 import { DETAIL_PATH_PREFIX } from './CmvpClient.js';
 
@@ -40,12 +40,19 @@ export function toStatus(raw: string | undefined): CmvpStatusDef | undefined {
   }
 }
 
-export function toDate(raw: string | undefined): Date | undefined {
+// CMVP prints calendar dates as MM/DD/YYYY. They are rebuilt as ISO strings
+// rather than parsed through Date(), which would anchor them to local midnight
+// and shift the calendar day in any timezone east of UTC.
+export function toDate(raw: string | undefined): DateFormat | undefined {
   if (!raw) return undefined;
-  const trimmed = raw.trim();
-  if (!trimmed) return undefined;
-  const parsed = new Date(trimmed);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  const match = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return undefined;
+  const [, month, day, year] = match;
+  try {
+    return new DateFormat(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+  } catch {
+    return undefined;
+  }
 }
 
 export function certificateNumberFromHref(href: string): string {
@@ -112,7 +119,7 @@ export function parseDetailPage(
   html: string,
   certificateNumber: string,
   baseUrl: string,
-  lastAcquired: Date,
+  lastAcquired: DateTime,
 ): Certificate {
   const $ = cheerio.load(html);
 

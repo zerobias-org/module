@@ -1,82 +1,107 @@
 # NIST CMVP Module
 
-Data connector for NIST's [Cryptographic Module Validation Program](https://csrc.nist.gov/projects/cryptographic-module-validation-program)
-(CMVP) registry — the authoritative list of FIPS 140-1/140-2/140-3 validated
-cryptographic modules.
+`@zerobias-org/module-nist-cmvp` reads NIST's [Cryptographic Module Validation
+Program](https://csrc.nist.gov/projects/cryptographic-module-validation-program)
+(CMVP) registry: the authoritative record of which cryptographic modules are
+FIPS 140-1/140-2/140-3 validated and under which conditions.
 
-The registry is a **public web page with no REST API** — this module scrapes
-it with [cheerio](https://cheerio.js.org/). It's the first HTML-scraping
-module in this org (every other module wraps a documented API); see the
-connector's design docs for the full rationale.
+The registry has no API. The module scrapes the public validated-modules
+listing and the per-certificate detail pages with cheerio, and maps them to
+typed `CertificateSummary` and `Certificate` records. Every `Certificate`
+carries the original detail-page HTML fragment (`rawEntryHtml`) and the
+canonical source URL (`detailUrl`) as its audit trail.
 
-## Authentication and authorization
+## Installation
 
-**None.** The registry is fully public and unauthenticated. `connectionProfile.yml`
-is intentionally near-empty — `connect()` performs a reachability check
-against the listing page rather than presenting credentials. The one
-optional field, `baseUrl`, exists only to point the module at a mirror or
-adapt to a future URL change; omit it to use the real NIST site.
-
-```typescript
-import { newCmvp } from '@zerobias-org/module-nist-cmvp';
-
-const api = newCmvp();
-await api.connect({}); // no credentials required
+```bash
+npm install @zerobias-org/module-nist-cmvp
 ```
+
+Node 22 and the `@zerobias-org` registry (`https://pkg.zerobias.org/`) are
+required; see the repository README for `ZB_TOKEN` setup.
+
+## Authentication
+
+None. The CMVP registry is a public, unauthenticated web site, so this module
+has **no connection profile** and no `connect()` lifecycle: it is usable as soon
+as it is constructed, and a collector can call it directly without a Hub
+connection.
 
 ## Usage
 
 ```typescript
 import { newCmvp } from '@zerobias-org/module-nist-cmvp';
 
-const api = newCmvp();
-await api.connect({});
+const cmvp = newCmvp();
+const certificates = cmvp.getCertificateApi();
 
-const certApi = api.getCertificateApi();
+// Page 1, 50 entries. The registry returns one flat listing, so paging is
+// applied client-side over the full scraped list.
+const page = await certificates.list(1, 50);
+console.log(page.count, page.items[0].certificateNumber);
 
-// List validated modules (client-side paged — the registry itself has no
-// native pagination, see the module's pagination-approach note in src/).
-const page = await certApi.list(1, 50);
-
-// Get one certificate's full detail record, including the verbatim Caveat
-// text and a captured HTML fragment of the source entry.
-const cert = await certApi.get('5425');
-console.log(cert.caveatText); // read this before treating a cert as valid for a config
+// Full detail record for one certificate number.
+const cert = await certificates.get('5425');
+console.log(cert.moduleName, cert.standard, cert.status, cert.caveatText);
 ```
 
-**On `caveatText`:** it states the *specific conditions* (OS/software
-version, configuration, key types) under which a validation actually
-applies. A certificate is not blanket-valid — always check `caveatText`
-before citing a module as FIPS-validated for a particular deployment.
+## Operations
 
-## Notes for reviewers
+| Operation | Method | Source page |
+|-----------|--------|-------------|
+| `listCertificates` | `getCertificateApi().list(pageNumber?, pageSize?)` | `/validated-modules/search/all` listing table |
+| `getCertificate` | `getCertificateApi().get(certificateNumber)` | `/certificate/{certificateNumber}` detail page |
 
-- `productId` / `vendorId` on `Certificate` are shipped but intentionally
-  left unset in this version — catalog matching (fuzzy-matching CMVP's
-  printed vendor/module names against the ZeroBias catalog) is an explicit
-  follow-up, not in scope here.
-- The listing operation cross-checks its parsed row count against the
-  page's own reported total (`#divResults[data-total-records]`) and throws
-  rather than silently under-reporting on a mismatch.
+`list` returns a `PagedResults<CertificateSummary>`; `get` returns a
+`Certificate`. A certificate number that does not exist rejects with
+`NoSuchObjectError`. A listing whose parsed row count disagrees with the
+page's own reported total rejects with `UnexpectedError` rather than
+under-reporting silently.
 
-## Test
+`productId` / `vendorId` on `Certificate` are reserved for matching entries
+against the ZeroBias catalog and are not populated yet.
 
-This module is built and tested via Gradle + zbb. From the repo root:
+## Examples
+
+```typescript
+import { NoSuchObjectError } from '@zerobias-org/types-core-js';
+import { newCmvp } from '@zerobias-org/module-nist-cmvp';
+
+const certificates = newCmvp().getCertificateApi();
+
+try {
+  const cert = await certificates.get('999999999');
+  console.log(cert.moduleName);
+} catch (e) {
+  if (e instanceof NoSuchObjectError) {
+    console.log('no such certificate');
+  } else {
+    throw e;
+  }
+}
+```
+
+## Testing
+
+Unit tests run against committed HTML fixtures with nock (no network). From
+this module directory:
 
 ```bash
-./gradlew :nist:cmvp:build   # validate → generate → compile → buildImage
-
-# Local test modes (run from this module dir, inside a loaded zbb slot)
-zbb test --slot local         # unit tests (nock-mocked, no network)
-zbb testDirect --slot local   # e2e direct — hits the real live registry
-zbb testDocker --slot local   # e2e docker (container, wire protocol)
+zbb test --slot local         # unit tests (nock + fixtures)
 zbb gate --slot local         # full gate (writes gate-stamp.json — commit it)
 ```
 
-`describeModule<T>` e2e tests require at least one secret registered for
-the module (even though no credentials are needed):
+There is no `test/e2e` suite yet: `describeModule` from
+`@zerobias-org/module-test-client` connects through a slot secret and a
+`ConnectionProfile`, which a profile-less module does not have, and the gate's
+`testDocker` step expects a container that a profile-less module never builds.
+Until the tooling supports profile-less modules, verify the scraper against the
+live registry by hand:
 
-```bash
-zbb secret create cmvp-connection --module @zerobias-org/module-nist-cmvp \
-  baseUrl=https://csrc.nist.gov
+```typescript
+import { newCmvp } from '@zerobias-org/module-nist-cmvp';
+
+const api = newCmvp().getCertificateApi();
+console.log((await api.list(1, 5)).count);        // ~750 at the time of writing
+console.log((await api.get('5425')).moduleName);  // CorSSL
 ```

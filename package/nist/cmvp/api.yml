@@ -25,6 +25,9 @@ paths:
       responses:
         '200':
           description: A page of CMVP certificate summaries
+          headers:
+            link:
+              $ref: '#/components/headers/pagedLinkHeader'
           content:
             application/json:
               schema:
@@ -62,6 +65,9 @@ components:
       schema:
         type: string
         example: '5425'
+  headers:
+    pagedLinkHeader:
+      $ref: './node_modules/@zerobias-org/types-core/schema/pagedLinkHeader.yml'
   schemas:
     CmvpStandard:
       type: string

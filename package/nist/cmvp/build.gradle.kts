@@ -1,3 +1,3 @@
 plugins {
-    id("zb.typescript-connector")
+    id("zb.typescript")
 }

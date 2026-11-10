@@ -1,4 +1,4 @@
-import { NoSuchObjectError } from '@zerobias-org/types-core-js';
+import { DateTime, NoSuchObjectError, PagedResults } from '@zerobias-org/types-core-js';
 import { CertificateProducerApi } from '../generated/api/index.js';
 import { Certificate, CertificateSummary } from '../generated/model/index.js';
 import { CmvpClient, DETAIL_PATH_PREFIX, LISTING_PATH } from './CmvpClient.js';
@@ -8,7 +8,7 @@ import { handleAxiosError } from './util.js';
 export class CertificateProducerImpl implements CertificateProducerApi {
   constructor(private client: CmvpClient) {}
 
-  async list(pageNumber = 1, pageSize = 50): Promise<Array<CertificateSummary>> {
+  async list(results: PagedResults<CertificateSummary>): Promise<void> {
     let html: string;
     try {
       const response = await this.client.httpClient.get<string>(LISTING_PATH);
@@ -19,10 +19,9 @@ export class CertificateProducerImpl implements CertificateProducerApi {
 
     const all = parseListingPage(html, this.client.baseUrl);
 
-    // No native pagination support (see .claude/skills/pagination/SKILL.md
-    // "Approach 2") — the registry returns one flat listing, sliced client-side.
-    const start = (pageNumber - 1) * pageSize;
-    return all.slice(start, start + pageSize);
+    // The registry returns one flat listing with no native pagination, so the
+    // page is sliced client-side (pagination skill, Approach 2).
+    results.ingest(all, results.pageNumber, results.pageSize);
   }
 
   async get(certificateNumber: string): Promise<Certificate> {
@@ -38,6 +37,6 @@ export class CertificateProducerImpl implements CertificateProducerApi {
       throw new NoSuchObjectError('cmvp-certificate', certificateNumber);
     }
 
-    return parseDetailPage(html, certificateNumber, this.client.baseUrl, new Date());
+    return parseDetailPage(html, certificateNumber, this.client.baseUrl, new DateTime(new Date()));
   }
 }

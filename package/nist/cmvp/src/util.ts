@@ -1,5 +1,6 @@
 import {
   Duration,
+  InvalidStateError,
   NoSuchObjectError,
   RateLimitExceededError,
   TimeoutError,
@@ -19,4 +20,28 @@ export function handleAxiosError(error: any, resourceType: string, resourceId: s
     throw new TimeoutError(Duration.fromMilliseconds(30000));
   }
   throw new UnexpectedError(`CMVP request failed: ${error.message ?? 'unknown error'}`, status ?? 500);
+}
+
+/**
+ * Normalizes null to undefined for optional properties while preserving
+ * other falsy values (0, false, "").
+ */
+export function optional<T>(value: T | null | undefined | unknown): T | undefined {
+  return (value ?? undefined) as T | undefined;
+}
+
+/**
+ * Validates that required properties exist on a raw record (not null/undefined).
+ * Other falsy values (0, false, "") pass.
+ */
+export function ensureProperties<K extends keyof any>(
+  raw: any,
+  properties: readonly K[],
+): asserts raw is Record<string, any> & { [P in K]: any } {
+  for (const prop of properties) {
+    const value = raw[prop];
+    if (value === null || value === undefined) {
+      throw new InvalidStateError(`Missing required field: ${String(prop)}`);
+    }
+  }
 }

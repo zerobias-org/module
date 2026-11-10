@@ -94,11 +94,12 @@ components:
         - FIRMWARE_HYBRID
     CertificateSummary:
       type: object
-      description: A single row from the CMVP validated-modules listing page.
+      description: >-
+        A single row from the CMVP validated-modules listing page. Some entries
+        are listed with their module and vendor names withheld by CMVP, so only
+        the certificate number and its source URL are always present.
       required:
         - certificateNumber
-        - moduleName
-        - vendorName
         - detailUrl
       properties:
         certificateNumber:
@@ -130,13 +131,10 @@ components:
         conditions (see caveatText) under which that validation applies.
       required:
         - certificateNumber
-        - moduleName
         - standard
         - status
         - overallLevel
         - moduleType
-        - caveatText
-        - vendorName
         - detailUrl
         - rawEntryHtml
         - lastAcquired
@@ -147,7 +145,9 @@ components:
           example: '5425'
         moduleName:
           type: string
-          description: Name of the validated cryptographic module, as printed by CMVP
+          description: >-
+            Name of the validated cryptographic module, as printed by CMVP.
+            Absent for entries whose module details are withheld.
         standard:
           $ref: '#/components/schemas/CmvpStandard'
         status:
@@ -173,7 +173,8 @@ components:
             States the specific conditions (e.g. required OS/software
             version, configuration, key types) under which this validation
             is actually valid — critical for correct use, never derive or
-            summarize in place of this field.
+            summarize in place of this field. Absent for entries whose
+            module details are withheld.
         overview:
           type: string
           description: The CMVP entry Description field — free-text overview of the module

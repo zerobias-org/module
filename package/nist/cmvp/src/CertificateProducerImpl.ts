@@ -1,4 +1,4 @@
-import { DateTime, NoSuchObjectError, PagedResults } from '@zerobias-org/types-core-js';
+import { NoSuchObjectError, PagedResults } from '@zerobias-org/types-core-js';
 import { CertificateProducerApi } from '../generated/api/index.js';
 import { Certificate, CertificateSummary } from '../generated/model/index.js';
 import { CmvpClient, DETAIL_PATH_PREFIX, LISTING_PATH } from './CmvpClient.js';
@@ -37,6 +37,6 @@ export class CertificateProducerImpl implements CertificateProducerApi {
       throw new NoSuchObjectError('cmvp-certificate', certificateNumber);
     }
 
-    return parseDetailPage(html, certificateNumber, this.client.baseUrl, new DateTime(new Date()));
+    return parseDetailPage(html, certificateNumber, this.client.baseUrl, new Date());
   }
 }

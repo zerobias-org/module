@@ -119,6 +119,24 @@ describe('CertificateApi.get', () => {
     expect(cert.validationDate?.toString()).to.equal('2026-07-19');
   });
 
+  it('maps an entry whose module, vendor and caveat are withheld by CMVP', async () => {
+    const client = new CmvpImpl();
+    nock(MOCK_BASE_URL).get(`${DETAIL_PATH_PREFIX}5501`).reply(200, fixture('detail-5501-withheld.html'));
+
+    const cert = await client.getCertificateApi().get('5501');
+
+    expect(cert.certificateNumber).to.equal('5501');
+    expect(cert.moduleName).to.be.undefined;
+    expect(cert.vendorName).to.be.undefined;
+    expect(cert.caveatText).to.be.undefined;
+    expect((cert.standard as EnumValue).eq(CmvpStandard._3)).to.be.true;
+    expect((cert.status as EnumValue).eq(CmvpStatus.Active)).to.be.true;
+    expect(cert.overallLevel).to.equal(2);
+    expect((cert.moduleType as EnumValue).eq(CmvpModuleType.Hardware)).to.be.true;
+    expect(cert.sunsetDate?.toString()).to.equal('2031-08-23');
+    expect(cert.rawEntryHtml).to.be.a('string').and.not.empty;
+  });
+
   it('throws NoSuchObjectError on a 404', async () => {
     const client = new CmvpImpl();
     nock(MOCK_BASE_URL).get(`${DETAIL_PATH_PREFIX}999999`).reply(404);

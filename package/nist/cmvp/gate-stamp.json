@@ -1,0 +1,22 @@
+{
+  "version": "0.0.0-uat.0",
+  "branch": "feat/nist-cmvp",
+  "sourceHash": "17ef1928d14b0f6ce087913da61c6a1bbbb248259d40111d91a83d57dd3a7a9a",
+  "testHash": "c442a6d9bac80abbb19d08d2d3ebd4d5b1fce3fffd7c08450a9f18a970e0d4fd",
+  "tasks": {
+    "validate": "passed",
+    "lint": "passed",
+    "compile": "passed",
+    "test": "passed",
+    "testDirect": "passed",
+    "testDocker": "passed",
+    "testDataloader": "passed",
+    "buildArtifacts": "passed",
+    "dataloaderExec": "passed"
+  },
+  "tests": {
+      "unit": { "expected": 10, "ran": 10, "status": "passed" },
+      "integration": { "expected": 0, "ran": 0, "status": "skipped" },
+      "e2e": { "expected": 0, "ran": 0, "status": "skipped" }
+  }
+}

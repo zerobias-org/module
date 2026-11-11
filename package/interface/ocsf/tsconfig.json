@@ -1,0 +1,15 @@
+{
+  "extends": "@zerobias-org/context-pack-dev/tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist"
+  },
+  "include": [
+    "src/**/*",
+    "generated/**/*"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "hub-sdk"
+  ]
+}

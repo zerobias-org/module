@@ -1,0 +1,158 @@
+package com.zerobias.module.ocsf.inbox;
+
+import com.zerobias.module.ocsf.ModuleRuntimeConfig;
+import com.zerobias.module.ocsf.OcsfClasses;
+import com.zerobias.module.ocsf.PollerHandle;
+import com.zerobias.module.ocsf.SourceConfig;
+import com.zerobias.module.ocsf.buffer.BufferStore;
+import com.zerobias.module.ocsf.buffer.RetentionSweeper;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Starts the inbox: one {@link InboxPoller} per {@code config.sources[]}, all sharing one
+ * {@link FileConsumer} and {@link EventSplitter}. {@link #start} returns a
+ * {@link PollerHandle} reporting the aggregate {@link com.zerobias.module.ocsf.health.PollerStatus}.
+ * {@link com.zerobias.module.ocsf.OcsfApiServer} calls it directly: a receiver that boots
+ * without pollers ingests nothing, so there is no discovery step that could quietly find none.
+ */
+public final class InboxPollerFactory {
+
+    private InboxPollerFactory() {
+    }
+
+    /** Start the pollers on the buffer's clock, each on its own schedule. */
+    public static Handle start(ModuleRuntimeConfig config, OcsfClasses classes, BufferStore buffer,
+                               RetentionSweeper sweeper) {
+        return start(config, classes, buffer, sweeper, buffer.clock(), true);
+    }
+
+    /**
+     * Build the pollers with {@code clock}; {@code schedule=false} leaves them unscheduled, so a
+     * caller drives every scan through {@link Handle#rescan}. {@code sweeper} is null when
+     * retention is unbounded (no backpressure).
+     */
+    public static Handle start(ModuleRuntimeConfig config, OcsfClasses classes, BufferStore buffer,
+                               RetentionSweeper sweeper, Clock clock, boolean schedule) {
+        EventSplitter splitter = new EventSplitter(classes, config.maxFileBytes(), config.maxEventBytes());
+        FileConsumer consumer = new FileConsumer(buffer, sweeper, config, splitter, clock);
+        List<InboxPoller> pollers = new ArrayList<>();
+        for (SourceConfig s : config.sources()) {
+            pollers.add(new InboxPoller(s, consumer, buffer, clock, config.consumedSuffix(), config.errorSuffix()));
+        }
+        Handle h = new Handle(pollers);
+        if (schedule) {
+            for (InboxPoller p : pollers) {
+                p.start();
+            }
+        }
+        return h;
+    }
+
+    /** The running set of pollers. */
+    public static final class Handle implements PollerHandle {
+
+        private final List<InboxPoller> pollers;
+        private volatile boolean closed;
+
+        Handle(List<InboxPoller> pollers) {
+            this.pollers = List.copyOf(pollers);
+        }
+
+        public List<InboxPoller> pollers() {
+            return pollers;
+        }
+
+        @Override
+        public RescanResult rescan(String source) throws Exception {
+            int scanned = 0;
+            int discovered = 0;
+            int consumed = 0;
+            int errored = 0;
+            boolean matched = false;
+            for (InboxPoller p : pollers) {
+                if (source != null && !source.isBlank() && !p.source().name().equals(source)) {
+                    continue;
+                }
+                matched = true;
+                RescanResult r = p.scan();
+                scanned += r.scanned();
+                discovered += r.discovered();
+                consumed += r.consumed();
+                errored += r.errored();
+            }
+            if (!matched) {
+                throw new IllegalArgumentException("unknown source: " + source);
+            }
+            return new RescanResult(scanned, discovered, consumed, errored);
+        }
+
+        @Override
+        public boolean up() {
+            if (closed || pollers.isEmpty()) {
+                return false;
+            }
+            for (InboxPoller p : pollers) {
+                if (!p.up()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        @Override
+        public Optional<Instant> lastScan() {
+            Instant best = null;
+            for (InboxPoller p : pollers) {
+                Instant i = p.lastScan().orElse(null);
+                if (i != null && (best == null || i.isAfter(best))) {
+                    best = i;
+                }
+            }
+            return Optional.ofNullable(best);
+        }
+
+        @Override
+        public Optional<Instant> lastConsumed() {
+            Instant best = null;
+            for (InboxPoller p : pollers) {
+                Instant i = p.lastConsumed().orElse(null);
+                if (i != null && (best == null || i.isAfter(best))) {
+                    best = i;
+                }
+            }
+            return Optional.ofNullable(best);
+        }
+
+        @Override
+        public boolean backpressure() {
+            for (InboxPoller p : pollers) {
+                if (p.backpressure()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public List<SourceStatus> sources() {
+            List<SourceStatus> out = new ArrayList<>();
+            for (InboxPoller p : pollers) {
+                out.add(p.status());
+            }
+            return out;
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+            for (InboxPoller p : pollers) {
+                p.close();
+            }
+        }
+    }
+}

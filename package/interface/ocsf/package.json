@@ -1,0 +1,69 @@
+{
+  "name": "@zerobias-org/module-interface-ocsf",
+  "version": "1.0.0",
+  "description": "OCSF (Open Cybersecurity Schema Framework) Interface",
+  "moduleId": "3afa764f-1c90-4edf-9aca-d2f954fb1d3e",
+  "type": "module",
+  "interface": true,
+  "main": "dist/src/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./api": {
+      "types": "./dist/generated/api/index.d.ts",
+      "import": "./dist/generated/api/index.js"
+    },
+    "./model": {
+      "types": "./dist/generated/model/index.d.ts",
+      "import": "./dist/generated/model/index.js"
+    }
+  },
+  "author": "team@zerobias.com",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zerobias-org/module",
+    "directory": "package/interface/ocsf"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "scripts": {
+    "clean": "rm -rf build/ dist/ generated/ hub-sdk/generated hub-sdk/tsconfig.json hub-sdk/dist module-interface-ocsf.yml full.yml fixtures/generated",
+    "generate:api": "node scripts/generate.mjs --api",
+    "generate:fixtures": "node scripts/generate.mjs --fixtures"
+  },
+  "files": [
+    "dist",
+    "generated/api/manifest.json",
+    "api.yml",
+    "connectionProfile.yml",
+    "documentation"
+  ],
+  "zerobias": {
+    "package": "zerobias.interface.ocsf.module",
+    "dataloader-version": "1.0.0",
+    "import-artifact": "module"
+  },
+  "dependencies": {
+    "@zerobias-org/product-zerobias-zerobias": "latest",
+    "@zerobias-org/util-connector": "^2.0.4",
+    "axios": "^1.19.0"
+  },
+  "peerDependencies": {
+    "@zerobias-org/types-core": "^2.0.1",
+    "@zerobias-org/types-core-js": "^2.0.3"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.20",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.19.17",
+    "@zerobias-org/context-pack-dev": "^3.0.0",
+    "chai": "^4.5.0",
+    "js-yaml": "^4.3.2",
+    "mocha": "^11.7.5",
+    "tsx": "^4.21.0"
+  }
+}

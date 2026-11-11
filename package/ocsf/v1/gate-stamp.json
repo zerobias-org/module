@@ -1,0 +1,21 @@
+{
+  "version": "0.0.0-uat.0",
+  "branch": "task/dev/contextDev-10",
+  "sourceHash": "a3afc2fc48046386e62f74a9db17245c8106af813786a5aa8f5e7d8623f72341",
+  "testHash": "46a369edf37fd0a96bb33c4226976179f12de2e8266a5e5f64590d771bc0d108",
+  "tasks": {
+    "validate": "passed",
+    "lint": "passed",
+    "compile": "passed",
+    "test": "passed",
+    "testDirect": "passed",
+    "testDocker": "passed",
+    "testDataloader": "passed",
+    "buildArtifacts": "passed"
+  },
+  "tests": {
+      "unit": { "expected": 0, "ran": 0, "status": "skipped" },
+      "integration": { "expected": 0, "ran": 0, "status": "skipped" },
+      "e2e": { "expected": 17, "ran": 17, "status": "passed" }
+  }
+}

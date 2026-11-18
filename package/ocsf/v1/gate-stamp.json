@@ -1,7 +1,7 @@
 {
   "version": "0.0.0-uat.0",
-  "branch": "task/dev/contextDev-10",
-  "sourceHash": "a3afc2fc48046386e62f74a9db17245c8106af813786a5aa8f5e7d8623f72341",
+  "branch": "fix/java4shell-base64-intrinsics",
+  "sourceHash": "4127a6b5efdd14663739e671eca5b84005adbd676ac9f27cd52f92792a83209e",
   "testHash": "46a369edf37fd0a96bb33c4226976179f12de2e8266a5e5f64590d771bc0d108",
   "tasks": {
     "validate": "passed",
@@ -11,7 +11,8 @@
     "testDirect": "passed",
     "testDocker": "passed",
     "testDataloader": "passed",
-    "buildArtifacts": "passed"
+    "buildArtifacts": "passed",
+    "dataloaderExec": "passed"
   },
   "tests": {
       "unit": { "expected": 0, "ran": 0, "status": "skipped" },

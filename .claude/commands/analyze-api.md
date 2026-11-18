@@ -16,7 +16,7 @@ A read-only artifact (no module code written). The output drives subsequent `/cr
 - Inventory **every** endpoint exposed by `$1 $2`'s public API
 - Authentication methods, scopes, rate limits, pagination conventions
 - API versioning + breaking-change policy
-- Test 3–5 representative endpoints against the live API with the slot's credentials
+- Test 3–5 representative endpoints against the live API (with the slot's credentials when the API needs them; a public API needs none)
 - Save sanitized example responses for each tested endpoint
 
 ## Phase 2 — Entity discovery
@@ -49,7 +49,7 @@ Per operation:
 
 - HTTP method + path
 - Required parameters
-- Pagination style (`pageNumber`/`pageToken`/cursor)
+- Pagination style (offset or page number, cursor/token, or none; the `implementation` skill maps each to a list pattern)
 - Notes on quirks (e.g. "returns 422 instead of 404", "doesn't honor `per_page`")
 
 ## Phase 5 — Priority analysis
@@ -63,18 +63,18 @@ Per operation:
 
 ## Outputs
 
-Saved under `.claude/.localmemory/analyze-{vendor}-{product}/`:
+Saved under `.claude/.localmemory/analyze-api-{vendor}-{product}/`:
 
 - `entity-diagram.md` — Mermaid diagram + key properties per entity
 - `operation-catalog.md` — full operation list with per-operation notes
 - `implementation-plan.md` — prioritized rollout: core, secondary, nice-to-have, with suggested `/add-operations` batches
 - `special-notes.md` — edge cases, vendor docs URLs, auth quirks, rate-limit observations
 
-## What this does NOT do
+## What this does not do
 
 - Doesn't scaffold a module (use `/create-module`)
 - Doesn't write `api.yml` (that's @api-architect during Phase 3 of `/create-module`)
-- Doesn't decide the connector vs plain choice (the auth research informs it, but the call is made when scaffolding)
+- Doesn't decide connector versus plain (profile-less). The auth research informs it: record whether the API needs credentials at all; the decision is made in Phase 1 of `/create-module` with the `connection-profile` skill
 
 ## Example
 

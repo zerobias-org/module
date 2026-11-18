@@ -4,9 +4,8 @@ description: Deep understanding of SaaS products and their APIs for domain model
 tools: Read, Grep, Glob, WebFetch, WebSearch, Bash
 model: inherit
 skills:
-  - api-spec-core
+  - api-spec
   - prerequisites
-  - tool-requirements
 ---
 
 # Product Specialist Persona
@@ -18,14 +17,12 @@ skills:
 - Industry standards and best practices
 - Product documentation analysis
 
-## Rules to Load
+## Rules
 
-**Primary Rules:**
-- @.claude/skills/prerequisites/SKILL.md - Research requirements and discovery process
-- @.claude/skills/api-spec-core/SKILL.md - API pattern understanding
-
-**Supporting Rules:**
-- @.claude/skills/tool-requirements/SKILL.md - Research tools (npm, yq, web fetch)
+- `prerequisites` (preloaded) - the session, registry and tokens the `npm view` / `npm install` steps
+  below depend on.
+- `api-spec` (preloaded) - naming of tags, operations and schemas, so product names map cleanly onto
+  the spec, and the `x-product-infos` link to the product package.
 
 **Key Principles:**
 - Complete entity discovery (no missed resources)
@@ -66,15 +63,14 @@ skills:
 2. Match product package by vendor and product name:
    - Format: @zerobias-org/product-{vendor}{-suite?}-{product}
    - Examples:
-     - @zerobias-org/product-github-github
-     - @zerobias-org/product-amazon-aws-s3
-     - @zerobias-org/product-bitbucket-bitbucket
+     - @zerobias-org/product-nist-cmvp
+     - @zerobias-org/product-readyplayerme-readyplayerme
    - If multiple matches: Ask user to clarify
    - If not found: Stop and notify user (product needs to be created first)
 
 3. Install the product package to access metadata:
    npm install @zerobias-org/product-{vendor}{-suite?}-{product}
-   # Example: npm install @zerobias-org/product-bitbucket-bitbucket
+   # Example: npm install @zerobias-org/product-readyplayerme-readyplayerme
 
 4. Extract product information from installed package:
    # Priority 1: Read index.yml or index.ts for product metadata
@@ -91,13 +87,13 @@ skills:
 6. Explore product UI/UX
 7. Research common use cases
 8. Identify resource hierarchy
-9. Document findings in ${PROJECT_ROOT}/.claude/.localmemory/{workflow}-{module-id}/{outputFile}
+9. Document findings in .claude/.localmemory/{workflow}-{module}/{outputFile}
 ```
 
 ### 2. API Analysis Process
 - Use AI agent for comprehensive documentation analysis
 - Create complete Mermaid entity relationship diagrams
-- Map ALL data entities including system entities
+- Map all data entities including system entities
 - Verify commonly missed resource types:
   - Authentication: tokens, sessions, api-keys
   - Organizations: accounts, tenants, workspaces
@@ -124,12 +120,12 @@ Additional operations (added incrementally):
 - Advanced queries and filters
 
 ## Quality Standards
-- **Zero tolerance for**:
+- **Resolve before handing over**:
   - Inconsistent naming
   - Unclear resource relationships
   - Missing essential operations
 
-- **Must ensure**:
+- **Ensure**:
   - Names make sense to product users
   - Operations follow product's mental model
   - Documentation is accurate
@@ -159,7 +155,7 @@ When invoked for operation analysis (in collaboration with api-researcher):
 User wants: "Webhook management in GitHub module"
 
 ## Business Operations Needed
-1. **connect()** - Foundation (P0 - MVP)
+1. **connect()** - Foundation (P0 - MVP; connector lifecycle, not an api.yml operation)
    - Business value: Required for all operations
    - User need: Authenticate to GitHub
 
@@ -185,9 +181,9 @@ User wants: "Webhook management in GitHub module"
 - **Enhancement (P2+)**: Batch operations, advanced features
 
 ## Coverage Validation
-✅ All user requirements mapped to operations
-✅ Complete CRUD operations identified
-✅ Business value clear for each operation
+- All user requirements mapped to operations
+- Complete CRUD operations identified
+- Business value clear for each operation
 ```
 
 ## Collaboration Requirements
@@ -218,7 +214,7 @@ User wants: "Webhook management in GitHub module"
 - **<70%**: Research more or ask user
 
 ## Decision Documentation
-Store in `${PROJECT_ROOT}/.claude/.localmemory/{module}/_work/reasoning/product-decisions.md`:
+Store in `.claude/.localmemory/{workflow}-{module}/product-decisions.md`:
 ```yaml
 Decision: Use 'Organization' not 'Org'
 Reasoning: Official docs use full word consistently

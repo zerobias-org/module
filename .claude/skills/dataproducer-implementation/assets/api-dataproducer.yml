@@ -1,0 +1,73 @@
+# Paste the path block at the end of `paths:` in the module's api.yml and the
+# component block into `components:`. Every $ref targets the bundled spec in the
+# interface package's dist/ folder. Inside a $ref, `~1` is the JSON-pointer escape for `/`.
+paths:
+  # ---- DataProducer interface (do not edit; $ref'd from the interface package) ----
+  /objects:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects'
+  /objects/{objectId}:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}'
+  /objects/{objectId}/children:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1children'
+  /objects/{objectId}/search:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1search'
+  /objects/{objectId}/searchChildren:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1searchChildren'
+  /objects/{objectId}/collection/elements:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1elements'
+  /objects/{objectId}/collection/elements/{elementKey}:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1elements~1{elementKey}'
+  /objects/{objectId}/collection/search:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1search'
+  /objects/{objectId}/collection/bulk:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1collection~1bulk'
+  /objects/{objectId}/document:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1document'
+  /objects/{objectId}/download:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1download'
+  /objects/{objectId}/upload:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1upload'
+  /objects/{objectId}/invoke:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1invoke'
+  /objects/{objectId}/validate:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1objects~1{objectId}~1validate'
+  /schemas/{schemaId}:
+    $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/paths/~1schemas~1{schemaId}'
+```
+
+components:
+  parameters:
+    objectId:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/parameters/objectId'
+    pageNumberParam:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/parameters/pageNumberParam'
+    pageSizeParam:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/parameters/pageSizeParam'
+    sortByParam:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/parameters/sortByParam'
+    sortDirParam:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/parameters/sortDirParam'
+  schemas:
+    DataProducerObject:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/DataProducerObject'
+    ObjectClass:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/ObjectClass'
+    Schema:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/Schema'
+    Property:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/Property'
+    CreateObjectRequest:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/CreateObjectRequest'
+    UpdateObjectRequest:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/UpdateObjectRequest'
+    BulkOperation:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/BulkOperation'
+    BulkOperationRequest:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/BulkOperationRequest'
+    BulkOperationResponse:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/BulkOperationResponse'
+    ValidateFunctionInputRequest:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/ValidateFunctionInputRequest'
+    ValidationResult:
+      $ref: './node_modules/@zerobias-org/module-interface-dataproducer/dist/module-interface-dataproducer.yml#/components/schemas/ValidationResult'
+```

@@ -1,171 +1,163 @@
 ---
 name: scaffolding
-description: Module scaffolding via the @zerobias-org/module Yeoman generator. The generator emits a fully ESM/gradle-ready module and auto-runs the gradle build. No `npm run sync-meta`, no `npm install`, no manual symlinks.
+description: Scaffolds a new module with the Yeoman generator (`yo @zerobias-org/module`) and repairs its output - arguments, connector versus plain (profile-less) module, the files it writes, and the post-scaffold fix list (publishConfig registry, hub-sdk package scope, nock, `"interface": true` and the Impl stub for plain modules). Use when creating a new module, when asked to "scaffold" or "generate" a module, when the generator fails, or when a fresh module does not compile or its `tsconfig.json`, `package.json` or `src/index.ts` needs review.
 ---
 
-# Module Scaffolding
+# Scaffolding a module
 
-The generator is the single source of truth for what a fresh module looks like. This skill documents *how to invoke it* and *how to verify its output* — not what files it produces, since the generator owns that.
+The generator `@zerobias-org/generator-module` (run as `yo @zerobias-org/module`) writes the module
+skeleton. Its output is close to, but not exactly, what this repo's gate accepts, so scaffolding is two
+steps: run the generator, then apply the fix list below. Do both before designing the API.
 
-## Generator
+## 1. Decide connector or plain
 
-- **Package:** `@zerobias-org/generator-module` (registered name `module`, invoked as `yo @zerobias-org/module`)
-- **Source:** https://github.com/zerobias-org/util/tree/main/packages/generator-module (read-only reference for what's scaffolded)
-- **Install:** `npm i -g @zerobias-org/generator-module@0.25.2`
+| The source API | `moduleType` | Result |
+|---|---|---|
+| needs credentials (token, OAuth, basic) | `connector` | `zb.typescript-connector`, `connectionProfile.yml`, connect lifecycle, image and container tests. Example: `package/readyplayerme/readyplayerme` |
+| is public, no credentials | `plain` | `zb.typescript`, no profile, no lifecycle, no image. Example: `package/nist/cmvp` |
 
-## Preconditions
+The `connection-profile` skill owns this decision and the profile design. The choice matters here because
+the generator's plain output needs more repair than its connector output.
 
-The generator will throw if any of these are missing:
+## 2. Before running
 
-1. CWD is a directory whose `package.json.name` ends with `/module` (the module repo root)
-2. `gradlew` exists at that root (otherwise the auto-build step has nothing to run)
-3. Docker Desktop is running (`docker info` must return 0) — gradle's `buildImage` task needs it. Use `--no-install` to skip the auto-build if scaffolding offline.
-4. Node 22.21.x is active
+- The environment passes the `prerequisites` check, and the installed generator is the latest published
+  one (`npm view @zerobias-org/generator-module version`). Older versions write outdated dependency
+  lines.
+- The current directory is the repo root. The generator refuses to run unless the `package.json` there
+  has a name ending in `/module`.
+- The product package is published: `npm view @zerobias-org/product-<vendor>-[<suite>-]<product> version`.
+  The scaffold depends on it at `latest`, and `api.yml` references its `catalog.yml`.
+- `package/<vendor>/[<suite>/]<product>` does not exist yet. The generator aborts on an existing path
+  rather than merging.
+- You are on a feature branch cut from `dev` (see the `git-and-sdlc` skill).
 
-## Invocation
-
-The generator takes seven inputs. Two are essential and best-derived from product research; the rest should be pre-filled from repo context to keep prompts minimal.
+## 3. Run the generator
 
 ```bash
 yo @zerobias-org/module \
-  --productPackage '@zerobias-org/product-<vendor>-[<suite>-]<service>' \
-  --modulePackage  '@zerobias-org/module-<vendor>-[<suite>-]<service>' \
+  --productPackage '@zerobias-org/product-<vendor>-[<suite>-]<product>' \
+  --modulePackage  '@zerobias-org/module-<vendor>-[<suite>-]<product>' \
   --packageVersion '0.0.0' \
   --description    '<Display name>' \
   --repository     "$(git config remote.origin.url)" \
   --author         "$(git config user.email)" \
-  --moduleType     'connector'   # or 'plain'
+  --moduleType     'connector' \
+  --no-install
 ```
 
-Argument rules:
-- `productPackage` — **required**. Must be in `@zerobias-org/` and contain `/product-`. Comes from @product-specialist.
-- `modulePackage` — **required**. Must be in `@zerobias-org/` (module packages never move scopes) and contain `/module-`. Derived from `productPackage` by replacing `product-` with `module-` and switching scope.
-- `packageVersion` — always `0.0.0` for a new module. Gradle/zbb owns versioning afterwards.
-- `description` — human-readable display name. Pull from the product package's `index.yml` (`displayName`) when available.
-- `repository` — derive from `git config remote.origin.url` (always `git@github.com:zerobias-org/module.git` for this repo, but reading from git config keeps it future-proof).
-- `author` — derive from `git config user.email`. Do **not** read from `~/.claude/CLAUDE.md` — the global file no longer carries an email line; it has a directory-scoped table.
-- `moduleType` — `connector` if the API needs credentials, `plain` otherwise. `plain` skips `connectionProfile.yml`.
+| Argument | Rule |
+|---|---|
+| `productPackage` | Contains `/product-`; products live in `@zerobias-org`. |
+| `modulePackage` | Contains `/module-`. Pass it explicitly with the `@zerobias-org` scope: every module in this repo is `@zerobias-org/module-*`, while the generator's default is another scope. It prints a warning about the scope; that warning does not apply to this repo. |
+| `packageVersion` | `0.0.0`. Versions are bumped by the publish workflow, never in a pull request. |
+| `description` | The product's display name; it becomes the `description` in `package.json` and `api.yml`. |
+| `repository`, `author` | Read from git config as shown, so nothing personal is typed into a command or a skill. |
+| `moduleType` | `connector` or `plain`. |
+| `--no-install` | Skips the automatic gradle build (and the Docker check that goes with it). |
+| `--no-links` | Skips the `.nvmrc` / `.npmrc` symlinks. Rarely wanted. |
 
-The generator derives the destination path from `modulePackage`:
-- `@zerobias-org/module-github-github` → `package/github/github/`
-- `@zerobias-org/module-amazon-aws-s3` → `package/amazon/aws/s3/`
+Any argument left out is asked interactively, which blocks a headless run; pass all seven.
 
-It will throw if the destination directory already exists.
+The directory, class name, gradle project and package ids are derived from `modulePackage`: every
+hyphen after `module-` becomes a path segment, and the last segment becomes `<name>` and `<Class>`.
+`@zerobias-org/module-nist-cmvp` gives `package/nist/cmvp`, `:nist:cmvp`, `CmvpImpl`.
 
-## What the generator does for you
+Why `--no-install`: without it the generator runs `./gradlew :<vendor>:[<suite>:]<product>:build` from
+the repo root as its last step and requires a running Docker daemon. For a plain module that build
+cannot pass, because the emitted stub does not compile until fix 5 and 6 are applied. For a connector
+it can pass, but it runs before the fixes. Scaffold without it, fix, then build once.
 
-Inside the destination it writes:
-- `build.gradle.kts` — single `plugins { id("zb.typescript-connector") }` (or `zb.typescript` for plain)
-- `package.json` — ESM (`"type": "module"`), only the `clean` script, pinned deps, `zerobias` metadata key
-- `tsconfig.json` — NodeNext, target ES2022, includes `src/**/*`, `test/**/*`, `generated/**/*`
-- `.mocharc.json` — `{ "extension": ["ts"], "node-option": ["import=tsx/esm"] }`
-- `.gitignore` — covers `dist/`, `generated/`, `hub-sdk/generated/`, `hub-sdk/dist/`, `build/`, ephemeral artifacts
-- `api.yml` — minimal OpenAPI 3.0.3 stub with empty `paths`, product `$ref`
-- `connectionProfile.yml` — stub with a single `apiToken` property (connector only)
-- `hub-sdk/package.json` — wired to consume `dist/api/index.js` (populated by gradle's `generate`)
-- `src/<Class>Impl.ts` — TODO-stub implementing the generated connector interface
-- `src/index.ts` — re-exports the impl + a `new<Class>()` factory + generated types
-- `test/e2e/constants.ts` — placeholder for env-backed constants
-- `test/e2e/<name>.test.ts` — `describeModule<T>` skeleton
-- `test/unit/.gitkeep` — placeholder so the dir exists
-- `README.md` — short doc explaining how to build/test via gradle + zbb
+## 4. Post-scaffold fix list
 
-It then:
-- Symlinks `.nvmrc` and `.npmrc` to the repo root using a hardcoded `../../../{filename}` target. This works for two-segment module paths (`package/<vendor>/<service>/`) but **not for three-segment paths** (`package/<vendor>/<suite>/<service>/`) — those need `../../../../{filename}` and the generator does not yet adapt. If you scaffold a suite-nested module, the symlinks will be broken and need to be re-created by hand: `cd package/<vendor>/<suite>/<service> && rm .nvmrc .npmrc && ln -s ../../../../.nvmrc . && ln -s ../../../../.npmrc .`
-- Runs `zbb build` (the full lifecycle: validate → generate → compile → test → buildImage)
+Apply these by hand right after the generator returns. Each one is a known gap between the generator
+template and this repo.
 
-You can pass `--no-install` to skip the auto-build, or `--no-links` to skip the symlinks (e.g. when Docker isn't running and you only want the file emission to inspect).
+All modules:
 
-## Files the generator deliberately does NOT scaffold
+1. `package.json` → `publishConfig.registry`: change to `https://pkg.zerobias.org/`. The template writes
+   the GitHub Packages URL, but this org publishes to and installs from `pkg.zerobias.org` (see the root
+   `.npmrc`).
+2. `hub-sdk/package.json` → `name`: change the scope to `@zerobias-org/hub-sdk-<vendor>-[<suite>-]<product>`.
+   The template writes another org's scope, and the SDK is published under the name found here.
+3. `package.json` → `devDependencies`: add `nock` (exact version, as in `package/nist/cmvp/package.json`).
+   The template has none, and unit tests mock HTTP with it; the `testing` skill covers its use.
+4. `package.json` → `repository.url`: confirm it is this repo's URL and not a fork's, since it is
+   published with the package.
 
-These are *design-phase decisions* and are added later only if needed:
-- `connectionState.yml` — only for modules that track token expiry (OAuth refresh, session lifetime)
-- `Dockerfile` — gradle's `buildImage` task builds the image without one
-- `.env.example` / `test-profiles/` — credentials are managed via `zbb secret create`
-- Sample mappers, producer files, fixtures — implementation phase owns these
+Plain modules only (connector modules skip these):
 
-## Post-generator verification
+5. `package.json`: add `"interface": true` (next to `moduleId`, as in `package/nist/cmvp/package.json`).
+   It is the switch that tells the build not to generate a server or build an image; without it the
+   build tries to compile a server entry that expects a connection profile.
+6. `src/<Class>Impl.ts`: replace the stub. The generator writes the connector version for both types:
+   it `implements <Class>Connector`, imports `ConnectionProfile` and defines `connect`, `disconnect`,
+   `metadata`, `isConnected`, `isSupported`. A plain module's generated interface is `<Class>` with no
+   lifecycle. Model the file on `package/nist/cmvp/src/CmvpImpl.ts`.
+7. Delete `test/e2e/`. The skeleton uses `describeModule`, which works through a connection profile,
+   and the gate's container test step fails when `test/e2e` exists in an `"interface": true` module.
+   A plain module is covered by unit tests that mock the real host; see the `testing` skill.
+8. `README.md`: the Authentication section should say that none is needed; see the `readme` skill.
 
-After the generator returns, verify these exist (and only these — anything else means the generator drifted):
+Connector modules keep `connectionProfile.yml` (a stub with one `apiToken` property, to be designed
+with the `connection-profile` skill), the lifecycle stub (to be implemented with the `implementation`
+skill) and `test/e2e/`.
+
+Then, for both types:
+
+9. Build once from the repo root: `./gradlew :<vendor>:[<suite>:]<product>:build`. It needs the tokens
+   and Java version described in the `prerequisites` skill; the `build-lifecycle` skill lists the zbb
+   forms and what the build produces (`generated/`, `dist/`, `hub-sdk/generated/`).
+10. `git add package/<vendor>/[<suite>/]<product>` before any gate run that is meant to be committed.
+    The gate stamp hashes only files git tracks, so a stamp produced while the new module is untracked
+    cannot pass the stamp check later. The `gates` skill explains the stamp.
+
+## 5. Verify
 
 ```bash
-cd package/<vendor>/[<suite>/]<service>
-
-# Scaffolded files
-test -f build.gradle.kts
-test -f package.json
-test -f tsconfig.json
-test -f .mocharc.json
-test -f .gitignore
-test -f api.yml
-test -f README.md
-test -f hub-sdk/package.json
-test -f src/index.ts
-ls src/*Impl.ts >/dev/null
-test -f test/e2e/constants.ts
-ls test/e2e/*.test.ts >/dev/null
-test -f test/unit/.gitkeep
-test -L .nvmrc
-test -L .npmrc
-
-# Connector-only
-test -f connectionProfile.yml   # if --moduleType=connector
-
-# Auto-build output (skip if --no-install was used)
-test -d dist
-test -d generated
-test -d hub-sdk/generated
-test -f generated/api/manifest.json
+bash "${CLAUDE_SKILL_DIR}/scripts/check-scaffold.sh" package/<vendor>/[<suite>/]<product>
 ```
 
-If `package.json` doesn't have exactly these top-level keys, the template drifted:
-`name, version, description, type, moduleId, main, scripts, repository, license, author, publishConfig, files, zerobias, overrides, dependencies, peerDependencies, devDependencies`. The only script must be `clean`.
+It checks that the generator's files exist, the symlinks resolve, and every item of the fix list is
+applied for the module's type, and it reports untracked files. Lines starting with `FIX` need an edit;
+exit code 0 means the scaffold is ready for API design. The script only reads.
+
+The scaffold is done at this point. The stub `api.yml` has empty `paths` and the Impl has no producers;
+those belong to the `api-spec` and `implementation` skills.
 
 ## When the generator fails
 
-- **"You must run this generator from the root of a package"** — CWD's `package.json.name` doesn't end with `/module`. `cd` to the module repo root.
-- **"Docker is not running"** — start Docker Desktop or rerun with `--no-install`.
-- **"No gradlew at … — run the generator from a repo with gradle infrastructure"** — wrong repo.
-- **"Path … already exists, aborting"** — module already scaffolded; delete and retry, or use the existing module.
-- **"Product package must be in the format '@<scope>/product-…'"** — fix the `--productPackage` arg.
-- **"Module package must be in the format '@<scope>/module-…'"** — fix `--modulePackage`.
-- Gradle build step fails — read the gradle output, fix, then `zbb build` manually from the module dir (don't re-scaffold).
+| Message | Cause and action |
+|---|---|
+| `You must run this generator from the root of a package` | Not at the repo root. Change directory and rerun. |
+| `Docker is not running...` | The automatic build was requested. Rerun with `--no-install`, or start Docker. |
+| `Path ... already exists, aborting.` | The module directory exists. Work in the existing module; do not delete someone else's work to rescaffold. |
+| `Product package must be in the format...` / `Module package must be in the format...` | The name lacks `/product-` or `/module-`. |
+| `No gradlew at ...` | Wrong repository. |
+| `Gradle build failed (exit N)` | The files were written; only the automatic build failed. Do not rescaffold. Apply the fix list, then build and read the gradle output. |
 
-## Memory output
+## What it writes
 
-Phase 2 (Scaffold) writes its result to:
+Thirteen files, plus `connectionProfile.yml` for a connector and two symlinks: `build.gradle.kts`,
+`package.json`, `hub-sdk/package.json`, `api.yml`, `tsconfig.json`, `.mocharc.json`, `.gitignore`,
+`README.md`, `src/<Class>Impl.ts`, `src/index.ts`, `test/unit/<Class>ApiTest.ts`,
+`test/e2e/constants.ts`, `test/e2e/<name>.test.ts`, and `.nvmrc` / `.npmrc` links to the repo root.
 
-`${PROJECT_ROOT}/.claude/.localmemory/create-module-{moduleId}/phase-02-scaffolding.json`
+Three of them are configuration that stays as generated for the life of the module:
 
-Required shape:
+- `tsconfig.json`: ESM with `NodeNext`, so every relative import ends in `.js`; output goes to `dist/`.
+- `src/index.ts`: the `new<Class>()` factory plus wildcard re-exports of `generated/api` and
+  `generated/model`.
+- `package.json`: `"type": "module"`, `"main": "dist/src/index.js"`, one script (`clean`), the `files`
+  list and the `zerobias` block with `moduleId`.
 
-```json
-{
-  "phase": 2,
-  "name": "Module Scaffolding",
-  "status": "completed",
-  "timestamp": "<ISO-8601>",
-  "modulePath": "package/<vendor>/[<suite>/]<service>",
-  "gradleProject": ":<vendor>:[<suite>:]<service>",
-  "moduleId": "<vendor>-[<suite>-]<service>",
-  "moduleType": "connector | plain",
-  "yeomanCommand": "<exact command run>",
-  "generator": {
-    "name": "@zerobias-org/module",
-    "version": "<from npm view>"
-  },
-  "preconditions": {
-    "dockerRunning": true,
-    "nodeVersion": "v22.21.0",
-    "gradlewPresent": true
-  },
-  "verification": {
-    "scaffoldFiles": "passed | failed",
-    "symlinks": "passed | failed",
-    "autoBuild": "passed | skipped | failed",
-    "details": []
-  },
-  "notes": "Build validation completed by generator's install() step."
-}
-```
+Read `references/generated-files.md` for the full file table, how names are derived, the reason for
+each `tsconfig.json` setting, the `src/index.ts` and `package.json` export shape, and what is
+deliberately not scaffolded. Read it before changing any of those three files.
 
+## Related skills
+
+- `prerequisites` - tools, tokens, slot launch, repo layout.
+- `connection-profile` - connector or plain, and the profile itself.
+- `api-spec`, `implementation`, `testing` - what fills the skeleton.
+- `build-lifecycle`, `gates` - building, the gate and the stamp.

@@ -1,166 +1,162 @@
 ---
 name: prerequisites
-description: Environment prerequisites for ESM/gradle Hub module development. Use when starting new work or validating environment setup.
+description: Checks and explains the environment a module build needs in this repo - tools and where their versions are pinned, the npm registry and ZB_TOKEN, launching through a zbb slot and stack, what `zbb gate` requires (dataloader CLI, tokens, Docker), and the `package/<vendor>/[<suite>/]<product>` layout. Use before starting module work, when setting up a machine, or when a build fails with 401, E401, "plugin not found", MISSING_ENV_VAR, a dataloader tool-check error, or a missing-tool error.
 ---
 
 # Prerequisites
 
-The repo is a **gradle multi-project** of ESM TypeScript modules built and tested through `zbb` (which drives gradle under the hood). There is no Lerna, no Nx, no `npm run build`. The toolchain below is the minimum to run `/create-module`, `/add-operation`, `/fix-issue`, `/validate-gates`, or any module-level `zbb` task.
+This repo is a gradle multi-project of ESM TypeScript (and a few Java) modules. `zbb` drives gradle and
+injects credentials from a slot. There is no lerna, no npm workspace and no `npm run build`: each module
+has its own `node_modules` and `package-lock.json`.
 
-## Required tools
+## Check first
 
-| Tool                 | Version           | Check                  | Notes                                                                 |
-|----------------------|-------------------|------------------------|-----------------------------------------------------------------------|
-| Node.js              | v22.21.0 exact    | `node -v`              | Pinned via `.nvmrc` and `gradle.properties` (`nodeVersion=22.21.0`). Use nvm. |
-| npm                  | ≥ 10              | `npm -v`               | Ships with Node 22.                                                   |
-| Git                  | ≥ 2.25            | `git --version`        | `user.email` is consumed as the module's author.                      |
-| Docker Desktop       | running           | `docker info`          | Required for gradle's `buildImage` and `zbb testDocker`.              |
-| Gradle wrapper       | present at root   | `test -x ./gradlew`    | zbb drives the wrapper for you; you should never need to invoke it directly. |
-| Java (for the wrapper) | 17 LTS+         | `java -version`        | Gradle wrapper needs a JVM; Adoptium Temurin 17 works.                |
-| Yeoman               | ≥ 5               | `yo --version`         | Only for new module creation. `npm i -g yo`.                          |
-| `@zerobias-org/generator-module` | 0.25.2 | `npm ls -g @zerobias-org/generator-module` | `npm i -g @zerobias-org/generator-module@0.25.2`. Invoked as `yo @zerobias-org/module`. |
-| zbb                  | latest            | `zbb --version`        | `npm i -g @zerobias-org/zbb`. Owns `test`, `testDirect`, `testDocker`, `testHub`, `gate`, `secret`, slots, env. |
-| jq                   | any               | `jq --version`         | JSON in scripts/agent checks.                                         |
-| yq                   | v4.x              | `yq --version`         | YAML in scripts/agent checks.                                         |
-
-## Optional (only needed when running e2e against the Hub stack)
-
-| Tool                                   | Install                                              | Used by                |
-|----------------------------------------|------------------------------------------------------|------------------------|
-| `@zerobias-com/hub-node`              | `npm i -g @zerobias-com/hub-node`                    | `zbb testHub`          |
-| `@zerobias-com/platform-dataloader`   | `npm i -g @zerobias-com/platform-dataloader`         | `zbb testHub`          |
-
-`zbb testHub` is currently blocked by upstream bugs — skip it until announced otherwise. `zbb test`, `zbb testDirect`, and `zbb testDocker` are the supported modes.
-
-## Repository layout (what each command assumes)
-
-```
-~/zerobias/org/module/                  # repo root (github.com/zerobias-org/module)
-├── gradlew                             # wrapper — zbb drives this; you should not invoke it directly
-├── settings.gradle.kts                 # auto-discovers package/**/build.gradle.kts markers
-├── build.gradle.kts                    # root (zb.workspace)
-├── gradle.properties                   # shared properties (node, npm registry, etc.)
-├── .nvmrc                              # v22.21.0
-├── .npmrc                              # auth/registry config
-├── package/                            # one subdir per (vendor)/(suite?)/(service)
-│   └── <vendor>/[<suite>/]<service>/
-│       ├── build.gradle.kts            # marker that this is a gradle subproject
-│       ├── package.json                # ESM, only `clean` script
-│       ├── api.yml
-│       ├── connectionProfile.yml       # connector modules only
-│       ├── hub-sdk/                    # generated typed client (gradle owns dist/)
-│       ├── src/
-│       ├── test/unit/
-│       ├── test/e2e/                   # describeModule<T> tests
-│       ├── dist/                       # build output (gitignored)
-│       ├── generated/                  # codegen output (gitignored)
-│       └── gate-stamp.json             # written by `zbb gate`, COMMITTED
-└── .claude/                            # workflow & agent definitions
-```
-
-There is **no** `node_modules` workspace at the root; each module is independent (no npm workspaces / lerna).
-
-## Environment setup
-
-### Node via nvm
+Run the check from anywhere inside the repo. It only reads; it prints one line per item and exits
+non-zero when a required item is missing.
 
 ```bash
-nvm install 22.21.0
-nvm use
+bash "${CLAUDE_SKILL_DIR}/scripts/check-env.sh"
 ```
 
-The repo's `.nvmrc` and `gradle.properties` both pin Node v22.21.0 — same patch version in both places, so the developer's shell Node and gradle's bundled Node behave identically.
+Fix what it reports before doing anything else, because every later failure (codegen, gate, publish) is
+harder to read than a missing tool. The sections below explain each line of its output.
 
-### npm registry / auth
+## Session: launch through a slot with a stack
 
-The repo's `.npmrc` configures the GitHub Packages registry. Authenticate once:
+All org credentials live in a zbb slot, on the shared `dev` stack, and this repo's stack (`zbb.yaml`,
+name `module`) imports them. A session sees them only when it was started through the slot with a stack
+context.
 
-```bash
-npm login --scope=@zerobias-org --registry=https://npm.pkg.github.com
-npm login --scope=@zerobias-com --registry=https://npm.pkg.github.com
+| Step | Command | Who runs it |
+|---|---|---|
+| One-time setup per org and environment | `./scripts/setup-org-credentials.sh` | The user, in a normal terminal, so keys never enter a Claude session |
+| Start a session | `./scripts/setup-org-credentials.sh --launch [claude args]` or, from the repo root, `zbb --slot <slot> exec claude` | The user |
+| Start from another directory | `zbb --slot <slot> --stack module exec claude` | The user |
+| Check inside a session | `echo ${ZB_SLOT:-no-slot} ${ZB_ORG_ID:-no-stack}` | Claude |
+
+- `no-slot` means the session was not started through zbb; `no-stack` means it was started without a
+  stack. In both cases MCP tools are missing or return 401, and builds cannot authenticate.
+- The fix is to exit and relaunch. Environment is read once at startup, so reconnecting MCPs or
+  exporting keys inside the session does not help, and pasting keys into the session leaks them into
+  the transcript. Ask the user to relaunch instead.
+- Do not `zbb env set` the imported variables (`ZB_TOKEN`, `ZB_API_KEY`, `ZB_ORG_ID`, `ZB_PLATFORM_URL`,
+  `KNOWLEDGE_MCP_URL`, `NPM_CONFIG_TAG`) on the `module` stack: a per-stack value shadows the import, so
+  a later key rotation on the `dev` stack stops reaching this repo.
+- `--slot` is a global zbb flag. It works before or after the subcommand (`zbb --slot <slot> gate`,
+  `zbb gate --slot <slot>`); these skills write it before.
+
+The full rules are in the root `CLAUDE.md`, section "Sessions, credentials & MCPs".
+
+## Tools and where their versions are pinned
+
+Read the version from the file named here rather than from memory; the pins move.
+
+| Tool | Version source | Install / note |
+|---|---|---|
+| Node.js (your shell) | `.nvmrc` at the repo root | `nvm install && nvm use` in the repo root. Root `package.json` `engines.node` states the minimum. Use the pinned version for any `npm` command you run by hand, such as regenerating a `package-lock.json`. |
+| Node.js (gradle tasks) | `nodeVersion` in `gradle.properties` | Gradle provisions this itself, so gradle tasks do not depend on the shell's Node. It can differ from `.nvmrc` in the patch number; that is expected. |
+| Java | 21 | `zbb --slot <slot> ...` points `JAVA_HOME` at a Java 21 when the current one is not 21. Calling `./gradlew` directly needs Java 21 on your own `JAVA_HOME`. |
+| zbb | latest published | `npm i -g @zerobias-org/zbb`; `zbb --version`, `zbb --help` |
+| dataloader CLI | `tools.dataloader.version` in `zbb.yaml` (a minimum) | `npm i -g @zerobias-com/platform-dataloader` |
+| Gradle | wrapper in the repo (`./gradlew`) | Nothing to install. Plugins `zb.*` resolve as `1.+` (see `settings.gradle.kts`). |
+| Docker | running daemon | Needed for connector modules (image build, container tests) and for the generator's automatic build. |
+| Yeoman + module generator | latest published: `npm view @zerobias-org/generator-module version` | `npm i -g yo @zerobias-org/generator-module`. Only for new modules; see the `scaffolding` skill. |
+| jq | any | Used by the check scripts in these skills. |
+| git | any recent | Commits are linted by commitlint (`.commitlintrc.json`); see the `git-and-sdlc` skill. |
+
+Global npm tools belong to one Node installation. If you switch Node with nvm, `zbb`, `dataloader` and
+`yo` installed under another version disappear from `PATH`, and zbb's tool check for `dataloader` fails
+even though it is installed. Install the globals under the Node version you run zbb with.
+
+## Registry and tokens
+
+Two different tokens are involved, and they fail in different places.
+
+| What | Where it is configured | Used for | Symptom when missing |
+|---|---|---|---|
+| `ZB_TOKEN` (ZeroBias API key) | `.npmrc`: every `@zerobias-org`, `@zerobias-com`, `@auditlogic`, `@auditmation`, `@devsupply` scope points at `https://pkg.zerobias.org` with `_authToken=${ZB_TOKEN}` | `npm install`, `npm view`, publishing, and the dataloader step of the gate | `E401` / `ENEEDAUTH` from npm; `testDataloader` 401 |
+| GitHub token with `read:packages` | Your shell profile. `settings.gradle.kts` takes the first one that is set of `READ_TOKEN`, `NPM_TOKEN`, `GITHUB_TOKEN` | Reading the `zb.*` gradle plugins from GitHub Packages Maven | Gradle fails at plugin resolution before any task runs |
+
+- `ZB_TOKEN` comes from the slot; it is set by `setup-org-credentials.sh`, not by `npm login`.
+- The GitHub token is personal and is not stored in the slot. `zbb exec` passes the host environment
+  through, so it has to be exported in the shell that launches the session. Because the first variable
+  that is set wins, an expired `READ_TOKEN` or `NPM_TOKEN` hides a valid `GITHUB_TOKEN`.
+- Each module has `.npmrc` as a symlink to the repo root file (generator-made modules also link
+  `.nvmrc`), so `npm` commands run inside a module use the same registry.
+- Do not write tokens into `.npmrc`, `gradle.properties`, a module file or a skill. `gradle-ci.properties`
+  holds vault references for CI only.
+
+## What a gate needs
+
+`zbb gate` in this repo is declared in `zbb.yaml` (`lifecycle.gate`, with `tools: [dataloader]`). Before
+running it, all of these have to be true:
+
+1. The session runs through a slot with the `module` stack (lifecycle commands need `zbb.yaml`, a
+   loaded slot and the stack).
+2. `dataloader` is on `PATH` and satisfies the minimum in `zbb.yaml`; zbb refuses to start `test` and
+   `gate` otherwise.
+3. `ZB_TOKEN` resolves. The gate's dataloader step authenticates with it against
+   `DATALOADER_SERVICE_URL`. Leave that variable on its default from `zbb.yaml` even when the target org
+   is on another environment: the token is issued by production, and an override makes it fail with 401.
+4. The GitHub `read:packages` token is exported (plugin resolution).
+5. Docker is running, for a connector module. A plain, profile-less module such as `package/nist/cmvp`
+   (`"interface": true` in `package.json`) builds no image and runs no container test, so it needs no
+   Docker.
+6. The module's files are staged in git before the final gate run. The stamp hashes tracked files only;
+   the `gates` skill explains this.
+
+What the gate runs and how to verify a stamp belong to the `build-lifecycle` and `gates` skills.
+
+Publishing privately to an org (`zbb publishOrg`) additionally needs `ZB_API_KEY` to be an org-owner key
+of the target environment; the setup script verifies that and refuses `--launch` when it is not.
+
+## Repository layout
+
+```
+<repo root>                          package.json name "@zerobias-org/module"
+├── zbb.yaml                         stack "module": imports, lifecycle, required tools
+├── settings.gradle.kts              includes every package/** dir that has build.gradle.kts
+├── build.gradle.kts, gradle.properties, gradle-ci.properties, gradlew
+├── .npmrc, .nvmrc                   registry + Node pin (modules symlink to these)
+├── scripts/setup-org-credentials.sh
+├── .github/workflows/               publish.yml and branch sync; publishing and version bumps happen here
+└── package/<vendor>/[<suite>/]<product>/
+    ├── build.gradle.kts             one plugin line; makes the directory a gradle project
+    ├── package.json                 "@zerobias-org/module-<vendor>-[<suite>-]<product>", ESM
+    ├── package-lock.json            per module
+    ├── api.yml                      OpenAPI spec, source of truth
+    ├── connectionProfile.yml        connector modules only
+    ├── hub-sdk/package.json         typed client package; its generated/ and dist/ are build output
+    ├── src/                         flat; index.ts, <Class>Impl.ts, client, producers, mappers
+    ├── test/unit/, test/e2e/        e2e only where the module can run it (see the `testing` skill)
+    ├── gate-stamp.json              written by the gate, committed
+    └── generated/, dist/, build/, node_modules/     ignored build output
 ```
 
-(Use a GitHub PAT with `read:packages` — `write:packages` only for publish.)
+- Depth is two or three segments under `package/`: `package/nist/cmvp`,
+  `package/readyplayerme/readyplayerme`, `package/avigilon/alta/access`.
+- The gradle project path mirrors the directory: `package/nist/cmvp` is `:nist:cmvp`,
+  `package/avigilon/alta/access` is `:avigilon:alta:access`. Use it for a single-module task from the
+  root: `./gradlew :nist:cmvp:gateCheck`.
+- The plugin line in `build.gradle.kts` decides the module kind:
 
-The root `package.json.name` is `@zerobias-org/module`. The generator and gradle tooling only check that the name ends with `/module`. Module packages live under `@zerobias-org/*`; utility/interface packages live under `@zerobias-com/*`.
+| Plugin | Kind | Example |
+|---|---|---|
+| `zb.typescript-connector` | TypeScript module with a connection profile | `package/readyplayerme/readyplayerme` |
+| `zb.typescript` | Plain TypeScript module, no profile, `"interface": true` | `package/nist/cmvp` |
+| `zb.java-module` | Java HTTP module | `package/x12/x12` |
 
-### git identity
+- `package/interface/*` hold shared interface definitions (`zb.typescript-connector` together with
+  `"interface": true`). Treat them as their own kind; they are not the model for a new product module.
+- `connectionState.yml` exists only in modules whose tokens expire; `Dockerfile` only where a module
+  brings its own image. Neither is part of a fresh scaffold.
+- Modules do not import each other. Shared types come from the `@zerobias-org/types-core*` packages
+  through npm, not from a directory in this repo.
 
-```bash
-git config user.email "ctamas@zerobias.com"   # work projects under ~/zerobias
-git config user.name  "Catalin Tamas"
-```
+## Related skills
 
-The module-scaffolder agent reads `git config user.email` and writes it into the module's `package.json.author`.
-
-### Docker
-
-Start Docker Desktop. Verify:
-
-```bash
-docker info >/dev/null && echo OK
-```
-
-Required for: gradle `buildImage`, `zbb testDocker`, `zbb gate`, and the generator's auto-build step.
-
-## Verification script
-
-Drop this into `~/bin/zb-module-prereqs.sh` and run it before starting:
-
-```bash
-#!/usr/bin/env bash
-set -u
-fail=0
-check() { command -v "$1" >/dev/null && echo "✓ $1" || { echo "✗ $1 missing"; fail=1; }; }
-
-# Versions
-node -v | grep -q '^v22\.21\.' && echo "✓ node $(node -v)" || { echo "✗ node $(node -v) — need v22.21.x"; fail=1; }
-npm -v | awk -F. '$1>=10{exit 0}{exit 1}' && echo "✓ npm $(npm -v)" || { echo "✗ npm $(npm -v) — need >=10"; fail=1; }
-
-# CLIs
-check git
-check docker
-check yo
-check zbb
-check jq
-check yq
-check java
-
-# Docker running
-docker info >/dev/null 2>&1 && echo "✓ docker running" || { echo "✗ docker not running"; fail=1; }
-
-# Generator
-npm ls -g @zerobias-org/generator-module >/dev/null 2>&1 \
-  && echo "✓ @zerobias-org/generator-module installed" \
-  || { echo "✗ install: npm i -g @zerobias-org/generator-module@0.25.2"; fail=1; }
-
-# Repo root
-if [ -f ./gradlew ] && jq -r .name < ./package.json 2>/dev/null | grep -q '/module$'; then
-  echo "✓ at repo root"
-else
-  echo "✗ not at repo root (cd ~/zerobias/org/module)"; fail=1
-fi
-
-exit $fail
-```
-
-## Validation checklist
-
-Before invoking `/create-module`:
-
-- [ ] `node -v` reports `v22.21.x`
-- [ ] `docker info` is happy
-- [ ] CWD is `~/zerobias/org/module` (or equivalent — `package.json.name` ends with `/module`)
-- [ ] `yo --version` runs and `npm ls -g @zerobias-org/generator-module` resolves
-- [ ] `zbb --version` runs
-- [ ] `git config user.email` returns the expected work email
-- [ ] You're on a feature branch (not `main`)
-
-## CI/CD assumptions
-
-CI does **not** run tests. It validates `gate-stamp.json` produced locally by `zbb gate`. So CI prerequisites are minimal: Node 22.21.x and ability to read `gate-stamp.json`.
-
-## Related
-
-- @.claude/skills/tool-requirements/SKILL.md — command reference for the tools above
-- @.claude/skills/scaffolding/SKILL.md — what the generator does once prerequisites are met
+- `scaffolding` - creating a module with the generator and fixing its output.
+- `build-lifecycle` - the gradle tasks, `zbb <task>` pass-through, `build` versus `gate`.
+- `gates` - the gate checklist, staging before the gate, the stamp.
+- `testing` - `zbb secret` and e2e credentials.
+- `git-and-sdlc` - branches, commits, pull requests to `dev`.

@@ -45,6 +45,8 @@ ENV INTERNAL_PORT=8889
 # -Xmx that silently stops tracking it: 70% leaves room for metaspace, threads, SQLite's
 # page cache and the parser's off-heap buffers.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=70"
+# CVE-2026-114938 (Java4Shell): turn off HotSpot's AVX-512 Base64 decoder until the base image ships a fixed JDK.
+ENV JAVA_TOOL_OPTIONS="-XX:-UseBASE64Intrinsics"
 ENV HUB_NODE_INSECURE=false
 # MODULE_CONFIG (runtimeConfig.config as JSON) is injected by Hub Node. Without it
 # the module falls back to the defaults baked into runtimeConfig.yml (copied above).

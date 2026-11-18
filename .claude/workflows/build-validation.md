@@ -2,43 +2,44 @@
 
 ## Overview
 
-This workflow covers two critical validation gates:
-- **Gate 2**: Type Generation Validation (after API spec changes)
-- **Gate 6**: Final Build Validation (before task completion)
+This workflow covers two checkpoints of the gate:
+- **Gate 2**: Type generation (after an `api.yml` change)
+- **Gate 6**: Build and stamp (before the task is reported complete)
 
-Both gates are MANDATORY and must pass to proceed.
+Both must pass before the work moves on. Commands and what each task runs are in
+@.claude/skills/build-lifecycle/SKILL.md; the checkpoint list, the stamp rules and the failure table are in
+@.claude/skills/gates/SKILL.md. Run every command from the module directory unless stated otherwise.
 
 ## Gate 2: Type Generation Validation
 
 ### When to Run
-- **MANDATORY** after ANY api.yml changes
+- After any `api.yml` change (also after adding or removing `connectionProfile.yml` or `connectionState.yml`)
+- After the API reviewer passes the spec
 - Before implementation starts
-- After API Reviewer passes spec
 
 ### Process
 
-1. **Clean previous generation**
-   - Remove generated/ directory
-   - **Commands:** See "Gate 2 Validation" in @.claude/skills/build-quality/SKILL.md
+1. **Clear previous generation** (only when the output looks stale)
+   - `zbb clean`. See "Regenerating after an `api.yml` edit" in @.claude/skills/build-lifecycle/SKILL.md
 
 2. **Run type generation**
-   - Execute `zbb generate` from the module directory
-   - Verify exit code is 0
-   - If fails: BLOCK and report error
+   - `zbb generate`
+   - A non-zero exit blocks the workflow: report the failing task and its message
 
 3. **List generated files**
-   - Check generated/api/ directory
-   - Check generated/model/ directory
-   - Count total TypeScript files created
+   - `generated/api/` and `generated/model/` exist and contain TypeScript files
+   - `generated/api/manifest.json` exists
+   - `hub-sdk/generated/` is absent at this point; see "Where `hub-sdk/generated` comes from" in
+     @.claude/skills/build-lifecycle/SKILL.md
 
 4. **Check for InlineResponse types**
-   - Search all generated files for InlineResponse/InlineRequestBody
-   - **Detection script:** See "InlineResponse Detection" in @.claude/skills/build-quality/SKILL.md
-   - If found: FAIL - API spec has inline schemas that must be moved to components/schemas
+   - `grep -rlE 'InlineResponse|InlineRequestBody' generated/`
+   - A hit means a response or request body has an inline schema; report it to the spec owner, who names it
+     under `components/schemas` (see @.claude/skills/api-spec/SKILL.md)
 
 5. **Validate TypeScript compilation**
-   - Run `zbb compile` to verify types compile
-   - If fails: Report type errors and BLOCK
+   - `zbb compile` (lint runs first, then `tsc`)
+   - On failure report the lint or type errors and block
 
 6. **Report results**
    - Status: PASSED/FAILED
@@ -48,135 +49,104 @@ Both gates are MANDATORY and must pass to proceed.
 
 ### Success Criteria
 
-- ✅ Generation exit code 0
-- ✅ Generated directory exists
-- ✅ TypeScript files created
-- ✅ NO InlineResponse types
-- ✅ Build succeeds
+- Generation exit code 0
+- `generated/api/` and `generated/model/` populated
+- No InlineResponse types
+- `zbb compile` succeeds
 
 ### Common Failures
 
-**InlineResponse types found:**
-- Cause: Inline schema in api.yml responses
-- Fix: Move schema to components/schemas and use $ref
-
-**Generation failed:**
-- Cause: Invalid $ref or malformed YAML
-- Fix: Check api.yml syntax and references
+Map the failing task name to its cause with "When the gate fails" in @.claude/skills/gates/SKILL.md. The fix
+for a generation failure is in `api.yml`; `generated/` is rewritten on every run.
 
 ## Gate 6: Final Build Validation
 
 ### When to Run
-- **MANDATORY** before marking task complete
-- After all implementation finished
-- Before creating git commit
+- After all implementation and tests are finished
+- Before the task is reported complete and before a commit is proposed
 
 ### Process
 
-1. **Source code linting** (MANDATORY)
-   - Execute `zbb lint`
-   - **MUST** have 0 errors
-   - Warnings are acceptable if documented
-   - If errors found: BLOCK and fix immediately
+Follow "The order that produces a valid stamp" in @.claude/skills/gates/SKILL.md. The steps below keep this
+workflow's order and name the command for each.
 
-2. **Clean previous build**
-   - Remove dist/ directory
-   - **Commands:** See "Gate 6 Validation" in @.claude/skills/build-quality/SKILL.md
+1. **Source code linting**
+   - `zbb lint`; zero errors. Fix the code, not the lint rule.
+
+2. **Static check and staging**
+   - Run the static check script from the `gates` skill and clear every `FAIL`
+   - The module directory must be staged before the gate, because the stamp hashes tracked files only.
+     Staging changes git state: ask the caller to stage, or stage only when the caller has delegated it.
 
 3. **Run build**
-   - Execute `zbb build`
-   - Verify exit code is 0
-   - If fails: BLOCK and report errors
+   - `zbb build` builds the artifacts and runs no test (see "What `build` and `gate` run" in
+     @.claude/skills/build-lifecycle/SKILL.md)
+   - A non-zero exit blocks: report the failing task
 
 4. **Validate artifacts**
-   - Check dist/ directory exists
-   - Count JavaScript files
-   - Verify entry point (dist/index.js)
-   - Count declaration files (.d.ts)
-   - **Validation script:** See "Artifact Validation" in @.claude/skills/build-quality/SKILL.md
+   - `dist/src/index.js` exists (package.json `main`), with `.d.ts` files beside the JavaScript
+   - `hub-sdk/generated/` and `hub-sdk/dist/` exist
+   - Paths and what produces them: "What is on disk" in @.claude/skills/build-lifecycle/SKILL.md
 
-5. **Verify gate stamp**
-   - Confirm gate-stamp.json exists (produced by `zbb gate`)
-   - npm-shrinkwrap.json is FORBIDDEN in the gradle/zbb world
+5. **Run the gate and verify the stamp**
+   - `zbb --slot <slot> gate` writes `gate-stamp.json`
+   - Check the stamp with "Reading the stamp" in @.claude/skills/gates/SKILL.md
+   - Confirm from the repo root: `./gradlew :<vendor>:[<suite>:]<product>:gateCheck`
+   - There is no `npm-shrinkwrap.json` in a module
 
 6. **Type check**
-   - Run `zbb compile`
-   - Report any TypeScript errors
+   - Covered by `compile` inside the gate; report any TypeScript error from its output
 
 7. **Report results**
-   - Lint status: errors/warnings count
+   - Lint status: error and warning counts
    - Build status: PASSED/FAILED
    - Artifact count (JS files, .d.ts files)
-   - gate-stamp.json status
+   - Stamp: task results, `tests.*` counts, `gateCheck` result
    - Any TypeScript errors
 
 ### Success Criteria
 
-- ✅ Build exit code 0
-- ✅ dist/ directory created
-- ✅ JavaScript files generated
-- ✅ Declaration files (.d.ts) generated
-- ✅ gate-stamp.json exists (no npm-shrinkwrap.json)
-- ✅ NO TypeScript errors
-- ✅ NO linting errors
+- `zbb build` and `zbb gate` exit 0
+- `dist/` holds JavaScript and declaration files
+- `gate-stamp.json` written on the staged tree and accepted by `gateCheck`
+- No lint or TypeScript errors
 
 ### Common Failures
 
-**TypeScript compilation errors:**
-- Cause: Type mismatches, missing imports
-- Fix: Check type definitions and imports
+Use "When the gate fails" in @.claude/skills/gates/SKILL.md. Two that come up here:
 
-**Missing artifacts:**
-- Cause: Build didn't complete
-- Fix: Check build output for errors
-
-**Missing gate-stamp.json:**
-- Cause: `zbb gate` not run after build
-- Fix: Run `zbb gate` from the module directory
+- **`gateCheck` fails right after a green gate:** a hashed file changed or was staged after the gate; stage
+  and run the gate again.
+- **Plain module fails in `compileServer` or `testDocker`:** see "Connector or plain" in
+  @.claude/skills/gates/SKILL.md.
 
 ## Output Format
 
 ### Gate 2 Output
 
-Report should include:
 - **Status:** PASSED or FAILED
-- **Generation results:** Exit code and output
-- **Files generated:** Count by directory (api/, model/)
-- **Type quality checks:** InlineResponse detection results
-- **Compilation:** Build success/failure
-- **Decision:** Whether to proceed with implementation
-
-**Format template:** See "Gate 2 Output Format" in @.claude/skills/build-quality/SKILL.md
+- **Generation results:** exit code and the failing task, if any
+- **Files generated:** count by directory (api/, model/)
+- **Type quality checks:** InlineResponse detection result
+- **Compilation:** success or failure
+- **Decision:** whether implementation can start
 
 ### Gate 6 Output
 
-Report should include:
 - **Status:** PASSED or FAILED
-- **Build execution:** Exit code, errors if any
-- **Artifacts generated:** File tree and counts
-- **Gate stamp:** gate-stamp.json status
-- **Decision:** Whether task is ready for completion
-
-**Format template:** See "Gate 6 Output Format" in @.claude/skills/build-quality/SKILL.md
+- **Build execution:** exit code, failing task if any
+- **Artifacts generated:** file tree and counts
+- **Gate stamp:** task results, test counts, `gateCheck` result
+- **Decision:** whether the task is ready for completion
 
 ## Tools Used
 
-- `zbb generate`
-- `zbb build`
-- `zbb lint`
-- `zbb compile`
-- `zbb gate --slot local` (produces gate-stamp.json)
-- grep (for InlineResponse detection)
-- find (for file counting)
-- ls (for verification)
+- `zbb generate`, `zbb compile`, `zbb lint`, `zbb build`, `zbb --slot <slot> gate`
+- `./gradlew :<vendor>:[<suite>:]<product>:gateCheck` (repo root)
+- grep, find, ls
 
 ## Related Documentation
 
-**Primary Rules:**
-- @.claude/skills/build-quality/SKILL.md - All validation scripts, commands, and output formats
-- @.claude/skills/gate-build/SKILL.md - Gate 6 specification
-- @.claude/skills/gate-type-generation/SKILL.md - Gate 2 specification
-
-**Supporting Rules:**
-- @.claude/skills/failure-conditions/SKILL.md - Build-related failure conditions
-- @.claude/skills/implementation-core/SKILL.md - TypeScript compilation standards
+- @.claude/skills/build-lifecycle/SKILL.md - task graph, commands, what is on disk
+- @.claude/skills/gates/SKILL.md - checkpoints, stamp, failure table, static check script
+- @.claude/skills/api-spec/SKILL.md - spec fixes for generation failures

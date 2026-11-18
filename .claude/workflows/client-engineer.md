@@ -2,173 +2,126 @@
 
 ## Overview
 
-This workflow covers implementing the Client class that handles ONLY connection management. All business logic goes in Producer classes.
+This workflow covers the Client class, which owns the axios instance and the connection state, and the
+lifecycle delegation in the Impl class. Business logic goes in producers.
+
+The code shape is defined in "The Client" and "The Impl class" of @.claude/skills/implementation/SKILL.md and
+walked through in `references/client.md` of that skill. Read the closest real Client named there before
+writing code.
 
 ## Input
 
-- Connection profile schema (connectionProfile.yml)
-- Connection state schema (connectionState.yml)
-- Generated connector interface
+- `connectionProfile.yml` (connector modules only; a plain module has none)
+- `connectionState.yml` (only when the module mints an expiring token)
+- Generated interface in `generated/api/` (`<Class>Connector` for a connector, `<Class>` for a plain module)
 - Producer classes
 
 ## Output
 
-- Client class (src/{Service}Client.ts)
-- connect() method implemented
-- isConnected() method implemented
-- disconnect() method implemented
-- Producer initialization
-- Connection state management
+- Client class (`src/<Name>Client.ts`)
+- Connector: `connect()`, `isConnected()`, `disconnect()`, and `refresh()` when a state exists
+- Plain module: axios instance created in the constructor, no lifecycle
+- `src/<Class>Impl.ts` forwarding the lifecycle to the Client and returning one wrapped producer per tag
 
 ## Key Principles
 
-- **Client ONLY handles connection** - No business logic
-- **All operations delegate to producers**
-- **No environment variables** in src/
-- **Use core profiles** when possible
-- **Store minimal state**
-- **expiresIn MANDATORY** when tokens expire
+- The Client handles the connection only; it has no resource methods and no `get`/`post` helpers
+- Producers call axios through the instance the Client exposes
+- No `process.env` in `src/`; credentials come from the profile passed to `connect()`
+- A state is returned only when a token expires, and then it carries `expiresIn`
 
 ## Detailed Steps
 
 ### Step 1: Review Connection Profile
 
-- Read connectionProfile.yml from module directory
-- Identify authentication method (token, OAuth, basic, etc.)
-- Determine required vs optional fields
-- Check if core profile can be used
-- **Core profiles:** See "Core Profile Usage" in @.claude/skills/connection-profile/SKILL.md
+- Check whether the module is a connector or plain: see "1. Decide: does the source need credentials?" in
+  @.claude/skills/connection-profile/SKILL.md. For a plain module skip to Step 3.
+- Read `connectionProfile.yml` and the generated `ConnectionProfile` model
+- Identify the authentication method and the required and optional fields
+- **Profile shapes:** See "2. Pick the profile shape (connector)" in @.claude/skills/connection-profile/SKILL.md
 
 ### Step 2: Review Connection State
 
-- Read connectionState.yml from module directory
-- Identify what state needs persistence
-- Check if token expiration is involved (expiresIn required)
-- Determine if refresh token needed
-- **State patterns:** See "ConnectionState Pattern" in @.claude/skills/implementation-core/SKILL.md
+- Check whether `connectionState.yml` exists; the generated interface shows the resulting `connect()` signature
+- If it exists, note the token lifetime field and whether there is a refresh token
+- **State rules:** See "4. Add `connectionState.yml` only when a token expires" in
+  @.claude/skills/connection-profile/SKILL.md
 
 ### Step 3: Create Client File
 
-- Create src/{Service}Client.ts
-- Follow naming convention: {Service}Client (PascalCase)
+- Create `src/<Name>Client.ts`
+- **Naming:** See "Layout and naming" in @.claude/skills/implementation/SKILL.md
 
 ### Step 4: Import Dependencies
 
-Import required modules:
-- axios and AxiosInstance
-- Generated connector interface
-- Producer classes
-- Core error types (NotConnectedError, etc.)
-- **Import patterns:** See "Client Class Structure" in @.claude/skills/implementation-core/SKILL.md
+- axios, the generated `ConnectionProfile` (and `ConnectionState`) models, core errors
+- **Import rules:** See "Imports" in @.claude/skills/implementation/SKILL.md
 
 ### Step 5: Create Client Class Structure
 
-- Implement {Service}Connector interface
-- Declare private fields: httpClient, connectionProfile, connectionState
-- Declare producer instances as private fields
-- Define method signatures: connect(), isConnected(), disconnect()
-- Add delegation methods for all operations
-- **Structure template:** See "Client Class Pattern" in @.claude/skills/implementation-core/SKILL.md
+- Private fields for the axios instance and the credential or token
+- Expose the axios instance to producers (getter for a connector, `public readonly` for a plain module)
+- **Structure:** See "The shape" in @.claude/skills/implementation/references/client.md
 
 ### Step 6: Implement connect() Method
 
-- Accept connection profile parameter
-- Store profile in private field
-- Configure axios HTTP client (baseURL, timeout, headers)
-- Set up authentication headers
-- Add error interceptors
-- Initialize all producer instances with HTTP client
-- Store connection state (include expiresIn if tokens expire)
-- **connect() patterns:** See "connect() Implementation" in @.claude/skills/implementation-core/SKILL.md
-- **HTTP client setup:** See "Client Configuration" in @.claude/skills/http-client/SKILL.md
+- Read credentials from the profile argument
+- Create the axios instance with base URL, timeout and `validateStatus`
+- Log in and build the state when the module has one
+- **connect() and axios setup:** See "The Client" in @.claude/skills/implementation/SKILL.md and the
+  matching module section in @.claude/skills/implementation/references/client.md
 
 ### Step 7: Implement isConnected()
 
-- Check if HTTP client exists
-- Make real API call to verify connection (NOT just state check)
-- Return true if API call succeeds
-- Return false if API call fails
-- **isConnected() patterns:** See "isConnected() Implementation" in @.claude/skills/implementation-core/SKILL.md
+- **isConnected():** See "Rules" in @.claude/skills/implementation/references/client.md
 
 ### Step 8: Implement disconnect()
 
-- Clean up HTTP client (set to undefined)
-- Clean up all producer instances
-- Clear connection state
-- Clear connection profile
-- **disconnect() patterns:** See "disconnect() Implementation" in @.claude/skills/implementation-core/SKILL.md
+- Clear the token or credential and the axios instance
+- **disconnect():** See "The Client" in @.claude/skills/implementation/SKILL.md
 
-### Step 9: Delegate Operations to Producers
+### Step 9: Wire the Impl
 
-For each operation in connector interface:
-- Check if producer is initialized (throw NotConnectedError if not)
-- Delegate to appropriate producer method
-- Pass through parameters unchanged
-- Return producer result directly
-- **Delegation patterns:** See "Operation Delegation" in @.claude/skills/implementation-core/SKILL.md
+- The Impl creates one Client, forwards the lifecycle calls to it, and returns a wrapped producer per tag
+- Producers receive the Client in their constructor
+- **Impl and producer creation:** See "The Impl class" in @.claude/skills/implementation/SKILL.md and
+  "How the Impl uses it" in @.claude/skills/implementation/references/client.md
 
 ### Step 10: Validate Implementation
 
-Run validation checks:
-- Verify client implements generated connector interface
-- Confirm no business logic in client (only connection + delegation)
-- Check no environment variables used
-- Verify producers initialized with HTTP client
-- Confirm connection state includes expiresIn (if tokens expire)
-- **Validation scripts:** See "Client Validation" in @.claude/skills/implementation-core/SKILL.md
+- Run the `check-src.sh` script described under "No environment access, no secrets" in
+  @.claude/skills/implementation/SKILL.md and clear its findings
+- The Impl implements the generated interface for the module kind
+- No resource methods and no second axios instance outside the Client
+- A returned state includes `expiresIn`
 
 ### Step 11: Build and Test
 
-- Run `zbb build` (must pass)
-- Run `zbb test --slot local` (unit tests must pass)
-- Fix any compilation or test errors
+- `zbb compile`, then `zbb --slot <slot> test` from the module directory
+- Fix compilation and test errors in the implementation; commands are in
+  @.claude/skills/build-lifecycle/SKILL.md
 
 ## Connection State Patterns
 
-### When to Use Each Pattern
-
-**Simple Token (No Refresh):**
-- Static API token that never expires
-- No connection state needed
-- Just configure HTTP client with token
-- **Pattern:** See "Simple Token Pattern" in @.claude/skills/implementation-core/SKILL.md
-
-**OAuth with Refresh:**
-- Token expires and needs refresh
-- Connection state MUST include: accessToken, refreshToken, expiresIn
-- Framework persists state automatically
-- **Pattern:** See "OAuth Pattern" in @.claude/skills/implementation-core/SKILL.md
-
-**Using Core Profiles:**
-- When service matches core profile type (TokenProfile, OAuthClientProfile, etc.)
-- Import from @zerobias-org/types-core-js
-- Reduces code duplication
-- **Pattern:** See "Core Profile Usage" in @.claude/skills/connection-profile/SKILL.md
+| Situation | Where to read |
+|---|---|
+| Static API key, no state | "Connector with a static key: `ReadyPlayerMeClient`" in @.claude/skills/implementation/references/client.md |
+| Login with an expiring token, state returned | "Connector with login and expiring token: `AvigilonAltaAccessClient`" in the same file |
+| OAuth authorization code with refresh | @.claude/skills/oauth-click-to-connect/SKILL.md |
+| Core profile or a custom one | "2. Pick the profile shape (connector)" in @.claude/skills/connection-profile/SKILL.md |
+| No credentials at all | "Plain module: `CmvpClient`" in @.claude/skills/implementation/references/client.md |
 
 ## Success Criteria
 
-Client implementation is complete when:
-
-- ✅ Client focuses only on connection management
-- ✅ All operations delegate to producers
-- ✅ No environment variables in client
-- ✅ HTTP client properly configured
-- ✅ Producers initialized correctly
-- ✅ Connection state includes expiresIn (if tokens expire)
-- ✅ Uses core profiles when applicable
-- ✅ isConnected() makes real API call (not state check)
-- ✅ disconnect() cleans up all resources
-- ✅ Build passes
-- ✅ Unit tests pass
+- Client holds connection code only; producers hold the operations
+- No `process.env` in `src/`
+- axios instance configured as the skill describes
+- Returned state includes `expiresIn` when a token expires
+- `disconnect()` clears the token and the axios instance
+- `zbb compile` and unit tests pass
 
 ## Related Documentation
 
-**Primary Rules:**
-- @.claude/skills/implementation-core/SKILL.md - Client patterns, connection state rules, delegation
-- @.claude/skills/http-client/SKILL.md - HTTP client configuration and error handling
-- @.claude/skills/connection-profile/SKILL.md - Profile patterns and core profiles
-
-**Supporting Rules:**
-- @.claude/skills/error-handling/SKILL.md - Core error usage
-- @.claude/skills/security/SKILL.md - Secure authentication implementation
-- @.claude/skills/failure-conditions/SKILL.md - Common implementation failures
+- @.claude/skills/implementation/SKILL.md - Client, Impl, producers, errors, check script
+- @.claude/skills/connection-profile/SKILL.md - connector or plain, profile and state design
+- @.claude/skills/gates/SKILL.md - checkpoints and failure table

@@ -1,8 +1,8 @@
 {
   "version": "0.0.0-uat.0",
-  "branch": "fix/x12-review-followups",
-  "sourceHash": "7670b4828a9a4179eda011e896ce331f051b27dda6bb8a9a01d3912d8c22674e",
-  "testHash": "4c8d6177c0521a999fc78719ec8c8ecce8e7cc14f9cc7cbab56c6ad807618f0f",
+  "branch": "fix/java4shell-base64-intrinsics",
+  "sourceHash": "d6eb1f7ab5f46be9ea29e2efeafb0f8601a359c5c8353f5fef56f86d5ec90b0b",
+  "testHash": "0766983da4c5b8d16f384f4082b60b0415896a4dac762437fa5b3a2e843f4160",
   "tasks": {
     "validate": "passed",
     "lint": "passed",
@@ -11,7 +11,8 @@
     "testDirect": "passed",
     "testDocker": "passed",
     "testDataloader": "passed",
-    "buildArtifacts": "passed"
+    "buildArtifacts": "passed",
+    "dataloaderExec": "passed"
   },
   "tests": {
       "unit": { "expected": 0, "ran": 0, "status": "skipped" },

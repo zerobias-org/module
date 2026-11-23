@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-uat.0",
+  "version": "0.0.1",
   "branch": "fix/java4shell-base64-intrinsics",
   "sourceHash": "d6eb1f7ab5f46be9ea29e2efeafb0f8601a359c5c8353f5fef56f86d5ec90b0b",
   "testHash": "0766983da4c5b8d16f384f4082b60b0415896a4dac762437fa5b3a2e843f4160",

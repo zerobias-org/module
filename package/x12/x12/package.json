@@ -1,6 +1,6 @@
 {
   "name": "@zerobias-org/module-x12-x12",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "X12 EDI file receiver (DataProducer) \u2014 polls a mounted volume, parses 005010 interchanges with imsweb x12-parser",
   "type": "module",
   "moduleId": "5521a4bd-1bac-40b1-9d63-1c8fad475168",

@@ -51,6 +51,8 @@ EXPOSE 8888
 # Default environment (overridable at deploy time)
 ENV INTERNAL_PORT=8889
 ENV JAVA_OPTS="-Xms256m -Xmx512m"
+# CVE-2026-114938 (Java4Shell): turn off HotSpot's AVX-512 Base64 decoder until the base image ships a fixed JDK.
+ENV JAVA_TOOL_OPTIONS="-XX:-UseBASE64Intrinsics"
 ENV HUB_NODE_INSECURE=false
 ENV EXTENSION_DIR=/opt/module/extensions
 # LISTENER_PORT_MLLP is injected by Hub Node from runtimeConfig.listenerPorts.

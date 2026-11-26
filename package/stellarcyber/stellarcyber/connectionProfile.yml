@@ -1,0 +1,14 @@
+type: object
+required:
+  - host
+  - apiToken
+properties:
+  host:
+    type: string
+    description: Stellar Cyber console host (e.g. example.stellarcyber.cloud), without scheme.
+    example: example.stellarcyber.cloud
+  apiToken:
+    type: string
+    format: password
+    description: Stellar Cyber scoped API key. Exchanged for a short-lived JWT bearer at connect time.
+    example: AYjcyMzY3ZDhiNmJkNTY

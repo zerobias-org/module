@@ -90,10 +90,10 @@ try {
 From this module directory:
 
 ```bash
-zbb test --slot local         # unit tests
-zbb testDirect --slot local   # e2e, in-process        (connectors with test/e2e)
-zbb testDocker --slot local   # e2e, against the image (connectors with test/e2e)
-zbb gate --slot local         # full gate (writes gate-stamp.json; commit it)
+zbb --slot <slot> test         # unit tests
+zbb --slot <slot> testDirect   # e2e, in-process        (connectors with test/e2e)
+zbb --slot <slot> testDocker   # e2e, against the image (connectors with test/e2e)
+zbb --slot <slot> gate         # full gate (writes gate-stamp.json; commit it)
 ```
 
 <Say what the tests run against: fixtures and nock for unit tests, which slot secret the e2e

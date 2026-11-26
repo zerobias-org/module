@@ -61,10 +61,10 @@ in one.
 Use the commands as they are run from the module directory:
 
 ```bash
-zbb test --slot local         # unit tests
-zbb testDirect --slot local   # e2e, in-process        (connectors with test/e2e)
-zbb testDocker --slot local   # e2e, against the image (connectors with test/e2e)
-zbb gate --slot local         # full gate (writes gate-stamp.json; commit it)
+zbb --slot <slot> test         # unit tests
+zbb --slot <slot> testDirect   # e2e, in-process        (connectors with test/e2e)
+zbb --slot <slot> testDocker   # e2e, against the image (connectors with test/e2e)
+zbb --slot <slot> gate         # full gate (writes gate-stamp.json; commit it)
 ```
 
 List only the commands that do something for this module. A plain module without `test/e2e`

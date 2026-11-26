@@ -1,6 +1,6 @@
 ---
 name: prerequisites
-description: Checks and explains the environment a module build needs in this repo - tools and where their versions are pinned, the npm registry and ZB_TOKEN, launching through a zbb slot and stack, what `zbb gate` requires (dataloader CLI, tokens, Docker), and the `package/<vendor>/[<suite>/]<product>` layout. Use before starting module work, when setting up a machine, or when a build fails with 401, E401, "plugin not found", MISSING_ENV_VAR, a dataloader tool-check error, or a missing-tool error.
+description: Checks and explains the environment a module build needs in this repo - tools and where their versions are pinned, the npm registry and ZB_TOKEN, launching through a zbb slot and stack, what `zbb gate` requires (dataloader CLI, tokens, Docker), and the `package/<vendor>/[<suite>/]<product>` layout. Use as step 0 of /create-module, /add-operation, /fix-issue and /validate-gates, before starting module work, when setting up a machine, when asked "check prerequisites" or "am I set up", or when a build fails with 401, E401, "plugin not found", MISSING_ENV_VAR, a dataloader tool-check error, or a missing-tool error.
 ---
 
 # Prerequisites
@@ -21,6 +21,22 @@ bash "${CLAUDE_SKILL_DIR}/scripts/check-env.sh"
 Fix what it reports before doing anything else, because every later failure (codegen, gate, publish) is
 harder to read than a missing tool. The sections below explain each line of its output.
 
+## A missing prerequisite pauses the work
+
+When something required is missing there are two permitted actions: install or configure it (ask the
+user first where consent or credentials are needed), or stop and wait for the user. Do not route
+around it with substitute tooling, raw HTTP calls in place of the `zb` MCP, pasted keys, or a partial
+continuation, because work done on a half-configured machine fails later in ways that hide the cause.
+
+The same holds in the middle of a flow. A 401, an expired token, a refused org load or a tool that
+disappears is a prerequisite regression: stop the phase, run the check again, and resume only when it
+passes.
+
+| Who you are | What applies |
+|---|---|
+| Platform path (you have a ZeroBias org) | Everything in this skill |
+| External contributor (no ZeroBias account) | Tools, registry read access and the gate. The MCPs, the org-owner key and `publishOrg` do not apply: stop after the gate and open the PR; maintainers run the org verification. This is the one sanctioned reduction of scope. |
+
 ## Session: launch through a slot with a stack
 
 All org credentials live in a zbb slot, on the shared `dev` stack, and this repo's stack (`zbb.yaml`,
@@ -33,6 +49,7 @@ context.
 | Start a session | `./scripts/setup-org-credentials.sh --launch [claude args]` or, from the repo root, `zbb --slot <slot> exec claude` | The user |
 | Start from another directory | `zbb --slot <slot> --stack module exec claude` | The user |
 | Check inside a session | `echo ${ZB_SLOT:-no-slot} ${ZB_ORG_ID:-no-stack}` | Claude |
+| Check the MCPs (platform path) | `mcp__zb__*` and `mcp__zb-knowledge__*` tools are present; `zerobias_execute("meta.status")` reports the target org | Claude |
 
 - `no-slot` means the session was not started through zbb; `no-stack` means it was started without a
   stack. In both cases MCP tools are missing or return 401, and builds cannot authenticate.
@@ -42,6 +59,9 @@ context.
 - Do not `zbb env set` the imported variables (`ZB_TOKEN`, `ZB_API_KEY`, `ZB_ORG_ID`, `ZB_PLATFORM_URL`,
   `KNOWLEDGE_MCP_URL`, `NPM_CONFIG_TAG`) on the `module` stack: a per-stack value shadows the import, so
   a later key rotation on the `dev` stack stops reaching this repo.
+- The setup script names the slot and reuses an existing slot that already holds the same org and
+  environment. Use that slot; do not create ad-hoc ones such as `local`, because a second slot for the
+  same org splits the credentials. `zbb slot list` shows what exists.
 - `--slot` is a global zbb flag. It works before or after the subcommand (`zbb --slot <slot> gate`,
   `zbb gate --slot <slot>`); these skills write it before.
 
@@ -63,6 +83,12 @@ Read the version from the file named here rather than from memory; the pins move
 | Yeoman + module generator | latest published: `npm view @zerobias-org/generator-module version` | `npm i -g yo @zerobias-org/generator-module`. Only for new modules; see the `scaffolding` skill. |
 | jq | any | Used by the check scripts in these skills. |
 | git | any recent | Commits are linted by commitlint (`.commitlintrc.json`); see the `git-and-sdlc` skill. |
+
+The unpinned ZeroBias CLIs move fast and version skew fails in confusing ways. For `@zerobias-org/zbb`,
+`@zerobias-com/zerobias-mcp` (the `zb` command) and `@zerobias-com/platform-dataloader`, compare the
+installed version with `npm view <pkg>@latest version` (write `@latest`: the slot sets `NPM_CONFIG_TAG`,
+which changes what a bare `npm view` resolves). When one is behind, update it with the user's consent
+(`npm i -g <pkg>@latest`) or stop and wait. A version pinned in a repo file wins over this rule.
 
 Global npm tools belong to one Node installation. If you switch Node with nvm, `zbb`, `dataloader` and
 `yo` installed under another version disappear from `PATH`, and zbb's tool check for `dataloader` fails
@@ -108,7 +134,11 @@ running it, all of these have to be true:
 What the gate runs and how to verify a stamp belong to the `build-lifecycle` and `gates` skills.
 
 Publishing privately to an org (`zbb publishOrg`) additionally needs `ZB_API_KEY` to be an org-owner key
-of the target environment; the setup script verifies that and refuses `--launch` when it is not.
+(Organization Admin) of the target environment. A member key authenticates but cannot load artifacts, so
+the flow would fail late, at the org load. The setup script verifies ownership (`isAdmin` on the
+platform's who-am-I response) and refuses `--launch` when the check fails; inside a session,
+`zerobias_execute("dana.Me.whoAmI")` shows the same field. Keys are per environment: a key issued by
+one environment returns 401 on another.
 
 ## Repository layout
 

@@ -15,7 +15,7 @@ read the closest reference module named at the top of that skill before writing 
 ## Output
 
 - Client class (`src/<Name>Client.ts`)
-- Producer classes (`src/<Tag>ProducerImpl.ts`, one per `api.yml` tag; `src/` is flat)
+- Producer classes (`src/<Tag>ProducerApiImpl.ts`, one per `api.yml` tag; `src/` is flat)
 - Error handling in `src/util.ts`
 - Unit tests passing; e2e tests passing for a connector
 
@@ -61,7 +61,7 @@ interceptor" in @.claude/skills/implementation/references/errors.md
 
 For each `api.yml` tag:
 
-1. Create `src/<Tag>ProducerImpl.ts` implementing the generated `<Tag>ProducerApi`
+1. Create `src/<Tag>ProducerApiImpl.ts` implementing the generated `<Tag>ProducerApi`
 2. Copy the method signatures from `generated/api/`; codegen decides parameters and return types
 3. Call the API through the Client's axios instance and pass failures to the error handler
 4. Return the mapper's result; where a `200` can still mean "not found", check the body first

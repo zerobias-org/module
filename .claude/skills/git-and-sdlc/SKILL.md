@@ -1,6 +1,6 @@
 ---
 name: git-and-sdlc
-description: Git and pull-request rules for this module repository - branch from dev, conventional commits with a module scope, selective staging, committing gate-stamp.json, no version bumps, PRs that target dev. Use when creating a branch, staging, writing a commit message, committing, pushing, or opening a pull request for a module.
+description: Git and pull-request rules for this module repository - branch from dev, conventional commits with a module scope, selective staging, committing gate-stamp.json, org-first publishOrg and sign-off before the push, no version bumps, PRs that target dev. Use when creating a branch, staging, writing a commit message, committing, pushing, or opening a pull request for a module.
 ---
 
 # Git and SDLC
@@ -8,13 +8,34 @@ description: Git and pull-request rules for this module repository - branch from
 ## The flow
 
 1. Branch from `origin/dev`: `git fetch origin && git switch -c <type>/<module>-<topic> origin/dev`.
-   Branch names in use: `feat/nist-cmvp`, `feat/module-x12-x12`, `fix/x12-review-followups`.
+   A new module's branch is `feat/module-<vendor>-[<suite>-]<product>` (`feat/module-x12-x12`); other
+   names in use: `feat/nist-cmvp`, `fix/x12-review-followups`.
    Module work lands on `dev`; the other environment branches (`qa`, `uat`, `main`) receive it
    through promotion PRs and the sync workflow, so a branch cut from `main` has the wrong base.
 2. Do the work. Commit in small conventional commits (format below).
 3. Stage the package, then run the final gate, then stage and commit `gate-stamp.json`.
-4. Ask the owner before each commit and before the push. Show the files and the message first.
-5. Push the branch and open the PR against `dev`. The owner reviews and merges.
+4. Ask the owner before each commit. Show the files and the message first.
+5. Publish to the user's org and get their sign-off (next section).
+6. Only then push the branch and open the PR against `dev`. The owner reviews and merges.
+
+## Org first, then the pull request
+
+Nothing reaches the shared catalog straight from a branch. A new or changed module is first published
+privately to the user's own org, checked there, and pushed only after the user confirms.
+
+1. `zbb --slot <slot> publishOrg` from the module directory. It publishes an org-private release
+   candidate and queues the org's dataloader job. Use the zbb form: `zbb.yaml` adds the
+   `-PorgPublish=true` flag, and a bare `./gradlew publishOrg` fails without it. It needs an
+   org-owner `ZB_API_KEY` (see the `prerequisites` skill).
+2. Verify that the module landed in the org (zb MCP or the app) and show it to the user. Iterate
+   here: edit, re-run the gate, publish again.
+3. Wait for an explicit confirmation such as "looks good, ship it". Silence, or a request for another
+   change, is not a sign-off; ask when it is unclear.
+4. Push and open the PR.
+
+A headless run (`claude -p`) stops after step 2 and prints what was created, where to verify it, and
+that sign-off and the PR continue interactively. An external contributor without a ZeroBias org skips
+this section: stop after the gate and open the PR; maintainers run the org verification.
 
 ## Commit messages
 

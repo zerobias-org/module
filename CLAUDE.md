@@ -52,6 +52,21 @@
 - When the user updates a skill, update it first; check it against `.claude/docs/skill-rubric.md`
 
 The agents handle everything else.
+
+## Content SDLC
+
+Creating a module: `/create-module <vendor> <service> [suite]`. Adding operations: `/add-operation`,
+`/add-operations`. The commands and skills own the details; this is the order:
+
+1. `prerequisites` skill first. A missing prerequisite is installed or waited for, never worked around.
+2. Scaffold, implement (DataProducer included for a new module), `zbb gate`, commit `gate-stamp.json`.
+3. `zbb publishOrg` into the user's own org, verify there, and wait for the user's explicit sign-off.
+4. Only then push and open the PR against `dev`.
+
+External contributors without a ZeroBias org stop after the gate and open the PR; maintainers run the
+org verification. A headless run (`claude -p`) stops after the org load, and stops at any decision fork
+with a report instead of guessing.
+
 ---
 
 ## Sessions, credentials & MCPs — slot-first

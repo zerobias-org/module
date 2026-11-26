@@ -76,6 +76,11 @@ Each operation carries three names, and they are different things:
 - Start `operationId` with a verb that says what the call does. `list`, `get`, `create`, `update` cover
   most cases; action verbs are fine when the provider's operation is an action (`addAssetToApplication`,
   `removeAssetFromApplication`, `equipAssetToAvatar`, `lockAssetForUser`).
+- Cover the operations in the current task's scope, all of them. `/create-module` scopes
+  authentication plus one primary operation (the full surface is listed in the analysis document for
+  later batches); `/add-operation` and `/add-operations` scope exactly the named operations. An
+  `api.yml` that covers less than the provider's whole API is normal. A task that drops one of its own
+  operations is not: add it, or stop and report why it cannot be implemented.
 - Give every operation a `summary`. Add a `description` when there is something the summary cannot say
   (cmvp explains that paging is applied client-side). Wording is free; there is no required verb.
 - Declare tags at root level only if you want descriptions for them (avigilon does, cmvp and

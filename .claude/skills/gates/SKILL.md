@@ -172,6 +172,11 @@ reports them as `WARN` because older gate-green modules do not all follow them.
 - No `console.*`, raw `throw new Error(`, or temporary debug markers left in `src/`.
 - No credentials, tokens or personal data in `src/`, `test/`, fixtures or the README; no `.env` file.
 - `README.md` matches the module (see the `readme` skill).
+- A new module implements the DataProducer interface before it ships (`dataproducer-implementation`
+  skill): `src/impl/dataproducer/DataProducerImpl.ts` exists and the six getters are wired on the Impl.
+  The gate does not check this.
+- The module was published to the user's org (`zbb publishOrg`) and the user signed it off before the
+  push; see "Org first, then the pull request" in the `git-and-sdlc` skill.
 
 ## The static check script
 

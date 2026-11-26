@@ -40,13 +40,14 @@ DataProducer implementation, which lives in `src/impl/dataproducer/` (see the
 | `src/index.ts` | factory `new<Class>()` plus generated re-exports | `package/nist/cmvp/src/index.ts` |
 | `src/<Class>Impl.ts` | implements the generated module interface | `CmvpImpl.ts`, `ReadyPlayerMeImpl.ts`, `AccessImpl.ts` |
 | `src/<Name>Client.ts` | owns the axios instance and connection state | `CmvpClient.ts`, `ReadyPlayerMeClient.ts` |
-| `src/<Tag>ProducerImpl.ts` | implements `<Tag>ProducerApi` | cmvp, readyplayerme |
-| `src/<Tag>ProducerApiImpl.ts` | same thing, other suffix | avigilon |
+| `src/<Tag>ProducerApiImpl.ts` | implements `<Tag>ProducerApi` | avigilon |
+| `src/<Tag>ProducerImpl.ts` | same thing, older suffix | cmvp, readyplayerme |
 | `src/mappers.ts` | raw response to generated model (`mapping` skill) | cmvp, readyplayerme (`Mappers.ts` in avigilon) |
 | `src/util.ts` | `handleAxiosError`, `optional`, `ensureProperties` | `package/nist/cmvp/src/util.ts` |
 
-Both producer suffixes pass the gate. In a new module use `<Tag>ProducerImpl` and `mappers.ts`; in an
-existing module keep the suffix it already has, because mixing the two in one package makes the Impl's
+Both producer suffixes pass the gate. In a new module use `<Tag>ProducerApiImpl` (the class name then
+states the generated interface it implements) and `mappers.ts`; in an existing module keep the suffix
+it already has, because mixing the two in one package makes the Impl's
 imports hard to scan. `<Tag>` is the api.yml tag, so one producer file per tag.
 
 ## Imports

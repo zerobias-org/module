@@ -2,7 +2,10 @@
 
 ## Overview
 
-This workflow covers designing OpenAPI schemas in api.yml with focus on reusability, composition, and clean data modeling.
+This workflow covers designing the schemas in `api.yml`, with a focus on reuse, composition and clean data
+modelling. The rules are in @.claude/skills/api-spec/SKILL.md ("5. Schemas", "6. Enums", "7. Formats") with
+YAML examples in @.claude/skills/api-spec/references/rule-catalogue.md. Where a rule and a gate-green spec
+disagree, the spec is right.
 
 ## Input
 
@@ -12,198 +15,129 @@ This workflow covers designing OpenAPI schemas in api.yml with focus on reusabil
 
 ## Output
 
-- Complete schemas in components/schemas
-- Base schemas for composition
-- Context-separated schemas (Summary vs Full)
-- Validated schema structure
+- Schemas under `components/schemas`
+- Base schemas for composition, where properties are shared
+- Reduced and full views (`Summary`, `Info`) where the provider has them
+- A spec that passes the checker script and `zbb validate`
 
 ## Detailed Steps
 
 ### Step 1: Identify Unique Objects
 
-Review API research findings and identify all unique business objects:
+Review the API research findings and list:
 
-1. **List main resources:**
-   - User, Webhook, Repository, Organization, etc.
-   - These become top-level schemas
+1. **Main resources** - these become top-level schemas
+2. **Nested objects** - these become supporting schemas, prefixed with the owning resource
+3. **Common properties** - properties that appear across resources and may justify a base schema
 
-2. **List nested objects:**
-   - WebhookConfig, RepositoryPermissions, etc.
-   - These become supporting schemas
-
-3. **Identify common properties:**
-   - Properties like id, createdAt, updatedAt that appear across resources
-   - Consider creating base schemas for these
+**Naming and suffixes:** See "5. Schemas" in @.claude/skills/api-spec/SKILL.md
 
 ### Step 2: Design Base Schemas
 
-Create base schemas for common properties when:
-- 3+ schemas share the same properties
-- Properties are truly identical (same type, format, meaning)
+Create a base schema when several schemas share properties that are identical in type, format and meaning.
 
-**When to create base:** See "Base Schema Pattern" in @.claude/skills/api-schemas/SKILL.md
-**Example structure:** See "ResourceBase Pattern" in @.claude/skills/api-schemas/SKILL.md
+**Example structure:** See "7. Schema families" in @.claude/skills/api-spec/references/rule-catalogue.md
 
 ### Step 3: Create Full Schemas with Composition
 
-Use allOf for composition:
-- Extend base schemas with additional properties
-- Compose Summary + additional fields to create Full schemas
-- Reuse common property sets
+Use `allOf` to extend a base schema or to build the detailed view on top of the plain one.
 
-**Composition patterns:** See "Schema Composition with allOf" in @.claude/skills/api-schemas/SKILL.md
-**When to use allOf:** See "Composition Strategy" in @.claude/skills/api-schemas/SKILL.md
+**Composition patterns:** See "7. Schema families" in @.claude/skills/api-spec/references/rule-catalogue.md
 
 ### Step 4: Create Nested Object Schemas
 
-**CRITICAL:** ALL nested objects MUST use $ref, never inline
+- Give a nested object its own named schema and `$ref` it when it is reused or has a meaning of its own
+- Mark the properties that are always present as required
+- Small one-off nested objects may stay inline
 
-For each nested object:
-- Create separate schema in components/schemas
-- Define properties with appropriate types
-- Mark required fields
-- Reference using $ref from parent schema
-
-**Nested patterns:** See "Nested Object References" in @.claude/skills/api-schemas/SKILL.md
+**Nested patterns:** See "5. Schemas" in @.claude/skills/api-spec/SKILL.md
 
 ### Step 5: Apply Formats
 
-Apply appropriate formats to properties:
-- **uuid**: For ID fields (when API returns UUID format)
-- **date-time**: For timestamps (ISO 8601)
-- **uri**: For URLs
-- **email**: For email addresses
+Set `format` wherever the value has one, because it decides the generated TypeScript type.
 
-**All formats:** See @.claude/skills/type-mapping/SKILL.md for complete format reference
-**Format application:** See "Format Usage" in @.claude/skills/api-schemas/SKILL.md
+**Format table:** See "7. Formats" in @.claude/skills/api-spec/SKILL.md
+**Format to class and mapper side:** See "Format to class" in @.claude/skills/mapping/SKILL.md
 
 ### Step 6: Consider Context Separation
 
-If schema is used in BOTH nested and direct contexts AND has 10+ properties:
+Decide whether a resource needs a reduced view (`Summary`) beside the full schema, for a list that returns
+less than the get, or for nesting inside another resource.
 
-**Create two versions:**
-- **Summary schema:** Minimal fields for nested usage (id, name, key properties)
-- **Full schema:** Extends summary with all additional fields
-
-**When to separate:** See "Summary vs Full Decision" in @.claude/skills/api-schemas/SKILL.md
-**Pattern:** See "Context Separation Pattern" in @.claude/skills/api-schemas/SKILL.md
+**When to separate and how:** See the suffix table in "5. Schemas" of @.claude/skills/api-spec/SKILL.md and
+"7. Schema families" in @.claude/skills/api-spec/references/rule-catalogue.md
 
 ### Step 7: Document External API Mapping
 
-Add comments documenting how each field maps to external API:
-- Map internal camelCase names to external snake_case
-- Document any transformations or conversions
-- Note format changes (string → date-time, etc.)
-
-**Mapping comments:** See "External API Mapping" in @.claude/skills/api-schemas/SKILL.md
+- Describe every schema and every property that is not self-evident
+- Record how each property maps to the provider's field (name change, format change) in the design report,
+  so the mapping engineer can use it
 
 ### Step 8: Validate Schema Quality
 
-Run validation scripts:
-1. Check no inline schemas in responses
-2. Verify no nullable usage (CRITICAL - forbidden)
-3. Confirm all IDs are type: string
-4. Ensure nested objects use $ref (not inline)
-5. Verify formats applied correctly
+1. Run the checker script and `zbb validate`: see "Quick check" in @.claude/skills/api-spec/SKILL.md
+2. No inline schema in a response or request body that would generate an `InlineResponse` type
+3. No `nullable`; an absent property is the convention
+4. Identifier types follow the provider
+5. Formats applied
 
-**All validation scripts:** See "Schema Validation" in @.claude/skills/api-schemas/SKILL.md
+**What fails the lint:** See "9. What fails `validate`" in @.claude/skills/api-spec/SKILL.md
 
 ### Step 9: Review Against Rules
 
-Check compliance with schema rules (Rules 14-24 in @.claude/skills/implementation-core/SKILL.md):
+Check the spec against "5. Schemas", "6. Enums", "7. Formats" and "8. Responses" in
+@.claude/skills/api-spec/SKILL.md:
 
-- [ ] Responses reference main business object only (not envelope)
-- [ ] NO nullable anywhere
-- [ ] ALL IDs use type: string
-- [ ] Nested objects use $ref
-- [ ] Formats applied appropriately
-- [ ] Context separation where needed (10+ properties)
-- [ ] Composition with allOf where appropriate
-- [ ] External API mapping documented
+- [ ] A paged list response is a plain array of the item schema, not an envelope
+- [ ] No `nullable`
+- [ ] Identifier types follow the provider
+- [ ] Reused nested objects are named schemas
+- [ ] Formats applied
+- [ ] Reduced and full views where the provider has them
+- [ ] `allOf` where properties are shared
+- [ ] Schemas and properties described
 
-**Complete checklist:** See "Schema Quality Checklist" in @.claude/skills/api-schemas/SKILL.md
+Do not enforce the older rules listed in "15. Rules the specs do not support" of
+@.claude/skills/api-spec/references/rule-catalogue.md.
 
 ## Common Decisions
 
-### When to Create Base Schema?
-
-**Create base when:**
-- 3+ schemas share the same properties
-- Properties are truly identical (same type, format, meaning)
-
-**Don't create base when:**
-- Only 1-2 schemas share properties
-- Shared properties have different meanings
-
-**Decision guide:** See "Base Schema Decision" in @.claude/skills/api-schemas/SKILL.md
-
-### When to Separate Summary vs Full?
-
-**Separate when:**
-- Schema used in BOTH nested AND direct contexts
-- Schema has 10+ properties
-- Nested usage doesn't need all fields
-
-**Don't separate when:**
-- Schema only used in one context
-- Schema has fewer than 10 properties
-- All fields needed in nested usage
-
-**Decision guide:** See "Context Separation Decision" in @.claude/skills/api-schemas/SKILL.md
-
-### When to Use allOf?
-
-**Use allOf for:**
-- Extending base schemas
-- Composing Summary + additional fields → Full
-- Reusing common property sets
-
-**Don't use allOf for:**
-- Simple schemas without extension
-- When properties are unique to one schema
-
-**Decision guide:** See "allOf Usage" in @.claude/skills/api-schemas/SKILL.md
+| Decision | Where the answer is |
+|---|---|
+| Create a base schema? | `Base` row in "5. Schemas" of @.claude/skills/api-spec/SKILL.md |
+| Separate a reduced view from the full schema? | `Summary` and `Info` rows in "5. Schemas"; "7. Schema families" in the rule catalogue |
+| Use `allOf`? | "7. Schema families" in @.claude/skills/api-spec/references/rule-catalogue.md |
+| Named enum or inline? | "6. Enums" in @.claude/skills/api-spec/SKILL.md |
 
 ## Output Format
 
-Document schema design decisions:
+Report the schema design decisions:
 
-**Report should include:**
-- **Schemas Created:** List of all schemas (Base, Full, Summary, Nested)
-- **Composition Strategy:** How schemas extend/compose
-- **Validation Results:** All checks passed
-- **External API Mapping:** Field-by-field mapping
-
-**Template:** See "Schema Design Output Format" in @.claude/skills/api-schemas/SKILL.md
+- **Schemas created:** all schemas, by kind (base, full, reduced, nested)
+- **Composition strategy:** how schemas extend or compose
+- **Validation results:** checker script and `zbb validate` output
+- **External API mapping:** field-by-field mapping
 
 ## Success Criteria
 
-Schema design is complete when:
-
-- ✅ Zero inline schemas in responses
-- ✅ No duplicate schema definitions
-- ✅ Proper format application
-- ✅ Clean composition with allOf
-- ✅ Context-appropriate schemas (Summary vs Full)
-- ✅ All nested objects use $ref
-- ✅ **No nullable in spec** (CRITICAL)
-- ✅ All IDs use type: string
-- ✅ External API mapping documented
-- ✅ All validation scripts pass
+- No inline schema that generates an `InlineResponse` type
+- No duplicate schema definitions
+- Formats applied
+- Composition with `allOf` where properties are shared
+- No `nullable` in the spec
+- Identifier types follow the provider
+- External API mapping documented in the report
+- Checker script and `zbb validate` pass
 
 ## Tools Used
 
-- yq (for YAML querying and validation)
-- grep (for pattern checking)
+- `check-spec.sh` from the `api-spec` skill and `zbb validate`
+- yq, grep
 - API research findings (external API structure)
-- Type mapping reference (formats)
 
 ## Related Documentation
 
-**Primary Rules:**
-- @.claude/skills/api-schemas/SKILL.md - ALL schema patterns, composition, validation scripts
-
-**Supporting Rules:**
-- @.claude/skills/type-mapping/SKILL.md - Format reference and core type mappings
-- @.claude/skills/gate-api-spec/SKILL.md - Schema validation requirements for Gate 1
-- @.claude/skills/implementation-core/SKILL.md - Schema rules (Rules 14-24)
+- @.claude/skills/api-spec/SKILL.md - schema, enum, format and response rules; checker script
+- @.claude/skills/api-spec/references/rule-catalogue.md - YAML examples per rule
+- @.claude/skills/mapping/SKILL.md - format-to-class table and mapper side
+- @.claude/skills/gates/SKILL.md - where the spec check sits in the gate

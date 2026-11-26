@@ -5,64 +5,64 @@ argument-hint: <module-identifier> <operation-name>
 
 Execute the Add Operation workflow for module: $1, operation: $2
 
-`$1` is `<vendor>-[<suite>-]<service>` (e.g. `github-github`, `amazon-aws-s3`).
-`$2` is the new operationId (must match `^[a-z][a-zA-Z0-9]+$` and start with `list`, `get`, `create`, `update`, `delete`, or `search`).
+`$1` is `<vendor>-[<suite>-]<service>` (e.g. `nist-cmvp`, `avigilon-alta-access`).
+`$2` is the new operationId: lowerCamel, a verb plus the full resource, unique in the spec (naming rules in the `api-spec` skill).
 
-All commands run from inside the module directory (`cd package/<vendor>/[<suite>/]<service>`).
+`zbb <task>` runs from inside the module directory (`cd package/<vendor>/[<suite>/]<service>`). The six gates are the checkpoints of @.claude/skills/gates/SKILL.md; the commands are in the `build-lifecycle` skill.
 
-## Phase 0 — Credentials (mandatory)
+First read the module kind from `build.gradle.kts`: `zb.typescript-connector` (connector, has `connectionProfile.yml`) or `zb.typescript` (plain, no profile). Steps marked "connector" do not apply to a plain module.
 
-- Check that the target slot has the credentials/secrets the operation needs: `zbb secret list --slot local` and `zbb env list --slot local`
-- If anything is missing, **ask the user** before continuing
-- Never put credentials in code or in a `.env` file
+## Phase 0 — Credentials (connector)
+
+- Check that the slot holds a secret for the module: `zbb --slot <slot> secret list --module <package name>` (see the `testing` skill)
+- If it is missing, ask the user to create it before continuing; credentials stay out of code, files and the transcript
+- Plain module: nothing to check, the source is public
 
 ## Phase 1 — Research
 
-- @api-researcher: **targeted-scope** research for *this one endpoint only*. Test it against the real API with the slot's credentials. Document parameters, response shape, pagination style, error responses. Save a sanitized sample response.
+- @api-researcher: **targeted-scope** research for *this one endpoint only*. Test it against the real API (connector: with the slot's credentials). Document parameters, response shape, pagination style, error responses. Save a sanitized sample response.
 - @operation-engineer: confirm operationId, naming, and whether the operation belongs in an existing producer tag or a new one
 
 ## Phase 2 — API design
 
 - @api-architect: add the path + operationId to `api.yml`, define the response component schema if new
 - @schema-specialist: complex schema design (`$ref` composition, polymorphism) if needed
-- @api-reviewer: validate against `@.claude/skills/gate-api-spec/SKILL.md`
-- Run: `zbb bundleSpec` — must exit 0
-- **Gate 1** — API spec passes the checklist
+- @api-reviewer: validate against the `api-spec` skill (its `scripts/check-spec.sh`)
+- Run: `zbb validate` — must exit 0
+- **Gate 1** — API spec passes
 
 ## Phase 3 — Type generation
 
 - Run: `zbb generate`
-- Verify `generated/api/manifest.json` includes the new operation
-- Verify `hub-sdk/generated/api/index.ts` exports the new method
-- **Gate 2** — `@.claude/skills/gate-type-generation/SKILL.md` clean
+- Verify `generated/api/manifest.json` includes the new operation and `generated/api/index.ts` has the new method (`hub-sdk/generated/` is rebuilt later, by the gate)
+- **Gate 2** — generation clean
 
 ## Phase 4 — Implementation
 
-- @operation-engineer: add the method to the appropriate `<Tag>ProducerImpl.ts`
-- @mapping-engineer: write or extend the mapper; use `map()` from `@zerobias-org/util-hub-module-utils`
-- @style-reviewer: run `zbb lint`
-- Run mapper runtime validation per `@.claude/skills/mapper-runtime/SKILL.md` — zero missing fields
-- **Gate 3** — `@.claude/skills/gate-implementation/SKILL.md` clean
+- @operation-engineer: add the method to the tag's producer, per the `implementation` skill
+- @mapping-engineer: write or extend the mapper per the `mapping` skill, including its "Check that every field is mapped" section
+- @style-reviewer: run `zbb compile` (lint runs first, then `tsc`)
+- **Gate 3** — lint and compile pass; `scripts/check-src.sh` and `scripts/check-mappers.sh` of those two skills report nothing new
 
 ## Phase 5 — Tests
 
 - @mock-specialist: sanitized fixtures for the new operation
-- @producer-ut-engineer: extend `test/unit/<Tag>ProducerTest.test.ts` with happy + at least one error path
-- @producer-it-engineer: extend `test/e2e/<name>.test.ts` with a `describeModule<T>`-driven case for the new operation
-- @ut-reviewer + @it-reviewer: run gates
-- Run: `zbb test --slot local` and `zbb testDirect --slot local`; connectors also `zbb testDocker --slot local`
+- @producer-ut-engineer: extend the tag's unit test file under `test/unit/` with the success path and each error mapping
+- @producer-it-engineer (connector): extend `test/e2e/<name>.test.ts` with a `describeModule<T>`-driven case for the new operation. A plain module has no `test/e2e`; unit tests against fixtures are its coverage.
+- @ut-reviewer + @it-reviewer: review against the `testing` skill
+- Run: `zbb --slot <slot> test`; connectors also `zbb --slot <slot> testDirect` and `zbb --slot <slot> testDocker`
 - **Gate 4** — tests exist and are shaped right
-- **Gate 5** — tests pass
+- **Gate 5** — tests pass, and the e2e tests really ran rather than being skipped for a missing secret
 
 ## Phase 6 — Build & gate
 
-- Run: `zbb gate --slot local`
-- **Gate 6** — `gate-stamp.json` updated; commit it alongside the new code
+- Follow "The order that produces a valid stamp" in the `gates` skill: static check script, stage the module, `zbb --slot <slot> gate`, stage `gate-stamp.json`, `gateCheck` from the repo root, script with `--final`
+- **Gate 6** — gate green and `gateCheck` passes; the stamp is committed with the new code
 - @build-reviewer: confirm Gate 6 closed
 
 ## Success criteria
 
 - All 6 gates green
-- One commit (or a clean conventional-commits sequence) staged
-- Only files under `package/<vendor>/[<suite>/]<service>/` + the module's `gate-stamp.json` modified
-- New operation tested in unit and at least direct-mode e2e
+- One commit (or a clean conventional-commits sequence) prepared per the `git-and-sdlc` skill; ask the owner before committing
+- Only files under `package/<vendor>/[<suite>/]<service>/`, including its `gate-stamp.json`, modified
+- New operation tested in unit and, for a connector, at least direct-mode e2e

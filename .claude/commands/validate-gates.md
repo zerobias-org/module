@@ -5,136 +5,76 @@ argument-hint: <module-identifier>
 
 Validate all 6 gates for module: $1
 
-`$1` is `<vendor>-[<suite>-]<service>`. Run all commands from inside the module directory (`cd package/<vendor>/[<suite>/]<service>`).
+`$1` is `<vendor>-[<suite>-]<service>`; the module directory is `package/<vendor>/[<suite>/]<service>` and the gradle project `:<vendor>:[<suite>:]<service>`.
 
-The fastest way to run all 6 gates in one shot is `zbb gate --slot local` (Gate 6 driver — chains everything). What follows is a per-gate breakdown for when you want to know *which* gate failed without re-running the full chain.
+The six gates are checkpoints inside one gradle run (`zbb gate`), not six tools. The single checklist, the stamp rules, the connector / plain differences and the failure table are in @.claude/skills/gates/SKILL.md; this command only sequences it. Do not add greps of your own: the static part is one script.
 
-## Gate 1 — API specification
+## Step 1 — Static check (seconds, no gradle)
 
-Driver: `zbb bundleSpec`
-
-Cheap pre-checks (don't run the task yet):
+From the repo root:
 
 ```bash
-# Forbidden tokens in api.yml
-grep -E "describe[A-Z]|nullable:|'40[0-9]'|'50[0-9]'" api.yml
-grep -E "^\s*[a-z]+_[a-z]" api.yml                    # snake_case property names
-grep -E "name: (apiKey|token|baseUrl|organizationId)" api.yml
-# Each grep should print nothing.
-
-# Inline schemas in response bodies
-yq '.paths.*.*.responses.*.content.*.schema | select(has("properties"))' api.yml
-# Should print business object schemas only, never response envelopes.
+bash .claude/skills/gates/scripts/check-module.sh package/<vendor>/[<suite>/]<service>
 ```
 
-Pass: `bundleSpec` exits 0 + greps clean. Full checklist: `@.claude/skills/gate-api-spec/SKILL.md`.
+It prints the plugin, the module kind (connector or plain), the test counts, and `PASS` / `WARN` / `FAIL` lines grouped under the six checkpoints. Compare the kind and the counts with what you expect, then fix every `FAIL`. A clean run is a reason to start the gate, not evidence that the gate passes.
 
-## Gate 2 — Type generation
-
-Driver: `zbb generate`
+## Step 2 — Is the committed stamp still valid?
 
 ```bash
-test -d generated/api && test -d generated/model && test -f generated/api/manifest.json
-grep -rln "InlineResponse\|InlineRequestBody" generated/ \
-  && echo "✗ inline-response leakage"
+./gradlew :<vendor>:[<suite>:]<service>:gateCheck      # repo root; needs Java 21, no slot
 ```
 
-Pass: `zbb generate` exits 0, `generated/` populated, no `Inline*` leakage. The `hub-sdk/generated/` typed client is produced later by `buildHubSdk` (part of Gate 6's `build` chain), not here. Full checklist: `@.claude/skills/gate-type-generation/SKILL.md`.
+- Passes and Step 1 has no `FAIL`: all six gates hold for this tree. Go to the report.
+- Fails, or there is no stamp: continue with Step 3.
 
-## Gate 3 — Implementation
+## Step 3 — Per-gate run (to see which gate fails)
 
-Drivers: `zbb compile` + `zbb lint`
+From the module directory, in order; stop at the first failure and look it up in "When the gate fails" in the `gates` skill.
+
+| Gate | Checkpoint | Command |
+|---|---|---|
+| 1 | API spec | `zbb validate` |
+| 2 | Type generation | `zbb generate` |
+| 3 | Implementation | `zbb compile` (lint, then tsc) |
+| 4 | Tests exist | no task; read the counts from Step 1 |
+| 5 | Tests pass | `zbb --slot <slot> test`; connector also `zbb --slot <slot> testDirect` and `zbb --slot <slot> testDocker` |
+| 6 | Build and stamp | Step 4 |
+
+A plain (profile-less) module has no `test/e2e`, builds no image and skips `testDirect` / `testDocker`; its stamp records those suites as `skipped`, which passes. For a connector, confirm the e2e tests ran: with no `zbb secret` for the module the suite is skipped and the task still exits 0.
+
+## Step 4 — Full gate and stamp
+
+Follow "The order that produces a valid stamp" in the `gates` skill: stage the module directory, `zbb --slot <slot> gate` from the module directory, stage `gate-stamp.json`, `gateCheck` again, then the script with `--final`:
 
 ```bash
-grep -rn "Promise<any>" src/                       # forbidden
-grep -rn "process\.env" src/                        # forbidden
-grep -rnE "from '\.\.?\/[^']*'" src/ test/ | grep -v "\.js'"   # missing .js ext
-
-# Connector lifecycle methods present
-ls src/*Impl.ts | while read f; do
-  for m in connect disconnect metadata isConnected isSupported; do
-    grep -qE "async ${m}\s*\(" "$f" || echo "✗ $f missing async ${m}()"
-  done
-done
+bash .claude/skills/gates/scripts/check-module.sh package/<vendor>/[<suite>/]<service> --final
 ```
 
-Pass: both tasks exit 0 + greps clean. Full checklist: `@.claude/skills/gate-implementation/SKILL.md`.
-
-## Gate 4a — Unit tests (creation)
-
-```bash
-ls test/unit/*.test.ts >/dev/null
-grep -hcE "^\s*describe\(" test/unit/*.test.ts
-grep -hcE "^\s*it\("       test/unit/*.test.ts
-grep -rn "import \* as nock" test/unit/             # forbidden (use default import)
-grep -rnE "jest\.mock|from 'sinon'|fetch-mock|from 'msw'" test/unit/   # forbidden
-grep -rn "process\.env" test/unit/                  # forbidden
-```
-
-Pass: at least 1 test file + 3 `it()` cases, nock default-import, no env access. Full checklist: `@.claude/skills/gate-unit-tests/SKILL.md`.
-
-## Gate 4b — e2e tests (creation)
-
-```bash
-ls test/e2e/*.test.ts >/dev/null
-test -f test/e2e/constants.ts
-grep -rn "process\.env" test/e2e/ | grep -v "/constants.ts:"   # forbidden
-grep -rn "from 'nock'" test/e2e/                                # forbidden
-grep -rn "CoreError\.deserialize" test/e2e/                     # required
-test -d test/integration                                        # MUST NOT EXIST
-```
-
-Pass: `describeModule<T>` skeleton wired correctly, no nock/dotenv, `constants.ts` is the sole env reader. Full checklist: `@.claude/skills/gate-integration-tests/SKILL.md`.
-
-## Gate 5 — Test execution
-
-```bash
-zbb test       --slot local           # unit
-zbb testDirect --slot local           # e2e direct
-zbb testDocker --slot local           # e2e docker (connectors only)
-```
-
-Pass: all three exit 0. Full checklist: `@.claude/skills/gate-test-execution/SKILL.md`.
-
-## Gate 6 — Build & stamp
-
-```bash
-zbb gate --slot local                                          # full lifecycle + stamp
-zbb gateCheck                                                  # cheap re-validation
-test -f gate-stamp.json
-test -f dist/src/index.js && test -f dist/src/index.d.ts
-ls dist/module-*.yml >/dev/null
-test -f generated/api/manifest.json
-test -f hub-sdk/generated/api/index.ts                         # typed client (produced by buildHubSdk inside build)
-[ "$(jq -r .type package.json)" = "module" ] || echo "✗ package.json missing type=module"
-jq -e '.zerobias.package' package.json >/dev/null || echo "✗ no zerobias.package"
-test -f npm-shrinkwrap.json && { echo "✗ npm-shrinkwrap.json present (forbidden)"; exit 1; }
-test -f package-lock.json || echo "✗ missing package-lock.json"
-```
-
-Pass: `zbb gate` exits 0, `gate-stamp.json` exists and matches source. Full checklist: `@.claude/skills/gate-build/SKILL.md`.
+Staging changes the index, and the gate rewrites `gate-stamp.json`. When the user asked only for a report, stop after Step 3 and say that the stamp needs a new gate run. Committing follows the `git-and-sdlc` skill (ask the owner first).
 
 ## Output format
 
+Report gate status from the task exit codes and the stamp, with the evidence (failing task name, script line, stamp field), not from the script alone.
+
 ```
-VALIDATION RESULTS: <module-id>
+VALIDATION RESULTS: <module-id>   (kind: connector | plain)
 
-Gate 1: API spec            [✓ PASS | ✗ FAIL]   bundleSpec
-Gate 2: Type generation     [✓ PASS | ✗ FAIL]   generate
-Gate 3: Implementation      [✓ PASS | ✗ FAIL]   compile + lint
-Gate 4a: Unit tests         [✓ PASS | ✗ FAIL]   test/unit/ shape
-Gate 4b: e2e tests          [✓ PASS | ✗ FAIL]   test/e2e/ shape
-Gate 5: Test execution      [✓ PASS | ✗ FAIL]   zbb test/testDirect[/testDocker]
-Gate 6: Build + stamp       [✓ PASS | ✗ FAIL]   zbb gate + gate-stamp.json
+Gate 1: API spec            [PASS | FAIL]   validate
+Gate 2: Type generation     [PASS | FAIL]   generate
+Gate 3: Implementation      [PASS | FAIL]   lint + compile
+Gate 4: Tests exist         [PASS | FAIL]   unit <n>, e2e <n>
+Gate 5: Test execution      [PASS | FAIL | SKIPPED: reason]   test / testDirect / testDocker / testDataloader
+Gate 6: Build + stamp       [PASS | FAIL]   gate + gateCheck
 
-Overall: [✓ ALL GATES PASSED | ✗ FAILURES]
+Overall: [ALL GATES PASSED | FAILURES]
 
-[Per-failure remediation pointing at the responsible skill.]
+[Per failure: the fix and the skill that owns it.]
 ```
 
 ## Examples
 
 ```
-/validate-gates github-github
-/validate-gates amazon-aws-s3
+/validate-gates nist-cmvp
+/validate-gates avigilon-alta-access
 ```

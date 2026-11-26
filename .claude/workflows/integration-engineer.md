@@ -2,233 +2,154 @@
 
 ## Overview
 
-This workflow covers implementing HTTP client classes and API integration for a module. The integration engineer implements the communication layer between the module and the external API.
+This workflow covers the communication layer between a module and the external API: the Client, the error
+handler and the producers. Code shape and file layout are defined in @.claude/skills/implementation/SKILL.md;
+read the closest reference module named at the top of that skill before writing code.
 
 ## Input
 
-- API specification (api.yml)
-- Connection profile schema (connectionProfile.yml)
-- Generated TypeScript types (generated/model/)
-- Operation definitions from api.yml
+- API specification (`api.yml`)
+- Connection profile schema (`connectionProfile.yml`, connector modules only)
+- Generated types and interfaces (`generated/api/`, `generated/model/`)
 
 ## Output
 
-- Client class implementation (src/{Service}Client.ts)
-- Producer class implementations (src/producers/*.ts)
-- Error handling configured
-- Integration tests passing
+- Client class (`src/<Name>Client.ts`)
+- Producer classes (`src/<Tag>ProducerApiImpl.ts`, one per `api.yml` tag; `src/` is flat)
+- Error handling in `src/util.ts`
+- Unit tests passing; e2e tests passing for a connector
 
 ## Detailed Steps
 
 ### Step 1: Review API Specification
 
-- Read api.yml from module directory
-- Identify base URL/endpoint
-- Determine authentication method
-- List available operations (paths)
-- Note request/response formats
-- Document error responses
-- **Record findings** in .claude/.localmemory/{workflow}-{module}/integration-notes.md
+- Read `api.yml` and the generated interfaces
+- Identify base URL, authentication method, operations, request and response formats
+- Note how the provider reports errors
+- Record findings in `.claude/.localmemory/{workflow}-{module}/integration-notes.md`
 
 ### Step 2: Review Connection Profile
 
-- Read connectionProfile.yml from module directory
-- Identify where auth token is stored
-- Note connection parameters
-- Identify required vs optional fields
-- **Connection patterns:** See "Core Profile Usage" in @.claude/skills/connection-profile/SKILL.md
+- Connector: read `connectionProfile.yml`, note the credential fields and which are required
+- Plain module: there is no profile and no lifecycle; skip the connect/disconnect parts of Step 3
+- **Profile patterns:** See "2. Pick the profile shape (connector)" in @.claude/skills/connection-profile/SKILL.md
 
 ### Step 3: Implement Client Class
 
-**Create or edit client file:** src/{Service}Client.ts
+Create or edit `src/<Name>Client.ts`:
 
-**Implement three core methods:**
+1. **connect()** - create the axios instance from the profile; return a state only when the module has a
+   `connectionState.yml` (the generated interface shows the signature)
+2. **isConnected()** - as described in the skill
+3. **disconnect()** - clear the token and the axios instance
 
-1. **connect()** - Set up HTTP client
-   - Create axios instance
-   - Configure base URL from profile
-   - Store credentials from profile
-   - Set up interceptors
-   - Validate connection with real API call
-   - Return Promise<void> (NOT ConnectionState)
+The Client exposes the axios instance to producers and has no HTTP helper or resource methods.
 
-2. **isConnected()** - Verify connection
-   - Make real API call (lightweight endpoint)
-   - Return boolean
-   - NOT just checking stored state
-
-3. **disconnect()** - Clean up
-   - Clear HTTP client reference
-   - Clear credentials
-   - Clear any cached data
-
-**Add helper methods:**
-- HTTP methods: get(path), post(path, data), put(path, data), delete(path)
-- Error handler: handleApiError(error) - Map HTTP errors to core types
-
-**Patterns:** See "Client Implementation" in @.claude/skills/http-client/SKILL.md
+**Patterns:** See "The Client" in @.claude/skills/implementation/SKILL.md and
+@.claude/skills/implementation/references/client.md
 
 ### Step 4: Implement Error Handling
 
-**Map HTTP status codes to core error types:**
-- 401 → InvalidCredentialsError
-- 403 → UnauthorizedError
-- 404 → NoSuchObjectError
-- 429 → RateLimitExceededError
-- 5xx → ServiceUnavailableError
-- Other → UnexpectedError
+- Put the status-to-core-error mapping in one `handleAxiosError` function in `src/util.ts`
+- Use one mechanism per module (per-call handling or a response interceptor), not both
 
-**Configure response interceptor:**
-- Intercept all errors
-- Call handleApiError()
-- NEVER let generic Error escape
-
-**Error mapping:** See "Error Mapping" in @.claude/skills/error-handling/SKILL.md
-**Interceptor setup:** See "Response Interceptors" in @.claude/skills/http-client/SKILL.md
+**Error mapping:** See "Errors" in @.claude/skills/implementation/SKILL.md
+**Reference handler and interceptor choice:** See "Reference `handleAxiosError`" and "Per-call handling or
+interceptor" in @.claude/skills/implementation/references/errors.md
 
 ### Step 5: Implement Producer Classes
 
-**For each resource type (User, Webhook, etc.):**
+For each `api.yml` tag:
 
-1. **Create producer file:** src/producers/{Resource}Producer.ts
+1. Create `src/<Tag>ProducerApiImpl.ts` implementing the generated `<Tag>ProducerApi`
+2. Copy the method signatures from `generated/api/`; codegen decides parameters and return types
+3. Call the API through the Client's axios instance and pass failures to the error handler
+4. Return the mapper's result; where a `200` can still mean "not found", check the body first
 
-2. **Implement CRUD operations:**
-   - list() → Promise<Resource[]>
-   - get(id) → Promise<Resource>
-   - create(data) → Promise<Resource>
-   - update(id, data) → Promise<Resource>
-   - delete(id) → Promise<void>
-
-3. **Validate responses:**
-   - Check array format before mapping
-   - Check object format before mapping
-   - Throw appropriate errors for invalid formats
-
-4. **Map responses:**
-   - Call mapper functions for single objects
-   - Use Array.map() for collections
-   - Handle nested objects
-
-**Producer patterns:** See "Producer Implementation" in @.claude/skills/http-client/SKILL.md
-**Validation:** See "Response Validation" in @.claude/skills/implementation-core/SKILL.md
+**Producer patterns:** See "Producers" in @.claude/skills/implementation/SKILL.md
+**List operations:** See "List operations and pagination" in @.claude/skills/implementation/SKILL.md and
+@.claude/skills/implementation/references/pagination.md
+**Mappers:** @.claude/skills/mapping/SKILL.md
 
 ### Step 6: Configure Timeouts and Retries
 
-**Set appropriate timeouts:**
-- Default: 30 seconds
-- Adjust per operation if needed based on API characteristics
-
-**Add retry logic:**
-- Only for transient failures (5xx, network errors)
-- NEVER retry client errors (4xx)
-- Use exponential backoff
-- Limit to 3 attempts
-
-**Retry patterns:** See "Retry Logic" in @.claude/skills/http-client/SKILL.md
+- Set a `timeout` in `axios.create` (see "The Client" in @.claude/skills/implementation/SKILL.md)
+- Retries: add them only when the provider's behaviour calls for it. Retry transient failures (5xx, network
+  errors) with backoff and a small attempt limit; a 4xx is the caller's error and is not retried. No skill
+  covers retries, so record the choice in the decisions file (Step 10).
 
 ### Step 7: Validate Implementation
 
-**Run validation checks:**
-- Verify error handling uses only core error types (no generic Error)
-- Check no Promise<any> usage (forbidden)
-- Confirm disconnect() method exists and returns Promise<void>
-- Verify response validation before mapping (Array.isArray checks)
-
-**Validation scripts:** See "Integration Validation" in @.claude/skills/http-client/SKILL.md
+- Run the `check-src.sh` script described under "No environment access, no secrets" in
+  @.claude/skills/implementation/SKILL.md and clear its findings
+- Go through "Finishing" in @.claude/skills/implementation/SKILL.md (every generated method implemented, no
+  `any` return type)
 
 ### Step 8: Run Unit Tests
 
-**Execute unit tests:** zbb test --slot local
+Run `zbb --slot <slot> test` from the module directory.
 
-**Verify:**
-- All HTTP calls mocked with nock
-- Error scenarios covered
-- Response validation tested
-- Connection lifecycle tested
+Verify:
+- HTTP calls are mocked with nock
+- Each operation's success path and each error mapping is covered
+- Connector: the connection lifecycle is covered
 
-**If failures:**
-- Review test output for specific failures
-- Fix implementation issues
-- Re-run tests until passing
+On failure fix the implementation or the mock and run again.
 
-**Testing patterns:** See @.claude/skills/nock-mocking/SKILL.md
+**Testing patterns:** See "Unit tests" in @.claude/skills/testing/SKILL.md
 
 ### Step 9: Run Integration Tests
 
-**Execute e2e tests:** zbb testDirect --slot local
+Connector modules: run `zbb --slot <slot> testDirect` from the module directory. A plain module has no
+`test/e2e`; see "Plain modules: no `test/e2e`" in @.claude/skills/testing/SKILL.md.
 
-**Verify:**
-- Real API calls succeed
-- Authentication works correctly
-- Error handling works with real API errors
-- Connection management works end-to-end
+Verify:
+- The suite really ran (a missing secret records one skipped test and stays green)
+- Authentication and error handling work against the real API
 
-**If failures:**
-- Check credentials in .credentials.json
-- Review API endpoint configuration
-- Check network connectivity
-- Fix issues and re-run
+On failure:
+- Check the module's zbb secret: see "Credentials: zbb secrets" in @.claude/skills/testing/SKILL.md
+- Check the base URL and network connectivity
 
-**Integration testing:** See @.claude/skills/gate-unit-tests/SKILL.md
+**e2e testing:** See "e2e tests (connector modules)" in @.claude/skills/testing/SKILL.md
 
 ### Step 10: Document Decisions
 
-**Record technical decisions in localmemory:**
-
-Create .claude/.localmemory/{workflow}-{module}/integration-decisions.md with:
-- HTTP client library choice and reasoning
+Create `.claude/.localmemory/{workflow}-{module}/integration-decisions.md` with:
 - Timeout configuration and justification
-- Retry strategy details
-- Any deviations from standard patterns
-- Confidence levels for decisions
+- Retry strategy, if any
+- Error-handling mechanism chosen (per-call or interceptor)
+- Deviations from the reference modules, with the reason
 
 ## Common Issues
 
-**Issue 1: Generic errors being thrown**
-- Symptom: throw new Error() used instead of core types
-- Fix: Map all errors to appropriate core error types
-- Reference: @.claude/skills/error-handling/SKILL.md
-
-**Issue 2: No response validation**
-- Symptom: Mapping responses without checking format
-- Fix: Validate Array.isArray() or object type before mapping
-- Reference: @.claude/skills/implementation-core/SKILL.md
-
-**Issue 3: State-based connection check**
-- Symptom: isConnected() just checks if token exists
-- Fix: Make real API call to verify connection
-- Reference: @.claude/skills/http-client/SKILL.md
+| Symptom | Fix | Reference |
+|---|---|---|
+| `throw new Error(` in `src/` | throw the matching core error | "Errors" in @.claude/skills/implementation/SKILL.md |
+| Every failure becomes `UnexpectedError` 500 | interceptor and per-call handler combined; keep one | "Per-call handling or interceptor" in @.claude/skills/implementation/references/errors.md |
+| Wrong pages from a list | see the mistakes list | "Mistakes that produce wrong pages" in @.claude/skills/implementation/references/pagination.md |
+| e2e green with zero tests | no secret in the slot, or file not `*.test.ts` | "Quick diagnosis" in @.claude/skills/testing/SKILL.md |
 
 ## Success Criteria
 
-Integration implementation is complete when:
-
-- ✅ Client class implements connect/isConnected/disconnect
-- ✅ All errors map to core types (ZERO generic errors)
-- ✅ Producer classes implement all operations
-- ✅ Response validation before mapping
-- ✅ Appropriate timeouts configured
-- ✅ Retry logic for transient failures
-- ✅ Unit tests pass (with nock mocks)
-- ✅ Integration tests pass (real API calls)
-- ✅ No connection leaks
-- ✅ No credentials in error messages
+- Client implements the lifecycle for the module kind
+- All failures surface as core errors
+- Producers implement every generated operation with generated types
+- Timeout configured
+- Unit tests pass with nock; e2e tests pass for a connector
+- No credentials in error messages or logs
 
 ## Tools Used
 
-- HTTP client library (axios)
-- nock (for mocking in unit tests)
-- Core error types from @zerobias-org/types-core-js
-- Mapper functions from Mappers.ts
+- axios
+- nock (unit tests)
+- Core error types from `@zerobias-org/types-core-js`
+- Mapper functions from `src/mappers.ts`
 
 ## Related Documentation
 
-**Primary Rules:**
-- @.claude/skills/http-client/SKILL.md - All client and producer code patterns
-- @.claude/skills/error-handling/SKILL.md - Error mapping and core error usage
-- @.claude/skills/implementation-core/SKILL.md - General implementation rules
-
-**Supporting Rules:**
-- @.claude/skills/nock-mocking/SKILL.md - Unit testing with mocks
-- @.claude/skills/gate-unit-tests/SKILL.md - Integration testing
-- @.claude/skills/connection-profile/SKILL.md - Profile patterns
+- @.claude/skills/implementation/SKILL.md - Client, producers, errors, pagination
+- @.claude/skills/mapping/SKILL.md - mappers
+- @.claude/skills/testing/SKILL.md - unit and e2e tests, zbb secrets
+- @.claude/skills/connection-profile/SKILL.md - profile and state
+- @.claude/skills/gates/SKILL.md - checkpoints and the stamp
